@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mynora.singverse.media.repository.MediaSourceMapper">
+  <select id="countEncryptedPasswords" resultType="int">
+    SELECT COUNT(*)
+    FROM media_source
+    WHERE password_encrypted IS NOT NULL
+  </select>
+  <select id="encryptedPasswords" resultType="string">
+    SELECT password_encrypted
+    FROM media_source
+    WHERE password_encrypted IS NOT NULL
+  </select>
+  <select id="list" resultType="map">
+    SELECT id, name, source_type, location, location_hash, username, password_encrypted, parser_profile_id, created_at, updated_at, scan_enabled, scan_cron, next_scan_at, last_scan_at, last_scan_status, last_scan_error
+    FROM media_source
+    ORDER BY created_at DESC, id ASC
+    LIMIT #{limit}
+    OFFSET #{offset}
+  </select>
+  <select id="count" resultType="long">
+    SELECT COUNT(*)
+    FROM media_source
+  </select>
+  <sql id="searchFilter"><where>
+    <if test="keyword != null">(LOWER(name) LIKE LOWER(#{keyword}) ESCAPE '!' OR LOWER(location) LIKE LOWER(#{keyword}) ESCAPE '!')</if>
+    <if test="type != null">AND source_type = #{type}</if>
+    <if test="profileId != null">AND parser_profile_id = #{profileId}</if>
+  </where></sql>
+  <select id="search" resultType="map">
+    SELECT source.id, source.name, source.source_type, source.location, source.username,
+           source.password_encrypted, source.parser_profile_id, source.created_at, source.updated_at,
+           source.scan_enabled, source.scan_cron, source.next_scan_at, source.last_scan_at, source.last_scan_status, source.last_scan_error
+    FROM media_source source JOIN (
+      SELECT id, created_at FROM media_source <include refid="searchFilter" />
+      ORDER BY created_at DESC, id ASC LIMIT #{limit} OFFSET #{offset}
+    ) page_ids ON page_ids.id = source.id
+    ORDER BY page_ids.created_at DESC, page_ids.id ASC
+  </select>
+  <select id="searchCount" resultType="long">SELECT COUNT(*) FROM media_source <include refid="searchFilter" /></select>
+  <select id="find" resultType="map">
+    SELECT id, name, source_type, location, location_hash, username, password_encrypted, parser_profile_id, created_at, updated_at, scan_enabled, scan_cron, next_scan_at, last_scan_at, last_scan_status, last_scan_error
+    FROM media_source
+    WHERE id=#{id}
+  </select>
+  <delete id="delete">
+    DELETE
+    FROM media_source
+    WHERE id=#{id}
+  </delete>
+  <insert id="insert">
+    INSERT INTO media_source (id,name,source_type,location,location_hash,username,password_encrypted,parser_profile_id,created_at,updated_at)
+    VALUES (#{id},#{name},#{type},#{location},#{locationHash},#{username},#{encrypted},#{profileId},#{createdAt},#{updatedAt})
+  </insert>
+  <update id="update">
+    UPDATE media_source
+    SET name=#{name},location=#{location},location_hash=#{locationHash},username=#{username},password_encrypted=#{encrypted},parser_profile_id=#{profileId},updated_at=#{updatedAt}
+    WHERE id=#{id}
+  </update>
+  <select id="references" resultType="map">
+    SELECT id, name FROM media_source WHERE parser_profile_id = #{profileId} ORDER BY id
+  </select>
+  <update id="touch">
+    UPDATE media_source SET updated_at = #{now} WHERE id = #{id} AND updated_at = #{expected}
+  </update>
+  <update id="schedule">UPDATE media_source SET scan_enabled=#{enabled}, scan_cron=#{cron}, next_scan_at=#{next} WHERE id=#{id}</update>
+  <select id="due" resultType="map">SELECT id, scan_cron, next_scan_at FROM media_source WHERE scan_enabled=1 AND next_scan_at &lt;= #{now} ORDER BY next_scan_at,id LIMIT 20</select>
+  <update id="claim">UPDATE media_source SET next_scan_at=#{next} WHERE id=#{id} AND scan_enabled=1 AND next_scan_at=#{expected}</update>
+  <update id="scanResult">UPDATE media_source SET last_scan_at=#{now}, last_scan_status=#{status}, last_scan_error=#{error} WHERE id=#{id}</update>
+</mapper>

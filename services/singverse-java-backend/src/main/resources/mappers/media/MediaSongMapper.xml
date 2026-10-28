@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mynora.singverse.media.repository.MediaSongMapper">
+  <select id="list" resultType="map">
+    SELECT cls.state_json AS classification_state, cls.revision AS classification_revision, song.id, song.source_id, source.name AS source_name, song.relative_path, song.file_size,
+           song.modified_at, song.scanned_at, song.parser_profile_id, song.parser_revision,
+           song.selected_rule_id, song.result_json,
+           meta.track_json AS metadata_track, meta.fields_json AS metadata_fields,
+           meta.applied_at AS metadata_applied_at, meta.origins_json AS metadata_origins, meta.fingerprint AS metadata_fingerprint
+    FROM media_song song JOIN media_source source ON source.id = song.source_id
+    LEFT JOIN song_metadata meta ON meta.song_id = song.id
+    LEFT JOIN classification_song cls ON cls.song_id = song.id
+    WHERE song.source_id = #{sourceId}
+    ORDER BY song.id LIMIT #{limit} OFFSET #{offset}
+  </select>
+  <select id="count" resultType="long">
+    SELECT COUNT(*) FROM media_song WHERE source_id = #{sourceId}
+  </select>
+  <delete id="delete">
+    DELETE FROM media_song WHERE source_id = #{sourceId}
+  </delete>
+  <insert id="insert">
+    INSERT INTO media_song (id, source_id, relative_path, path_hash, file_size, modified_at,
+                            scanned_at, parser_profile_id, parser_revision, selected_rule_id, result_json, needs_review)
+    VALUES (#{song.id}, #{song.sourceId}, #{song.relativePath}, #{song.pathHash}, #{song.fileSize},
+            #{song.modifiedAt}, #{song.scannedAt}, #{song.profileId}, #{song.revision},
+            #{song.ruleId}, #{song.resultJson}, #{song.needsReview})
+  </insert>
+  <sql id="searchFilter">
+    <where>
+      <if test="sourceId != null">song.source_id = #{sourceId}</if>
+      <if test="keyword != null">AND LOWER(song.relative_path) LIKE LOWER(#{keyword}) ESCAPE '!'</if>
+      <if test="review != null">AND song.needs_review = #{review}</if>
+      <if test="unclassified">AND NOT EXISTS (SELECT 1 FROM classification_assignment a JOIN classification_tag t ON t.id=a.tag_id AND t.active=1 WHERE a.song_id=song.id)</if>
+      <foreach collection="tagGroups" index="dimension" item="ids">
+        AND EXISTS (SELECT 1 FROM classification_assignment a JOIN classification_tag t ON t.id=a.tag_id AND t.active=1
+          WHERE a.song_id=song.id AND a.dimension=#{dimension} AND a.tag_id IN
+          <foreach collection="ids" item="tag" open="(" close=")" separator=",">#{tag}</foreach>)
+      </foreach>
+    </where>
+  </sql>
+  <select id="search" resultType="map">
+    SELECT cls.state_json AS classification_state, cls.revision AS classification_revision, song.id, song.source_id, source.name AS source_name, song.relative_path, song.file_size,
+           song.modified_at, song.scanned_at, song.parser_profile_id, song.parser_revision,
+           song.selected_rule_id, song.result_json,
+           meta.track_json AS metadata_track, meta.fields_json AS metadata_fields,
+           meta.applied_at AS metadata_applied_at, meta.origins_json AS metadata_origins, meta.fingerprint AS metadata_fingerprint
+    FROM (SELECT song.id, song.scanned_at FROM media_song song
+      <include refid="searchFilter" />
+      ORDER BY song.scanned_at DESC, song.id ASC LIMIT #{limit} OFFSET #{offset}
+    ) page_ids JOIN media_song song ON song.id = page_ids.id
+    JOIN media_source source ON source.id = song.source_id
+    LEFT JOIN song_metadata meta ON meta.song_id = song.id
+    LEFT JOIN classification_song cls ON cls.song_id = song.id
+    ORDER BY page_ids.scanned_at DESC, page_ids.id ASC
+  </select>
+  <select id="searchCount" resultType="long">
+    SELECT COUNT(*) FROM media_song song JOIN media_source source ON source.id = song.source_id
+    <include refid="searchFilter" />
+  </select>
+  <select id="find" resultType="map">
+    SELECT cls.state_json AS classification_state, cls.revision AS classification_revision, song.id, song.source_id, source.name AS source_name, song.relative_path, song.file_size,
+           song.modified_at, song.scanned_at, song.parser_profile_id, song.parser_revision,
+           song.selected_rule_id, song.result_json, meta.track_json AS metadata_track,
+           meta.fields_json AS metadata_fields, meta.applied_at AS metadata_applied_at,
+           meta.fingerprint AS metadata_fingerprint, meta.origins_json AS metadata_origins
+    FROM media_song song JOIN media_source source ON source.id = song.source_id
+    LEFT JOIN song_metadata meta ON meta.song_id = song.id
+    LEFT JOIN classification_song cls ON cls.song_id = song.id
+    WHERE song.id = #{id}
+  </select>
+</mapper>

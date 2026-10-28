@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mynora.singverse.auth.repository.AuthMapper">
+  <update id="setCsrf">
+    UPDATE auth_token
+    SET csrf=#{csrf}
+    WHERE token_hash=#{tokenHash}
+  </update>
+  <select id="countRecovery" resultType="int">
+    SELECT COUNT(*)
+    FROM auth_recovery
+  </select>
+  <delete id="deleteExpiredTokens">
+    DELETE
+    FROM auth_token
+    WHERE expires_at &lt; #{expiresBefore} OR last_seen &lt; #{lastSeenBefore}
+  </delete>
+  <insert id="insertToken">
+    INSERT INTO auth_token (token_hash,kind,csrf,created_at,last_seen,expires_at,attempts,revision)
+    VALUES (#{tokenHash},#{kind},#{csrf},#{createdAt},#{lastSeen},#{expiresAt},0,#{revision})
+  </insert>
+  <select id="findToken" resultType="map">
+    SELECT token_hash, kind, csrf, created_at, last_seen, expires_at, attempts, revision
+    FROM auth_token
+    WHERE token_hash=#{tokenHash} AND kind=#{kind} AND expires_at&gt;#{expiresAfter} AND last_seen&gt;#{lastSeenAfter} AND revision=#{revision}
+  </select>
+  <update id="touchToken">
+    UPDATE auth_token
+    SET last_seen=#{lastSeen}
+    WHERE token_hash=#{tokenHash}
+  </update>
+  <delete id="deleteToken">
+    DELETE
+    FROM auth_token
+    WHERE token_hash=#{tokenHash}
+  </delete>
+  <select id="findThrottle" resultType="map">
+    SELECT bucket, failures, blocked_until, updated_at
+    FROM auth_throttle
+    WHERE bucket=#{bucket}
+  </select>
+  <insert id="insertThrottle">
+    INSERT INTO auth_throttle (bucket,failures,blocked_until,updated_at)
+    VALUES (#{bucket},#{failures},#{blockedUntil},#{updatedAt})
+  </insert>
+  <update id="updateThrottle">
+    UPDATE auth_throttle
+    SET failures=#{failures},blocked_until=#{blockedUntil},updated_at=#{updatedAt}
+    WHERE bucket=#{bucket}
+  </update>
+  <delete id="clearLimits">
+    DELETE
+    FROM auth_throttle
+    WHERE bucket=#{accountBucket} OR bucket=#{addressBucket}
+  </delete>
+  <update id="acceptTotpStep">
+    UPDATE auth_account
+    SET last_totp_step=#{step}
+    WHERE id=1 AND last_totp_step&lt;#{previousStepLimit} AND revision=#{revision}
+  </update>
+  <delete id="consumeRecovery">
+    DELETE
+    FROM auth_recovery
+    WHERE code_hash=#{codeHash}
+  </delete>
+  <update id="incrementTokenAttempts">
+    UPDATE auth_token
+    SET attempts=attempts+1
+    WHERE token_hash=#{tokenHash}
+  </update>
+  <select id="tokenAttempts" resultType="int">
+    SELECT attempts
+    FROM auth_token
+    WHERE token_hash=#{tokenHash}
+  </select>
+  <update id="startMfaSetup">
+    UPDATE auth_account
+    SET pending_attempts=0,pending_secret=#{secret},pending_expires=#{expiresAt}
+    WHERE id=1
+  </update>
+  <update id="cancelMfaSetup">
+    UPDATE auth_account
+    SET pending_secret=NULL,pending_expires=0
+    WHERE id=1
+  </update>
+  <update id="incrementSetupAttempts">
+    UPDATE auth_account
+    SET pending_attempts=pending_attempts+1
+    WHERE id=1
+  </update>
+  <update id="confirmMfa">
+    UPDATE auth_account
+    SET mfa_secret=pending_secret,pending_secret=NULL,pending_expires=0,last_totp_step=#{step}
+    WHERE id=1
+  </update>
+  <delete id="deleteRecovery">
+    DELETE
+    FROM auth_recovery
+  </delete>
+  <insert id="insertRecovery">
+    INSERT INTO auth_recovery (code_hash)
+    VALUES (#{codeHash})
+  </insert>
+  <update id="disableMfa">
+    UPDATE auth_account
+    SET mfa_secret=NULL,pending_secret=NULL,pending_expires=0,last_totp_step=-1
+    WHERE id=1
+  </update>
+  <update id="changePassword">
+    UPDATE auth_account
+    SET password_hash=#{passwordHash},default_password=0
+    WHERE id=1
+  </update>
+  <update id="invalidateAccount">
+    UPDATE auth_account
+    SET revision=revision+1,pending_secret=NULL,pending_expires=0
+    WHERE id=1
+  </update>
+  <delete id="deleteTokens">
+    DELETE
+    FROM auth_token
+  </delete>
+  <select id="countAccounts" resultType="int">
+    SELECT COUNT(*)
+    FROM auth_account
+  </select>
+  <insert id="insertInitialAccount">
+    INSERT INTO auth_account (id, username, password_hash, default_password)
+    VALUES (1, 'admin', #{passwordHash}, 1)
+  </insert>
+  <select id="account" resultType="map">
+    SELECT id, username, password_hash, default_password, mfa_secret, pending_secret, pending_attempts, pending_expires, last_totp_step, revision
+    FROM auth_account
+    WHERE id=1
+  </select>
+  <insert id="insertEvent">
+    INSERT INTO auth_event (id,event_type,occurred_at)
+    VALUES (#{id},#{eventType},#{occurredAt})
+  </insert>
+  <delete id="deleteOldEvents">
+    DELETE
+    FROM auth_event
+    WHERE occurred_at &lt; #{before}
+  </delete>
+  <update id="recoverAccount">
+    UPDATE auth_account
+    SET password_hash=#{passwordHash},default_password=0,mfa_secret=NULL,pending_secret=NULL,pending_expires=0,last_totp_step=-1,revision=revision+1
+    WHERE id=1
+  </update>
+  <delete id="deleteThrottle">
+    DELETE
+    FROM auth_throttle
+  </delete>
+</mapper>

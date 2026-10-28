@@ -1,0 +1,87 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SingVerse Compute Internal API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "进程健康，不表示计算能力可用",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/capabilities": {
+      "get": {
+        "summary": "已实现并可使用的计算能力",
+        "operationId": "capabilities_internal_v1_capabilities_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Capabilities"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Capabilities": {
+        "properties": {
+          "service": {
+            "type": "string",
+            "const": "singverse-compute",
+            "title": "Service",
+            "default": "singverse-compute"
+          },
+          "apiVersion": {
+            "type": "string",
+            "const": "1",
+            "title": "Apiversion",
+            "default": "1"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Capabilities",
+            "default": []
+          }
+        },
+        "type": "object",
+        "title": "Capabilities"
+      },
+      "Health": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "UP",
+            "title": "Status",
+            "default": "UP"
+          }
+        },
+        "type": "object",
+        "title": "Health"
+      }
+    }
+  }
+}

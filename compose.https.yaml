@@ -1,0 +1,11 @@
+# Apply behind an existing HTTPS reverse proxy; see docs/authentication.md.
+services:
+  singverse-java-backend:
+    environment:
+      SINGVERSE_PUBLIC_ORIGIN: '${SINGVERSE_PUBLIC_ORIGIN:?Set the external HTTPS origin without a trailing slash}'
+      SINGVERSE_TRUSTED_PROXIES: '${SINGVERSE_TRUSTED_PROXIES:?Set the private Compose proxy CIDR}'
+  singverse-frontend:
+    ports: !override
+      - '127.0.0.1:${SINGVERSE_HTTP_PORT:-18080}:80'
+    volumes:
+      - ./services/singverse-java-backend/nginx/https-proxy-scheme.conf:/etc/nginx/proxy-scheme.conf:ro

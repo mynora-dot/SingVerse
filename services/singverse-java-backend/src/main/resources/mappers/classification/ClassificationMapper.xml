@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mynora.singverse.media.classification.ClassificationMapper">
+  <select id="taskConfigs" resultType="string">SELECT config_json FROM classification_task</select>
+  <select id="settings" resultType="map">SELECT * FROM classification_settings WHERE id=1</select>
+  <update id="cooldown">UPDATE classification_settings SET next_request_at=CASE WHEN next_request_at &gt; #{next} THEN next_request_at ELSE #{next} END WHERE id=1</update>
+  <update id="lock">UPDATE classification_settings SET revision=revision WHERE id=1</update>
+  <update id="saveSettings">UPDATE classification_settings SET enabled=#{c.enabled}, endpoint=#{c.endpoint}, model=#{c.model}, secret_encrypted=#{c.encryptedKey}, timeout_seconds=#{c.timeoutSeconds}, interval_seconds=#{c.intervalSeconds}, revision=revision+1 WHERE id=1</update>
+  <select id="tags" resultType="map">SELECT t.*, (SELECT COUNT(*) FROM classification_assignment a JOIN media_song s ON s.id=a.song_id WHERE a.tag_id=t.id) AS song_count FROM classification_tag t ORDER BY t.dimension,t.name,t.id</select>
+  <insert id="insertTag">INSERT INTO classification_tag(id,dimension,name,aliases_json,active,revision) VALUES(#{id},#{dimension},#{name},#{aliases},#{active},1)</insert>
+  <update id="updateTag">UPDATE classification_tag SET name=#{name},aliases_json=#{aliases},active=#{active},revision=revision+1 WHERE id=#{id} AND revision=#{revision}</update>
+  <select id="songIds" resultType="string">SELECT id FROM media_song ORDER BY id LIMIT #{limit}</select>
+  <select id="state" resultType="map">SELECT * FROM classification_song WHERE song_id=#{id}</select>
+  <insert id="insertState">INSERT INTO classification_song(song_id,revision,state_json) VALUES(#{id},1,#{state})</insert>
+  <update id="updateState">UPDATE classification_song SET revision=revision+1,state_json=#{state} WHERE song_id=#{id} AND revision=#{revision}</update>
+  <delete id="clearAssignments">DELETE FROM classification_assignment WHERE song_id=#{id}</delete>
+  <insert id="assign">INSERT INTO classification_assignment(song_id,dimension,tag_id) VALUES(#{id},#{dimension},#{tag})</insert>
+  <insert id="insertHistory">INSERT INTO classification_history(id,song_id,task_id,origin,before_json,after_json,after_revision,created_at) VALUES(#{id},#{song},#{task},#{origin},#{before},#{after},#{revision},#{now})</insert>
+  <select id="history" resultType="map">SELECT * FROM classification_history WHERE song_id=#{id} ORDER BY created_at DESC,id LIMIT #{limit} OFFSET #{offset}</select>
+  <select id="historyOne" resultType="map">SELECT * FROM classification_history WHERE id=#{id}</select>
+  <update id="reverted">UPDATE classification_history SET reverted=1 WHERE id=#{id}</update>
+  <select id="receipt" resultType="map">SELECT * FROM classification_receipt WHERE id=#{id}</select>
+  <insert id="receiptSave">INSERT INTO classification_receipt(id,request_hash,response_json) VALUES(#{id},#{hash},#{response})</insert>
+  <insert id="insertTask">INSERT INTO classification_task(id,status,config_json,vocabulary_json,dimensions_json,automatic_json,created_at,updated_at,next_at) VALUES(#{id},'RUNNING',#{config},#{vocabulary},#{dimensions},#{automatic},#{now},#{now},#{now})</insert>
+  <insert id="insertItem">INSERT INTO classification_item(id,task_id,song_id,status,input_json,input_version,song_revision,updated_at) VALUES(#{id},#{task},#{song},'PENDING',#{input},#{version},#{revision},#{now})</insert>
+  <select id="task" resultType="map">SELECT * FROM classification_task WHERE id=#{id}</select>
+  <select id="tasks" resultType="map">SELECT * FROM classification_task ORDER BY created_at DESC,id LIMIT #{limit} OFFSET #{offset}</select>
+  <select id="items" resultType="map">SELECT * FROM classification_item WHERE task_id=#{task}<if test="status != null"> AND status=#{status}</if> ORDER BY id LIMIT #{limit} OFFSET #{offset}</select>
+  <select id="itemCount" resultType="long">SELECT COUNT(*) FROM classification_item WHERE task_id=#{task}<if test="status != null"> AND status=#{status}</if></select>
+  <select id="counts" resultType="map">SELECT status,COUNT(*) AS n FROM classification_item WHERE task_id=#{id} GROUP BY status</select>
+  <select id="item" resultType="map">SELECT * FROM classification_item WHERE id=#{id}</select>
+  <select id="next" resultType="map">SELECT i.* FROM classification_item i JOIN classification_task t ON t.id=i.task_id WHERE (SELECT next_request_at FROM classification_settings WHERE id=1) &lt;= #{now} AND t.status='RUNNING' AND t.next_at &lt;= #{now} AND i.status='PENDING' ORDER BY t.created_at,i.id LIMIT 1</select>
+  <update id="itemState">UPDATE classification_item SET status=#{status},suggestion_json=#{suggestion},error=#{error},song_revision=#{revision},updated_at=#{now} WHERE id=#{id}</update>
+  <update id="retry">UPDATE classification_item SET status='PENDING',input_json=#{input},input_version=#{version},song_revision=#{revision},suggestion_json=NULL,error=NULL,updated_at=#{now} WHERE id=#{id}</update>
+  <update id="taskState">UPDATE classification_task SET status=#{status},next_at=#{next},updated_at=#{now} WHERE id=#{id}</update>
+  <update id="cancelItems">UPDATE classification_item SET status='CANCELLED',error='任务已终止，未继续分类',updated_at=#{now} WHERE task_id=#{id} AND status IN ('PENDING','PROCESSING')</update>
+  <update id="recoverItems">UPDATE classification_item SET status='PENDING',error='服务重启，等待管理员继续',updated_at=#{now} WHERE status='PROCESSING'</update>
+  <update id="recoverTasks">UPDATE classification_task SET status='PAUSED',updated_at=#{now} WHERE status='RUNNING'</update>
+  <update id="pauseAll">UPDATE classification_task SET status='PAUSED',updated_at=#{now} WHERE status='RUNNING'</update>
+</mapper>

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mynora.singverse.media.webdav.ScanTaskMapper">
+  <update id="recover">UPDATE media_scan_task SET status='INTERRUPTED', active_source=NULL,
+    error='服务已重启，扫描中断；请手动重新扫描', finished_at=#{now}
+    WHERE active_source IS NOT NULL</update>
+  <delete id="prune">DELETE FROM media_scan_task WHERE id IN (
+    SELECT id FROM (SELECT DISTINCT old.id FROM media_scan_task old
+    WHERE old.active_source IS NULL AND old.finished_at &lt; #{before}
+    AND EXISTS (SELECT 1 FROM media_scan_task newer WHERE newer.source_id=old.source_id
+      AND (newer.created_at &gt; old.created_at OR (newer.created_at=old.created_at AND newer.id &gt; old.id)))) expired
+    )</delete>
+  <delete id="clearAbandonedSongs">DELETE FROM media_scan_song WHERE task_id NOT IN
+    (SELECT id FROM media_scan_task WHERE active_source IS NOT NULL)</delete>
+  <delete id="clearAbandonedDirectories">DELETE FROM media_scan_directory WHERE task_id NOT IN
+    (SELECT id FROM media_scan_task WHERE active_source IS NOT NULL)</delete>
+  <select id="activeCount" resultType="int">SELECT COUNT(*) FROM media_scan_task WHERE active_source IS NOT NULL</select>
+  <select id="activeSource" resultType="map">SELECT * FROM media_scan_task WHERE active_source=#{sourceId}</select>
+  <select id="find" resultType="map">SELECT * FROM media_scan_task WHERE id=#{id}</select>
+  <select id="latest" resultType="map">SELECT * FROM media_scan_task WHERE source_id=#{sourceId}
+    ORDER BY created_at DESC, id DESC LIMIT 1</select>
+  <insert id="insert">INSERT INTO media_scan_task (id, source_id, active_source, status, phase, created_at)
+    VALUES (#{id}, #{sourceId}, #{sourceId}, 'QUEUED', 'SCANNING', #{now})</insert>
+  <update id="start">UPDATE media_scan_task SET status='RUNNING', started_at=#{now}
+    WHERE id=#{id} AND status='QUEUED' AND cancel_requested=0</update>
+  <update id="cancel">UPDATE media_scan_task SET cancel_requested=1
+    WHERE id=#{id} AND active_source IS NOT NULL AND phase='SCANNING'</update>
+  <update id="committing">UPDATE media_scan_task SET phase='COMMITTING'
+    WHERE id=#{id} AND status='RUNNING' AND cancel_requested=0</update>
+  <update id="finish">UPDATE media_scan_task SET status=#{status}, error=#{error}, active_source=NULL,
+    finished_at=#{now} WHERE id=#{id} AND active_source IS NOT NULL</update>
+  <update id="progress">UPDATE media_scan_task SET directories=#{directories}, entries=#{entries},
+    total_songs=#{total}, matched_songs=#{matched}, review_songs=#{review}, skipped_files=#{skipped} WHERE id=#{id}</update>
+  <insert id="directory">INSERT INTO media_scan_directory (task_id, path_hash, path, depth)
+    VALUES (#{taskId}, #{hash}, #{path}, #{depth})</insert>
+  <select id="nextDirectory" resultType="map">SELECT path, path_hash, depth FROM media_scan_directory
+    WHERE task_id=#{taskId} AND processed=0 LIMIT 1</select>
+  <select id="hasDirectory" resultType="long">SELECT COUNT(*) FROM media_scan_directory
+    WHERE task_id=#{taskId} AND path_hash=#{hash}</select>
+  <update id="processed">UPDATE media_scan_directory SET processed=1 WHERE task_id=#{taskId} AND path_hash=#{hash}</update>
+  <insert id="stage">INSERT INTO media_scan_song (task_id, id, source_id, relative_path, path_hash,
+    file_size, modified_at, scanned_at, parser_profile_id, parser_revision, selected_rule_id, result_json, needs_review)
+    VALUES <foreach collection="songs" item="song" separator=",">
+      (#{taskId}, #{song.id}, #{song.sourceId}, #{song.relativePath}, #{song.pathHash}, #{song.fileSize},
+       #{song.modifiedAt}, #{song.scannedAt}, #{song.profileId}, #{song.revision}, #{song.ruleId}, #{song.resultJson}, #{song.needsReview})
+    </foreach>
+  </insert>
+  <select id="stagedIds" resultType="string">SELECT id FROM media_scan_song WHERE task_id=#{taskId}
+    AND id IN <foreach collection="ids" item="id" open="(" close=")" separator=",">#{id}</foreach></select>
+  <delete id="clearSongs">DELETE FROM media_scan_song WHERE task_id=#{taskId}</delete>
+  <delete id="clearDirectories">DELETE FROM media_scan_directory WHERE task_id=#{taskId}</delete>
+  <insert id="publish">INSERT INTO media_song (id, source_id, relative_path, path_hash, file_size,
+    modified_at, scanned_at, parser_profile_id, parser_revision, selected_rule_id, result_json, needs_review)
+    SELECT id, source_id, relative_path, path_hash, file_size, modified_at, scanned_at,
+      parser_profile_id, parser_revision, selected_rule_id, result_json, needs_review
+    FROM media_scan_song WHERE task_id=#{taskId}</insert>
+</mapper>

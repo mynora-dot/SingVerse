@@ -1,0 +1,16 @@
+# Python 3.12+; full resolved runtime and build dependencies.
+# Direct dependencies: pyproject.toml. Regenerate in a clean venv.
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.15.1
+click==8.5.0
+fastapi==0.121.3
+h11==0.16.0
+idna==3.20
+pydantic==2.14.1
+pydantic_core==2.50.1
+setuptools==80.9.0
+starlette==0.50.0
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+uvicorn==0.38.0

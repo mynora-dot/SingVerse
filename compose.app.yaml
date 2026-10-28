@@ -1,0 +1,41 @@
+name: singverse-app
+
+services:
+  singverse-java-backend:
+    image: singverse-java-backend:local
+    build:
+      context: .
+      dockerfile: services/singverse-java-backend/Dockerfile
+      target: singverse-java-backend
+    environment:
+      SPRING_PROFILES_ACTIVE: sqlite
+      SQLITE_PATH: /data/singverse.db
+      SERVER_PORT: '8080'
+      COMPUTE_NODE_URL: ''
+      METADATA_CACHE_PATH: /data/metadata/covers
+      SINGVERSE_AUTH_KEY_FILE: /secrets/master.key
+      SINGVERSE_PUBLIC_ORIGIN: '${SINGVERSE_PUBLIC_ORIGIN:-}'
+      SINGVERSE_TRUSTED_PROXIES: '${SINGVERSE_TRUSTED_PROXIES:-}'
+    volumes:
+      - singverse-data:/data
+      - singverse-secrets:/secrets
+    restart: unless-stopped
+    stop_grace_period: 20s
+
+  singverse-frontend:
+    image: singverse-frontend:local
+    build:
+      context: .
+      dockerfile: services/singverse-java-backend/Dockerfile
+      target: singverse-frontend
+    ports:
+      - '${SINGVERSE_HTTP_BIND:-127.0.0.1}:${SINGVERSE_HTTP_PORT:-18080}:80'
+    depends_on:
+      singverse-java-backend:
+        condition: service_healthy
+        restart: true
+    restart: unless-stopped
+
+volumes:
+  singverse-data:
+  singverse-secrets:

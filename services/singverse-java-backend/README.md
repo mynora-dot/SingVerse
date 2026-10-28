@@ -1,0 +1,224 @@
+# SingVerse Java 后端
+
+Java21、Spring Boot3.5.16、Maven Wrapper3.9.16。提供启动、配置、Actuator、MyBatis XML 数据访问与数据库连接检查、亲友H5欢迎入口及NAS管理前端静态托管；新增可选的Python计算节点内部能力探测客户端；已增加单管理员账号、会话、TOTP MFA及SQL迁移；已支持管理端原始音视频在线播放，无配对、点歌、聚会播放或计算任务派发。
+
+执行下列Maven命令前，从仓库根目录运行`make frontend-build dbmate-setup`（需要Node.js 22.19+和npm），然后进入本目录。Maven缺少管理产物会明确失败，避免打出缺失界面的JAR；修改前端后必须重建。根`make java-backend-test`、`make web-check`与`make backend-check`自动执行这一前置步骤。
+
+```sh
+./mvnw -B verify
+# 先从仓库根执行make compute-setup，再验证真实Python进程联动
+./mvnw -B -Pbackend-check verify
+./mvnw spring-boot:run
+curl --fail http://localhost:8080/party/
+curl --fail http://localhost:8080/admin/
+curl --fail http://localhost:8080/api/health
+./mvnw -B -Dtest=WebWelcomeTest,AdminWebTest test
+./mvnw -B -Dtest=SQLiteConnectionTest test
+# 先启动MySQL并导出MYSQL_*变量
+./mvnw -B -Pmysql-check verify
+SPRING_PROFILES_ACTIVE=mysql ./mvnw spring-boot:run
+```
+
+主服务工程、Maven制品和Spring应用名均为`singverse-java-backend`；Java包名保持`com.mynora.singverse`。
+
+亲友H5和NAS管理页面统一在兄弟工程`../singverse-frontend`中开发。Vite一次构建`/party/`与`/admin/`两入口，Maven将整个`dist`复制到`target/classes/static`，不混入Java源码资源目录。Spring静态资源托管JS/CSS，`AdminWebConfiguration`只处理管理目录首页与尾斜杠。运行`java -jar target/singverse-java-backend-0.1.0-SNAPSHOT.jar`后提供两个入口；运行时不需要Node，无CDN、微信JS-SDK或小程序AppID。根`make web-check`执行真实访问集成测试。
+
+管理端有概览、系统状态、登录和系统参数，初始admin/admin，支持改密及可选MFA；详情见[认证说明](../../docs/authentication.md)。不直连Python或数据库。其静态产物未来可由Go复用，详见[管理端说明](../../services/singverse-frontend/README.md)与[前端托管契约](../../contracts/frontend-hosting.md)。
+
+后续微信扫码的二维码应是手机可达的NAS URL。当前未生成二维码、未验证微信内置浏览器实机，不提供点歌/会话接口。API/WS建议与网页同源，不公开数据库给手机。
+
+默认SQLite文件`./data/singverse.db`相对进程工作目录；SQLITE_PATH覆盖并自动建父目录，单连接池启动SELECT 1。mysql Profile通过MYSQL_HOST/PORT/DATABASE/USER/PASSWORD配置，密码必填，不回退SQLite。Spring不自动读取.env。
+
+后续业务授权、任务编排、会话/队列与数据写入继续由Java负责；服务端转解码、AI伴奏分析等重计算统一交给`services/singverse-compute`。设置`COMPUTE_NODE_URL=http://127.0.0.1:8090`配置内部客户端，未设置时返回disabled；`ComputeNodeClient.probe()`只按需请求`/internal/v1/capabilities`，不在启动时请求，也不纳入Actuator依赖。2秒连接/请求超时，不跟随重定向；失败、版本不兼容或非法能力响应返回unavailable。配置仅接受无凭据、路径、查询和fragment的HTTP(S) origin，非法配置明确启动失败。当前尚无公开管理探测接口。Python作为内部执行层融入媒体/AI业务，不增加节点菜单或让客户端直接连接。`backend-check` Profile会运行`ComputeIntegrationIT`，验证实际Python进程上下线与主服务健康/H5隔离；根入口为`make backend-check`，无需MySQL。
+
+mysql-check是Maven测试Profile，执行MySqlConnectionIT；普通测试独立验证SQLite及H5，临时数据库不污染开发文件。健康端点保留Actuator原生响应，不泄露数据库详情。
+
+## Nginx与API前缀
+
+[nginx/nginx.conf](nginx/nginx.conf)用于Nginx部署和Docker打包：对外管理入口为根路径，点歌H5为 `/party/`，所有 `/api` 命名空间请求原路径转发到后端。当前健康端点为 `/api/health`，后续业务使用 `/api/v1`；健康响应保持Actuator原生格式。静态产物复制、Docker内部服务名和部署检查见[Nginx说明](nginx/README.md)。已提供[联合Dockerfile](Dockerfile)与[应用Compose](../../compose.app.yaml)，从仓库根执行 `make docker-up` 后访问 http://localhost:18080/ 。SQLite保存在独立命名卷；运行和检查见[Docker说明](../../docs/docker.md)。NAS实机尚未验收。
+
+## 媒体来源配置
+
+新增受管理员会话和 CSRF 保护的 `/api/v1/media-sources` CRUD。本地目录保存时检查服务可见绝对路径及目录读取；WebDAV 仅校验配置并加密保存密码，不发起远端请求。新增 SQLite/MySQL dbmate 迁移，密码复用主密钥并使用独立 AAD。主密钥备份现在也涉及媒体源凭据；详见[媒体库管理](../../docs/media-library.md)。现已支持本地目录文件名扫描及索引保存；WebDAV 已支持十万首级后台文件名扫描，媒体处理任务尚未实现。
+
+## 包组织与依赖约定
+
+采用单体内的业务模块分包，根包 `com.mynora.singverse` 只保留 Spring Boot 入口，组件扫描继续覆盖全部子包。
+
+```text
+com.mynora.singverse/
+  SingVerseApplication
+  auth/
+    controller/       账号与 MFA HTTP 入口
+    dto/              认证请求结构
+    service/          登录、会话、MFA 与改密用例
+    repository/       账号初始化、Mapper 接口与审计
+    security/         Cookie、来源检查、CSRF 与 SecurityFilterChain
+    crypto/           既有主密钥与凭据加密（媒体源复用独立 AAD）
+    recovery/         本机终端恢复
+    exception/        认证业务异常
+  media/
+    controller/       媒体来源 HTTP 入口与异常响应
+    dto/              媒体来源请求、响应与分页结构
+    service/          目录、WebDAV 和凭据更新规则
+    repository/       Mapper 接口、行映射与唯一冲突处理
+    filename/         独立、无 IO 的 KTV 文件名解析器
+    model/            版本化配置文档、共享定义与方案引用
+  infrastructure/
+    database/         数据源、连接检查、dbmate 迁移和进程锁
+    compute/          Python 内部能力探测客户端
+    web/              管理与亲友入口静态托管
+```
+
+媒体来源按 `controller → service → repository` 调用，控制器不处理 SQL、路径校验或加密。DTO 只描述 HTTP 数据，不暴露数据库行或密码。媒体仓储使用自己的 JdbcTemplate，不通过账号仓储读写媒体表；显式依赖 `DatabaseInitializer` 保证先完成迁移。数据库锁随该基础设施 Bean 的销毁释放；账号初始化和本机恢复继续归认证模块。
+
+认证模块本次保留既有事务、SQL 与安全行为，`AuthStore` 封装存储实例，以方法访问支持 Spring 仓储代理；未将现有认证逻辑改写为新的领域模型。公共加密仍由既有认证主密钥管理。新增功能应落入相应业务模块，不把业务类堆进根包或基础设施包，也不预建空接口、空模块或独立 Maven 子工程。
+
+测试继续使用 `src/test/java`，需要访问包级构造器的基础设施单元测试跟随对应包；HTTP 集成测试位于根包下并使用隔离数据和随机端口。接口、配置、迁移 SQL、JAR 名称及构建入口不因 Java 包移动而改变。
+
+## KTV 媒体文件名解析器
+
+`com.mynora.singverse.media.filename` 是 Java 21 纯逻辑模块，不需要启动 Spring，也不使用网络、文件系统、数据库或大模型。输入仅为文件名字符串；调用方负责提供文件名，解析器不会从路径或 URL 提取 basename。斜杠可以保留为名称中的字符。
+
+```java
+import com.mynora.singverse.media.filename.KtvFilenameParser;
+import com.mynora.singverse.media.filename.FilenameParseResult;
+
+var parser = new KtvFilenameParser();
+FilenameParseResult result = parser.parse("周杰伦-晴天-国语-原唱.mkv");
+// title: 晴天; artists: [周杰伦]; language: MANDARIN; versionType: ORIGINAL
+// confidence: 0.85; parseStatus: SUCCESS; parserRule: ARTIST_TITLE_TAGGED
+```
+
+入口无可变状态，可由多个线程复用；结果 record 及其列表均不可变。它只推断文件名含义，不验证音视频实际内容。独立内核不依赖 HTTP 或媒体来源服务；规则配置和预览 API 作为单独管理功能提供，本地扫描服务通过已保存方案快照复用内核，内核自身不访问文件系统或数据库。
+
+### 结果字段
+
+| 字段 | 含义 |
+|---|---|
+| `originalFilename` / `normalizedFilename` | 完整原始输入 / 统一字符宽度、空白、常见横线和括号、扩展名大小写的副本；标准化名称仍包含标签 |
+| `title` / `artists` | 歌名 / 歌手列表；不能确定时为 null / 空列表 |
+| `language` / `versionType` | 语种 / 版本枚举，默认 `UNKNOWN` |
+| `songCode` / `extension` | 保留前导零的字符串编号 / 小写、无点扩展名；缺失时为 null |
+| `qualityTags` | 去重后的规范清晰度标签，保留多个不同标签 |
+| `confidence` / `parseStatus` | 0～0.99 的歌手/歌名结构分数 / 核心解析状态，不是统计正确率 |
+| `parserRule` / `unparsedTokens` | 最终规则标识 / 未确定片段，保留重复片段与冲突标签 |
+| `needsReview` / `diagnostics` | 是否复核核心字段 / 包含原因和分数增减值的诊断列表（附加标签可仅作提示） |
+
+语种枚举为 `MANDARIN`、`CANTONESE`、`ENGLISH`、`JAPANESE`、`KOREAN`、`OTHER`、`UNKNOWN`；词典支持国语/普通话/Mandarin、粤语/广东话/Cantonese、英语/英文/English、日语/Japanese、韩语/韩文/Korean、其他/未知。英文匹配不区分大小写。
+
+版本为 `ORIGINAL`（原唱/原版）、`ACCOMPANIMENT`（伴奏/纯伴奏）、`INSTRUMENTAL`（纯音乐）、`DUET`（合唱/对唱）、`KARAOKE`（卡拉 OK/卡拉OK/KTV）、`UNKNOWN`。清晰度支持 480P、720P、1080P、2K、4K、UHD、HD；扩展名支持 MKV、MP4、MPG、MPEG、AVI、TS、VOB、MOV、WMV，大小写不敏感。
+
+### 规则与边界
+
+| 格式 | 示例 | 规则 |
+|---|---|---|
+| 歌手《歌名》 | `周杰伦《晴天》.mkv` | `ARTIST_BOOK_TITLE` |
+| 歌名（歌手） | `晴天（周杰伦）.mkv` | `TITLE_PAREN_ARTIST` |
+| 编号 歌手 歌名 | `00128 周杰伦 晴天.mpg` | `CODE_ARTIST_TITLE` |
+| 歌名_歌手及尾部标签 | `晴天_周杰伦_伴奏.mp4` | `TITLE_ARTIST_UNDERSCORE` |
+| 歌手-歌名及尾部标签 | `周杰伦-晴天-国语-原唱-1080P.mkv` | `ARTIST_TITLE_TAGGED` |
+| 歌手-歌名 | `周杰伦-晴天.mkv` | `ARTIST_TITLE` |
+| 仅歌名 | `晴天.mkv` | `TITLE_ONLY` |
+
+标准化和标签提取先执行，因而同样支持 `陈奕迅 - 富士山下 [粤语].mkv`、`周杰伦&温岚-屋顶-国语.mkv` 和 `周杰伦 － 晴天 （国语） [原唱].mkv`。明确的书名号/尾括号结构优先，分隔格式其次，仅歌名是后备规则；同优先级规则存在不同解释时，仅保留一致的核心字段。
+
+- 标签按完整括号内容或尾部完整分隔片段匹配，不从名称内部搜索子串。尾部标签须有剩余歌曲结构；`周杰伦-原唱.mkv` 中的“原唱”保留为歌名。书名号内部的括号内容保留为歌名的一部分。
+- 未知方括号标签、已有歌手/歌名结构后的未知括号内容，以及明确的未知标签提示都保留为诊断信息，不影响核心字段成功判定。`MTV`、`消伴`、`风景`、`人物`、`演唱会`、`流行` 等只作为未识别证据，不生成新版本或曲风字段。`无原唱` 不推断成伴奏，`消伴` 也不推断成纯伴奏。
+- 同类别互相冲突的标签返回 `UNKNOWN`，冲突内容全部保留，但不要求复核已明确的歌手/歌名；同义标签重复不视为冲突。单独出现的“未知”作为语种未知标签处理。
+- 只有已确认歌手字段中的 `&`、`＆`、`、`，以及空白边界完整且两侧非空的 `feat.`/`ft.` 才拆分；歌名中的合作符号、歌手名称中的斜杠和普通空格保留。已确定歌手字段且有明确合唱/对唱标签时，可拆分以空格分隔的 2～4 汉字姓名；包含乐队、乐团、合唱团、组合、战队、乐坊等团体后缀时保留整体。其他带空格的署名保留完整文本，如 `My Band`、`TFBOYS 韩庚`，通过 `ARTIST_CREDIT_PRESERVED` 提示尚未拆分成员，不再将整个歌手字段置空。此规则是署名规范化启发式，不能保证识别所有团体名。
+- 有空格包围的横线优先作为结构分隔符，可保留 `AC-DC - Song-Part 2` 内部横线。多个无明确归属的片段返回 `AMBIGUOUS`，不强行拼出歌名。
+- 曲库语言/标签尾部之后的副本标记和计数（如 `-国语-流行-2`、`-国语-流行_1`、`-国语-流行 - 副本-2`）保留为附加片段，不再阻塞核心字段。没有这种上下文的 `A-T-2` 仍视为结构歧义，不把歌名数字一律当副本编号删除。
+- 编号只自动提取前导零数字前缀，或 `编号:`、`编号：`、`ID:` 标记后的数字；标记大小写不敏感。未标记的 `1984 周杰伦 晴天` 不确认编号；`1984.mkv`、`七里香2004.mkv` 保留为歌名。编号加空格的多词名称、编号加横线的正反顺序均可能有歧义，需要复核。
+- 无扩展名只产生提示，歌手/歌名完整时仍可 `SUCCESS`；不支持的扩展名（包括 FLAC）、空输入、控制字符、孤立代理字符、不匹配括号及没有有效名称的输入返回 `FAILED`。仅标点不视为有效歌名。原始输入始终保留，不做文件访问。
+
+没有歌手词典或调用方命名约定时，无法可靠识别所有反向命名、内部连接符、团体名和多人名单。普通两段横线按“歌手-歌名”、下划线按“歌名_歌手”的约定处理；`SUCCESS` 表示符合当前规则，不保证这些命名约定与媒体事实一致。
+
+### 置信度与状态
+
+当前以歌手和歌名为验收核心。结构基础分：书名号 0.95，尾括号及明确编号空格结构 0.90，横线/下划线 0.85，仅歌名 0.45。结构或歌手字段本身有歧义时减 0.25；语种、版本、清晰度、未知附加标签、标签冲突和缺扩展名均只记录诊断，分数增减为零，不影响核心字段判断。结果限制为 0～0.99，并保留各项诊断供调用方解释。
+
+歌手和歌名完整、没有核心归属歧义、分数至少 0.80 时返回 `SUCCESS`，`needsReview=false`，即使 `unparsedTokens` 中仍有附加标签。核心顺序或分隔本身有歧义时返回 `NEEDS_REVIEW`；只有歌名等不完整核心字段时返回 `PARTIAL`；无有效输入/候选、非法名称或不支持的扩展名返回 `FAILED`，分数为零。缺失或互相冲突的语种/版本仍为 `UNKNOWN`，不推断为任何媒体事实。
+
+### 文件、测试与扩展
+
+本包新增 11 个生产文件：`KtvFilenameParser`（入口）、`FilenameParseResult`（record 与嵌套枚举）、`FilenameNormalizer`、`ExtensionHandler`、`TagDictionary`、`TagExtractor`、`SongCodeExtractor`、`FilenameRule`、`FilenameRules`、`ArtistParser`、`ConfidenceCalculator`。只有入口与结果类型对外公开，其余实现保持包级可见。
+
+测试位于同包的 `src/test/java`：`FilenameSamples.java` 集中保存各命名规则的字段预期，`KtvFilenameParserTest.java` 验证别名、扩展名、歧义、完整未知片段、评分、不可变性、并发复用和异常输入。测试直接 new 解析器，不启动 Spring，也不访问 SMB 或数据库。
+
+```sh
+# 从仓库根执行现有产物前置步骤；无需启动主服务
+make frontend-build
+cd services/singverse-java-backend
+./mvnw -B -Dtest=KtvFilenameParserTest test
+# 完整后端回归由仓库根 make java-backend-test 执行
+```
+
+扩展标签时修改 `TagDictionary` 的精确别名或待复核提示，同时补充字段断言；提示词只进入未识别片段。扩展结构时实现 `FilenameRule`，在 `FilenameRules.RULES` 注册顺序和明确优先级，定义规则标识及基础分，在 `FilenameSamples` 增加样本，并补充与既有格式冲突的测试。评分规则集中在 `ConfidenceCalculator`，不在单条规则里自行填充最终高分。
+
+真实共享文件名验证的本轮数量、结果和边界见[验证记录](../../docs/verification.md)。批量验证工具与文件名快照只保存在临时目录，未将目录扫描或 SMB 访问代码加入项目。
+
+## 共享规则库、解析方案与兼容配置
+
+“曲库 → 解析规则”维护单条模板/RE2 正则；“解析方案”引用定义并维护启停、顺序和文本预览。规则修改影响所有引用方案，删除被引用规则返回 409 和 referencedBy；默认方案不能删除，其他方案可复制/改名/删除。
+
+存储沿用 `filename_parser_config` 表。rules_json 在首次成功修改时升级为 schemaVersion=2（definitions + profiles），GET 只投影旧数组，不写库；全局 revision 保护全部修改和引用竞争，不修改已应用 SQL 迁移。旧 `/rules` 读写投影默认方案，省略规则不会删除其他方案依赖；旧 `/preview` 草稿及单参数纯解析行为保持。
+
+新增 `/api/v1/filename-parser/rule-definitions`、`/profiles` CRUD 与 `/profiles/preview`，复用管理员会话和 CSRF，原规则引擎及 RE2/J 1.8 不变。方案预览展开稳定引用形成不可变 FilenameRuleSet；媒体来源已关联解析方案，并通过独立本地扫描服务提取及保存歌曲元数据。使用、数据格式、接口与限制见[规则与方案说明](../../docs/filename-rules.md)。
+
+## SQL 与 Mapper XML
+
+采用 `mybatis-spring-boot-starter:3.0.5`，业务 SQL 显式存放于 `src/main/resources/mappers/{auth,media,infrastructure}/`，按模块维护 Mapper 接口和同名 XML。Java 负责业务流程与参数，不内联业务 SQL，也不使用 SQL 注解或 Provider；参数通过 `@Param` / `#{}` 绑定。Spring 继续管理事务，保留单连接 SQLite 池、MySQL Profile、dbmate 迁移和既有 HTTP 契约。新增 SQL 时同时更新 Mapper 接口与 XML，使用 `make java-backend-test` 验证。详细规则见根 `AGENTS.md` 与[数据库策略](../../docs/database-strategy.md)。
+
+## 本地歌曲扫描
+
+媒体来源 DTO 增加 `parserProfileId`，方案解析使用 `FilenameParserConfigService.savedProfile` 的不可变快照。`MediaScanService` 提供有界本地目录遍历，`MediaSongRepository` / `MediaSongMapper.xml` 持久化解析结果；`POST /api/v1/media-sources/{id}/scan` 触发，`GET /api/v1/media-sources/{id}/songs` 分页查询。SQLite 默认测试覆盖完整流程；`mysql-check` 同时包含 `MySqlMediaScanIT`，需真实测试库方可验收。限制与事务语义详见[媒体库管理](../../docs/media-library.md)。
+
+歌曲管理由 `MediaSongController` / `MediaSongService` 提供 `GET /api/v1/media-songs`，分页查询所有扫描索引，可按来源、文件名、复核状态筛选；列表 SQL 与计数共用 `MediaSongMapper.xml` 的绑定参数条件，查询在同一事务中执行。`202610280003` 回填复核标志并建索引，已有扫描歌曲无需重扫即可显示。
+
+## WebDAV 后台文件名扫描
+
+`media.webdav` 提供受管理员会话/CSRF 保护的 `scan-tasks` API、仅使用 PROPFIND 的流式客户端、两个线程的有界执行器及数据库暂存。支持 OpenList 和单来源十万首，旧索引在扫描期间保留，成功后原子替换；重启中断后手动重扫。`MediaSong.fileSize/modifiedAt` 可为 null。目录响应不触发视频 GET/HEAD、下载、Python 或外部元数据服务。限制、恢复、接口及 OpenList 配置见[媒体库管理](../../docs/media-library.md)。
+
+`WebDavClientTest` 与 `WebDavScanHttpTest` 使用本机随机端口和临时 SQLite 验证；`MySqlWebDavScanIT` 纳入 `mysql-check`，需配置真实隔离 MySQL 才能验收。十万首测试只生成 XML 目录条目，不创建视频。
+
+## 歌曲元数据刮削
+
+`media.metadata` 提供网易云/QQ/酷狗元数据适配、持久化批次、候选审核和独立确认覆盖层；`MetadataMapper.xml` 负责业务 SQL。功能及自动写入默认关闭，支持单曲、选中及全库批次，暂停/续跑/终止、失败重试和重启恢复。数据库迁移 `202610280004`；封面缓存可用 `METADATA_CACHE_PATH` 配置。实现边界、启用及写入规则见[元数据刮削](../../docs/metadata-scraping.md)。
+
+批量刮削可在平台设置中配置每首完成后的随机等待范围（默认 3～8 秒，允许 2～300 秒，含端点；最大值不得小于最小值）。设置持久化且保存时暂停活动批次，续跑使用当前间隔；等待不占用数据库连接。同一平台请求仍保持串行及至少 1.5 秒启动间隔；HTTP 429 会触发该平台至少 60 秒冷却，期间拒绝新请求，失败项可稍后手动重试。单曲搜索也受平台冷却约束，批量随机等待只约束后台批次。随机间隔用于平滑流量，不能保证避免限流或自动化识别。
+
+媒体来源与歌曲列表已采用独立搜索区、分页表格及可选每页条数；来源支持名称/地址、类型、方案筛选，查询使用 ID 分页后延迟关联和筛选排序联合索引。深分页成本与包含搜索边界见[列表查询说明](../../docs/library-search.md)。
+
+媒体来源添加/编辑支持定时扫描开关及标准五段 cron（上海时区）；配置与下次触发持久化，同来源扫描中跳过，停机遗漏不逐次补跑。使用及 API 字段、调度限制见[定时扫描](../../docs/media-scan-schedule.md)。
+
+单曲元数据已使用独立双栏审核工作台，支持字段编辑、受管 JPEG/PNG 上传、平台封面搜索及统一确认应用；旧批量审核入口保持独立。新增接口、资源备份、幂等与版本校验规则见[单曲审核](../../docs/single-song-review.md)。
+
+批量工作台已统一整体进度：total/completed 均包含跳过项，新批次持久化跳过明细，旧批次仅汇总并提示。新增批次内搜索/排序、可信度审核提示及按状态操作，自动写入和限流规则不变。接口兼容说明及统计定义见[批量工作台](../../docs/batch-metadata-workbench.md)。
+
+歌曲分类接口 `/api/v1/classification` 使用独立的持久化任务与 MyBatis XML，支持兼容 Chat Completions 的 JSON Schema 模型、分类锁定/审核/撤回和歌曲标签筛选。SQLite/MySQL 自动迁移；配置默认关闭。详见[分类说明](../../docs/song-classification.md)。
+
+
+## 歌曲位置与本地目录选择
+
+管理端“歌曲位置”以卡片呈现来源，统一添加入口；定时扫描、解析方案收进“更多设置”。本地文件夹通过 `GET /api/v1/media-sources/local-directories?path=...&page=0` 浏览选择，WebDAV 仍填写地址。名称在前端留空时按文件夹名生成，API 的 name 仍为必填。
+
+目录接口仅管理员会话可用，范围与已有本地来源保存相同：服务进程有权读取的目录，不改变权限或挂载。空 path 列出文件系统根目录；绝对路径返回规范化 path、parent、items（name/path）、hasMore。parent 为 null 表示根目录列表，为空字符串表示返回该列表。仅列可读子目录，略过符号链接，不读文件内容；按目录名排序，每页固定 100 条，page 从 0 开始且不超过 10000。路径无效、不存在或无法列目录返回 400，未登录返回 401。Docker 中仅能看到容器目录，NAS 歌曲目录须预先只读挂载，不能通过浏览器选择未挂载的宿主机目录。
+
+
+## 管理端在线播放
+
+歌曲列表行内操作统一为按钮，新增“在线播放”，在带原生控件的视频弹窗中播放当前歌曲。关闭弹窗或离开页面移除 video 元素以停止读取；错误时可重新加载。
+
+`GET /api/v1/media-songs/{id}/video` 与 HEAD 复用管理员 Cookie 会话，未登录返回 401，不提供公开媒体 URL。支持单段 Range（起止、开放结束、后缀范围），本地响应 200/206/416 和 Content-Length/Content-Range；非法范围或多范围返回 400。所有流响应禁止缓存。本地解析真实路径并限制在来源目录内，失效文件或越界符号链接返回 404。
+
+WebDAV 使用保存的地址和加密凭据在服务端发起 GET/HEAD，转发 Range，不把凭据或远端地址返回浏览器。采用 10 秒连接、30 秒读取空闲超时，流式传输，不落盘、不完整缓冲；连接随响应结束/客户端断开清理。上游忽略 Range 时保持 200，拖动能力取决于上游；不跟随 3xx（返回 502），需要支持直接读取的 WebDAV 服务，OpenList 等返回下载跳转的配置需调整，否则暂不能播放。认证/读取错误返回不含远端细节的 502。
+
+只播放原始音视频，不调用 Python、不转码、不创建队列或电视会话。浏览器能否解码取决于容器与视频/音频编码，MP4/WebM 也不保证所有编码都能播放，MKV/AVI 等可能不可播放。Nginx 对视频接口关闭 proxy_buffering/proxy_cache，避免视频临时文件与额外等待；代理读取空闲超时为 60 秒。真实 NAS、WebDAV 提供者、浏览器编码兼容性仍须单独验收。
+
+
+## 音频文件扫描与在线播放
+
+本地目录与 WebDAV 文件名扫描统一支持 MP3、FLAC、WAV、M4A、AAC、OGG、OGA、Opus、WMA、AIF、AIFF、APE，扩展名不区分大小写，沿用现有解析方案提取歌名和歌手。扫描只建立文件名索引，不读取音频内容或内嵌标签；新增格式需重新扫描才会进入歌曲列表，现有扫描数量限制不变。
+
+“在线播放”按扩展名选择音频/视频控件。音频复用已鉴权的 GET/HEAD `/api/v1/media-songs/{id}/video`（为兼容保留原路径），返回 audio/* 媒体类型，沿用 Range、后端 WebDAV 代理、凭据保护与关闭停止加载。音频失败可重试，切换或关闭时移除旧媒体元素。不提供转码，扩展名可入库不保证浏览器能解码；WMA、APE 等通常需要其他播放器。WebDAV 下载重定向限制不变。

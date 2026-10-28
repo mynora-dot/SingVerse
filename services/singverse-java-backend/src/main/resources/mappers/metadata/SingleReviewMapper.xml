@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mynora.singverse.media.metadata.SingleReviewMapper">
+  <select id="receipt" resultType="map">SELECT song_id,request_hash,response_json FROM metadata_review_receipt WHERE request_id=#{id}</select>
+  <insert id="receiptSave">INSERT INTO metadata_review_receipt (request_id,song_id,request_hash,response_json,created_at) VALUES (#{id},#{songId},#{hash},#{response},#{now})</insert>
+  <select id="asset" resultType="map">SELECT id,song_id,fingerprint,mime,width,height,created_at FROM metadata_cover_asset WHERE id=#{id}</select>
+  <insert id="assetSave">INSERT INTO metadata_cover_asset (id,song_id,fingerprint,mime,width,height,created_at) VALUES (#{id},#{songId},#{fingerprint},#{mime},#{width},#{height},#{now})</insert>
+  <select id="oldAssets" resultType="map">SELECT asset.id FROM metadata_cover_asset asset WHERE asset.created_at &lt; #{before} AND NOT EXISTS (SELECT 1 FROM song_metadata meta WHERE INSTR(meta.track_json, asset.id) > 0) ORDER BY asset.created_at,asset.id LIMIT 100</select>
+  <select id="references" resultType="long">SELECT COUNT(*) FROM song_metadata WHERE track_json LIKE #{pattern}</select>
+  <delete id="assetDelete">DELETE FROM metadata_cover_asset WHERE id=#{id}</delete>
+  <delete id="pruneReceipts">DELETE FROM metadata_review_receipt WHERE created_at &lt; #{before}</delete>
+</mapper>

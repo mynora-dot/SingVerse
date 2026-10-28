@@ -1,0 +1,37 @@
+name: singverse-docker
+on:
+  push:
+    paths: ['services/singverse-frontend/**', 'services/singverse-java-backend/**', 'compose.app.yaml', 'compose.https.yaml', '.dockerignore', 'scripts/check-docker-app.py', 'scripts/check-auth-docker.py', '.github/workflows/singverse-docker.yml', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh']
+  pull_request:
+    paths: ['services/singverse-frontend/**', 'services/singverse-java-backend/**', 'compose.app.yaml', 'compose.https.yaml', '.dockerignore', 'scripts/check-docker-app.py', 'scripts/check-auth-docker.py', '.github/workflows/singverse-docker.yml', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate administrator OpenAPI 3.1
+        run: |
+          python -m pip install openapi-spec-validator==0.7.2
+          python -m openapi_spec_validator contracts/openapi/singverse.openapi.json
+      - name: Build and start application
+        run: make docker-up
+      - name: Verify public HTTP routes
+        run: make docker-check
+      - name: Verify MFA and local recovery in isolated containers
+        run: make auth-docker-check
+      - name: Container logs
+        if: failure()
+        run: docker compose -f compose.app.yaml logs --tail 100
+      - name: Stop application and keep volumes
+        if: always()
+        run: make docker-down

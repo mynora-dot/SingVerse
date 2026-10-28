@@ -1,0 +1,71 @@
+name: singverse-java-backend
+on:
+  push:
+    paths: ['services/singverse-java-backend/**', 'services/singverse-frontend/**', '.github/workflows/singverse-java-backend.yml', 'compose.yaml', '.env.example', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh', 'infra/**', '.editorconfig', '.gitignore']
+  pull_request:
+    paths: ['services/singverse-java-backend/**', 'services/singverse-frontend/**', '.github/workflows/singverse-java-backend.yml', 'compose.yaml', '.env.example', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh', 'infra/**', '.editorconfig', '.gitignore']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.4.8
+        env:
+          MYSQL_DATABASE: singverse
+          MYSQL_USER: singverse
+          MYSQL_PASSWORD: ci_only_password
+          MYSQL_ROOT_PASSWORD: ci_only_root_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: '3306'
+      MYSQL_DATABASE: singverse
+      MYSQL_USER: singverse
+      MYSQL_PASSWORD: ci_only_password
+    defaults:
+      run:
+        working-directory: services/singverse-java-backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: services/singverse-frontend/package-lock.json
+      - name: Build NAS admin assets
+        run: make -C ../.. frontend-build
+      - name: Validate Nginx configuration
+        run: >-
+          docker run --rm
+          --add-host singverse-java-backend:127.0.0.1
+          --volume "$PWD/nginx/nginx.conf:/etc/nginx/nginx.conf:ro"
+          --volume "$PWD/nginx/proxy-scheme.conf:/etc/nginx/proxy-scheme.conf:ro"
+          nginx:stable-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951
+          nginx -t
+      - name: Install database migration tool
+        run: make -C "${{ github.workspace }}" dbmate-setup
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: services/singverse-java-backend/pom.xml
+      - run: ./mvnw -B test
+      - name: Verify NAS-hosted H5 and admin
+        run: ./mvnw -B -Dtest=WebWelcomeTest,AdminWebTest test
+      - run: ./mvnw -B package -DskipTests
+      - run: ./mvnw -B -Dtest=SQLiteConnectionTest test
+      - run: ./mvnw -B -Pmysql-check verify

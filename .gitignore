@@ -1,0 +1,62 @@
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+key.properties
+*.pem
+*.key
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.iml
+*.swp
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+coverage/
+# Android / Gradle
+.gradle/
+.kotlin/
+local.properties
+captures/
+# All build output
+build/
+target/
+dist/
+node_modules/
+.pnpm-store/
+*.log
+# Python local environment and build metadata
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+# WeChat developer local settings
+project.private.config.json
+# SQLite runtime files
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+# Preserve required wrapper binaries and lock files
+!**/gradle/wrapper/gradle-wrapper.jar
+!**/.mvn/wrapper/maven-wrapper.jar
+!**/pubspec.lock
+!**/pnpm-lock.yaml
+/data
+
+.tools/
+*.auth.lock
+
+# Derived cover cache (default Java working directory)
+/services/singverse-java-backend/data/metadata/
+/docs

@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mynora.singverse.media.metadata.MetadataMapper">
+  <select id="settings" resultType="map">SELECT enabled, providers_json, auto_apply, threshold, min_interval_seconds, max_interval_seconds FROM metadata_settings WHERE id = 1</select>
+  <update id="lock">UPDATE metadata_settings SET id = id WHERE id = 1</update>
+  <update id="saveSettings">
+    UPDATE metadata_settings SET enabled = #{enabled}, providers_json = #{providers}, auto_apply = #{autoApply}, threshold = #{threshold}, min_interval_seconds = #{minInterval}, max_interval_seconds = #{maxInterval}, updated_at = #{now} WHERE id = 1
+  </update>
+  <update id="pauseActive">UPDATE metadata_batch SET status = 'PAUSED', updated_at = #{now} WHERE status = 'RUNNING'</update>
+  <update id="recoverItems">UPDATE metadata_item SET status = 'PENDING', updated_at = #{now} WHERE status = 'PROCESSING'</update>
+  <select id="active" resultType="map">SELECT id FROM metadata_batch WHERE status IN ('RUNNING', 'PAUSED') ORDER BY created_at DESC, id LIMIT 1</select>
+  <select id="latest" resultType="map">SELECT id FROM metadata_batch ORDER BY created_at DESC, id LIMIT 1</select>
+  <select id="batch" resultType="map">
+    SELECT id, mode, status, providers_json, auto_apply, threshold, skipped_existing, created_at, updated_at FROM metadata_batch WHERE id = #{id}
+  </select>
+  <insert id="insertBatch">
+    INSERT INTO metadata_batch (id, mode, status, providers_json, auto_apply, threshold, skipped_existing, created_at, updated_at)
+    VALUES (#{id}, #{mode}, 'RUNNING', #{providers}, #{autoApply}, #{threshold}, #{skipped}, #{now}, #{now})
+  </insert>
+  <update id="batchStatus">UPDATE metadata_batch SET status = #{status}, updated_at = #{now} WHERE id = #{id} AND status = #{expected}</update>
+  <select id="targetSongs" resultType="map">
+    SELECT song.id, song.file_size, song.modified_at, song.result_json, song.source_id,
+           song.relative_path, source.name AS source_name, song.scanned_at, song.parser_profile_id,
+           song.parser_revision, song.selected_rule_id,
+           meta.track_json AS metadata_track, meta.fields_json AS metadata_fields,
+           meta.applied_at AS metadata_applied_at, meta.origins_json AS metadata_origins, meta.fingerprint AS metadata_fingerprint
+    FROM media_song song JOIN media_source source ON source.id = song.source_id
+    LEFT JOIN song_metadata meta ON meta.song_id = song.id
+    <where>
+      <if test="!all">
+        song.id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+      </if>
+    </where>
+    ORDER BY song.id LIMIT 5001
+  </select>
+  <insert id="insertItem">
+    INSERT INTO metadata_item (id, batch_id, song_id, fingerprint, title, artists_json, status, updated_at)
+    VALUES (#{id}, #{batchId}, #{songId}, #{fingerprint}, #{title}, #{artists}, 'PENDING', #{now})
+  </insert>
+  <select id="counts" resultType="map">SELECT status, COUNT(*) AS amount FROM metadata_item WHERE batch_id = #{batchId} GROUP BY status</select>
+  <sql id="itemFilter"><where>batch_id = #{batchId}<if test="status != null">AND status = #{status}</if></where></sql>
+  <select id="items" resultType="map">
+    SELECT id, batch_id, song_id, fingerprint, title, artists_json, status, candidates_json, error_message, updated_at FROM metadata_item
+    <include refid="itemFilter" /> ORDER BY id LIMIT #{limit} OFFSET #{offset}
+  </select>
+  <sql id="viewFilter"><where>item.batch_id=#{batchId}
+    <if test="status != null"><choose><when test="status == 'APPLIED'">AND item.status IN ('AUTO_APPLIED','MANUAL_APPLIED')</when><otherwise>AND item.status=#{status}</otherwise></choose></if>
+    <if test="keyword != null">AND (LOWER(item.title) LIKE LOWER(#{keyword}) ESCAPE '!' OR LOWER(item.artists_json) LIKE LOWER(#{keyword}) ESCAPE '!')</if>
+  </where></sql>
+  <select id="viewItems" resultType="map">
+    SELECT item.id,item.batch_id,item.song_id,item.fingerprint,item.title,item.artists_json,item.status,item.candidates_json,item.error_message,item.updated_at,
+           song.source_id,song.relative_path,song.file_size,song.modified_at,
+           meta.fingerprint AS metadata_fingerprint,meta.fields_json AS metadata_fields
+    FROM metadata_item item LEFT JOIN media_song song ON song.id=item.song_id
+    LEFT JOIN song_metadata meta ON meta.song_id=item.song_id
+    <include refid="viewFilter" />
+    ORDER BY <choose>
+      <when test="sort == 'TITLE'">item.title ASC,</when>
+      <when test="sort == 'SCORE_DESC'">CAST(JSON_EXTRACT(item.candidates_json,'$[0].score') AS DECIMAL(10,5)) DESC,</when>
+      <when test="sort == 'UPDATED_DESC'">item.updated_at DESC,</when>
+    </choose> item.id ASC LIMIT #{limit} OFFSET #{offset}
+  </select>
+  <select id="viewCount" resultType="long">SELECT COUNT(*) FROM metadata_item item <include refid="viewFilter" /></select>
+  <select id="itemCount" resultType="long">SELECT COUNT(*) FROM metadata_item <include refid="itemFilter" /></select>
+  <select id="item" resultType="map">
+    SELECT id, batch_id, song_id, fingerprint, title, artists_json, status, candidates_json, error_message, updated_at FROM metadata_item WHERE id = #{id}
+  </select>
+  <update id="itemStatus">
+    UPDATE metadata_item SET status = #{status}, candidates_json = #{candidates}, error_message = #{error}, updated_at = #{now}
+    WHERE id = #{id} AND status = #{expected}
+  </update>
+  <insert id="insertCandidate">
+    INSERT INTO metadata_candidate (id, song_id, fingerprint, track_json, score, fetched_at)
+    VALUES (#{id}, #{songId}, #{fingerprint}, #{track}, #{score}, #{now})
+  </insert>
+  <select id="candidate" resultType="map">SELECT id, song_id, fingerprint, track_json, score, fetched_at FROM metadata_candidate WHERE id = #{id}</select>
+  <delete id="deleteApplied">DELETE FROM song_metadata WHERE song_id = #{songId}</delete>
+  <insert id="insertApplied">
+    INSERT INTO song_metadata (song_id, source_id, fingerprint, track_json, fields_json, origins_json, applied_at)
+    VALUES (#{songId}, #{sourceId}, #{fingerprint}, #{track}, #{fields}, #{origins}, #{now})
+  </insert>
+  <delete id="pruneCandidates">DELETE FROM metadata_candidate WHERE fetched_at &lt; #{before}</delete>
+  <delete id="cleanupSource">DELETE FROM song_metadata WHERE source_id = #{sourceId}</delete>
+  <delete id="cleanupOrphans">DELETE FROM song_metadata WHERE source_id = #{sourceId} AND song_id NOT IN (SELECT id FROM media_song WHERE source_id = #{sourceId})</delete>
+</mapper>

@@ -1,0 +1,3 @@
+singverse:
+  sqlite:
+    path: ${SQLITE_PATH:./data/singverse.db}

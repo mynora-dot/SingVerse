@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mynora.singverse.media.repository.FilenameParserConfigMapper">
+  <select id="read" resultType="map">
+    SELECT revision,rules_json,updated_at
+    FROM filename_parser_config
+    WHERE id=1
+  </select>
+  <insert id="insert">
+    INSERT INTO filename_parser_config (id,revision,rules_json,updated_at)
+    VALUES (1,1,#{encoded},#{updatedAt})
+  </insert>
+  <update id="update">
+    UPDATE filename_parser_config
+    SET revision=revision+1,rules_json=#{encoded},updated_at=#{updatedAt}
+    WHERE id=1 AND revision=#{revision}
+  </update>
+  <!-- The singleton row serializes source binding changes and profile deletion in Spring transactions. -->
+  <update id="lockBindings">
+    UPDATE filename_parser_config SET revision = revision WHERE id = 1
+  </update>
+</mapper>
