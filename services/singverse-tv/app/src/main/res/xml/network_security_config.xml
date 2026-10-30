@@ -1,0 +1,4 @@
+<network-security-config>
+    <!-- Cleartext is required for owner-configured NAS HTTP. TvClient rejects public HTTP hosts before connecting. HTTPS keeps system certificate verification. -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

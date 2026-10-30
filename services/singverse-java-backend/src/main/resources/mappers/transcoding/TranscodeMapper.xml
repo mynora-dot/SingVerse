@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mynora.singverse.media.transcoding.TranscodeMapper">
+ <select id="find" resultType="map">SELECT * FROM media_transcode WHERE id=#{id}</select>
+ <select id="list" resultType="map">SELECT * FROM media_transcode ORDER BY created_at DESC LIMIT 500</select>
+ <select id="pending" resultType="map">SELECT * FROM media_transcode WHERE state IN ('QUEUED','STARTING','RUNNING') ORDER BY created_at LIMIT 100</select>
+ <select id="versions" resultType="map">SELECT * FROM media_transcode WHERE song_id=#{song} AND fingerprint=#{fingerprint} AND purpose='OFFLINE' AND state='SUCCEEDED' AND pipeline_version='2' ORDER BY created_at DESC</select>
+ <insert id="insert">INSERT INTO media_transcode(id,execution_id,pipeline_version,song_id,owner_id,purpose,state,fingerprint,node_origin,input_json,target_json,result_json,error,renewed_at,created_at,updated_at)
+ VALUES(#{row.id},#{row.id},'2',#{row.song_id},#{row.owner_id},#{row.purpose},#{row.state},#{row.fingerprint},#{row.node_origin},#{row.input_json},#{row.target_json},'{}','',#{row.now},#{row.now},#{row.now})</insert>
+ <update id="update">UPDATE media_transcode SET state=#{state},result_json=#{result},error=#{error},updated_at=#{now} WHERE id=#{id} AND state NOT IN ('CANCELLED','DELETING')</update>
+ <update id="renew">UPDATE media_transcode SET renewed_at=#{now} WHERE id=#{id}</update>
+ <update id="plan">UPDATE media_transcode SET target_json=#{target} WHERE id=#{id}</update>
+ <update id="requeue">UPDATE media_transcode SET state='QUEUED',pipeline_version='2',execution_id=#{execution},result_json='{}',error='',updated_at=#{now} WHERE id=#{id} AND state NOT IN ('CANCELLED','DELETING')</update>
+ <delete id="delete">DELETE FROM media_transcode WHERE id=#{id}</delete>
+</mapper>

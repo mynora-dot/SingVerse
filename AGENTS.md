@@ -4,7 +4,7 @@
 
 ## 项目与范围
 
-- 家庭自托管 KTV，使用用户自备歌曲。当前有多端欢迎页、Vue 管理概览/健康查询、Java 数据库连接检查、Python 探测骨架及本地 Docker 交付；已实现单管理员登录、改密、可选 TOTP MFA、媒体来源与解析方案、歌曲管理、本地目录及 WebDAV 文件名扫描及歌曲元数据保存、平台元数据刮削与审核；已支持管理端本地/WebDAV 原始音视频在线播放；配对、队列、聚会播放和转码尚未实现。
+- 家庭自托管 KTV，使用用户自备歌曲。当前有多端欢迎页、Vue 管理概览/健康查询、Java 数据库连接检查、Python 探测骨架及本地 Docker 交付；已实现单管理员登录、改密、可选 TOTP MFA、媒体来源与解析方案、歌曲管理、本地目录及 WebDAV 文件名扫描及歌曲元数据保存、平台元数据刮削与审核；已支持管理端本地/WebDAV 原始音视频在线播放；已新增 TV 设备授权、聚会队列和亲友 H5 扫码点歌，以及随曲库自动生成的歌手库、首次自动抓图、图片上传及 NAS 歌手订正、共享歌单管理和 AI 歌单建议；已新增 compute 实时 HLS/离线兼容版本及 Java 授权编排；已增加按素材试跑的硬解/零拷贝与 GPU 色调映射，边界见 docs/transcoding.md，真机验收见 docs/verification.md。
 - 亲友入口为微信扫一扫普通 NAS URL 打开 H5；不恢复小程序/Taro。`docs/prototype/`、`docs/kimi-prototype/` 是设计原型，不是生产功能。
 - 按需阅读根及目标模块 README；架构见 [docs/architecture.md](docs/architecture.md)，开发见 [docs/development.md](docs/development.md)。涉及产品行为再查 [PRD](docs/research/PRD.md)，候选需求不自动成为开发范围。事实以源码、配置和本次验证为准。
 
@@ -16,12 +16,12 @@
 |---|---|
 | `services/singverse-frontend/` | Vue / TypeScript / Vite / Element Plus；管理与亲友 H5 共用一个工程和完整 dist |
 | `services/singverse-java-backend/` | Java 21 / Spring Boot；业务授权、曲库、会话、队列和唯一业务数据库写入 |
-| `services/singverse-compute/` | Python / FastAPI；内部重计算执行层，目前只有健康与能力探测 |
+| `services/singverse-compute/` | Python / FastAPI；内部重计算执行层，健康/能力探测及只读音视频标签读取 |
 | `services/singverse-mobile/` | Flutter Android；原生本机 K 歌，扫码电视会话复用 NAS H5，当前无 iOS 工程 |
 | `services/singverse-tv/` | Kotlin / Compose TV；遥控器交互及实际播放状态回报 |
 
 - Java 负责计算任务编排与结果入库；服务端媒体探测、转解码和 AI 重计算归 Python。Python 不写业务库、不管理队列，客户端不直连 Python/数据库；本机采集、监听与录音留在设备端。
-- Python 不对应独立产品菜单或节点地址表单，连接由部署配置管理。`COMPUTE_NODE_URL` 为空时关闭探测，可选节点不加入主服务健康依赖；空能力列表不代表可执行媒体任务。使用项目 `.venv` 和 `requirements.lock`。
+- Python 不对应独立业务产品；系统设置的性能节点配置仅供管理员管理内部连接，支持部署自动识别或独立部署配置，客户端仍只调用 Java。AUTO模式且`COMPUTE_NODE_URL`为空时关闭探测，可选节点不加入主服务健康依赖；空能力列表不代表可执行媒体任务。使用项目 `.venv` 和 `requirements.lock`。
 - 不预建 Go、微服务、Redis 或消息队列。未来 Go 复用静态产物与语言无关契约，约束见 [docs/go-migration.md](docs/go-migration.md)。
 
 ## 前端、API 与数据

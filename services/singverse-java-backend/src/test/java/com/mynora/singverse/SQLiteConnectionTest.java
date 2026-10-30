@@ -58,10 +58,11 @@ class SQLiteConnectionTest {
                         "media_source",
                         "media_song", "media_scan_task", "media_scan_directory", "media_scan_song",
                         "metadata_cover_asset", "metadata_review_receipt", "metadata_settings", "metadata_batch", "metadata_item", "metadata_candidate", "song_metadata",
-                        "classification_settings", "classification_tag", "classification_song", "classification_assignment",
+                        "playlist", "playlist_lock", "media_transcode", "artist_image_policy", "song_artist_override", "artist_registry_lock", "artist", "artist_image", "artist_credit_binding", "classification_tag_cover", "classification_settings", "classification_tag", "classification_song", "classification_assignment",
                         "classification_task", "classification_item", "classification_history", "classification_receipt",
-                        "filename_parser_config");
+                        "filename_parser_config", "ai_registry_lock", "ai_service", "ai_feature", "compute_node_settings", "tv_record");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM filename_parser_config", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT mode FROM compute_node_settings WHERE id=1", String.class)).isEqualTo("AUTO");
     }
 
     @Test

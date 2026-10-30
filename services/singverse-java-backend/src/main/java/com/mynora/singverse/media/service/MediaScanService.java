@@ -1,6 +1,7 @@
 package com.mynora.singverse.media.service;
 
 import com.mynora.singverse.auth.crypto.AuthCrypto;
+import com.mynora.singverse.infrastructure.compute.MediaTagsClient;
 import com.mynora.singverse.media.dto.MediaSongDtos;
 import com.mynora.singverse.media.dto.MediaSourceDtos.Source;
 import com.mynora.singverse.media.filename.KtvFilenameParser;
@@ -20,21 +21,22 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Bounded local filename indexing. Never reads media contents or writes original files. */
+/** Bounded local filename indexing. Requests embedded tags from the compute service; never writes original files. */
 @Service
 public class MediaScanService {
     private final MediaSourceRepository sources;
     private final MediaSourceMapper sourceMapper;
     private final MediaSongRepository songs;
     private final FilenameParserConfigService profiles;
+    private final MediaTagsClient fileTags;
     private final TransactionTemplate transaction;
     private final Set<String> running = ConcurrentHashMap.newKeySet();
     private record Context(Source source, FilenameParserConfigService.ProfileSnapshot profile) {}
 
     public MediaScanService(MediaSourceRepository sources, MediaSourceMapper sourceMapper,
-            MediaSongRepository songs, FilenameParserConfigService profiles, PlatformTransactionManager manager) {
+            MediaSongRepository songs, FilenameParserConfigService profiles, PlatformTransactionManager manager, MediaTagsClient fileTags) {
         this.sources = sources; this.sourceMapper = sourceMapper; this.songs = songs;
-        this.profiles = profiles; this.transaction = new TransactionTemplate(manager);
+        this.profiles = profiles; this.fileTags = fileTags; this.transaction = new TransactionTemplate(manager);
     }
 
     public MediaSongDtos.Page list(String sourceId, int page, int size) {
@@ -58,6 +60,7 @@ public class MediaScanService {
         });
         Objects.requireNonNull(context);
         Path root = Path.of(context.source().location());
+        var tagReader = fileTags.session();
         var indexed = new ArrayList<MediaSongRepository.Stored>();
         var parser = new KtvFilenameParser();
         String scannedAt = Instant.now().toString();
@@ -90,17 +93,33 @@ public class MediaScanService {
                     if (relative.length() > 2048) throw bad("歌曲相对路径过长，请缩短目录后重试");
                     var parsed = parser.preview(file.getFileName().toString(), context.profile().rules());
                     if (parsed.selectedRule() != null) matched[0]++;
-                    if (parsed.result().needsReview()) review[0]++;
                     String id = UUID.nameUUIDFromBytes((sourceId + "\0" + relative).getBytes(StandardCharsets.UTF_8)).toString();
                     indexed.add(new MediaSongRepository.Stored(id, sourceId, relative, AuthCrypto.hash(relative),
                             attributes.size(), attributes.lastModifiedTime().toInstant().toString(), scannedAt,
                             context.profile().id(), context.profile().revision(),
-                            parsed.selectedRule() == null ? null : parsed.selectedRule().id(), songs.encode(parsed.result()), parsed.result().needsReview()));
+                            parsed.selectedRule() == null ? null : parsed.selectedRule().id(), songs.encode(parsed.result()), parsed.result().needsReview(), null));
                     return FileVisitResult.CONTINUE;
                 }
             });
         } catch (IOException | SecurityException error) {
             throw bad("扫描未完成：目录或文件不可读取，原歌曲数据已保留，请检查挂载和权限");
+        }
+        // Validate traversal limits before launching any bounded tag subprocesses.
+        for (int index = 0; index < indexed.size(); index++) {
+            var song = indexed.get(index);
+            Path file = root.resolve(song.relativePath());
+            String embedded = tagReader.apply(file);
+            try {
+                var afterRead = Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                if (!afterRead.isRegularFile() || afterRead.size() != song.fileSize()
+                        || !afterRead.lastModifiedTime().toInstant().toString().equals(song.modifiedAt())
+                        || !file.toRealPath().startsWith(root))
+                    throw conflict("扫描期间文件已变化，原歌曲索引保留，请重试");
+            } catch (IOException error) { throw conflict("扫描期间文件已变化，原歌曲索引保留，请重试"); }
+            if (System.nanoTime() > deadline) throw bad("读取文件标签超出单次扫描30秒范围，请拆分媒体来源后重试");
+            if (song.needsReview() && !fileTags.hasIdentity(embedded)) review[0]++;
+            indexed.set(index, new MediaSongRepository.Stored(song.id(), song.sourceId(), song.relativePath(), song.pathHash(),
+                    song.fileSize(), song.modifiedAt(), song.scannedAt(), song.profileId(), song.revision(), song.ruleId(), song.resultJson(), song.needsReview(), embedded));
         }
         transaction.executeWithoutResult(status -> {
             profiles.lockBindings();

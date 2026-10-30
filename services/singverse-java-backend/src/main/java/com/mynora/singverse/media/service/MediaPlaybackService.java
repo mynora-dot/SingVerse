@@ -50,6 +50,15 @@ public class MediaPlaybackService {
         }
     }
 
+    public void playDerived(Path root, String name, String range, boolean head, HttpServletResponse response) throws IOException {
+        if (!name.matches("[a-f0-9-]{36}\\.mp4") || range != null && !range.matches("bytes=(?:[0-9]+-[0-9]*|-[0-9]+)"))
+            throw failure(HttpStatus.BAD_REQUEST, "无效的媒体范围");
+        response.setContentType("video/mp4");
+        response.setHeader("Cache-Control", "private, no-store");
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        local(root.toString(), name, range, head, response);
+    }
+
     private void local(String location, String relative, String range, boolean head, HttpServletResponse response) throws IOException {
         Path root, file;
         try {

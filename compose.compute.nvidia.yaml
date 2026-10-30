@@ -1,0 +1,13 @@
+# Requires a configured NVIDIA Container Toolkit on the Linux host.
+services:
+  singverse-compute:
+    environment:
+      COMPUTE_HARDWARE_BACKEND: nvenc
+      NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

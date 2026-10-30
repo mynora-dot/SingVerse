@@ -26,3 +26,10 @@
 !contracts/openapi/
 !contracts/openapi/auth-test-vectors.json
 !contracts/openapi/singverse.openapi.json
+
+!services/singverse-compute/
+!services/singverse-compute/singverse_compute/
+
+!services/singverse-compute/Dockerfile
+!services/singverse-compute/requirements.lock
+!services/singverse-compute/singverse_compute/**

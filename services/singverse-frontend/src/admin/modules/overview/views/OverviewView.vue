@@ -1,90 +1,30 @@
 <script setup lang="ts">
-import { ElCard, ElIcon, ElTag } from 'element-plus'
-import {
-  ArrowRight,
-  Monitor,
-  Cellphone,
-  FolderOpened,
-  VideoPlay,
-  SetUp,
-  Document,
-} from '@element-plus/icons-vue'
+import { ElIcon } from 'element-plus'
+import { ArrowRight, FolderOpened, Headset, MagicStick, CollectionTag, Document, Monitor } from '@element-plus/icons-vue'
 import ServiceHealthCard from '../../system-status/components/ServiceHealthCard.vue'
-
 const entries = [
-  { icon: FolderOpened, title: '歌曲位置', description: '连接歌曲目录与 WebDAV', to: '/library/media' },
-  { icon: Document, title: '解析规则', description: '维护文件名解析的共享规则', to: '/library/filename-parser' },
-  { icon: Monitor, title: '系统状态', description: '查看服务连接与访问地址', to: '/system' },
+  { icon: Headset, title: '歌曲库', description: '浏览收藏，播放熟悉的旋律', to: '/library/songs', label: '浏览歌曲' },
+  { icon: MagicStick, title: '完善歌曲信息', description: '匹配平台元数据，审核后保存', to: '/library/songs/metadata', label: '开始整理' },
+  { icon: CollectionTag, title: '让收藏井井有条', description: '按语种、风格与场景管理分类', to: '/library/classification', label: '管理分类' },
 ]
-const upcoming = [
-  { icon: FolderOpened, title: '自动扫描', description: '定时检查媒体来源，自动发现新增歌曲。' },
-  { icon: VideoPlay, title: '聚会点歌', description: '亲友扫码进入聚会，点歌并查看当前队列。' },
-  { icon: SetUp, title: '电视播放', description: '配对电视端，回报真实播放状态与音量。' },
+const steps = [
+  { icon: FolderOpened, title: '连接歌曲位置', text: '添加本地目录或 WebDAV，让音乐有处可寻。', to: '/library/media' },
+  { icon: Document, title: '识别文件名', text: '挑选适合的解析方案，提取歌名与歌手。', to: '/library/filename-parser-profiles' },
+  { icon: Monitor, title: '检查服务状态', text: '查看 NAS 服务健康与亲友访问入口。', to: '/system' },
 ]
-const bars = [18, 34, 52, 28, 68, 86, 46, 74, 30, 60, 92, 40, 66, 24, 50]
+const bars = [24, 42, 72, 54, 96, 124, 80, 108, 148, 92, 64, 116, 80, 48, 28]
 </script>
 
 <template>
   <section class="overview">
-    <div class="page-heading">
-      <div>
-        <h1>概览</h1>
-        <p class="page-description">欢迎回到你的家庭音乐空间。</p>
-      </div>
-      <span class="edition-label">SINGVERSE / NAS</span>
-    </div>
-
-    <section class="stage-band" aria-labelledby="hero-title">
-      <div class="stage-copy">
-        <p class="stage-kicker"><span class="small-dot" />相聚 · 开唱</p>
-        <h2 id="hero-title">让每一次相聚，<br />都有好歌相伴。</h2>
-        <p>自己的歌曲，熟悉的朋友。从这里，打理属于家人的 KTV。</p>
-        <div class="stage-actions">
-          <a class="stage-cta" href="/party/" target="_blank" rel="noopener">打开亲友入口<ElIcon><ArrowRight /></ElIcon></a>
-          <RouterLink class="stage-cta ghost" to="/library/media">管理媒体库</RouterLink>
-        </div>
-      </div>
-      <div class="waveform" aria-hidden="true">
-        <i v-for="(height, index) in bars" :key="height" :style="{ height: `${height}px`, animationDelay: `${index * 0.13}s` }" />
-      </div>
+    <div class="page-heading"><div><p class="page-eyebrow">YOUR MUSIC, YOUR SPACE</p><h1>空间概览</h1><p class="page-description">把喜欢的音乐，留在自己的生活里。</p></div><span class="edition-label">SingVerse / 家庭音乐空间</span></div>
+    <section class="music-hero" aria-labelledby="hero-title">
+      <div class="hero-copy"><span class="hero-kicker">属于家人的音乐时光</span><h2 id="hero-title">每一次相聚，<br />都有好歌相伴<span>。</span></h2><p>收藏熟悉的旋律，打理自己的曲库。<br />从这里，准备下一次尽兴开唱。</p><div class="hero-actions"><RouterLink class="hero-primary" to="/library/songs">打开歌曲库 <ElIcon><ArrowRight /></ElIcon></RouterLink><RouterLink class="hero-secondary" to="/library/media">添加歌曲位置</RouterLink></div></div>
+      <div class="record-art" aria-hidden="true"><div class="record-orbit"></div><div class="record"><div class="record-label"><ElIcon><Headset /></ElIcon><span>SINGVERSE</span><i></i></div></div><div class="record-caption"><span>THE SOUND OF HOME</span><div class="mini-wave"><i v-for="(height, i) in bars" :key="i" :style="{height: `${height / 6}px`}" /></div></div></div>
     </section>
-
-    <div class="overview-grid">
-      <ServiceHealthCard />
-      <ElCard class="entry-card" shadow="never">
-        <div class="section-heading">
-          <h2>快速访问</h2>
-          <span class="muted">从这里开始</span>
-        </div>
-        <a href="/party/" target="_blank" rel="noopener" class="entry-row">
-          <span class="entry-icon"><ElIcon><Cellphone /></ElIcon></span>
-          <span><strong>亲友网页</strong><small>打开当前 H5 欢迎页</small></span>
-          <ElIcon><ArrowRight /></ElIcon>
-        </a>
-        <RouterLink v-for="entry in entries" :key="entry.title" class="entry-row" :to="entry.to">
-          <span class="entry-icon"><ElIcon><component :is="entry.icon" /></ElIcon></span>
-          <span><strong>{{ entry.title }}</strong><small>{{ entry.description }}</small></span>
-          <ElIcon><ArrowRight /></ElIcon>
-        </RouterLink>
-      </ElCard>
-    </div>
-
-    <section class="upcoming-section" aria-labelledby="upcoming-title">
-      <div class="section-heading">
-        <h2 id="upcoming-title">逐步完善你的音乐空间</h2>
-        <span class="muted">后续功能</span>
-      </div>
-      <div class="upcoming-grid">
-        <ElCard v-for="item in upcoming" :key="item.title" shadow="never" class="upcoming-card">
-          <ElIcon :size="22"><component :is="item.icon" /></ElIcon>
-          <h3>{{ item.title }}</h3>
-          <p>{{ item.description }}</p>
-          <ElTag type="info" size="small" effect="plain">尚未接入</ElTag>
-        </ElCard>
-      </div>
-      <p class="scope-note">
-        当前版本提供账号登录、二次验证、媒体来源配置、本地及 WebDAV 文件名扫描与服务健康检查。自动扫描、配对和播放功能尚未实现。
-      </p>
-    </section>
+    <div class="overview-shortcuts"><RouterLink v-for="entry in entries" :key="entry.to" :to="entry.to" class="shortcut-card"><span class="shortcut-icon"><ElIcon><component :is="entry.icon" /></ElIcon></span><h2>{{ entry.title }}</h2><p>{{ entry.description }}</p><span class="shortcut-link">{{ entry.label }} <ElIcon><ArrowRight /></ElIcon></span></RouterLink></div>
+    <div class="overview-bottom"><section class="workspace-guide"><div class="section-heading"><h2>开始打理你的音乐空间</h2><span class="muted">从收藏到整理</span></div><RouterLink v-for="(step, index) in steps" :key="step.to" :to="step.to" class="guide-row"><span class="guide-number">0{{ index + 1 }}</span><div><strong>{{ step.title }}</strong><p>{{ step.text }}</p></div><ElIcon><ArrowRight /></ElIcon></RouterLink></section><ServiceHealthCard /></div>
+    <div class="overview-note"><span class="small-dot" />歌曲与数据由自己的 NAS 管理。<a href="/party/" target="_blank" rel="noopener">查看亲友欢迎页 ↗</a></div>
+    <p class="feature-note">已支持文件名扫描、歌曲分类、元数据审核与原始音视频在线播放；亲友点歌、队列和电视会话播放正在筹备中。</p>
   </section>
 </template>

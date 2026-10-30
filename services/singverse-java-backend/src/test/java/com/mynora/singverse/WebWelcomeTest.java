@@ -25,19 +25,23 @@ class WebWelcomeTest {
 
     @Autowired TestRestTemplate http;
 
-    @Test void partyServesTheMobileWelcomePage() {
+    @Test void partyServesTheMobileApplication() {
         var response = http.getForEntity("/party/", String.class);
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getHeaders().getContentType()).isNotNull();
         assertThat(response.getHeaders().getContentType().isCompatibleWith(MediaType.TEXT_HTML)).isTrue();
-        assertThat(response.getBody()).contains("<title>SingVerse</title>", "欢迎来到家庭 KTV", "name=\"viewport\"");
+        assertThat(response.getBody()).contains("SingVerse · 一起点歌", "id=\"app\"", "name=\"viewport\"");
         var head = http.exchange("/party/", HttpMethod.HEAD, null, String.class);
         assertThat(head.getStatusCode().value()).isEqualTo(200);
         assertThat(head.getBody()).isNull();
     }
 
     @Test void stylesheetIsServedFromTheSameApplication() {
-        var response = http.getForEntity("/party/assets/welcome.css", String.class);
+        var html = http.getForObject("/party/", String.class);
+        var stylesheet = java.util.regex.Pattern.compile("href=\"([^\"]+\\.css)\"").matcher(html);
+        assertThat(stylesheet.find()).isTrue();
+        var path = java.net.URI.create("/party/").resolve(stylesheet.group(1)).toString();
+        var response = http.getForEntity(path, String.class);
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getHeaders().getContentType()).isNotNull();
         assertThat(response.getHeaders().getContentType().isCompatibleWith(MediaType.valueOf("text/css"))).isTrue();

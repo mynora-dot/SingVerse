@@ -24,15 +24,45 @@ class Resources(HTMLParser):
 
 def main():
   root = Path(__file__).resolve().parents[1]
+  macos = os.environ.get("SINGVERSE_MACOS_COMPUTE") == "1"
+  compose = ["docker", "compose", "-f", str(root / "compose.app.yaml")]
+  if macos:
+    compose += ["-f", str(root / "compose.compute.macos.yaml")]
   endpoint = subprocess.check_output(
-    ["docker", "compose", "-f", str(root / "compose.app.yaml"),
-     "port", "singverse-frontend", "80"],
+    compose + ["port", "singverse-frontend", "80"],
     text=True,
   ).strip().splitlines()[0]
   host, port = endpoint.rsplit(":", 1)
   if host in {"0.0.0.0", "[::]"}:
     host = "127.0.0.1"
   base = f"http://{host}:{port}"
+  compute_check = """
+import json, sys, urllib.request, urllib.error
+from pathlib import Path
+origin, token_file = sys.argv[1:]
+with urllib.request.urlopen(origin+'/internal/v1/capabilities',timeout=3) as response:
+    assert 'media-tags' in json.load(response)['capabilities']
+url=origin+'/internal/v1/media/tags'
+for authorized, expected in [(False,401),(True,403)]:
+    headers={'Content-Type':'application/json'}
+    if authorized: headers['Authorization']='Bearer '+Path(token_file).read_text().strip()
+    try:
+        urllib.request.urlopen(urllib.request.Request(url,data=b'{"path":"/tmp/__outside_media_root__"}',headers=headers),timeout=4)
+        raise AssertionError('internal media path should be rejected')
+    except urllib.error.HTTPError as error:
+        assert error.code==expected; error.close()
+"""
+  if macos:
+    command = [str(root / "services/singverse-compute/.venv/bin/python"), "-c", compute_check, "http://127.0.0.1:18090", str(root / "data/macos-compute/token")]
+  else:
+    command = compose + ["exec", "-T", "singverse-compute", "python", "-c", compute_check, "http://127.0.0.1:8090", "/run/singverse-compute/token"]
+  subprocess.run(command, check=True)
+  subprocess.run(compose + ["exec", "-T", "singverse-java-backend", "sh", "-c", "! command -v ffmpeg && ! command -v ffprobe"], check=True)
+  print("通过：独立计算服务标签能力、内部鉴权和目录限制；Java镜像无FFmpeg")
+  smoke = (root / "services/singverse-compute/tests/smoke/container_media_tags.py").read_text()
+  subprocess.run(["docker", "run", "--rm", "--network", "none", "-i", "singverse-compute:local", "python", "-"], input=smoke, text=True, check=True)
+
+
 
   opener = build_opener(HTTPCookieProcessor(CookieJar()))
 
@@ -47,7 +77,7 @@ def main():
                                data=json.dumps(data).encode() if data is not None else None), timeout=10)
 
   for path, expected in [("/", "NAS 管理中心"), ("/admin/", "NAS 管理中心"),
-                         ("/party/", "欢迎来到家庭 KTV")]:
+                         ("/party/", "SingVerse · 一起点歌")]:
     with request(path) as response:
       assert response.status == 200
       assert response.headers.get_content_type() == "text/html"
@@ -84,6 +114,32 @@ def main():
     with request("/api/v1/auth/mfa/verify", "POST", {"code": code}) as response:
       assert json.load(response)["state"] == "authenticated"
   print("通过：管理员登录与 Cookie 会话")
+  # A >16KiB invalid image must reach Java's format validation without writing data.
+  with request("/api/v1/auth/csrf") as response:
+    csrf = json.load(response)["token"]
+  boundary = "singverse-classification-cover-check"
+  invalid_image = ("--" + boundary + '\r\nContent-Disposition: form-data; name="file"; filename="invalid.png"\r\nContent-Type: image/png\r\n\r\n').encode() + b"x" * 20000 + ("\r\n--" + boundary + "--\r\n").encode()
+  try:
+    opener.open(Request(base + "/api/v1/classification/tags/genre-0/cover", data=invalid_image, method="PUT", headers={"Content-Type": "multipart/form-data; boundary=" + boundary, "X-CSRF-Token": csrf}), timeout=10)
+    raise AssertionError("Invalid classification image should fail validation")
+  except HTTPError as error:
+    assert error.code == 400, "Classification cover upload must pass Nginx's managed multipart route"
+    assert "图片" in json.load(error)["detail"]
+    error.close()
+  print("通过：分类封面大请求到达Java格式校验；未写入图片或修改词表")
+
+
+  with request("/api/v1/compute-node") as response:
+    configuration = json.load(response)
+    assert configuration["automaticEndpoint"] == ("http://host.docker.internal:18090" if macos else "http://singverse-compute:8090")
+    assert configuration["automaticHasToken"] is True
+    assert "token" not in configuration and "secret_encrypted" not in configuration
+  # Test AUTO draft without saving or replacing the user's selected node.
+  with request("/api/v1/compute-node/test", "POST", {"mode":"AUTO", "revision":configuration["revision"]}) as response:
+    check = json.load(response)
+    assert check["status"] == "AVAILABLE", check["message"]
+    assert "media-tags" in check["capabilities"]
+  print("通过：管理员性能节点接口自动识别所选部署节点，认证检查可用且不修改配置")
 
   for method in ["GET", "POST"]:
     try:

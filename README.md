@@ -1,6 +1,6 @@
 # SingVerse
 
-家庭KTV多端基础工程：Flutter Android手机端、Android TV、独立NAS管理前端、Java业务主服务、Python计算节点，以及亲友H5欢迎页。亲友入口已调整为**微信扫一扫打开NAS网页**，不再使用小程序。当前仅工程骨架与管理基础界面，已增加单管理员登录与可选TOTP二次验证；已支持管理端本地/WebDAV 原始音视频在线播放；没有点歌、配对或聚会播放队列业务。
+家庭KTV多端基础工程：Flutter Android手机端、Android TV、独立NAS管理前端、Java业务主服务、Python计算节点，以及亲友H5点歌页。亲友入口已调整为**微信扫一扫打开NAS网页**，不再使用小程序。当前已具备曲库管理及多端点唱基础，已增加单管理员登录与可选TOTP二次验证；已支持管理端本地/WebDAV 原始音视频在线播放；已增加电视设备授权、原始媒体直放、聚会队列与亲友 H5 扫码点歌；不含转码，真实电视/微信/NAS 验收见验证记录。
 
 ## 技术栈与目录
 
@@ -10,7 +10,7 @@
 | 电视 | Kotlin 2.1.20 / Compose / TV Material 1.0.0 / Gradle 8.11.1 | `services/singverse-tv` |
 | 业务主服务 | Java21 / Spring Boot 3.5.16 / MyBatis XML / Maven Wrapper 3.9.16 | `services/singverse-java-backend` |
 | 计算节点 | Python 3.12+ / FastAPI 0.121.3 / Uvicorn 0.38.0；健康与能力探测骨架 | `services/singverse-compute` |
-| 网页前端 | Vue 3 / TypeScript / Vite / Element Plus 管理端 + 原生亲友欢迎页，同一工程构建 | `services/singverse-frontend` |
+| 网页前端 | Vue 3 / TypeScript / Vite / Element Plus 管理端 + Vue 亲友点歌页，同一工程构建 | `services/singverse-frontend` |
 | 数据库 | 默认SQLite，MySQL保留可选连接验证 | `compose.yaml`仅开发MySQL |
 
 ```text
@@ -30,9 +30,9 @@ docs/                     架构、开发、验证与research调研
 
 `services/`是本仓库统一工程目录，各模块使用`singverse-模块名`命名并独立构建。亲友点歌页面与NAS管理页面同属`singverse-frontend`；Java工程、Maven制品及Spring应用名统一为`singverse-java-backend`。目录迁移明细见[仓库布局](docs/repository-layout.md)。
 
-统一前端以Vite多页面方式构建：`party/index.html`提供亲友欢迎页，`admin/index.html`加载Vue/Element Plus管理页面。管理端提供概览、系统状态、真实健康检查及失败重试。整个`services/singverse-frontend/dist`可交给Java或未来Go托管；浏览器通过同源HTTP访问主服务，不依赖Java内部类型。当前Java将产物打入JAR，生产不需要Node进程；Docker交付由Nginx前端容器与Java后端容器组成。详见[前端说明](services/singverse-frontend/README.md)与[托管契约](contracts/frontend-hosting.md)。
+统一前端以Vite多页面方式构建：`party/index.html`加载亲友点歌 Vue 应用，`admin/index.html`加载Vue/Element Plus管理页面。管理端提供概览、系统状态、真实健康检查及失败重试。整个`services/singverse-frontend/dist`可交给Java或未来Go托管；浏览器通过同源HTTP访问主服务，不依赖Java内部类型。当前Java将产物打入JAR，生产不需要Node进程；Docker交付由Nginx前端容器与Java后端容器组成。详见[前端说明](services/singverse-frontend/README.md)与[托管契约](contracts/frontend-hosting.md)。
 
-亲友H5继续使用本地HTML/CSS，入口为`/party/`；管理端直接托管在`/admin/`，Nginx对外映射到`/`；无CDN、微信JS-SDK、小程序AppID或微信网页登录。
+亲友H5使用本地构建的 Vue/TypeScript 与 CSS，入口为`/party/`；管理端直接托管在`/admin/`，Nginx对外映射到`/`；无CDN、微信JS-SDK、小程序AppID或微信网页登录。
 
 后端[Nginx配置](services/singverse-java-backend/nginx/README.md)已提供静态页面映射和API转发约定。前端请求统一带`/api`前缀，健康检查为`/api/health`，业务接口后续使用`/api/v1`；代理保留该前缀。
 
@@ -82,7 +82,7 @@ cd services/singverse-java-backend
 java -jar target/singverse-java-backend-0.1.0-SNAPSHOT.jar
 ```
 
-可选连接计算节点：先执行 `make compute-run`，再以 `COMPUTE_NODE_URL=http://127.0.0.1:8090 ./mvnw spring-boot:run` 启动Java。节点地址缺省为空，Java启动和Actuator健康不依赖节点在线；当前内部客户端仅供后续业务调用，尚无管理HTTP接口或任务派发。Python是内部执行层，不增加客户端菜单；功能通过曲库、媒体转换和AI等既有流程接入。计算节点 `/health` 为进程健康，`/internal/v1/capabilities` 当前返回空能力列表。详见[计算节点说明](services/singverse-compute/README.md)。
+在“系统设置 → 性能节点配置”管理计算服务。应用 Compose 自动提供同套 `singverse-compute` 地址与共享凭据；独立部署可配置地址、加密凭据和媒体路径映射，或选择暂不使用。连接检查验证身份、认证及实际能力，不发起媒体任务。节点离线不影响 Java/管理端健康，扫描保留文件名回退；音视频标签读取由 Python 执行。独立部署见[计算节点说明](services/singverse-compute/README.md)。
 
 管理中心访问 `http://localhost:8080/admin/`，亲友欢迎页 `http://localhost:8080/party/`，健康检查 `http://localhost:8080/api/health`。直接执行Maven也需先构建前端；缺少产物会明确失败。后续在NAS实际部署后，手机必须使用其可达地址，例如 `http://<NAS局域网IP>:8080/`；二维码不能写localhost或容器内部IP。
 
@@ -117,7 +117,7 @@ Spring Boot不会自动读取`.env`；Compose会读取，主机Java必须导出�
 
 ## 当前边界与文档
 
-已实现欢迎页、NAS管理基础界面与健康查询、构建/静态分析/基础测试、两个网页入口托管、健康检查、两种数据库真实连接验证、Python节点健康/能力探测、Java内部探测客户端、根命令和六个CI工作流（含Docker交付检查）。后续服务端转解码、AI伴奏分析等重计算统一由Python节点执行；Java保留授权、曲库、会话、队列与业务数据库职责。已实现管理员登录、改密与MFA、媒体来源配置管理、文件名共享规则库与解析方案管理页及SQL迁移。未实现扫码配对、歌曲、队列、播放、扫描、转码、麦克风、歌曲索引等业务表、Go、线上部署。
+已实现欢迎页、NAS管理基础界面与健康查询、构建/静态分析/基础测试、两个网页入口托管、健康检查、两种数据库真实连接验证、Python节点健康/能力探测、Java内部探测客户端、根命令和六个CI工作流（含Docker交付检查）。后续服务端转解码、AI伴奏分析等重计算统一由Python节点执行；Java保留授权、曲库、会话、队列与业务数据库职责。已实现管理员登录、改密与MFA、媒体来源配置管理、文件名共享规则库与解析方案管理页及SQL迁移。已继续实现扫码配对、曲库扫描、歌曲与歌手管理、共享歌单、聚会队列、原件及转码播放、离线兼容版本；各模块的实际验收范围见验证记录。手机端现已增加管理员登录、NAS 选歌、本机练唱/录唱、混音回听、本机作品与导出、后台媒体/录音服务、收藏历史及扫码承载同一 H5。K 歌改版仍有宿主真实麦克风输入未通过，不能视为已完成设备验收，详见手机端 README 与验证记录。Go 等后续能力不在本轮范围。
 
 Taro工程、锁文件、相关Make目标和工作流已移除。Flutter/TV包名仍为`com.mynora.singverse.mobile`与`.tv`，未来iOS扩展见手机端README。
 
@@ -136,3 +136,53 @@ Java 后端业务 SQL 统一使用 MyBatis Mapper XML，仓库后续开发遵守
 歌曲管理现已支持单曲、选中及全库的元数据刮削与候选审核，功能和自动写入默认关闭；使用入口、字段保护、批次恢复和平台限制见[元数据刮削](docs/metadata-scraping.md)。
 
 歌曲分类现支持后台词表维护、人工/批量打标、可配置文本 AI 分类任务、按维度自动应用、审核与历史撤回；模型默认关闭。使用方法与边界见[歌曲分类](docs/song-classification.md)。
+
+本地歌曲扫描支持只读提取常见音视频文件内嵌歌名、歌手、专辑和发行日期，文件标签优先，缺失回退文件名；Docker的独立singverse-compute镜像包含Python/FFmpeg，Java镜像不包含。WebDAV仍仅索引文件名。详见[后端说明](services/singverse-java-backend/README.md)。
+
+歌手库入口为管理端「曲库管理 → 歌手库」：随歌曲自动汇总，首次自动抓图，支持上传头像/背景图；在歌手详情订正歌曲后自动同步，无需维护人物档案。使用与数据设计见 [歌手库说明](docs/artist-library.md)。
+
+共享歌单可在「曲库管理 → 歌单管理」手动或通过 AI 建议创建，并同步显示到 TV「歌单」入口。详见 [歌单说明](docs/playlists.md)。
+
+视频兼容播放、离线版本、工具安装及硬件边界见 [转码说明](docs/transcoding.md)。
+
+## 转码硬件加速设置
+
+后台入口：**系统设置 → 性能节点配置 → 转码与硬件加速**。点击“读取硬件加速设置”，选择方式，可测试所选方式、探测所有编码器并保存。保存后对新任务生效；正在运行的任务不切换编码器。指定硬件方式时保存前自动执行短样本编码，失败保留原设置。
+
+`COMPUTE_HARDWARE_BACKEND` 是 **compute 进程启动时的默认加速方式**：
+
+| 值 | 用途 |
+|---|---|
+| `auto`（默认） | 自动尝试探测通过的硬件编码器，无可用硬件时回退 CPU |
+| `software` | 关闭硬件加速，仅 CPU 软件编码 |
+| `qsv` | Intel Quick Sync，Linux / Windows |
+| `vaapi` | Linux Intel / AMD VA-API |
+| `nvenc` | Linux / Windows NVIDIA NVENC |
+| `amf` | Windows AMD AMF |
+| `videotoolbox` | macOS VideoToolbox |
+| `rkmpp` | Linux Rockchip RKMPP |
+
+原生节点示例（先按[转码说明](docs/transcoding.md)配置媒体目录、凭据、缓存目录和工具）：
+
+```sh
+COMPUTE_HARDWARE_BACKEND=videotoolbox make compute-run
+```
+
+**优先级：后台保存的选择 > `COMPUTE_HARDWARE_BACKEND` > 默认 `auto`。** 后台选择“遵循部署配置”恢复环境变量的值。环境变量变化需重启 compute；后台保存无需重启。后台选择保存在计算节点缓存卷根目录的 `hardware-settings.json`，重建容器且保留缓存卷时继续生效；更换计算节点后使用新节点自己的设置。
+
+Docker 必须在部署时配置设备、驱动和组权限。Intel/AMD 使用 `compose.compute.dri.yaml`，NVIDIA 使用 `compose.compute.nvidia.yaml`，Rockchip 使用 `compose.compute.rockchip.yaml`；覆盖文件会向容器传入对应 `COMPUTE_HARDWARE_BACKEND`。仅把变量写入根 `.env` 不会自动传入未声明该变量的容器；使用上述覆盖文件或显式增加 Compose environment。后台不能自动透传 GPU、安装驱动或赋予设备权限。
+
+已增加按素材试跑的硬件解码、零拷贝与 GPU 色调映射；无法使用的阶段会明确回退。Dolby Vision 单层 P5/P8 使用 RPU 元数据转换至 SDR，普通 HDR 支持不自动等于 DV 支持。短样本成功不代表其他硬件或持续负载已验收；详情见[转码说明](docs/transcoding.md)和[验证记录](docs/verification.md)。
+
+macOS + Docker Desktop 使用原生 GPU 节点：先确保现有应用已启动并执行过 `make compute-setup`、`make transcode-tools`，再从仓库根目录运行：
+
+```sh
+services/singverse-compute/.venv/bin/python scripts/macos-compute.py start
+docker compose -f compose.app.yaml -f compose.compute.macos.yaml up -d singverse-java-backend singverse-frontend
+docker compose -f compose.app.yaml stop singverse-compute
+SINGVERSE_MACOS_COMPUTE=1 make docker-check
+```
+
+后台性能节点连接方式使用“自动识别”。Java 经 `host.docker.internal:18090` 连接仅监听回环的 Mac 节点，复用现有内部凭据，使用 VideoToolbox；WebDAV 仍通过 Java 读取。可选本地媒体目录 `data/macos-compute/media` 按相同绝对路径只读映射到 Java，新建本地来源时填写该绝对路径。节点缓存与凭据也保存在被忽略的 `data/macos-compute`，均不放入媒体目录。启动器使用当前用户的 launchd 保持节点运行，并在 `~/Library/LaunchAgents` 注册指向本地运行配置的登录启动项；保留本仓库及虚拟环境路径。`scripts/macos-compute.py status` 查询、`stop` 停止节点并移除本启动器自己的登录启动项。Java HTTP 入口需为本机默认 18080；其他端口部署请调整启动器的内部来源地址。重启应用继续带上 macOS 覆盖文件，以保留此连接配置。
+
+可选真机验证：`make transcode-fixtures` 下载校验固定的 Jellyfin 官方 Dolby Vision 测试素材（不进入生产镜像）；设置仓库媒体工具 PATH 后，可在目标设备运行 `services/singverse-compute/.venv/bin/python services/singverse-compute/tests/smoke/verify_hardware.py --backend videotoolbox --fixtures .tools/transcode-fixtures`。其他设备替换 backend；输出会区分实际硬解、CPU 回传、零拷贝和 GPU 色调映射。

@@ -1,19 +1,23 @@
 SHELL := /bin/sh
 .DEFAULT_GOAL := help
 PYTHON ?= python3
-.PHONY: help mobile-check mobile-build frontend-setup frontend-dev frontend-check frontend-build web-check tv-build java-backend-test backend-check compute-setup compute-check compute-run db-sqlite-check db-mysql-up db-mysql-check docker-build docker-up docker-down docker-status docker-logs docker-check verify
+.PHONY: transcode-fixtures transcode-tools help mobile-check mobile-build mobile-audio-test frontend-setup frontend-dev frontend-check frontend-build web-check tv-build tv-release java-backend-test backend-check compute-setup compute-check compute-run db-sqlite-check db-mysql-up db-mysql-check docker-build docker-up docker-down docker-status docker-logs docker-check verify
 
 help:
 	@printf '%s\n' 'dbmate-setup      Install checksum-pinned language-neutral migration tool'
-	@printf '%s\n' 'mobile-check       Flutter format, analysis, tests' 'mobile-build       Flutter Android debug APK' 'web-check          NAS H5 and admin page/assets HTTP tests' 'tv-build           Android TV debug APK and lint' 'java-backend-test  SingVerse Java backend tests and package' 'db-sqlite-check    SQLite connection and health tests' 'db-mysql-up        Start MySQL and wait for health' 'db-mysql-check     MySQL connection and health tests (requires running database)' 'verify             Run all checks, including MySQL'
-	@printf '%s\n' 'compute-setup      Create Python 3.12+ venv and install locked dependencies' 'compute-check      Python compute HTTP and internal contract tests' 'compute-run        Start compute node on 127.0.0.1:8090'
+	@printf '%s\n' 'mobile-check       Flutter format, analysis, tests and Android network policy tests' 'mobile-build       Flutter Android debug APK' 'mobile-audio-test  Native karaoke instrumentation on a running emulator (isolated app ID)' 'web-check          NAS H5 and admin page/assets HTTP tests' 'tv-build           Android TV unit tests, debug APK and lint' 'tv-release         Signed release APK (requires signing environment)' 'java-backend-test  SingVerse Java backend tests and package' 'db-sqlite-check    SQLite connection and health tests' 'db-mysql-up        Start MySQL and wait for health' 'db-mysql-check     MySQL connection and health tests (requires running database)' 'verify             Run all checks, including MySQL'
+	@printf '%s\n' 'compute-setup      Create Python 3.12+ venv and install locked dependencies' 'compute-check      Python compute HTTP and internal contract tests' 'compute-run        Start compute node on 127.0.0.1:8090' 'transcode-tools    Download checksum-pinned Jellyfin media tools into .tools (no global installation)' 'transcode-fixtures Download optional checksum-pinned official Dolby Vision verification samples'
 	@printf '%s\n' 'backend-check      Java + Python tests, package and real process integration (run compute-setup first)'
-	@printf '%s\n' 'frontend-setup    Install locked frontend dependencies (Node.js 22.19+)' 'frontend-dev      Start unified frontend development server on 127.0.0.1:5173/admin/' 'frontend-check    Frontend tests, typecheck and two-page build' 'frontend-build    Build portable assets in services/singverse-frontend/dist'
+	@printf '%s\n' 'frontend-setup    Install locked frontend dependencies (Node.js 22.19+)' 'frontend-dev      Start unified frontend development server on 127.0.0.1:5173/admin/' 'frontend-check    Frontend typecheck and two-page build (run npm test separately)' 'frontend-build    Build portable assets in services/singverse-frontend/dist'
 	@printf '%s\n' 'docker-build      Build frontend and Java backend images with tests' 'docker-up         Build and start Docker app at 127.0.0.1:18080' 'docker-down       Stop Docker app; preserve SQLite named volume' 'docker-status     Show Docker app status' 'docker-logs       Follow Docker app logs'
 	@printf '%s\n' 'auth-docker-check Verify password/MFA/recovery in a disposable Docker project' 'docker-check      Verify Docker pages, assets, API health and 404 behavior (Python 3)'
 
 mobile-check:
 	cd services/singverse-mobile && flutter --no-version-check pub get && dart format --output=none --set-exit-if-changed . && flutter --no-version-check analyze && flutter --no-version-check test
+	cd services/singverse-mobile/android && ./gradlew :app:testDebugUnitTest
+
+mobile-audio-test:
+	cd services/singverse-mobile/android && ORG_GRADLE_PROJECT_singverseE2e=true ./gradlew :app:connectedDebugAndroidTest
 
 mobile-build:
 	cd services/singverse-mobile && flutter --no-version-check build apk --debug
@@ -36,25 +40,34 @@ web-check: frontend-build dbmate-setup
 	cd services/singverse-java-backend && ./mvnw -B -Dtest=WebWelcomeTest,AdminWebTest test
 
 tv-build:
-	cd services/singverse-tv && ./gradlew assembleDebug lintDebug
+	cd services/singverse-tv && ./gradlew :app:testDebugUnitTest assembleDebug lintDebug
+
+tv-release:
+	cd services/singverse-tv && ./gradlew -PsingverseSignRelease=true prepareTvRelease lintRelease
 
 java-backend-test: frontend-build dbmate-setup
 	cd services/singverse-java-backend && ./mvnw -B verify
 
 backend-check: frontend-build dbmate-setup
 	$(MAKE) compute-check
-	cd services/singverse-java-backend && ./mvnw -B -Pbackend-check verify
+	cd services/singverse-java-backend && PATH="$(CURDIR)/.tools/jellyfin-ffmpeg/bin:$(CURDIR)/.tools/jellyfin-ffmpeg:$$PATH" ./mvnw -B -Pbackend-check verify
 
 compute-setup:
 	$(PYTHON) -c 'import sys; assert sys.version_info >= (3, 12), "Python 3.12+ required"'
 	$(PYTHON) -m venv services/singverse-compute/.venv
 	cd services/singverse-compute && .venv/bin/python -m pip install -r requirements.lock && .venv/bin/python -m pip install --no-deps --no-build-isolation -e .
 
+transcode-fixtures:
+	services/singverse-compute/.venv/bin/python scripts/setup-transcode-fixtures.py
+
+transcode-tools:
+	services/singverse-compute/.venv/bin/python scripts/setup-transcode-tools.py
+
 compute-check:
-	cd services/singverse-compute && .venv/bin/python -m unittest discover -s tests -v
+	cd services/singverse-compute && PATH="$(CURDIR)/.tools/jellyfin-ffmpeg/bin:$(CURDIR)/.tools/jellyfin-ffmpeg:$$PATH" .venv/bin/python -m unittest discover -s tests -v
 
 compute-run:
-	cd services/singverse-compute && .venv/bin/python -m singverse_compute
+	cd services/singverse-compute && PATH="$(CURDIR)/.tools/jellyfin-ffmpeg/bin:$(CURDIR)/.tools/jellyfin-ffmpeg:$$PATH" .venv/bin/python -m singverse_compute
 
 db-sqlite-check: frontend-build dbmate-setup
 	cd services/singverse-java-backend && ./mvnw -B -Dtest=SQLiteConnectionTest test

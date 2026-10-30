@@ -11,16 +11,41 @@ services:
       SPRING_PROFILES_ACTIVE: sqlite
       SQLITE_PATH: /data/singverse.db
       SERVER_PORT: '8080'
-      COMPUTE_NODE_URL: ''
+      COMPUTE_NODE_URL: http://singverse-compute:8090
+      COMPUTE_AUTH_TOKEN_FILE: /run/singverse-compute/token
       METADATA_CACHE_PATH: /data/metadata/covers
+      TRANSCODE_VERSION_PATH: /data/transcoding
       SINGVERSE_AUTH_KEY_FILE: /secrets/master.key
       SINGVERSE_PUBLIC_ORIGIN: '${SINGVERSE_PUBLIC_ORIGIN:-}'
+      SINGVERSE_TV_RELEASE_DIRECTORY: '${SINGVERSE_TV_RELEASE_DIRECTORY:-}'
       SINGVERSE_TRUSTED_PROXIES: '${SINGVERSE_TRUSTED_PROXIES:-}'
     volumes:
       - singverse-data:/data
       - singverse-secrets:/secrets
+      - singverse-compute-auth:/run/singverse-compute:ro
+      - singverse-media:/media:ro
     restart: unless-stopped
     stop_grace_period: 20s
+
+  singverse-compute:
+    image: singverse-compute:local
+    build:
+      context: .
+      dockerfile: services/singverse-compute/Dockerfile
+    environment:
+      COMPUTE_AUTH_TOKEN_FILE: /run/singverse-compute/token
+      COMPUTE_MEDIA_ROOTS: /media
+      COMPUTE_JAVA_ORIGIN: http://singverse-java-backend:8080
+      COMPUTE_PROCESS_MEMORY_BYTES: '${COMPUTE_PROCESS_MEMORY_BYTES:-1073741824}'
+      COMPUTE_TRANSCODE_CONCURRENCY: '${COMPUTE_TRANSCODE_CONCURRENCY:-1}'
+    volumes:
+      - singverse-compute-auth:/run/singverse-compute
+      - singverse-transcode-cache:/var/cache/singverse-transcode
+      - singverse-media:/media:ro
+    restart: unless-stopped
+    mem_limit: '${COMPUTE_CONTAINER_MEMORY_LIMIT:-2g}'
+    cpus: '${COMPUTE_CPU_LIMIT:-2.0}'
+    stop_grace_period: 10s
 
   singverse-frontend:
     image: singverse-frontend:local
@@ -39,3 +64,6 @@ services:
 volumes:
   singverse-data:
   singverse-secrets:
+  singverse-compute-auth:
+  singverse-media:
+  singverse-transcode-cache:

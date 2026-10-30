@@ -1,9 +1,9 @@
 name: singverse-mobile
 on:
   push:
-    paths: ['services/singverse-mobile/**', '.github/workflows/singverse-mobile.yml', 'Makefile', '.editorconfig', '.gitignore']
+    paths: ['services/singverse-mobile/**', 'scripts/check-mobile-karaoke.py', 'scripts/setup-mobile-karaoke-fixtures.py', '.github/workflows/singverse-mobile.yml', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/compute-internal.openapi.json', 'Makefile', '.editorconfig', '.gitignore']
   pull_request:
-    paths: ['services/singverse-mobile/**', '.github/workflows/singverse-mobile.yml', 'Makefile', '.editorconfig', '.gitignore']
+    paths: ['services/singverse-mobile/**', 'scripts/check-mobile-karaoke.py', 'scripts/setup-mobile-karaoke-fixtures.py', '.github/workflows/singverse-mobile.yml', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/compute-internal.openapi.json', 'Makefile', '.editorconfig', '.gitignore']
   workflow_dispatch:
 permissions:
   contents: read
@@ -33,4 +33,6 @@ jobs:
       - run: dart format --output=none --set-exit-if-changed .
       - run: flutter analyze
       - run: flutter test
+      - run: ./gradlew :app:testDebugUnitTest :app:assembleDebugAndroidTest
+        working-directory: services/singverse-mobile/android
       - run: flutter build apk --debug

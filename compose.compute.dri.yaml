@@ -1,0 +1,10 @@
+# Intel QSV or AMD VA-API; works with compose.app.yaml and compose.compute.yaml.
+services:
+  singverse-compute:
+    environment:
+      COMPUTE_HARDWARE_BACKEND: '${COMPUTE_HARDWARE_BACKEND:-qsv}'
+      COMPUTE_HARDWARE_DEVICE: /dev/dri/renderD128
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128
+    group_add:
+      - '${COMPUTE_RENDER_GID:?Set COMPUTE_RENDER_GID to the host render device group ID}'

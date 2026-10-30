@@ -10,6 +10,10 @@ public interface ClassificationMapper {
     int cooldown(@Param("next") String next);
     int saveSettings(@Param("c") ClassificationDtos.ModelConfig c);
     List<Map<String,Object>> tags();
+    Map<String,Object> tagCover(@Param("id") String id);
+    int insertCover(@Param("id") String id,@Param("version") String version,@Param("bytes") byte[] bytes);
+    int updateCover(@Param("id") String id,@Param("version") String version,@Param("bytes") byte[] bytes);
+    int deleteCover(@Param("id") String id);
     int insertTag(@Param("id") String id, @Param("dimension") String dimension, @Param("name") String name, @Param("aliases") String aliases, @Param("active") boolean active);
     int updateTag(@Param("id") String id, @Param("name") String name, @Param("aliases") String aliases, @Param("active") boolean active, @Param("revision") long revision);
     List<String> songIds(@Param("limit") int limit);

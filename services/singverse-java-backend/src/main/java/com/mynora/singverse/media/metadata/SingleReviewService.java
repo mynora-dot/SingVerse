@@ -14,6 +14,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class SingleReviewService {
+    @org.springframework.beans.factory.annotation.Autowired private com.mynora.singverse.media.artist.ArtistMapper artistMapper;
     private final MetadataService metadata;
     private final MetadataMapper mapper;
     private final SingleReviewMapper reviewMapper;
@@ -98,12 +99,18 @@ public class SingleReviewService {
             var after=new LinkedHashMap<>(before);
             for (String field:input.fields()) {
                 Object value=values.get(field);
-                if (!supplied.contains(field) || !present(value) || Objects.equals(before.get(field),value)) skipped.add(field);
+                if ((song.metadata()!=null && !song.metadata().stale() && song.metadata().origins().containsKey(field) && "FILE".equals(song.metadata().origins().get(field).kind())) || !supplied.contains(field) || !present(value) || Objects.equals(before.get(field),value)) skipped.add(field);
                 else { updated.add(field); after.put(field,value); }
             }
             Set<String> retained=new LinkedHashSet<>(MetadataService.FIELDS); retained.removeAll(input.fields());
             Applied prior=song.metadata()!=null && !song.metadata().stale()?song.metadata():null;
             Applied applied=prior;
+            if (input.fields().contains("artists") && input.edits()!=null && input.edits().containsKey("artists") && present(values.get("artists"))) {
+                artistMapper.lock();String path=com.mynora.singverse.auth.crypto.AuthCrypto.hash(song.relativePath());var oldOverride=artistMapper.override(song.sourceId(),path);
+                long revision=oldOverride==null?0:((Number)oldOverride.get("revision")).longValue();
+                artistMapper.deleteOverride(song.sourceId(),path);artistMapper.insertOverride(song.sourceId(),path,json.encode(values.get("artists")),revision+1);
+                after.put("artists",values.get("artists"));updated.add("artists");skipped.remove("artists");
+            }
             if (!updated.isEmpty()) {
                 Set<String> fields=new LinkedHashSet<>(prior==null?Set.of():prior.fields()); fields.addAll(updated);
                 Map<String,Origin> mergedOrigins=new LinkedHashMap<>(prior==null?Map.of():prior.origins());
@@ -111,6 +118,7 @@ public class SingleReviewService {
                 var track=new ExternalTrack(candidate==null?null:candidate.provider(),candidate==null?null:candidate.externalId(),
                         (String)after.get("title"),strings(after.get("artists")),(String)after.get("album"),(Integer)after.get("durationMs"),
                         (String)after.get("releaseDate"),strings(after.get("aliases")),(String)after.get("cover"),"UNKNOWN",null);
+                if(candidate!=null&&(input.edits()==null||!input.edits().containsKey("artists")))track=track.withArtistRefs(candidate.artistRefs());
                 String time=now();
                 String encodedTrack=json.encode(track),encodedFields=json.encode(fields),encodedOrigins=json.encode(mergedOrigins);
                 mapper.deleteApplied(songId); mapper.insertApplied(songId,song.sourceId(),fingerprint,encodedTrack,encodedFields,encodedOrigins,time);

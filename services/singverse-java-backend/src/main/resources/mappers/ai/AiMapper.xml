@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mynora.singverse.ai.AiMapper">
+  <update id="lock">UPDATE ai_registry_lock SET revision=revision+1 WHERE id=1</update>
+  <select id="services" resultType="map">SELECT * FROM ai_service WHERE kind=#{kind} ORDER BY name,id</select>
+  <select id="service" resultType="map">SELECT * FROM ai_service WHERE id=#{id}</select>
+  <select id="secrets" resultType="map">SELECT secret_encrypted,credential_purpose FROM ai_service WHERE secret_encrypted IS NOT NULL</select>
+  <insert id="insert">INSERT INTO ai_service(id,kind,name,provider,protocol,endpoint,model,output_mode,secret_encrypted,credential_purpose,enabled,timeout_seconds,max_results,revision)
+    VALUES(#{id},#{kind},#{v.name},#{v.provider},#{v.protocol},#{v.endpoint},#{v.model},#{v.outputMode},#{secret},#{purpose},#{v.enabled},#{v.timeoutSeconds},#{v.maxResults},1)</insert>
+  <update id="update">UPDATE ai_service SET name=#{v.name},provider=#{v.provider},protocol=#{v.protocol},endpoint=#{v.endpoint},model=#{v.model},output_mode=#{v.outputMode},secret_encrypted=#{secret},credential_purpose=#{purpose},enabled=#{v.enabled},timeout_seconds=#{v.timeoutSeconds},max_results=#{v.maxResults},revision=revision+1 WHERE id=#{id} AND revision=#{v.revision}</update>
+  <delete id="remove">DELETE FROM ai_service WHERE id=#{id}</delete>
+  <select id="references" resultType="int">SELECT COUNT(*) FROM ai_feature WHERE model_service_id=#{id} OR search_service_id=#{id}</select>
+  <select id="features" resultType="map">SELECT * FROM ai_feature ORDER BY CASE id WHEN 'classification' THEN 0 WHEN 'default-search' THEN 1 ELSE 2 END,id</select>
+  <select id="feature" resultType="map">SELECT * FROM ai_feature WHERE id=#{id}</select>
+  <update id="saveFeature">UPDATE ai_feature SET model_service_id=#{v.modelServiceId},search_service_id=#{v.searchServiceId},enabled=#{v.enabled},interval_seconds=#{v.intervalSeconds},display_mode=#{v.displayMode},pet_id=#{v.petId},revision=revision+1 WHERE id=#{v.id} AND revision=#{v.revision}</update>
+</mapper>

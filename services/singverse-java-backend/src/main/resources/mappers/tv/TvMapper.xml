@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mynora.singverse.tv.TvMapper">
+<select id="find" resultType="map">SELECT * FROM tv_record WHERE id=#{id}</select>
+<select id="secret" resultType="map">SELECT * FROM tv_record WHERE secret_hash=#{hash}</select>
+<select id="list" resultType="map">SELECT * FROM tv_record WHERE kind=#{kind} ORDER BY id LIMIT 1000</select>
+<insert id="insert">INSERT INTO tv_record(id,kind,secret_hash,document) VALUES(#{id},#{kind},#{hash},#{document})</insert>
+<update id="save">UPDATE tv_record SET document=#{document},revision=revision+1 WHERE id=#{id} AND revision=#{revision}</update>
+<update id="lock">UPDATE tv_record SET revision=revision WHERE id=#{id}</update>
+<delete id="delete">DELETE FROM tv_record WHERE id=#{id}</delete>
+<select id="library" resultType="map">
+ SELECT cls.state_json AS classification_state, cls.revision AS classification_revision, song.*, source.name AS source_name,
+ meta.track_json AS metadata_track, meta.fields_json AS metadata_fields, meta.applied_at AS metadata_applied_at,
+ meta.origins_json AS metadata_origins, meta.fingerprint AS metadata_fingerprint
+ FROM media_song song JOIN media_source source ON source.id=song.source_id
+ LEFT JOIN song_metadata meta ON meta.song_id=song.id
+ LEFT JOIN classification_song cls ON cls.song_id=song.id ORDER BY song.id
+</select>
+</mapper>

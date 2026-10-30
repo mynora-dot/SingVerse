@@ -26,10 +26,10 @@ function displayValue(value: unknown, field: string): string {
 <style scoped>
 .field-comparison { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
-th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--sv-line); vertical-align: middle; overflow-wrap: anywhere; }
-thead th { color: var(--sv-text-muted); font-weight: 500; background: var(--sv-surface-muted); }
+th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--sv-border-subtle); vertical-align: middle; overflow-wrap: anywhere; }
+thead th { color: var(--sv-text-secondary); font-weight: 500; background: var(--sv-surface-3); }
 th:first-child { width: 98px; } th:last-child { width: 74px; }
 :deep(.el-checkbox) { margin-right: 0; white-space: normal; height: auto; }
 :deep(.el-checkbox__label) { font-size: 12px; padding-left: 6px; }
-td { color: var(--sv-text-muted); }.edited { display: block; color: var(--el-color-primary); margin-top: 4px; }
+td { color: var(--sv-text-secondary); }.edited { display: block; color: var(--el-color-primary); margin-top: 4px; }
 </style>

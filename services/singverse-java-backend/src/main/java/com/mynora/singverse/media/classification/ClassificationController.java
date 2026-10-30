@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 @RestController
 @RequestMapping("/api/v1/classification")
 public class ClassificationController {
+    @org.springframework.beans.factory.annotation.Autowired private ClassificationCoverService covers;
     private final ClassificationService service;
     private final ClassificationSettings settings;
     private final ClassificationModel model;
@@ -20,6 +21,9 @@ public class ClassificationController {
     @GetMapping("/tags") public List<Tag> tags(){return service.tags();}
     @PostMapping("/tags") @ResponseStatus(HttpStatus.CREATED) public Tag create(@RequestBody SaveTag input){return service.saveTag(null,input);}
     @PutMapping("/tags/{id}") public Tag update(@PathVariable String id,@RequestBody SaveTag input){return service.saveTag(id,input);}
+    @GetMapping("/tags/{id}/cover") public org.springframework.http.ResponseEntity<byte[]> cover(@PathVariable String id){return covers.image(id,false);}
+    @PutMapping(value="/tags/{id}/cover",consumes="multipart/form-data") public Tag uploadCover(@PathVariable String id,@RequestParam(defaultValue="") String version,@RequestParam org.springframework.web.multipart.MultipartFile file){return covers.upload(id,version,file);}
+    @DeleteMapping("/tags/{id}/cover") public Tag removeCover(@PathVariable String id,@RequestParam String version){return covers.remove(id,version);}
     @GetMapping("/songs/{id}") public State state(@PathVariable String id){return service.state(id);}
     @PutMapping("/songs/{id}") public State change(@PathVariable String id,@RequestBody Change input){return service.change(id,input);}
     @GetMapping("/songs/{id}/history") public List<History> history(@PathVariable String id,@RequestParam(defaultValue="0")int page,@RequestParam(defaultValue="20")int size){return service.history(id,page,size);}

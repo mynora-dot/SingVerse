@@ -75,7 +75,11 @@ public class QqMusicMetadataProvider implements MusicMetadataProvider {
             if (pubtime > 0) release = Instant.ofEpochSecond(pubtime).atZone(ZoneOffset.UTC).toLocalDate().toString();
             ExternalTrack track = ProviderJson.track(provider(), id, title, artists, albumName, duration, release,
                     ProviderJson.names(song.path("grp"), "title"), cover, "AVAILABLE");
-            if (track != null) result.add(track);
+            if (track != null) {
+                var refs=new ArrayList<ExternalTrack.ArtistRef>();
+                for(JsonNode singer:singers){String artistId=singer.path("mid").asText("");String artistName=singer.path("name").asText("");if(!artistId.isBlank()&&!artistName.isBlank())refs.add(new ExternalTrack.ArtistRef(provider(),artistId,artistName));}
+                result.add(track.withArtistRefs(refs));
+            }
             if (result.size() >= limit) break;
         }
         return result;

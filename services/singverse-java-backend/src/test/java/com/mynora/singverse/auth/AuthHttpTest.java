@@ -1,18 +1,13 @@
 package com.mynora.singverse.auth;
 
-import com.mynora.singverse.auth.crypto.AuthCrypto;
-
-import com.mynora.singverse.auth.repository.AuthStore;
-
-import com.mynora.singverse.auth.service.AuthService;
-
-import com.mynora.singverse.auth.exception.AuthFailure;
-
-import com.mynora.singverse.auth.controller.AuthController;
-
 import static org.assertj.core.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.*;
+import com.mynora.singverse.auth.controller.AuthController;
+import com.mynora.singverse.auth.crypto.AuthCrypto;
+import com.mynora.singverse.auth.exception.AuthFailure;
+import com.mynora.singverse.auth.repository.AuthStore;
+import com.mynora.singverse.auth.service.AuthService;
 
 import dev.samstevens.totp.code.*;
 
@@ -313,14 +308,17 @@ class AuthHttpTest {
                 new MockEnvironment()
                         .withProperty(
                                 "singverse.auth.key-file", temp.resolve("missing.key").toString());
-        assertThatThrownBy(() -> new AuthCrypto(store, mediaSources, missing)).hasMessageContaining("missing");
+        assertThatThrownBy(() -> new AuthCrypto(store, mediaSources, missing))
+                .hasMessageContaining("missing");
         Path wrong = temp.resolve("wrong.key");
         Files.writeString(wrong, Base64.getEncoder().encodeToString(AuthCrypto.random(32)));
         Files.setPosixFilePermissions(
                 wrong, java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
         assertThatThrownBy(
                         () ->
-                                new AuthCrypto(store, mediaSources,
+                                new AuthCrypto(
+                                        store,
+                                        mediaSources,
                                         new MockEnvironment()
                                                 .withProperty(
                                                         "singverse.auth.key-file",
@@ -334,8 +332,7 @@ class AuthHttpTest {
                 "UPDATE auth_account SET mfa_secret=? WHERE id=1",
                 crypto.encrypt("JBSWY3DPEHPK3PXP"));
         String recovery = "0123456789abcdef0123456789abcdef";
-        jdbc.update(
-                "INSERT INTO auth_recovery (code_hash) VALUES (?)", AuthCrypto.hash(recovery));
+        jdbc.update("INSERT INTO auth_recovery (code_hash) VALUES (?)", AuthCrypto.hash(recovery));
         String first = service.issue("challenge").token(),
                 second = service.issue("challenge").token();
         try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
@@ -388,8 +385,7 @@ class AuthHttpTest {
                 "UPDATE auth_account SET mfa_secret=? WHERE id=1",
                 crypto.encrypt("JBSWY3DPEHPK3PXP"));
         String recovery = "0123456789abcdef0123456789abcdef";
-        jdbc.update(
-                "INSERT INTO auth_recovery (code_hash) VALUES (?)", AuthCrypto.hash(recovery));
+        jdbc.update("INSERT INTO auth_recovery (code_hash) VALUES (?)", AuthCrypto.hash(recovery));
         assertThat(
                         request(
                                         "/api/v1/system/parameters/mfa/disable",
@@ -409,16 +405,19 @@ class AuthHttpTest {
                 json.readTree(
                         store.root().resolve("contracts/openapi/auth-test-vectors.json").toFile());
         assertThat(
-                        store.passwords().matches(
-                                fixture.get("password").asText(),
-                                fixture.get("argon2idPhc").asText()))
+                        store.passwords()
+                                .matches(
+                                        fixture.get("password").asText(),
+                                        fixture.get("argon2idPhc").asText()))
                 .isTrue();
         Path key = temp.resolve("fixture.key");
         Files.writeString(key, fixture.get("aes256KeyBase64").asText());
         Files.setPosixFilePermissions(
                 key, java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
         var independent =
-                new AuthCrypto(store, mediaSources,
+                new AuthCrypto(
+                        store,
+                        mediaSources,
                         new MockEnvironment()
                                 .withProperty("singverse.auth.key-file", key.toString()));
         assertThat(independent.decrypt(fixture.get("totpEncrypted").asText()))
@@ -435,16 +434,23 @@ class AuthHttpTest {
         for (var controller :
                 List.of(
                         AuthController.class,
+                        com.mynora.singverse.ai.AiController.class,
+                        com.mynora.singverse.compute.ComputeNodeController.class,
                         com.mynora.singverse.media.classification.ClassificationController.class,
                         com.mynora.singverse.media.controller.MediaSourceController.class,
                         com.mynora.singverse.media.webdav.ScanTaskController.class,
                         com.mynora.singverse.media.controller.MediaSongController.class,
                         com.mynora.singverse.media.controller.MetadataController.class,
-                        com.mynora.singverse.media.controller.FilenameParserController.class)) {
+                        com.mynora.singverse.media.controller.FilenameParserController.class,
+                        com.mynora.singverse.media.artist.ArtistController.class,
+                        com.mynora.singverse.media.playlist.PlaylistController.class,
+                        com.mynora.singverse.mobile.MobileLibraryController.class,
+                        com.mynora.singverse.tv.TvController.class,
+                        com.mynora.singverse.media.transcoding.TranscodeController.class,
+                        com.mynora.singverse.media.transcoding.TranscodeInputController.class)) {
             var base =
-                    controller.getAnnotation(
-                                    org.springframework.web.bind.annotation.RequestMapping.class)
-                            .value()[0];
+                    (controller.isAnnotationPresent(org.springframework.web.bind.annotation.RequestMapping.class)
+                    ? controller.getAnnotation(org.springframework.web.bind.annotation.RequestMapping.class).value()[0] : "");
             for (var method : controller.getDeclaredMethods()) {
                 var mapping =
                         org.springframework.core.annotation.AnnotatedElementUtils
@@ -587,7 +593,9 @@ class AuthHttpTest {
                 .doesNotContain("replacement", secret, "v1:");
         assertThatThrownBy(
                         () ->
-                                new AuthCrypto(store, mediaSources,
+                                new AuthCrypto(
+                                        store,
+                                        mediaSources,
                                         new MockEnvironment()
                                                 .withProperty(
                                                         "singverse.auth.key-file",

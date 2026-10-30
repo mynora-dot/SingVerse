@@ -129,7 +129,7 @@ onMounted(() => { void load() })
   margin-bottom: 20px;
 }
 .rules-page > p[role='status'] {
-  color: var(--sv-text-subtle);
+  color: var(--sv-text-tertiary);
   font-size: 13px;
 }
 code {

@@ -1,9 +1,9 @@
 export const dimensionNames = { LANGUAGE: '语种', DECADE: '发行年代', GENRE: '风格', MOOD: '情绪', SCENE: '场景', CUSTOM: '自定义' } as const
 export type Dimension = keyof typeof dimensionNames
-export interface Tag { id: string; dimension: Dimension; name: string; aliases: string[]; active: boolean; revision: number; count: number }
+export interface Tag { id: string; dimension: Dimension; name: string; aliases: string[]; active: boolean; revision: number; count: number; coverPath?: string | null; coverVersion?: string | null }
 export interface ClassValue { tagIds: string[]; origin: string; locked: boolean; confirmed: boolean }
 export interface ClassState { songId: string; revision: number; dimensions: Partial<Record<Dimension, ClassValue>> }
-export interface Settings { enabled: boolean; endpoint: string; model: string; hasKey: boolean; timeoutSeconds: number; intervalSeconds: number; revision: number }
+export interface Settings { serviceId?: string | null; serviceName?: string; protocol?: string; outputMode?: string; enabled: boolean; endpoint: string; model: string; hasKey: boolean; timeoutSeconds: number; intervalSeconds: number; revision: number }
 export interface SaveSettings { enabled: boolean; endpoint: string; model: string; apiKey: string; clearKey: boolean; timeoutSeconds: number; intervalSeconds: number }
 export interface SongInput { songId: string; title: string; artists: string[]; album: string | null; releaseDate: string | null; language: string; version: string; qualityTags: string[] }
 export interface Suggestion { dimensions: Partial<Record<Dimension, string[]>>; reasons: Partial<Record<Dimension, string>>; newTagSuggestions: string[] }

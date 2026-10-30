@@ -74,7 +74,11 @@ class ComputeIntegrationIT {
         assertThat(health.getBody()).isEqualTo("{\"status\":\"UP\"}");
         var home = http.getForEntity("/party/", String.class);
         assertThat(home.getStatusCode().value()).isEqualTo(200);
-        assertThat(home.getBody()).contains("欢迎来到家庭 KTV");
+        assertThat(home.getBody()).contains("SingVerse", "id=\"app\"", "type=\"module\"");
+        var script = java.util.regex.Pattern.compile("src=\"([^\"]+\\.js)\"").matcher(home.getBody());
+        assertThat(script.find()).as("Party entry must reference its built module").isTrue();
+        var asset = java.net.URI.create("/party/").resolve(script.group(1)).toString();
+        assertThat(http.getForEntity(asset, String.class).getStatusCode().value()).isEqualTo(200);
     }
 
     private static int freePort() {

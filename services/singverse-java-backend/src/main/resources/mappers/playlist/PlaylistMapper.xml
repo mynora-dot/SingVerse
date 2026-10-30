@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mynora.singverse.media.playlist.PlaylistMapper">
+ <update id="lock">UPDATE playlist_lock SET revision=revision+1 WHERE id=1</update>
+ <select id="list" resultType="map">SELECT * FROM playlist ORDER BY updated_at DESC,id</select>
+ <select id="find" resultType="map">SELECT * FROM playlist WHERE id=#{id}</select>
+ <insert id="insert">INSERT INTO playlist(id,name,description,song_ids_json,revision,creation_hash,created_at,updated_at) VALUES(#{id},#{name},#{description},#{songs},1,#{hash},#{now},#{now})</insert>
+ <update id="update">UPDATE playlist SET name=#{name},description=#{description},song_ids_json=#{songs},revision=revision+1,updated_at=#{now} WHERE id=#{id} AND revision=#{revision}</update>
+ <delete id="remove">DELETE FROM playlist WHERE id=#{id} AND revision=#{revision}</delete>
+</mapper>

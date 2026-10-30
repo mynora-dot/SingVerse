@@ -66,7 +66,13 @@ it('未应用草稿关闭时确认，取消确认后保留编辑', async () => {
   await wrapper.get('input[aria-label="编辑专辑"]').setValue('草稿专辑')
   await wrapper.findAll('button').find(b => b.text() === '保存编辑到草稿')!.trigger('click'); await flushPromises()
   await wrapper.findAll('button').find(b => b.text() === '取消')!.trigger('click'); await flushPromises()
-  expect(ElMessageBox.confirm).toHaveBeenCalled(); expect(wrapper.emitted('close')).toBeUndefined()
+  expect(ElMessageBox.confirm).toHaveBeenCalledWith(expect.any(String), '有尚未应用的修改', expect.objectContaining({ customClass: 'discard-message-box', closeOnClickModal: false }))
+  expect(wrapper.emitted('close')).toBeUndefined()
+  expect(wrapper.text()).toContain('草稿专辑')
+  vi.mocked(ElMessageBox.confirm).mockResolvedValueOnce('confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>)
+  await wrapper.findAll('button').find(b => b.text() === '取消')!.trigger('click'); await flushPromises()
+  expect(wrapper.emitted('close')).toHaveLength(1)
+  expect(singleReview.apply).not.toHaveBeenCalled()
 })
 it('未选字段不提交，上传封面加入真实变更摘要', async () => {
   const state = useSingleSongScrape(); await state.open('song-1')
@@ -156,4 +162,18 @@ it('单曲搜索自动选择达到阈值的最高候选，预览更新但不自�
   await state.search()
   expect(state.selected.value).toBeNull()
   expect(singleReview.apply).not.toHaveBeenCalled()
+})
+
+it('待复核歌曲不再展示顶部说明，保留可操作的手工编辑入口', async () => {
+  const review = context()
+  review.song.result.needsReview = true
+  vi.mocked(singleReview.load).mockResolvedValue(review)
+  wrapper = mount(SingleSongScrapeDialog, { props: { song: review.song }, global: { stubs: { teleport: true } } })
+  await flushPromises()
+  expect(wrapper.text()).not.toContain('文件名解析待复核')
+  expect(wrapper.text()).not.toContain('可点击“编辑元数据”补充歌名')
+  const edit = wrapper.findAll('button').find(button => button.text() === '手工编辑元数据')!
+  expect(edit.exists()).toBe(true)
+  await edit.trigger('click'); await flushPromises()
+  expect(wrapper.get('input[aria-label="编辑歌名"]').element.tagName).toBe('INPUT')
 })

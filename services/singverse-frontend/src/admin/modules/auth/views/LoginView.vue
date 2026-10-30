@@ -31,9 +31,9 @@ function restart() { stage.value = false; code.value = ''; password.value = ''; 
         <span><strong>SingVerse<span class="brand-dot">.</span></strong><small>NAS 管理中心</small></span>
       </div>
       <div>
-        <div class="login-hero">
+        <div class="login-hero"><p class="login-eyebrow">THE SOUND OF HOME</p>
           <h2>让每一次相聚，<br />都有好歌相伴。</h2>
-          <p>自己的歌曲，熟悉的朋友。登录后打理媒体库、解析规则与播放设备。</p>
+          <p>自己的歌曲，熟悉的朋友。登录后整理歌曲、连接歌曲位置，收藏属于家人的旋律。</p>
         </div>
         <div class="waveform"><i v-for="(height, index) in bars" :key="index" :style="{ height: `${height}px`, animationDelay: `${index * 0.11}s` }" /></div>
       </div>
@@ -41,7 +41,7 @@ function restart() { stage.value = false; code.value = ''; password.value = ''; 
     </aside>
     <main class="login-main">
       <section class="login-card" aria-labelledby="login-title">
-        <p class="login-eyebrow">SINGVERSE · 家庭音乐空间</p>
+        <p class="login-eyebrow">欢迎回来 / WELCOME HOME</p>
         <h1 id="login-title">{{ stage ? '二次验证' : '登录管理中心' }}</h1>
         <p class="muted">{{ stage ? '输入认证器动态码，或使用一枚恢复码。' : '使用你的管理员账号，打理家的音乐。' }}</p>
         <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon />

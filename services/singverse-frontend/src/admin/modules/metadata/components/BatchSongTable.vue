@@ -26,7 +26,7 @@ function risk(item: MetadataItem) { return confidence(item, props.batch.threshol
 .batch-song-table { width: 100%; font-size: 13px; }
 .batch-song-table :deep(.el-table__cell) { padding: 10px 0; vertical-align: middle; }
 .batch-song-table :deep(.cell) { line-height: 1.5; padding: 0 10px; }
-.song-cell { display: flex; align-items: center; gap: 9px; min-width: 0; }.song-cell > div { min-width: 0; overflow-wrap: anywhere; }.song-cell strong { display: block; font-size: 13px; font-weight: 550; color: var(--sv-text); }.song-cell small { display: block; font-size: 12px; color: var(--sv-text-muted); margin: 2px 0; }
-.song-cell img,.song-placeholder { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; flex-shrink: 0; }.song-placeholder { display: grid; place-items: center; color: var(--sv-text-subtle); background: var(--sv-surface-muted); font-size: 21px; }
-.song-cell .risk-warning,.risk-warning { color: var(--el-color-warning-dark-2); }.item-note { font-size: 12px; color: var(--sv-text-muted); overflow-wrap: anywhere; }.row-actions { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; }.row-actions .el-button { margin: 0; font-size: 12px; }
+.song-cell { display: flex; align-items: center; gap: 9px; min-width: 0; }.song-cell > div { min-width: 0; overflow-wrap: anywhere; }.song-cell strong { display: block; font-size: 13px; font-weight: 550; color: var(--sv-text-primary); }.song-cell small { display: block; font-size: 12px; color: var(--sv-text-secondary); margin: 2px 0; }
+.song-cell img,.song-placeholder { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; flex-shrink: 0; }.song-placeholder { display: grid; place-items: center; color: var(--sv-text-tertiary); background: var(--sv-surface-3); font-size: 21px; }
+.song-cell .risk-warning,.risk-warning { color: var(--el-color-warning-dark-2); }.item-note { font-size: 12px; color: var(--sv-text-secondary); overflow-wrap: anywhere; }.row-actions { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; }.row-actions .el-button { margin: 0; font-size: 12px; }
 </style>

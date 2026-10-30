@@ -1,15 +1,24 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ElButton, ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon, ElMenu, ElMenuItem, ElMessage } from 'element-plus'
-import { ArrowDown, ArrowRight, Expand, Fold, Headset, Key, Monitor, Setting, SwitchButton, FolderOpened, House } from '@element-plus/icons-vue'
+import { ElButton, ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon, ElMenu, ElMenuItem, ElSubMenu, ElMessage } from 'element-plus'
+import type { MenuInstance } from 'element-plus'
+import { ArrowDown, ArrowRight, Expand, Fold, Headset, Key, Setting, SwitchButton } from '@element-plus/icons-vue'
+import AssistantWidget from '../../modules/ai-settings/components/AssistantWidget.vue'
+import { navigationContext, navigationGroups, overviewEntry } from '../navigation'
 import { auth, authRequest } from '../../core/auth/api'
 import { useRouter, useRoute } from 'vue-router'
 
 const route = useRoute()
 const router = useRouter()
 const navigationOpen = ref(false)
+const navigationMenu = ref<MenuInstance>()
+const currentNavigation = computed(() => navigationContext(String(route.meta.activeMenu || route.path)))
+const openGroups = computed(() => [currentNavigation.value.group?.id ?? 'library'])
 const accountLabel = computed(() => auth.account?.username ?? 'admin')
-watch(() => route.path, () => { navigationOpen.value = false })
+watch(() => route.path, () => {
+  navigationOpen.value = false
+  navigationMenu.value?.open(currentNavigation.value.group?.id ?? 'library')
+}, { flush: 'post' })
 async function logout() {
   try {
     await authRequest('/api/v1/auth/logout', 'POST')
@@ -26,33 +35,32 @@ function focusMainContent() {
 <template>
   <a class="skip-link" href="#main-content" @click.prevent="focusMainContent">跳转到主要内容</a>
   <div class="admin-shell">
-    <aside class="sidebar" :class="{ 'sidebar-open': navigationOpen }" aria-label="管理中心导航">
+    <aside class="sidebar" :class="{ 'sidebar-open': navigationOpen }" aria-label="管理中心导航" @keydown.esc="navigationOpen = false">
       <RouterLink to="/overview" class="brand" aria-label="SingVerse 管理中心首页">
         <span class="brand-mark"><ElIcon :size="22"><Headset /></ElIcon></span>
         <span><strong>SingVerse<span class="brand-dot">.</span></strong><small>NAS 管理中心</small></span>
       </RouterLink>
-      <p class="nav-label">工作空间</p>
-      <ElMenu :default-active="String(route.meta.activeMenu || route.path)" router id="admin-navigation" class="navigation" :class="{ 'navigation-open': navigationOpen }" aria-label="主导航">
-        <ElMenuItem index="/overview"><ElIcon><House /></ElIcon><span>概览</span></ElMenuItem>
-        <ElMenuItem index="/library/songs"><ElIcon><Headset /></ElIcon><span>歌曲</span></ElMenuItem>
-        <ElMenuItem index="/library/media"><ElIcon><FolderOpened /></ElIcon><span>来源</span></ElMenuItem>
-        <ElMenuItem index="/library/songs/metadata"><ElIcon :size="18"><component :is="'svg'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></component></ElIcon><span>刮削</span></ElMenuItem>
-        <div class="nav-divider" />
-        <ElMenuItem index="/library/filename-parser-profiles"><ElIcon :size="18"><component :is="'svg'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></component></ElIcon><span>解析规则</span></ElMenuItem>
-        <ElMenuItem index="/system"><ElIcon><Monitor /></ElIcon><span>系统</span></ElMenuItem>
+      <p class="nav-label">音乐工作台</p>
+      <ElMenu ref="navigationMenu" :default-active="currentNavigation.entry?.path || route.path" :default-openeds="openGroups" unique-opened router id="admin-navigation" class="navigation" aria-label="主导航">
+        <ElMenuItem :index="overviewEntry.path"><ElIcon><component :is="overviewEntry.icon" /></ElIcon><span>{{ overviewEntry.label }}</span></ElMenuItem>
+        <ElSubMenu v-for="group in navigationGroups" :key="group.id" :index="group.id">
+          <template #title><ElIcon><component :is="group.icon" /></ElIcon><span>{{ group.label }}</span></template>
+          <ElMenuItem v-for="entry in group.children" :key="entry.path" :index="entry.path"><span>{{ entry.label }}</span></ElMenuItem>
+        </ElSubMenu>
       </ElMenu>
+      <div class="sidebar-note"><span class="sidebar-note-icon"><Headset /></span><strong>音乐，由你收藏。</strong><p>从一首熟悉的歌，<br />到属于家人的音乐空间。</p><RouterLink to="/library/media">整理我的曲库 <span aria-hidden="true">↗</span></RouterLink></div>
       <div class="sidebar-bottom"><span class="small-dot" /><span>家的音乐，自己掌管</span></div>
     </aside>
     <div class="workspace" :class="{ 'batch-workspace': ['/library/songs/metadata', '/library/classification'].includes(route.path) }">
       <header class="topbar">
         <div class="topbar-leading">
-          <ElButton class="mobile-nav-toggle" :icon="navigationOpen ? Fold : Expand" :aria-expanded="navigationOpen" aria-controls="admin-navigation" @click="navigationOpen = !navigationOpen"><span class="nav-toggle-label">{{ navigationOpen ? '收起导航' : '导航菜单' }}</span></ElButton>
+          <ElButton class="mobile-nav-toggle" :icon="navigationOpen ? Fold : Expand" :aria-label="navigationOpen ? '收起导航' : '导航菜单'" :aria-expanded="navigationOpen" aria-controls="admin-navigation" @click="navigationOpen = !navigationOpen"><span class="nav-toggle-label">{{ navigationOpen ? '收起导航' : '导航菜单' }}</span></ElButton>
           <div class="breadcrumb">
-            <span>管理中心</span><span class="separator">/</span><strong>{{ route.meta.title }}</strong>
+            <span>{{ currentNavigation.group?.label || '我的音乐空间' }}</span><span class="separator">/</span><strong>{{ currentNavigation.entry?.label || route.meta.title }}</strong>
           </div>
         </div>
         <div class="topbar-actions">
-          <a class="party-link" href="/party/" target="_blank" rel="noopener"><span class="party-link-text">亲友入口</span><ElIcon><ArrowRight /></ElIcon></a>
+          <a class="party-link" aria-label="打开亲友入口" href="/party/" target="_blank" rel="noopener"><span class="party-link-text">亲友入口</span><ElIcon><ArrowRight /></ElIcon></a>
           <ElDropdown trigger="click" placement="bottom-end">
             <button class="account-chip" type="button" aria-label="账号菜单">
               <span class="avatar">{{ accountLabel.slice(0, 1) }}</span>
@@ -73,11 +81,12 @@ function focusMainContent() {
         <RouterView />
       </main>
       <footer class="page-footer">
-        <span>SingVerse · 相聚，开唱。</span><span>家庭自托管 KTV</span>
+        <span>SingVerse · 相聚，开唱。</span><span>你的收藏 · 你的空间</span>
       </footer>
     </div>
   </div>
   <button v-if="navigationOpen" class="nav-scrim" type="button" aria-label="关闭导航" @click="navigationOpen = false" />
+  <AssistantWidget />
 </template>
 
 <style scoped>
@@ -89,7 +98,7 @@ function focusMainContent() {
 
 .topbar-leading {
   display: flex;
-  gap: var(--sv-s-4);
+  gap: var(--sv-space-4);
   align-items: center;
   min-width: 0;
 }
@@ -99,27 +108,27 @@ function focusMainContent() {
   align-items: center;
   height: 36px;
   padding: 0 14px;
-  color: var(--sv-text-muted);
-  background: var(--sv-surface);
-  border: 1px solid var(--sv-line);
-  border-radius: var(--sv-r-pill);
-  font-size: var(--sv-fs-meta);
+  color: var(--sv-text-secondary);
+  background: var(--sv-surface-2);
+  border: 1px solid var(--sv-border-subtle);
+  border-radius: var(--sv-radius-full);
+  font-size: var(--sv-font-meta);
   font-weight: 550;
 }
 .party-link:hover {
-  color: var(--sv-brand-700);
-  border-color: var(--sv-line-strong);
+  color: var(--sv-accent-muted);
+  border-color: var(--sv-border-default);
 }
 .party-link .el-icon {
   font-size: 13px;
 }
 .account-chip .el-icon {
-  color: var(--sv-text-subtle);
+  color: var(--sv-text-tertiary);
   font-size: 13px;
 }
 .dropdown-meta {
-  color: var(--sv-text-subtle);
-  font-size: var(--sv-fs-meta);
+  color: var(--sv-text-tertiary);
+  font-size: var(--sv-font-meta);
 }
 .nav-scrim {
   position: fixed;

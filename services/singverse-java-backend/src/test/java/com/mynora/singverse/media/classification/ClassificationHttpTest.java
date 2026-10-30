@@ -40,6 +40,8 @@ class ClassificationHttpTest {
     static final String BASE="/api/v1/classification";
     @BeforeEach void reset() {
         for(String table:List.of("classification_receipt","classification_history","classification_item","classification_task","classification_assignment","classification_song","media_song","media_source"))db.update("DELETE FROM "+table);
+        db.update("UPDATE ai_feature SET model_service_id=NULL,search_service_id=NULL,enabled=0");
+        db.update("DELETE FROM ai_service");
         db.update("UPDATE classification_settings SET enabled=0,endpoint='',model='',secret_encrypted=NULL,next_request_at='' WHERE id=1");
         db.update("UPDATE classification_tag SET active=1,revision=1");
         client=HttpClient.newBuilder().cookieHandler(new CookieManager(null,CookiePolicy.ACCEPT_ALL)).build();

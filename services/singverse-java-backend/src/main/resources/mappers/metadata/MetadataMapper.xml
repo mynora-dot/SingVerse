@@ -19,7 +19,7 @@
   </insert>
   <update id="batchStatus">UPDATE metadata_batch SET status = #{status}, updated_at = #{now} WHERE id = #{id} AND status = #{expected}</update>
   <select id="targetSongs" resultType="map">
-    SELECT song.id, song.file_size, song.modified_at, song.result_json, song.source_id,
+    SELECT song.id, song.file_size, song.modified_at, song.result_json, song.embedded_tags_json, song.source_id,
            song.relative_path, source.name AS source_name, song.scanned_at, song.parser_profile_id,
            song.parser_revision, song.selected_rule_id,
            meta.track_json AS metadata_track, meta.fields_json AS metadata_fields,

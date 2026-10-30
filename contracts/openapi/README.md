@@ -85,3 +85,51 @@ WebDAV 使用保存的地址和加密凭据在服务端发起 GET/HEAD，转发 
 本地目录与 WebDAV 文件名扫描统一支持 MP3、FLAC、WAV、M4A、AAC、OGG、OGA、Opus、WMA、AIF、AIFF、APE，扩展名不区分大小写，沿用现有解析方案提取歌名和歌手。扫描只建立文件名索引，不读取音频内容或内嵌标签；新增格式需重新扫描才会进入歌曲列表，现有扫描数量限制不变。
 
 “在线播放”按扩展名选择音频/视频控件。音频复用已鉴权的 GET/HEAD `/api/v1/media-songs/{id}/video`（为兼容保留原路径），返回 audio/* 媒体类型，沿用 Range、后端 WebDAV 代理、凭据保护与关闭停止加载。音频失败可重试，切换或关闭时移除旧媒体元素。不提供转码，扩展名可入库不保证浏览器能解码；WMA、APE 等通常需要其他播放器。WebDAV 下载重定向限制不变。
+
+
+## AI 配置
+
+管理员专用 `/api/v1/ai` 提供厂商目录、多模型/搜索服务 CRUD、显式连接与结构化测试、默认搜索和功能绑定。密钥只写不读，服务与绑定使用 revision 并发保护，引用中的服务不能删除或停用。原分类配置接口保留兼容适配；边界与通用搜索响应见 [AI 设置](../../docs/ai-settings.md)，字段以 `singverse.openapi.json` 为准。
+
+本地扫描沿用歌曲API元数据结构，字段来源kind新增FILE，表示本地音视频内嵌标签优先值；不扩展WebDAV读取或增加远程探测API。
+
+计算服务新增POST /internal/v1/media/tags（认证、根目录限制、有限并发）及Tags类型，见compute-internal.openapi.json。Java仅内部调用，前端不访问计算节点。
+
+- 管理员性能节点：`GET/PUT /api/v1/compute-node` 和 `POST /api/v1/compute-node/test`；写入和测试要求 CSRF，凭据仅写，AUTO 解析部署变量、MANUAL 使用加密配置、DISABLED 停用。测试失败使用 Check.status 表达，不返回上游原始错误或触发管理员登出。
+- 计算内部 `GET /internal/v1/status` 验证 Bearer 凭据后返回身份和实际能力；与公开进程健康及兼容能力探测分离。
+
+## TV 与亲友聚会
+
+新增 TV/party 契约见 `singverse.openapi.json` 与 [TV 开发设计](../../docs/tv-development-design.md)。`/server-info` 提供稳定实例身份；电视先申请十分钟授权，管理员在 `/admin/#/system/tv-devices` 核对短码并批准。轮询秘密换取独立设备 token，重复领取返回同一凭据，数据库只存摘要。设备 token 不授予管理员权限；撤销设备后媒体及关联聚会访问立即失效。
+
+`/tv/**` 和 `/party/**` 只接受 Authorization Bearer，不接受管理员 Cookie。这两个独立命名空间不使用 CSRF；管理端继续 Cookie + CSRF。亲友邀请预览使用 POST 读取以避免令牌进入 URL 访问日志，预览不加入；显式 join 获得十二小时参与凭据，昵称不决定权限。邀请有效一小时，刷新使旧邀请失效，散场失效全部参与授权。
+
+聚会变更包含 requestId、expectedRevision；同主体同请求与载荷重试不重复入队，冲突 409 后先刷新。revision 是用户操作修订号，播放遥测有独立数据库 CAS 与 eventSeq，不让周期进度报告制造点歌冲突。NEXT 进入待确认交接，START 仅电视可执行；播放事件才使队列变为 PLAYING。电视进程重建调用 recover，失效旧播放实例、清理命令，将进行项放回待唱，不自动重播。
+
+当前仅原始媒体直放，无转码。播放资源 READY 表示已取得授权引用，不保证目标电视能解码；原始媒体直接使用设备 Bearer 请求，并在每次 Range/HEAD 时重新检查撤销。歌曲与分类只读投影不暴露内部路径、来源凭据或模型配置。歌手入口按原始署名精确分组，不建立身份或别名归并。家庭规模保护上限：单场 500 个队列项、1000 项幂等操作、100 条待确认命令；超限明确拒绝。TV 需结束后开新场，不静默删除历史去重记录。
+
+### TV 首页与当前歌曲详情
+
+`GET /api/v1/tv/home` 仅设备可读，返回稳定服务身份 `server`、全库现存歌曲数 `totalSongs`、按扫描时间倒序/ID 升序的前 8 首 `recentSongs` 和 `generatedAt`。它不接收找歌筛选参数，不以推荐、热度或演唱历史名义包装扫描顺序。
+
+`GET /api/v1/tv/library/songs/{id}` 读取当前歌曲展示投影，歌曲移除返回 404。投影沿用已应用元数据/文件标签与文件名解析的现有优先级，新增可用的 album、releaseDate、durationMs、scannedAt 与不透明 revision；无依据字段省略或 null，不补假值。revision 包含元数据和分类变化，供封面重载使用，不暴露路径或来源凭据。所有设备/参与者仍遵循现有授权；首页不对参与者开放。
+
+TV 非转码增强新增设备专用 text-tracks 与 releases/current、releases/apk；直放资源含 revision。文字检索读取有效元数据，支持规范化全拼、首字母及精确编号；共享读索引最长约30秒更新，分类先过滤再分页。接口定义只覆盖实际读取/发布能力，不承诺转码或自动轨道语义。
+
+聚会快照现同时返回 stateRevision（包含播放事件的持久版本）和 revision（队列乐观并发版本）；TV 用前者防止旧快照覆盖，用后者提交队列命令。换会话/NAS 的迟到响应被忽略。
+
+分类封面新增管理员GET/PUT/DELETE /classification/tags/{id}/cover，以及Bearer只读 /tv/library/classification-tags/{id}/cover。首次上传version为空，覆盖/移除带当前coverVersion；内容SHA-256与标签revision独立。正式标签新增coverPath/coverVersion；停用标签对TV封面返回404，完整限制见OpenAPI。
+
+歌手库改为自动汇总：旧档案创建/编辑、人工绑定写操作返回 410。歌曲订正通过现有审核应用接口保存 NAS 歌手覆盖，恢复接口需要 revision。歌手响应新增 automatic、fetchState、图片来源字段；ExternalTrack 新增可选 artistRefs，旧数据按空列表兼容。详见 OpenAPI。
+
+共享歌单新增 `/api/v1/playlists` 管理接口、`/generate` 建议预览及 TV 只读歌单列表/详情/歌曲接口。创建需稳定 requestId，编辑与删除需 revision；生成返回候选范围和草稿，不自动保存。管理与 TV 封面路径分别使用相应身份鉴权。
+
+## 转码与播放协商
+
+新增 `/api/v1/transcoding` 管理端接口、`/api/v1/tv/transcoding` 设备会话资源和 `/api/v1/internal/transcode-input/{id}` 计算节点专用 Range 读取。客户端能力为运行时报告，实时返回 DIRECT/VERSION/HLS 与原媒体秒偏移；HLS 准备中需轮询会话并续租。所有播放资源仍经过 Java 授权，内部执行接口只对 Java 开放。离线任务持久化在业务库，成功文件由 Java 校验长度/SHA-256 后原子保存。详细行为、错误和部署配置见[转码说明](../../docs/transcoding.md)。
+
+硬件加速配置：GET/POST `/api/v1/transcoding/hardware-settings`，POST `/hardware-settings/test`。保存携带 revision；冲突返回 409，指定硬件短样本失败返回 422。`backend=deployment` 恢复节点部署环境变量，草稿测试不切换当前后端。内部接口路径对应 `/internal/v1/transcoding/hardware-settings`，继续使用 Bearer 和请求体边界。
+
+流水线 v2：播放执行携带 `pipeline`（实际硬解/零拷贝/GPU 色调映射、DV 和回退原因）及 `sampledPeakRssBytes`（0 表示未知）。客户端能力增加 `hdr_formats`、`dovi_profiles`、`dovi_compatibility`，默认不支持 DV；HDR 与 DV 能力分别协商。
+
+手机原生只读曲库：GET `/api/v1/mobile/library/songs`、`/{id}` 和 `/{id}/text-tracks`，使用管理员 Cookie，不接受 TV/party Bearer 替代登录。列表复用既有搜索及分类，返回 MobileSongPage；条目保留独立媒体 ID，补充格式/媒体类型，封面指向管理员资源。播放继续使用 `/api/v1/transcoding`；手机本机收藏和历史不属于服务端业务表。

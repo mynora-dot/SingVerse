@@ -32,6 +32,10 @@ dist/
 node_modules/
 .pnpm-store/
 *.log
+*.apk
+*.aab
+*.apks
+*.hprof
 # Python local environment and build metadata
 .venv/
 __pycache__/
@@ -53,6 +57,7 @@ project.private.config.json
 !**/pubspec.lock
 !**/pnpm-lock.yaml
 /data
+/services/*/data/
 
 .tools/
 *.auth.lock

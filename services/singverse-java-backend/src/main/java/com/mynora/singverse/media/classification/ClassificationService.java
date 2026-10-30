@@ -32,7 +32,7 @@ public class ClassificationService {
         if(values==null || values.isEmpty() || values.stream().anyMatch(Objects::isNull) || !DIMENSIONS.containsAll(values) || ai && values.contains("CUSTOM")) throw bad("分类维度无效；AI 不能修改自定义标签");
     }
     static void page(int page,int size) { if(page<0 || page>1000000 || size<1 || size>100) throw bad("分页参数超出范围"); }
-    public List<Tag> tags() { return mapper.tags().stream().map(r->new Tag(str(r,"id"),str(r,"dimension"),str(r,"name"),json.decode(r.get("aliases_json"),new TypeReference<List<String>>() {}),number(r,"active")==1,number(r,"revision"),number(r,"song_count"))).toList(); }
+    public List<Tag> tags() { return mapper.tags().stream().map(r->new Tag(str(r,"id"),str(r,"dimension"),str(r,"name"),json.decode(r.get("aliases_json"),new TypeReference<List<String>>() {}),number(r,"active")==1,number(r,"revision"),number(r,"song_count"),r.get("cover_version")==null?null:"/api/v1/classification/tags/"+str(r,"id")+"/cover",Objects.toString(r.get("cover_version"),null))).toList(); }
     public Tag saveTag(String tagId,SaveTag in) {
         if(in==null || !DIMENSIONS.contains(Objects.toString(in.dimension(),"")) || in.name()==null || in.name().isBlank() || in.name().length()>80 || in.name().chars().anyMatch(Character::isISOControl)
                 || in.aliases()==null || in.aliases().size()>20 || in.aliases().stream().anyMatch(a->a==null || a.isBlank() || a.length()>80 || a.chars().anyMatch(Character::isISOControl))) throw bad("标签名称、维度或别名无效");

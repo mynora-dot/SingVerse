@@ -4,7 +4,7 @@
   <select id="list" resultType="map">
     SELECT cls.state_json AS classification_state, cls.revision AS classification_revision, song.id, song.source_id, source.name AS source_name, song.relative_path, song.file_size,
            song.modified_at, song.scanned_at, song.parser_profile_id, song.parser_revision,
-           song.selected_rule_id, song.result_json,
+           song.selected_rule_id, song.result_json, song.embedded_tags_json,
            meta.track_json AS metadata_track, meta.fields_json AS metadata_fields,
            meta.applied_at AS metadata_applied_at, meta.origins_json AS metadata_origins, meta.fingerprint AS metadata_fingerprint
     FROM media_song song JOIN media_source source ON source.id = song.source_id
@@ -21,10 +21,10 @@
   </delete>
   <insert id="insert">
     INSERT INTO media_song (id, source_id, relative_path, path_hash, file_size, modified_at,
-                            scanned_at, parser_profile_id, parser_revision, selected_rule_id, result_json, needs_review)
+                            scanned_at, parser_profile_id, parser_revision, selected_rule_id, result_json, needs_review, embedded_tags_json)
     VALUES (#{song.id}, #{song.sourceId}, #{song.relativePath}, #{song.pathHash}, #{song.fileSize},
             #{song.modifiedAt}, #{song.scannedAt}, #{song.profileId}, #{song.revision},
-            #{song.ruleId}, #{song.resultJson}, #{song.needsReview})
+            #{song.ruleId}, #{song.resultJson}, #{song.needsReview}, #{song.embeddedTagsJson})
   </insert>
   <sql id="searchFilter">
     <where>
@@ -42,7 +42,7 @@
   <select id="search" resultType="map">
     SELECT cls.state_json AS classification_state, cls.revision AS classification_revision, song.id, song.source_id, source.name AS source_name, song.relative_path, song.file_size,
            song.modified_at, song.scanned_at, song.parser_profile_id, song.parser_revision,
-           song.selected_rule_id, song.result_json,
+           song.selected_rule_id, song.result_json, song.embedded_tags_json,
            meta.track_json AS metadata_track, meta.fields_json AS metadata_fields,
            meta.applied_at AS metadata_applied_at, meta.origins_json AS metadata_origins, meta.fingerprint AS metadata_fingerprint
     FROM (SELECT song.id, song.scanned_at FROM media_song song
@@ -61,7 +61,7 @@
   <select id="find" resultType="map">
     SELECT cls.state_json AS classification_state, cls.revision AS classification_revision, song.id, song.source_id, source.name AS source_name, song.relative_path, song.file_size,
            song.modified_at, song.scanned_at, song.parser_profile_id, song.parser_revision,
-           song.selected_rule_id, song.result_json, meta.track_json AS metadata_track,
+           song.selected_rule_id, song.result_json, song.embedded_tags_json, meta.track_json AS metadata_track,
            meta.fields_json AS metadata_fields, meta.applied_at AS metadata_applied_at,
            meta.fingerprint AS metadata_fingerprint, meta.origins_json AS metadata_origins
     FROM media_song song JOIN media_source source ON source.id = song.source_id

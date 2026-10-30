@@ -4,6 +4,8 @@ import type { VueWrapper } from '@vue/test-utils'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory, type Router } from 'vue-router'
 import ElementPlus from 'element-plus'
+import SongLibraryTable from '../src/admin/modules/song-management/components/SongLibraryTable.vue'
+import { defaultSongColumns, fileSize } from '../src/admin/modules/song-management/presentation'
 import SongsView from '../src/admin/modules/song-management/views/SongsView.vue'
 import type { MediaSong } from '../src/admin/modules/media-library/types'
 import { songs } from '../src/admin/modules/song-management/api/songs'
@@ -96,12 +98,45 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
     expect(wrapper.text()).toContain('周杰伦')
   })
 
-  it('快速筛选标签可点击切换状态并请求API', async () => {
-    const chip = wrapper.findAll('.quick-filter-chip').find(c => c.text().includes('待复核'))
-    expect(chip).toBeDefined()
-    await chip!.trigger('click')
-    await flushPromises()
-    expect(songs.list).toHaveBeenCalledWith(expect.objectContaining({ status: 'REVIEW' }))
+  it('总数和当前页范围分开显示，修改显示列不重新请求歌曲', async () => {
+    vi.mocked(songs.list).mockResolvedValue(result([song()], 0, 47))
+    await router.replace('/library/songs?page=2'); await flushPromises()
+    expect(wrapper.find('.page-range').text()).toContain('21–21')
+    expect(wrapper.find('.count-badge').text()).toBe('47')
+    const before = vi.mocked(songs.list).mock.calls.length
+    await wrapper.find('.column-settings-button').trigger('click'); await flushPromises()
+    const label = [...document.querySelectorAll('.column-settings label')].find(el => el.textContent?.includes('扫描与修改时间'))
+    expect(label).toBeDefined()
+    const input = label!.querySelector('input')!; input.checked = true; input.dispatchEvent(new Event('change', { bubbles: true })); await flushPromises()
+    expect(wrapper.find('.library-table thead').text()).toContain('扫描 / 修改时间')
+    expect(songs.list).toHaveBeenCalledTimes(before)
+  })
+
+  it('每页数量决定完整渲染行数，顶部和底部分页数量同步', async () => {
+    vi.mocked(songs.list).mockImplementation(async input => result(Array.from({ length: input.size ?? 20 }, (_, i) => song(`row-${i}`)), 0, 137))
+    for (const size of [50, 100, 20]) {
+      await wrapper.find('.top-page-size select').setValue(size); await flushPromises()
+      expect(songs.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 0, ...(size === 20 ? {} : { size }) }))
+      expect(wrapper.findAll('.library-table tbody tr')).toHaveLength(size)
+      expect((wrapper.find('.songs-pagination select').element as HTMLSelectElement).value).toBe(String(size))
+      expect(wrapper.find('.page-range').text()).toContain(`1–${size}`)
+    }
+  })
+
+  it('重置筛选同时清除搜索、来源、标签和快捷条件，并返回第一页', async () => {
+    await router.replace('/library/songs?q=晴天&sourceId=source-1&status=REVIEW&unclassified=true&tagIds=tag-1&page=2&size=50'); await flushPromises()
+    await wrapper.find('.filter-reset').trigger('click'); await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({ size: '50' })
+    expect(songs.list).toHaveBeenLastCalledWith({ sourceId: '', q: '', status: 'ALL', page: 0, size: 50 })
+    expect((wrapper.find('input[aria-label="搜索歌曲文件"]').element as HTMLInputElement).value).toBe('')
+    expect(wrapper.find('.filter-reset').exists()).toBe(false)
+  })
+
+  it('移除快捷筛选并保留既有复核筛选链接兼容', async () => {
+    expect(wrapper.find('.quick-filters').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('快捷筛选')
+    await router.replace('/library/songs?status=REVIEW'); await flushPromises()
+    expect(songs.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'REVIEW' }))
   })
 
   it('错误可重试，真实空列表引导到媒体库扫描', async () => {
@@ -125,7 +160,7 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
     wrapper?.unmount()
     wrapper = mount(SongsView, { global: { plugins: [router, ElementPlus] } })
     const promise1 = resolver
-    const searchInput = wrapper.find('input[placeholder="搜索歌曲或文件名..."]')
+    const searchInput = wrapper.find('input[aria-label="搜索歌曲文件"]')
     await searchInput.setValue('晴天')
     await wrapper.find('.filters-row button').trigger('click')
     await flushPromises()
@@ -150,7 +185,8 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
     await card.trigger('click')
     await flushPromises()
     const drawer = wrapper.find('.el-drawer__body')
-    expect(drawer.text()).toContain('远端未提供')
+    expect(drawer.text()).toContain('大小未提供')
+    expect(drawer.text()).toContain('修改时间未提供')
   })
 
   it('歌曲页大小可调整并同步路由，重新查询回到第一页', async () => {
@@ -218,17 +254,15 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
     expect(wrapper.findComponent({ name: 'SingleSongScrapeDialog' }).props('song')).toBeDefined()
   })
 
-  it('分类筛选通过快速标签切换，清除按钮重置', async () => {
+  it('分类筛选链接兼容并可用重置按钮清除', async () => {
     const tag1: Tag = { id: 'tag-1', name: '经典', dimension: 'MOOD', aliases: [], active: true, revision: 0, count: 0 }
     vi.mocked(classification.tags).mockResolvedValue([tag1])
     wrapper?.unmount()
     wrapper = mount(SongsView, { global: { plugins: [router, ElementPlus] } })
     await flushPromises()
-    const unclassifiedChip = wrapper.findAll('.quick-filter-chip').find(c => c.text().includes('未分类'))
-    await unclassifiedChip!.trigger('click')
-    await flushPromises()
+    await router.replace('/library/songs?unclassified=true&tagIds=tag-1'); await flushPromises()
     expect(songs.list).toHaveBeenLastCalledWith(expect.objectContaining({ unclassified: true }))
-    const clearBtn = wrapper.find('.quick-filter-clear')
+    const clearBtn = wrapper.find('.filter-reset')
     await clearBtn.trigger('click')
     await flushPromises()
     expect(songs.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'ALL' }))
@@ -245,14 +279,88 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
     expect(videoDialog.props('song')).toEqual(song())
   })
 
-  it('批量操作模式进入后显示复选框和底部工具栏', async () => {
+  it('批量操作显示页内工具栏，未选择时禁用动作，取消后退出', async () => {
     const batchBtn = wrapper.findAll('button').find(b => b.text() === '批量操作')
     await batchBtn!.trigger('click')
     await flushPromises()
     expect(wrapper.find('.selection-checkbox').exists()).toBe(true)
-    expect(document.body.querySelector('.batch-toolbar')).not.toBeNull()
+    expect(wrapper.find('.batch-toolbar').exists()).toBe(true)
+    expect(wrapper.find('.batch-actions button').attributes('disabled')).toBeDefined()
     await wrapper.find('.selection-checkbox input').setValue(true)
     await flushPromises()
-    expect(document.body.querySelector('.batch-count')?.textContent).toContain('已选 1 首')
+    expect(wrapper.find('.batch-count').text()).toContain('已选 1 首')
+    expect(wrapper.find('.batch-actions button').attributes('disabled')).toBeUndefined()
+    await wrapper.find('.batch-actions button:last-child').trigger('click')
+    expect(wrapper.find('.batch-toolbar').exists()).toBe(false)
+    expect(wrapper.find('.selection-checkbox').exists()).toBe(false)
+  })
+  it('来源筛选保留服务端分页与查询参数', async () => {
+    const sourceSelect = wrapper.findAllComponents({ name: 'ElSelect' })[0]!
+    sourceSelect.vm.$emit('update:modelValue', 'source-1')
+    sourceSelect.vm.$emit('change', 'source-1')
+    await flushPromises()
+    expect(router.currentRoute.value.query.sourceId).toBe('source-1')
+    expect(songs.list).toHaveBeenLastCalledWith(expect.objectContaining({ sourceId: 'source-1', page: 0 }))
+  })
+
+  it('清除组合筛选只发起一次新列表查询', async () => {
+    await router.replace('/library/songs?status=REVIEW&unclassified=true&tagIds=tag-1')
+    await flushPromises()
+    vi.mocked(songs.list).mockClear()
+    await wrapper.get('.filter-reset').trigger('click')
+    await flushPromises()
+    expect(songs.list).toHaveBeenCalledTimes(1)
+    expect(router.currentRoute.value.query).toEqual({})
+  })
+
+})
+
+
+describe('歌曲明细表信息与交互', () => {
+  const props = () => ({ items: [song()], tags: [] as Tag[], columns: [...defaultSongColumns], compact: true, selectionMode: false, selectedIds: [] as string[] })
+  it('只展示已确认且未过期的元数据，平台时长有独立标识', async () => {
+    const row = song()
+    row.metadata = { track: { provider: null, externalId: null, title: null, artists: [], album: '叶惠美', releaseDate: '2003-07-31', durationMs: 269000, aliases: [], coverUrl: null, availability: 'UNKNOWN', fetchedAt: '' }, fields: ['album', 'releaseDate', 'durationMs'], appliedAt: '', stale: false, origins: {} }
+    const w = mount(SongLibraryTable, { props: { ...props(), items: [row] } })
+    expect(w.text()).toContain('叶惠美'); expect(w.text()).toContain('2003-07-31'); expect(w.text()).toContain('平台时长 4:29'); expect(w.text()).toContain('MP4'); expect(w.text()).toContain('12.2 MB')
+    await w.setProps({ items: [{ ...row, metadata: { ...row.metadata, fields: ['album'] } }] })
+    expect(w.text()).not.toContain('平台时长'); expect(w.text()).not.toContain('2003-07-31')
+    await w.setProps({ items: [{ ...row, metadata: { ...row.metadata, stale: true } }] })
+    expect(w.text()).not.toContain('叶惠美'); expect(w.text()).toContain('元数据需重审'); w.unmount()
+  })
+  it('确认歌名歌手后解除复核提示，部分确认或文件变化后仍需复核', async () => {
+    const row = pending()
+    row.metadata = { track: { provider: null, externalId: null, title: '已修正歌名', artists: ['已修正歌手'], album: null, releaseDate: null, durationMs: null, aliases: [], coverUrl: null, availability: 'UNKNOWN', fetchedAt: '' }, fields: ['title', 'artists'], appliedAt: '', stale: false, origins: {} }
+    const w = mount(SongLibraryTable, { props: { ...props(), items: [row] } })
+    expect(w.text()).toContain('歌曲信息已复核'); expect(w.findAll('.table-actions button')[1]!.text()).toBe('编辑')
+    await w.setProps({ items: [{ ...row, metadata: { ...row.metadata, origins: { title: { provider: null, externalId: null, appliedAt: '', kind: 'FILE' } } } }] })
+    expect(w.text()).toContain('优先使用文件内嵌信息')
+    expect(row.result.needsReview).toBe(true)
+    await w.setProps({ items: [{ ...row, metadata: { ...row.metadata, fields: ['album'] } }] })
+    expect(w.text()).toContain('文件名待复核'); expect(w.findAll('.table-actions button')[1]!.text()).toBe('复核')
+    await w.setProps({ items: [{ ...row, metadata: { ...row.metadata, stale: true } }] })
+    expect(w.text()).toContain('文件名待复核'); expect(w.text()).toContain('元数据需重审')
+    w.unmount()
+  })
+
+  it('展示分类名称与来源路径，未知大小不伪装为零', () => {
+    const row = song(); row.fileSize = null
+    row.classification = { songId: row.id, revision: 1, dimensions: { GENRE: { tagIds: ['pop'], origin: 'MANUAL', locked: true, confirmed: true } } }
+    const w = mount(SongLibraryTable, { props: { ...props(), items: [row], tags: [{ id: 'pop', dimension: 'GENRE', name: '流行', aliases: [], active: true, revision: 1, count: 1 }] } })
+    expect(w.text()).toContain('流行'); expect(w.text()).not.toContain('尚未分类'); expect(w.text()).toContain(row.relativePath); expect(w.text()).toContain('大小未提供'); expect(fileSize(0)).toBe('0 B'); w.unmount()
+  })
+  it('勾选本页和单曲通过事件通知父级，部分选择显示半选', async () => {
+    const w = mount(SongLibraryTable, { props: { ...props(), items: [song('one'), song('two')], selectionMode: true, selectedIds: ['one'] } })
+    const checks = w.findAll('input[type=checkbox]')
+    expect((checks[0]!.element as HTMLInputElement).indeterminate).toBe(true)
+    await checks[0]!.setValue(true); expect(w.emitted('selectPage')).toEqual([[true]])
+    await checks[2]!.setValue(true); expect(w.emitted('select')?.[0]).toEqual([expect.objectContaining({ id: 'two' }), true]); w.unmount()
+  })
+  it('播放、复核与详情独立，按需显示解析及时间列', async () => {
+    const row = pending()
+    const w = mount(SongLibraryTable, { props: { ...props(), items: [row], columns: ['parsed', 'timestamps'] } })
+    expect(w.text()).toContain('由文件名提取'); expect(w.text()).toContain('扫描 / 修改时间'); expect(w.text()).not.toContain('专辑 / 发行信息')
+    for (const button of w.findAll('.table-actions button')) await button.trigger('click')
+    expect(w.emitted('play')).toEqual([[row]]); expect(w.emitted('review')).toEqual([[row]]); expect(w.emitted('detail')).toEqual([[row]]); w.unmount()
   })
 })

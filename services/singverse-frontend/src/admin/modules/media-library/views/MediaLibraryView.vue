@@ -203,7 +203,7 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
       </ElCard>
       <ElButton v-if="moreSources" :loading="loading" @click="load(true)">显示更多位置</ElButton>
     </section>
-    <p class="feature-note">扫描只整理歌曲信息，不会修改或删除原文件。文件名识别不代表已验证可播放。</p>
+    <p class="feature-note">本地目录优先读取音频与视频内嵌标签，缺失信息用文件名补充；WebDAV 按文件名整理。扫描不会修改原文件，不代表已验证可播放。</p>
     <ElDialog v-model="dialog" :title="editing ? '编辑歌曲位置' : '添加歌曲位置'" width="min(560px, calc(100vw - 32px))" class="media-dialog" :close-on-click-modal="false" :close-on-press-escape="!saving" :show-close="!saving" :before-close="done => { if (!saving) done() }" @closed="closed">
       <ElForm label-position="top" @submit.prevent="save">
         <div v-if="!editing" class="source-types" aria-label="位置类型"><ElButton :type="draft.type === 'LOCAL' ? 'primary' : 'default'" :disabled="saving" @click="changeType('LOCAL')">本地目录</ElButton><ElButton :type="draft.type === 'WEBDAV' ? 'primary' : 'default'" :disabled="saving" @click="changeType('WEBDAV')">WebDAV</ElButton></div>
@@ -229,7 +229,7 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
           <p v-if="selectedProfile" class="profile-help">{{ enabledEntries.length }} 条启用规则，按方案中的顺序匹配，第一条完整命中生效。</p>
           <p v-if="selectedProfile && !enabledEntries.length" class="profile-help">此方案没有启用规则，扫描结果会标记为需复核，不会使用其他方案兜底。</p>
           <p v-if="!profilesLoading && !profilesError && !selectedProfile" class="profile-help">所选方案已不可用，请重新选择。</p>
-          <p class="profile-help">{{ draft.type === 'LOCAL' ? '保存后手动扫描，提取歌名、歌手等文件名信息。' : '保存后手动发起后台扫描，按文件名提取歌曲信息。' }} <a href="#/library/filename-parser-profiles">管理解析方案 ↗</a></p>
+          <p class="profile-help">{{ draft.type === 'LOCAL' ? '保存后扫描，优先使用文件内的歌名、歌手、专辑与发行日期，缺失时用文件名补充。' : '保存后手动发起后台扫描，按文件名提取歌曲信息。' }} <a href="#/library/filename-parser-profiles">管理解析方案 ↗</a></p>
         </ElFormItem>
         </details>
         <p class="profile-help">使用{{ profileName(draft.parserProfileId) }}，可在更多设置中修改。</p>
@@ -281,22 +281,22 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
 .source-menu summary:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 2px; }
 .source-cards { display: grid; gap: 20px; min-height: 120px; }
 .source-content { display: flex; align-items: center; gap: 24px; }
-.source-icon { background: var(--el-color-primary-light-9); color: var(--el-color-primary); padding: 20px; border-radius: var(--sv-r-sm); font-size: 32px; }
+.source-icon { background: var(--el-color-primary-light-9); color: var(--el-color-primary); padding: 20px; border-radius: var(--sv-radius-sm); font-size: 32px; }
 .source-info { flex: 1; min-width: 0; }
 .source-title { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .source-title h2 { margin: 0; font-size: 20px; }
 .source-location { overflow-wrap: anywhere; color: var(--el-text-color-regular); }
 .source-menu { position: relative; }
-.source-menu summary { cursor: pointer; padding: 5px 12px; border: 1px solid var(--el-border-color); border-radius: var(--sv-r-sm); list-style: none; }
+.source-menu summary { cursor: pointer; padding: 5px 12px; border: 1px solid var(--el-border-color); border-radius: var(--sv-radius-sm); list-style: none; }
 .source-menu summary::-webkit-details-marker { display: none; }
-.source-menu > div { position: absolute; right: 0; top: 100%; z-index: 2; display: flex; padding: 8px; background: var(--el-bg-color); border: 1px solid var(--el-border-color); border-radius: var(--sv-r-sm); }
+.source-menu > div { position: absolute; right: 0; top: 100%; z-index: 2; display: flex; padding: 8px; background: var(--el-bg-color); border: 1px solid var(--el-border-color); border-radius: var(--sv-radius-sm); }
 .source-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .source-actions .el-button { margin-left: 0; }
 .source-types { display: flex; gap: 12px; margin-bottom: 24px; }
 .source-types .el-button { flex: 1; margin-left: 0; }
-.folder-selection { display: flex; gap: 12px; align-items: center; width: 100%; padding: 12px; border: 1px solid var(--el-border-color); border-radius: var(--sv-r-sm); }
+.folder-selection { display: flex; gap: 12px; align-items: center; width: 100%; padding: 12px; border: 1px solid var(--el-border-color); border-radius: var(--sv-radius-sm); }
 .folder-selection span { flex: 1; overflow-wrap: anywhere; min-width: 0; }
-.source-advanced { margin-top: 24px; padding: 16px; border: 1px solid var(--el-border-color); border-radius: var(--sv-r-sm); }
+.source-advanced { margin-top: 24px; padding: 16px; border: 1px solid var(--el-border-color); border-radius: var(--sv-radius-sm); }
 .source-advanced summary { cursor: pointer; font-weight: 600; }
 .source-advanced summary span { font-weight: normal; color: var(--el-text-color-secondary); margin-left: 8px; }
 .source-advanced[open] summary { margin-bottom: 20px; }

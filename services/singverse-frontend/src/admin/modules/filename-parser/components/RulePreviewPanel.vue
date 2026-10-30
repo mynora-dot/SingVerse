@@ -25,9 +25,9 @@ const statuses: Record<string, string> = { DISABLED: '已停用', NO_MATCH: '未
 .preview-result pre {
   margin: 8px 0 0;
   padding: 10px 12px;
-  background: var(--sv-surface-muted);
-  border: 1px solid var(--sv-line);
-  border-radius: var(--sv-r-xs);
+  background: var(--sv-surface-3);
+  border: 1px solid var(--sv-border-subtle);
+  border-radius: var(--sv-radius-sm);
 }
 .preview-result .el-table {
   margin-top: 12px;

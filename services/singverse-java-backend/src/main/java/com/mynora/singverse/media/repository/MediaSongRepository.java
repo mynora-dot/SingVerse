@@ -12,13 +12,19 @@ import org.springframework.stereotype.Repository;
 public class MediaSongRepository {
     public record Stored(String id, String sourceId, String relativePath, String pathHash,
             Long fileSize, String modifiedAt, String scannedAt, String profileId, long revision,
-            String ruleId, String resultJson, boolean needsReview) {}
+            String ruleId, String resultJson, boolean needsReview, String embeddedTagsJson) {
+        public Stored(String id, String sourceId, String relativePath, String pathHash, Long fileSize, String modifiedAt,
+                String scannedAt, String profileId, long revision, String ruleId, String resultJson, boolean needsReview) {
+            this(id, sourceId, relativePath, pathHash, fileSize, modifiedAt, scannedAt, profileId, revision, ruleId, resultJson, needsReview, null);
+        }
+    }
     private final MediaSongMapper mapper;
+    private final com.mynora.singverse.media.artist.ArtistMapper artists;
     private final ObjectMapper json;
     private final com.mynora.singverse.media.metadata.MetadataMapper metadata;
 
-    public MediaSongRepository(MediaSongMapper mapper, ObjectMapper json, com.mynora.singverse.media.metadata.MetadataMapper metadata) {
-        this.mapper = mapper; this.json = json; this.metadata = metadata;
+    public MediaSongRepository(MediaSongMapper mapper, ObjectMapper json, com.mynora.singverse.media.metadata.MetadataMapper metadata, com.mynora.singverse.media.artist.ArtistMapper artists) {
+        this.artists=artists; this.mapper = mapper; this.json = json; this.metadata = metadata;
     }
 
     public String encode(FilenameParseResult result) {
@@ -38,7 +44,7 @@ public class MediaSongRepository {
                 page, size, mapper.searchCount(sourceId, keyword, review, tagGroups, unclassified));
     }
     public long count(String sourceId) { return mapper.count(sourceId); }
-    public void delete(String sourceId) { metadata.lock(); metadata.cleanupSource(sourceId); mapper.delete(sourceId); }
+    public void delete(String sourceId) { metadata.lock(); metadata.cleanupSource(sourceId); artists.clearSource(sourceId); mapper.delete(sourceId); }
     public void replace(String sourceId, List<Stored> songs) {
         metadata.lock();
         mapper.delete(sourceId);
@@ -64,21 +70,66 @@ public class MediaSongRepository {
                     (String) row.get("modified_at"), row.get("scanned_at").toString(),
                     row.get("parser_profile_id").toString(), ((Number) row.get("parser_revision")).longValue(),
                     (String) row.get("selected_rule_id"),
-                    json.readValue(row.get("result_json").toString(), FilenameParseResult.class), applied(row), new com.mynora.singverse.media.classification.ClassificationDtos.State(
+                    json.readValue(row.get("result_json").toString(), FilenameParseResult.class), artistOverride(row,effectiveApplied(row)), new com.mynora.singverse.media.classification.ClassificationDtos.State(
                             row.get("id").toString(), row.get("classification_revision")==null?0:((Number)row.get("classification_revision")).longValue(),
                             row.get("classification_state")==null?java.util.Map.of():json.readValue(row.get("classification_state").toString(),new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String,com.mynora.singverse.media.classification.ClassificationDtos.Value>>() {})));
         } catch (JsonProcessingException error) {
             throw new IllegalStateException("Stored song result is invalid", error);
         }
     }
+    private com.mynora.singverse.media.metadata.MetadataDtos.Applied artistOverride(Map<String,Object> row, com.mynora.singverse.media.metadata.MetadataDtos.Applied prior) throws JsonProcessingException {
+        var value=artists.override(row.get("source_id").toString(),com.mynora.singverse.auth.crypto.AuthCrypto.hash(row.get("relative_path").toString()));
+        if(value==null)return prior;
+        if(value.get("artists_json")==null){
+            if(prior==null||!prior.origins().containsKey("artists")||!"MANUAL".equals(prior.origins().get("artists").kind()))return prior;
+            var f=new java.util.HashSet<>(prior.fields());f.remove("artists");var o=new java.util.HashMap<>(prior.origins());o.remove("artists");
+            return new com.mynora.singverse.media.metadata.MetadataDtos.Applied(prior.track(),f,prior.appliedAt(),prior.stale(),o);
+        }
+        var parsed=json.readValue(row.get("result_json").toString(),FilenameParseResult.class);
+        var t=prior!=null&&!prior.stale()?prior.track():null;
+        List<String> names=json.readValue(value.get("artists_json").toString(),new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){});
+        var fields=new java.util.HashSet<String>(t==null?java.util.Set.of():prior.fields());fields.add("artists");
+        var origins=new java.util.HashMap<String,com.mynora.singverse.media.metadata.MetadataDtos.Origin>(t==null?java.util.Map.of():prior.origins());
+        String now=row.get("scanned_at").toString();origins.put("artists",new com.mynora.singverse.media.metadata.MetadataDtos.Origin(null,null,now,"MANUAL"));
+        var track=new com.mynora.singverse.media.metadata.ExternalTrack(t==null?null:t.provider(),t==null?null:t.externalId(),t==null?parsed.title():t.title(),names,t==null?null:t.album(),t==null?null:t.durationMs(),t==null?null:t.releaseDate(),t==null?java.util.List.of():t.aliases(),t==null?null:t.coverUrl(),"UNKNOWN",t==null?java.time.OffsetDateTime.parse(now):t.fetchedAt());
+        return new com.mynora.singverse.media.metadata.MetadataDtos.Applied(track,fields,now,false,origins);
+    }
+    private com.mynora.singverse.media.metadata.MetadataDtos.Applied effectiveApplied(Map<String,Object> row) throws JsonProcessingException {
+        var prior = applied(row);
+        if (row.get("embedded_tags_json") == null) return prior;
+        var tags = json.readValue(row.get("embedded_tags_json").toString(), com.mynora.singverse.infrastructure.compute.MediaTagsClient.Tags.class);
+        var valid = prior != null && !prior.stale() ? prior : null;
+        var track = valid == null ? null : valid.track();
+        var fields = new java.util.HashSet<String>(valid == null ? java.util.Set.of() : valid.fields());
+        var origins = new java.util.HashMap<String, com.mynora.singverse.media.metadata.MetadataDtos.Origin>(valid == null ? java.util.Map.of() : valid.origins());
+        String now = row.get("scanned_at").toString();
+        for (String field : tags.fields()) {
+            fields.add(field); origins.put(field, new com.mynora.singverse.media.metadata.MetadataDtos.Origin(null,null,now,"FILE"));
+        }
+        if (tags.fields().isEmpty()) return prior;
+        var merged = new com.mynora.singverse.media.metadata.ExternalTrack(null,null,
+            tags.title() != null ? tags.title() : track == null ? null : track.title(),
+            !tags.artists().isEmpty() ? tags.artists() : track == null ? java.util.List.of() : track.artists(),
+            tags.album() != null ? tags.album() : track == null ? null : track.album(),
+            track == null ? null : track.durationMs(),
+            tags.releaseDate() != null ? tags.releaseDate() : track == null ? null : track.releaseDate(),
+            track == null ? java.util.List.of() : track.aliases(), track == null ? null : track.coverUrl(),"UNKNOWN",java.time.OffsetDateTime.parse(now));
+        if(track!=null)merged=merged.withArtistRefs(track.artistRefs());
+        return new com.mynora.singverse.media.metadata.MetadataDtos.Applied(merged,fields,now,false,origins);
+    }
     private com.mynora.singverse.media.metadata.MetadataDtos.Applied applied(Map<String, Object> row) throws JsonProcessingException {
         if (row.get("metadata_track") == null) return null;
         var track = json.readValue(row.get("metadata_track").toString(), com.mynora.singverse.media.metadata.ExternalTrack.class);
         java.util.Set<String> fields = json.readValue(row.get("metadata_fields").toString(), new com.fasterxml.jackson.core.type.TypeReference<java.util.Set<String>>() {});
+        var origins = json.readValue(row.get("metadata_origins").toString(), new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, com.mynora.singverse.media.metadata.MetadataDtos.Origin>>() {});
+        fields = new java.util.HashSet<>(fields);
+        fields.removeIf(field -> origins.containsKey(field) && "FILE".equals(origins.get(field).kind()));
+        origins.keySet().retainAll(fields);
+        if (fields.isEmpty()) return null;
         String current = fingerprint(row.get("id").toString(), size(row), (String) row.get("modified_at"));
         return new com.mynora.singverse.media.metadata.MetadataDtos.Applied(track, fields,
                 row.get("metadata_applied_at").toString(), !current.equals(row.get("metadata_fingerprint")),
-                json.readValue(row.get("metadata_origins").toString(), new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, com.mynora.singverse.media.metadata.MetadataDtos.Origin>>() {}));
+                origins);
     }
 
 }

@@ -18,14 +18,21 @@ server:
   max-http-request-header-size: 16KB
   port: ${SERVER_PORT:8080}
 singverse:
+  tv:
+    release-directory: ${SINGVERSE_TV_RELEASE_DIRECTORY:}
+    discovery-address: ${SINGVERSE_TV_DISCOVERY_ADDRESS:}
+    discovery-port: ${SINGVERSE_TV_DISCOVERY_PORT:18080}
   auth:
     key-file: ${SINGVERSE_AUTH_KEY_FILE:}
     public-origin: ${SINGVERSE_PUBLIC_ORIGIN:}
     trusted-proxies: ${SINGVERSE_TRUSTED_PROXIES:}
   metadata:
     cache-path: ${METADATA_CACHE_PATH:./data/metadata/covers}
+  transcoding:
+    directory: ${TRANSCODE_VERSION_PATH:./data/transcoding}
   compute:
     base-url: ${COMPUTE_NODE_URL:}
+    token-file: ${COMPUTE_AUTH_TOKEN_FILE:}
 management:
   endpoints:
     web:

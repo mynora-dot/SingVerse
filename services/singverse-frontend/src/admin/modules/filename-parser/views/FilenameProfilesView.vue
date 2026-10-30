@@ -37,7 +37,7 @@ const signature = computed(() => JSON.stringify(draft.value))
 const dirty = computed(() => workspace.value !== null && signature.value !== baseline.value)
 const editable = computed(() => !!workspace.value && !busy.value && !loading.value)
 const available = computed(() => workspace.value?.definitions.filter(d => d.type !== 'BUILTIN' && !draft.value.entries.some(e => e.ruleId === d.id)) ?? [])
-const entrySummary = computed(() => draft.value.entries.map(entry => `${ruleName(entry.ruleId)}${entry.enabled ? '' : '（已停用）'}`).join('、'))
+const enabledEntries = computed(() => draft.value.entries.filter(entry => entry.enabled).length)
 const formatRanks: Record<string, number> = { MATCHED: 0, PARTIAL: 1, AMBIGUOUS: 2, NO_MATCH: 3, DISABLED: 4 }
 const gallery = computed(() => formatItems(workspace.value).map(item => ({ ...item, attempt: attemptFor(detection.value, item.id) })).sort((a, b) => {
   if (!detection.value) return 0
@@ -49,7 +49,7 @@ const formatsHint = computed(() => {
   return '点一下就能加进方案；先做第 1 步检测，能识别的会排在前面。'
 })
 const saveHint = computed(() => draft.value.entries.length
-  ? `已选 ${draft.value.entries.length} 种格式：${entrySummary.value}。改完点“保存方案”生效。`
+  ? `已选 ${draft.value.entries.length} 种格式，${enabledEntries.value} 种启用、${draft.value.entries.length - enabledEntries.value} 种停用。修改后保存方案生效。`
   : '还没有选格式；点上面第 2 步的卡片，或在第 4 步手动添加。')
 let generation = 0
 let detectGeneration = 0
@@ -257,7 +257,7 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
           <ElCard shadow="never" class="profile-draft">
             <div class="step-head"><span class="step-no">3</span><div><h2>方案与保存</h2><p class="muted">{{ saveHint }}</p></div></div>
             <div class="editor-head">
-              <div class="editor-id"><ElInput v-model="draft.name" class="name-field" maxlength="100" placeholder="未命名方案" aria-label="方案名称" :disabled="!editable" @keyup.enter="save" /></div>
+              <div class="editor-id"><label class="name-label" for="parser-profile-name">方案名称</label><ElInput id="parser-profile-name" v-model="draft.name" class="name-field" maxlength="100" placeholder="未命名方案" aria-label="方案名称" :disabled="!editable" @keyup.enter="save" /></div>
               <div class="editor-actions"><ElTag :type="dirty ? 'warning' : 'success'" size="small" effect="light" round>{{ dirty ? '未保存草稿' : '已保存方案' }}</ElTag><ElButton type="primary" :loading="busy" :disabled="!editable || !dirty || conflict" @click="save">保存方案</ElButton><ElButton v-if="selectedId && selectedId !== 'default'" type="danger" plain :disabled="!editable" @click="remove">删除方案</ElButton></div>
               <p class="editor-meta">{{ selectedId ? '编辑已保存方案' : '新方案草稿' }}</p>
               <p v-if="selectedId === 'default'" class="muted editor-note">默认方案供旧的歌曲导入流程使用，可以改名或清空，但不能删除。</p>
@@ -265,7 +265,7 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
           </ElCard>
           <ElCard shadow="never" class="profile-editor">
             <details class="rules-help profiles-advanced">
-              <summary>4．我要自己排顺序、启停，或用自定义格式</summary>
+              <summary>4．高级配置：顺序、启停与自定义格式</summary>
               <div class="members-head"><h3>执行顺序 <span class="count-badge">{{ draft.entries.length }}</span></h3><RouterLink class="library-link" to="/library/filename-parser">自定义格式库 ↗</RouterLink></div>
               <p class="muted preview-hint">按顺序执行，第一条完整命中的格式生效。</p>
               <ol class="entries"><li v-for="(entry, index) in draft.entries" :key="entry.ruleId" class="entry" :class="{ 'entry-disabled': !entry.enabled }"><span class="rule-order">{{ String(index + 1).padStart(2, '0') }}</span><div class="entry-body"><div class="entry-title"><strong>{{ ruleName(entry.ruleId) }}</strong><span v-if="!entry.enabled" class="entry-flag">已停用</span></div><code>{{ expressionFor(definition(entry.ruleId), workspace) }}</code><p v-if="!definition(entry.ruleId)" class="inline-error entry-note">引用已失效，请加载最新配置后明确移除此项或选择其他格式。</p><p v-if="rowError(entry.ruleId, index)" class="inline-error entry-note" role="alert">{{ rowError(entry.ruleId, index) }}</p></div><div class="entry-controls"><ElSwitch v-model="entry.enabled" :aria-label="`启用 ${ruleName(entry.ruleId)}`" :disabled="!editable" size="small" /><ElButton size="small" :disabled="!editable || index === 0" :aria-label="`上移 ${ruleName(entry.ruleId)}`" @click="move(index, -1)">上移</ElButton><ElButton size="small" :disabled="!editable || index === draft.entries.length - 1" :aria-label="`下移 ${ruleName(entry.ruleId)}`" @click="move(index, 1)">下移</ElButton><ElButton size="small" class="remove-btn" :disabled="!editable" :aria-label="`移除 ${ruleName(entry.ruleId)}`" @click="draft.entries.splice(index, 1)">移除</ElButton></div></li></ol>
@@ -289,12 +289,12 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
 <style scoped>
 .profiles-page > .page-feedback,
 .profiles-page > .page-status {
-  margin-bottom: var(--sv-s-5);
+  margin-bottom: var(--sv-space-5);
 }
 .page-feedback {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sv-s-3);
+  gap: var(--sv-space-3);
   align-items: center;
 }
 .page-feedback .el-alert {
@@ -302,19 +302,56 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
   min-width: 240px;
 }
 .page-status {
-  color: var(--sv-text-subtle);
-  font-size: var(--sv-fs-meta);
+  color: var(--sv-text-tertiary);
+  font-size: var(--sv-font-meta);
 }
-.name-field :deep(.el-input__wrapper) {
-  padding: 3px 10px;
-  background: var(--sv-surface-muted);
+.editor-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px 24px;
+  align-items: end;
 }
-.name-field :deep(.el-input__inner) {
-  height: 30px;
-  font-size: var(--sv-fs-h2);
-  font-weight: 620;
-  letter-spacing: -0.2px;
+.editor-id { min-width: 0; }
+.name-label { display: block; margin-bottom: 10px; font-size: 13px; font-weight: 600; }
+.editor-id .name-field { margin-top: 0; }
+.name-field :deep(.el-input__wrapper) { min-height: 40px; background: var(--sv-surface-1); }
+.name-field :deep(.el-input__inner) { font-size: 14px; font-weight: 500; }
+.editor-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.editor-actions :deep(.el-button) { margin-left: 0; }
+.editor-meta { grid-column: 1 / -1; font-size: 12px; color: var(--sv-text-secondary); }
+.editor-note { grid-column: 1 / -1; margin-top: -6px; font-size: 12px; line-height: 1.8; }
+.profiles-advanced { padding: 0; background: transparent; }
+.profiles-advanced > summary { font-size: 14px; line-height: 1.8; overflow-wrap: anywhere; }
+.members-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 24px 0 10px; }
+.members-head h3 { display: flex; align-items: center; gap: 10px; font-size: 15px; }
+.library-link { font-size: 12px; }
+.preview-hint { margin: 0 0 18px; font-size: 12px; line-height: 1.8; }
+.entry-controls { flex-wrap: nowrap; gap: 6px; }
+.entry-controls :deep(.el-switch) { margin-right: 8px; }
+.entry-controls :deep(.el-button) { border-color: var(--sv-border-subtle); background: var(--sv-surface-1); min-height: 32px; }
+.add-rule { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; margin: 20px 0 0; padding: 16px; background: var(--sv-surface-3); border-radius: var(--sv-radius-md); }
+.add-rule .native-field { min-width: 0; width: 100%; }
+.preview-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 28px 0 12px; padding-top: 24px; border-top: 1px solid var(--sv-border-subtle); }
+.preview-head h3 { font-size: 15px; }
+.preview-scope { font-size: 12px; color: var(--sv-text-secondary); overflow-wrap: anywhere; }
+.preview-placeholder { margin-top: 16px; padding: 24px 16px; text-align: center; border: 1px dashed var(--sv-border-default); border-radius: var(--sv-radius-md); color: var(--sv-text-secondary); font-size: 12px; }
+@media (max-width: 1200px) {
+  .editor-head { grid-template-columns: minmax(0, 1fr); align-items: start; }
+  .editor-actions { justify-content: flex-start; }
+  .entry { grid-template-columns: 30px minmax(0, 1fr); }
+  .entry-controls { grid-column: 1 / -1; justify-content: flex-end; margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--sv-border-subtle); }
 }
+@media (max-width: 600px) {
+  .editor-head { gap: 16px; }
+  .editor-actions { gap: 10px; }
+  .editor-actions > .el-tag { width: fit-content; }
+  .editor-actions > .el-button { flex: 1; }
+  .entry { gap: 12px; padding: 14px; }
+  .entry-controls { justify-content: flex-start; flex-wrap: wrap; }
+  .entry-controls :deep(.el-button) { flex: 1; }
+  .add-rule { grid-template-columns: minmax(0, 1fr); padding: 14px; }
+}
+
 code {
   display: block;
   white-space: pre-wrap;

@@ -75,7 +75,11 @@ public class NeteaseMusicMetadataProvider implements MusicMetadataProvider {
                     ProviderJson.names(artists, "name"), ProviderJson.text(album, "name", 500),
                     song.has("dt") ? song.path("dt").asInt() : (song.has("duration") ? song.path("duration").asInt() : null),
                     release, aliases, cover, song.path("fee").asInt(0) == 4 ? "UNAVAILABLE" : "AVAILABLE");
-            if (track != null) result.add(track);
+            if (track != null) {
+                var refs=new ArrayList<ExternalTrack.ArtistRef>();
+                for(JsonNode singer:artists){String artistId=singer.path("id").asText("");String artistName=singer.path("name").asText("");if(!artistId.isBlank()&&!artistName.isBlank())refs.add(new ExternalTrack.ArtistRef(provider(),artistId,artistName));}
+                result.add(track.withArtistRefs(refs));
+            }
             if (result.size() >= limit) break;
         }
         return result;

@@ -1,4 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { computeSettingsRoutes } from '../../modules/compute-settings/routes'
+import { aiSettingsRoutes } from '../../modules/ai-settings/routes'
 import { songManagementRoutes } from '../../modules/song-management/routes'
 import { mediaLibraryRoutes } from '../../modules/media-library/routes'
 import { filenameParserRoutes } from '../../modules/filename-parser/routes'
@@ -13,11 +15,14 @@ import { adminBasePath } from '../../core/hosting/mount-path'
 export const router = createRouter({
   history: createWebHashHistory(adminBasePath),
   routes: [
+    { path: "/system/tv-devices", component: () => import("../../modules/tv-devices/TvDevicesView.vue"), meta: { title: "电视设备" } },
     ...mediaLibraryRoutes,
     ...songManagementRoutes,
     ...filenameParserRoutes,
     ...authRoutes,
     ...systemParametersRoutes,
+    ...aiSettingsRoutes,
+    ...computeSettingsRoutes,
     { path: '/', redirect: '/overview' },
     ...overviewRoutes,
     ...systemStatusRoutes,

@@ -1,6 +1,6 @@
 # SingVerse Java 后端
 
-Java21、Spring Boot3.5.16、Maven Wrapper3.9.16。提供启动、配置、Actuator、MyBatis XML 数据访问与数据库连接检查、亲友H5欢迎入口及NAS管理前端静态托管；新增可选的Python计算节点内部能力探测客户端；已增加单管理员账号、会话、TOTP MFA及SQL迁移；已支持管理端原始音视频在线播放，无配对、点歌、聚会播放或计算任务派发。
+Java21、Spring Boot3.5.16、Maven Wrapper3.9.16。提供启动、配置、Actuator、MyBatis XML 数据访问与数据库连接检查、亲友H5欢迎入口及NAS管理前端静态托管；新增可选的Python计算节点内部能力探测客户端；已增加单管理员账号、会话、TOTP MFA及SQL迁移；已支持管理端原始音视频在线播放，已新增 TV 授权、聚会队列与亲友点歌；已增加 compute 实时 HLS 与离线兼容版本编排，详见[转码说明](../../docs/transcoding.md)。
 
 执行下列Maven命令前，从仓库根目录运行`make frontend-build dbmate-setup`（需要Node.js 22.19+和npm），然后进入本目录。Maven缺少管理产物会明确失败，避免打出缺失界面的JAR；修改前端后必须重建。根`make java-backend-test`、`make web-check`与`make backend-check`自动执行这一前置步骤。
 
@@ -29,7 +29,7 @@ SPRING_PROFILES_ACTIVE=mysql ./mvnw spring-boot:run
 
 默认SQLite文件`./data/singverse.db`相对进程工作目录；SQLITE_PATH覆盖并自动建父目录，单连接池启动SELECT 1。mysql Profile通过MYSQL_HOST/PORT/DATABASE/USER/PASSWORD配置，密码必填，不回退SQLite。Spring不自动读取.env。
 
-后续业务授权、任务编排、会话/队列与数据写入继续由Java负责；服务端转解码、AI伴奏分析等重计算统一交给`services/singverse-compute`。设置`COMPUTE_NODE_URL=http://127.0.0.1:8090`配置内部客户端，未设置时返回disabled；`ComputeNodeClient.probe()`只按需请求`/internal/v1/capabilities`，不在启动时请求，也不纳入Actuator依赖。2秒连接/请求超时，不跟随重定向；失败、版本不兼容或非法能力响应返回unavailable。配置仅接受无凭据、路径、查询和fragment的HTTP(S) origin，非法配置明确启动失败。当前尚无公开管理探测接口。Python作为内部执行层融入媒体/AI业务，不增加节点菜单或让客户端直接连接。`backend-check` Profile会运行`ComputeIntegrationIT`，验证实际Python进程上下线与主服务健康/H5隔离；根入口为`make backend-check`，无需MySQL。
+业务授权、扫描编排与唯一业务数据库写入由 Java 负责，FFmpeg 等媒体处理由独立 Python 服务执行。管理员 `/api/v1/compute-node` 读取/保存单个活动节点配置，`POST /api/v1/compute-node/test` 测试草稿而不保存。AUTO 从部署的 `COMPUTE_NODE_URL`、`COMPUTE_AUTH_TOKEN_FILE` 读取连接；MANUAL 使用数据库加密凭据与路径映射；DISABLED 停止新调用。节点不属于 Actuator 健康依赖，不在 Java 启动时连通检查。测试请求 2 秒连接、4 秒响应超时、64 KiB 响应上限，保持 TLS 验证且不跟随重定向；HTTP 限本机/受限内网，禁止链路本地等地址。接口只返回 hasToken；更改地址须重填或明确清除凭据。SQLite/MySQL 配置迁移与 MyBatis XML 同步。每次扫描固定连接快照，后续修改只影响新扫描。`make backend-check` 验证真实 Python 生命周期及主服务健康隔离。
 
 mysql-check是Maven测试Profile，执行MySqlConnectionIT；普通测试独立验证SQLite及H5，临时数据库不污染开发文件。健康端点保留Actuator原生响应，不泄露数据库详情。
 
@@ -214,11 +214,65 @@ cd services/singverse-java-backend
 
 WebDAV 使用保存的地址和加密凭据在服务端发起 GET/HEAD，转发 Range，不把凭据或远端地址返回浏览器。采用 10 秒连接、30 秒读取空闲超时，流式传输，不落盘、不完整缓冲；连接随响应结束/客户端断开清理。上游忽略 Range 时保持 200，拖动能力取决于上游；不跟随 3xx（返回 502），需要支持直接读取的 WebDAV 服务，OpenList 等返回下载跳转的配置需调整，否则暂不能播放。认证/读取错误返回不含远端细节的 502。
 
-只播放原始音视频，不调用 Python、不转码、不创建队列或电视会话。浏览器能否解码取决于容器与视频/音频编码，MP4/WebM 也不保证所有编码都能播放，MKV/AVI 等可能不可播放。Nginx 对视频接口关闭 proxy_buffering/proxy_cache，避免视频临时文件与额外等待；代理读取空闲超时为 60 秒。真实 NAS、WebDAV 提供者、浏览器编码兼容性仍须单独验收。
+原始音视频接口继续只读直放；管理端和 TV 已通过 Java 协商 compute 转码或离线兼容版本，不因预览创建电视会话。浏览器能否解码取决于容器与视频/音频编码，MP4/WebM 也不保证所有编码都能播放，MKV/AVI 等可能不可播放。Nginx 对视频接口关闭 proxy_buffering/proxy_cache，避免视频临时文件与额外等待；代理读取空闲超时为 60 秒。真实 NAS、WebDAV 提供者、浏览器编码兼容性仍须单独验收。
 
 
 ## 音频文件扫描与在线播放
 
 本地目录与 WebDAV 文件名扫描统一支持 MP3、FLAC、WAV、M4A、AAC、OGG、OGA、Opus、WMA、AIF、AIFF、APE，扩展名不区分大小写，沿用现有解析方案提取歌名和歌手。扫描只建立文件名索引，不读取音频内容或内嵌标签；新增格式需重新扫描才会进入歌曲列表，现有扫描数量限制不变。
 
-“在线播放”按扩展名选择音频/视频控件。音频复用已鉴权的 GET/HEAD `/api/v1/media-songs/{id}/video`（为兼容保留原路径），返回 audio/* 媒体类型，沿用 Range、后端 WebDAV 代理、凭据保护与关闭停止加载。音频失败可重试，切换或关闭时移除旧媒体元素。不提供转码，扩展名可入库不保证浏览器能解码；WMA、APE 等通常需要其他播放器。WebDAV 下载重定向限制不变。
+“在线播放”按扩展名选择音频/视频控件。音频复用已鉴权的 GET/HEAD `/api/v1/media-songs/{id}/video`（为兼容保留原路径），返回 audio/* 媒体类型，沿用 Range、后端 WebDAV 代理、凭据保护与关闭停止加载。音频失败可重试，切换或关闭时移除旧媒体元素。不能直放时可使用兼容播放或离线版本；实际支持取决于 compute 工具与源编码。WebDAV 下载重定向限制不变。
+
+
+## 共享 AI 服务
+
+`com.mynora.singverse.ai` 管理模型/搜索协议适配、服务配置、密钥、测试和功能绑定，公开管理员专用 `/api/v1/ai`。业务 SQL 位于 `mappers/ai/AiMapper.xml`，SQLite/MySQL 迁移为 `202610290001_ai_settings.sql`。歌曲分类通过绑定读取模型，保留原配置接口兼容适配及任务快照；业务输入、结果校验、审核和应用仍属于 classification 模块。
+
+外部 HTTP 请求由 Java 发起，不依赖 Python 或前端直连厂商。服务地址与密钥保护、协议边界、迁移及通用搜索契约见 [AI 设置](../../docs/ai-settings.md)。分类仅复用模型服务，本次不使用搜索或增加聊天能力。
+
+
+`assistant` 功能配置复用 `/api/v1/ai/features/assistant`，保存 enabled/displayMode/petId；新迁移同时覆盖 SQLite/MySQL。仅保存展示设置，不接受模型/搜索绑定，不暂停分类任务，不新增聊天或工具执行 API。
+
+## 本地扫描内嵌标签
+
+Java通过 `infrastructure.compute.MediaTagsClient` 请求独立计算服务，不安装或启动FFmpeg/Python。配置 `COMPUTE_NODE_URL` 与只读内部凭据文件 `COMPUTE_AUTH_TOKEN_FILE`；媒体路径必须同时挂载到计算服务的白名单内。Compose默认已连接内部服务，未配置/离线时保留文件名回退。
+
+文件非空歌名/歌手/专辑/发行日期优先，其他字段沿用有效人工/平台结果，再回退文件名。快照保存在media_song.embedded_tags_json，SQLite/MySQL同步迁移；origins.kind=FILE标记文件来源，审核应用保留这些字段。原文件不修改，原始文件名解析证据保留；重新扫描读取新标签，移除标签不保留旧FILE来源字段。WebDAV不下载媒体。详见计算服务README。
+
+## 电视与聚会
+
+`tv` 模块使用独立 Bearer 身份，保留管理员 Cookie/CSRF。设备授权、参与者、邀请、命令和单电视聚会聚合持久化在 `tv_record`，SQL 位于 `mappers/tv/TvMapper.xml`；并发修改先获取数据库写锁，再用修订号 CAS 保存。SQLite/MySQL 迁移为 `202610290005_tv_party.sql`。聚会操作幂等，播放遥测使用独立 eventSeq；下一首必须由电视确认交接。
+
+设备播放复用 MediaPlaybackService，继续只读本地文件与代理 WebDAV，支持 Range；另通过 compute 协商实时 HLS 与离线兼容版本。只读曲库投影裁剪路径及管理信息，分类复用正式标签，歌手精确署名聚合在服务端完成。详见[TV 设计与边界](../../docs/tv-development-design.md)及[OpenAPI](../../contracts/openapi/README.md)。
+
+TV 首页 `/api/v1/tv/home` 复用 MyBatis 曲库分页查询，独立返回全库数量和最近扫描的 8 首歌曲，不受客户端当前搜索影响。`/api/v1/tv/library/songs/{id}` 提供实时详情投影，使用已保存的有效元数据与标签，包含可用专辑、发行日期、时长及展示修订标记。两接口及权限、404、更新后可见性由隔离 HTTP 测试验证；不增加业务表或计算能力。
+
+
+### TV 非转码增强
+
+TV/亲友只读曲库支持有效元数据、拼音全拼/首字母及已解析编号检索（TvLibrary，共享 30 秒只读索引），正式标签过滤仍同维 OR/跨维 AND，先过滤后分页。新增设备专用同名 LRC/SRT/VTT 文本读取和发布目录的 manifest/APK 接口，具体字段见 OpenAPI；来源凭据不对外，文本每个上限 128KiB，发布包上限 256MiB。没有新增业务表，SQL 仍通过现有 TvMapper.xml。
+
+`SINGVERSE_TV_RELEASE_DIRECTORY` 默认空，不启用发布；配置为 Java 可读的专用发布目录，包含 `release.json`（versionCode/versionName）和 `singverse-tv.apk`。客户端仍验证同签名/递增版本，不靠服务端摘要代替签名。Docker 的变量是容器内路径，步骤见 TV README。
+
+原生部署可显式设置 `SINGVERSE_TV_DISCOVERY_ADDRESS`（本机内网绑定地址）与 `SINGVERSE_TV_DISCOVERY_PORT`（电视可达的实际 HTTP 入口，默认18080），发布 `_singverse._tcp.local.`。默认不发布；桥接 Docker 应从宿主机 Avahi/Bonjour 发布，不能用容器 IP 宣称手机或电视可达。发现失败不影响手动连接，广告只含服务与端口信息。
+
+
+### 分类封面持久化
+
+新增SQLite/MySQL迁移202610290006_classification_covers，classification_tag_cover单表原子保存规范化JPEG和SHA-256版本，备份业务数据库即包含分类封面，不写用户媒体目录。SQL位于ClassificationMapper.xml，列表仅联查版本，不读取图片BLOB。管理员GET/PUT/DELETE `/api/v1/classification/tags/{id}/cover`；写入需Cookie+CSRF和当前封面版本（首次上传为空），独立于标签revision，冲突409。PUT multipart字段file/version，JPEG/PNG最多2,000,000字节、单边最多4096px，规范化最长边1280pxJPEG，不信任文件名/MIME声明，不接受SVG或远程URL。
+
+TV/有效参与者GET `/api/v1/tv/library/classification-tags/{id}/cover`只读启用标签，未上传/已移除/已停用返回404，未授权401。正式标签投影含coverPath/coverVersion，图片响应no-store/nosniff。无转码任务或Python变更。
+
+## 自动歌手库
+
+扫描后按歌曲有效署名自动生成，不再人工建档/关联。管理端歌手详情可打开歌曲编辑器订正歌手，NAS 覆盖值优先于文件标签并在重新扫描后保留；恢复扫描值需确认。首次后台从网易云/QQ 核对歌曲并取真实歌手头像，失败有限重试，无可靠匹配保留占位。上传图片优先，移除后暂停自动补图。TV 自动展示同步结果和受权图片，保留返回焦点。迁移 `202610290008`，新增接口、来源与状态见 OpenAPI 和 [自动歌手库说明](../../docs/artist-library.md)。
+
+## 共享歌单与 AI 建议
+
+管理员 `/api/v1/playlists` 分页/新建，`/{id}` 读取/编辑/删除，`/generate` 仅生成建议预览；TV `/api/v1/tv/library/playlists`、`/{id}`、`/{id}/songs` 只读。UUID 创建去重，revision 编辑/删除保护；已移除歌曲保留引用并在 TV 跳过。迁移 `202610300001`，SQL 见 `mappers/playlist/PlaylistMapper.xml`。复用 AI 模型配置与多协议客户端，不额外建立 AI 功能绑定或服务；只传候选标题/歌手/分类/ID，不传路径、凭据和媒体，返回曲库外 ID 拒绝采用。细节见 [歌单说明](../../docs/playlists.md)。
+
+## 手机原生曲库只读接口
+
+`mobile.MobileLibraryController` 提供管理员 Cookie 鉴权的 GET `/api/v1/mobile/library/songs`、`/{id}`、`/{id}/text-tracks`。列表支持 q/page/size/tagIds/unclassified/artistId，复用现有曲库拼音索引与分类/歌手筛选；返回媒体条目而非按同名合并的歌曲组。DTO 补充 mediaType/format/language，未知可播状态保持 UNKNOWN，封面为已有管理员资源路径。歌词复用受限来源内同名 LRC/SRT/VTT 读取，不读取任意路径。
+
+手机继续使用现有 auth、artists、classification/tags、playlists 和 transcoding 接口，不创建 TV 设备/聚会，不新增表或业务 SQL。`MobileLibraryHttpTest` 在随机端口和隔离 SQLite 验证鉴权、真实扫描、分页、中文/拼音、分类及歌手筛选、来源边界与文本大小限制。

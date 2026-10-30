@@ -1,0 +1,8 @@
+{
+  "source": "https://repo.jellyfin.org/test-videos/",
+  "samples": [
+    {"path": "HDR/Dolby Vision/Test Jellyfin 1080p DV P5.mp4", "filename": "jellyfin-P5.mp4", "sha256": "c0dedeeef7d11c404955e126f9544318cdeb6eab62423528cfde9b567e8ca1a4", "profile": 5, "compatibility": 0},
+    {"path": "HDR/Dolby Vision/Test Jellyfin 1080p DV P8.1.mp4", "filename": "jellyfin-P8.1.mp4", "sha256": "266cda3ffbf46bb73daaf38716ed7dfb2b49e689ca5eb18c585426c1a57957d4", "profile": 8, "compatibility": 1},
+    {"path": "HDR/Dolby Vision/Test Jellyfin 1080p DV P8.4.mp4", "filename": "jellyfin-P8.4.mp4", "sha256": "eaf21cc55e31694758c9d5cf2ba9f7b448f8447655907380259d4e42a2ea7276", "profile": 8, "compatibility": 4}
+  ]
+}

@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElAlert, ElButton, ElCard, ElEmpty, ElInput, ElPagination } from 'element-plus'
-import { RefreshRight, Search, FolderOpened } from '@element-plus/icons-vue'
+import { ElAlert, ElButton, ElCard, ElEmpty, ElInput, ElPagination, ElSelect, ElOption, ElSkeleton, ElPopover } from 'element-plus'
+import { RefreshRight, Search, FolderOpened, EditPen } from '@element-plus/icons-vue'
+import { playback as transcoding } from '../../transcoding/playback'
+import { ElMessage } from 'element-plus'
 import { classification } from '../../classification/api/classification'
 import ClassificationEditor from '../../classification/components/ClassificationEditor.vue'
 import type { Tag } from '../../classification/types'
@@ -10,16 +12,20 @@ import SingleSongScrapeDialog from '../../metadata/components/SingleSongScrapeDi
 import { singleReview } from '../../metadata/api/single-review'
 import SongVideoDialog from '../components/SongVideoDialog.vue'
 import SongCard from '../components/SongCard.vue'
+import SongLibraryTable from '../components/SongLibraryTable.vue'
+import { songColumns, defaultSongColumns, songTags, needsSongReview, identityReviewed, type SongColumn } from '../presentation'
 import SongDetailDrawer from '../components/SongDetailDrawer.vue'
-import QuickFilters from '../components/QuickFilters.vue'
 import { songs } from '../api/songs'
 import type { MediaSong, MediaSource } from '../../media-library/types'
 
 const route = useRoute(), router = useRouter()
+const columns = ref<SongColumn[]>([...defaultSongColumns]), compact = ref(true)
+const tagsLoaded = ref(false)
+const visibleRange = computed(() => items.value.length ? `${(page.value - 1) * pageSize.value + 1}–${(page.value - 1) * pageSize.value + items.value.length}` : '0')
 const items = ref<MediaSong[]>([]), sources = ref<MediaSource[]>([]), total = ref(0), page = ref(1)
 const pageSize = ref(20)
 const tags = ref<Tag[]>([]), tagIds = ref<string[]>([]), unclassified = ref(false), classificationError = ref(''), editingClasses = ref<string[]>([])
-async function loadTags() { try { tags.value = await classification.tags(); classificationError.value = '' } catch (e) { classificationError.value = e instanceof Error ? e.message : '分类词表读取失败' } }
+async function loadTags() { try { const result = await classification.tags(); if (!active) return; tags.value = result; tagsLoaded.value = true; classificationError.value = '' } catch (e) { classificationError.value = e instanceof Error ? e.message : '分类词表读取失败' } }
 async function changeSize() { await apply(1) }
 const sourceId = ref(''), keyword = ref(''), status = ref('ALL')
 const loading = ref(false), loaded = ref(false), error = ref(''), sourcesError = ref('')
@@ -37,18 +43,20 @@ function toggleSelection(song: MediaSong, selected: boolean) {
     selectedIds.value = selectedIds.value.filter(id => id !== song.id)
   }
 }
+async function convertSelected() { try { await transcoding.offline(selectedIds.value, '1080p'); ElMessage.success('已加入兼容版本转换队列') } catch (failure) { ElMessage.error(failure instanceof Error ? failure.message : '提交失败') } }
 function classifySelected() { router.push({ path: '/library/classification', query: selectedIds.value.length ? { songIds: selectedIds.value.join(',') } : {} }) }
 function openScrape() { router.push({ path: '/library/songs/metadata', query: selectedIds.value.length ? { songIds: selectedIds.value.join(',') } : {} }) }
 
 function openDetail(song: MediaSong) { detailSong.value = song }
 function openReview(song: MediaSong) { detailSong.value = null; scraping.value = song }
 
-const filtered = computed(() => !!sourceId.value || !!keyword.value.trim() || status.value !== 'ALL' || tagIds.value.length > 0 || unclassified.value)
+const filtered = computed(() => !!route.query.sourceId || !!route.query.q || (typeof route.query.status === 'string' && route.query.status !== 'ALL') || !!route.query.tagIds || route.query.unclassified === 'true')
 
 // 统计
-const reviewCount = computed(() => items.value.filter(s => s.result.needsReview).length)
-const unclassifiedCount = computed(() => items.value.filter(s => !Object.keys(s.classification?.dimensions ?? {}).length).length)
-const matchedCount = computed(() => items.value.filter(s => !s.result.needsReview).length)
+const reviewCount = computed(() => items.value.filter(needsSongReview).length)
+const unclassifiedCount = computed(() => items.value.filter(s => !songTags(s, tags.value).some(tag => tag.active)).length)
+const reviewedCount = computed(() => items.value.filter(identityReviewed).length)
+const matchedCount = computed(() => items.value.filter(s => !s.result.needsReview && !identityReviewed(s)).length)
 
 let active = true, generation = 0, reviewGeneration = 0
 watch(() => route.query.reviewSongId, async id => {
@@ -105,49 +113,23 @@ onBeforeUnmount(() => { active = false; generation++ })
 </script>
 
 <template>
-  <section class="songs-page">
+  <section class="songs-page" :class="{ 'is-selecting': selectionMode }">
     <div class="page-heading">
-      <div>
-        <h1>歌曲库</h1>
-        <p class="page-description">扫描得到的全部歌曲，统一查看、分类与元数据管理。</p>
-      </div>
+      <h1>全部歌曲</h1>
       <div class="page-actions">
-        <ElButton @click="router.push('/library/songs/metadata')">刮削元数据</ElButton>
-        <ElButton :icon="FolderOpened" @click="router.push('/library/media')">管理来源</ElButton>
-      </div>
-    </div>
-
-    <!-- 统计卡片 -->
-    <div v-if="loaded && total > 0" class="songs-stats">
-      <div class="stat-card stat-warning">
-        <span class="stat-icon">⚠️</span>
-        <div class="stat-content">
-          <strong class="stat-value">{{ reviewCount }}</strong>
-          <span class="stat-label">待复核</span>
-        </div>
-      </div>
-      <div class="stat-card stat-info">
-        <span class="stat-icon">📦</span>
-        <div class="stat-content">
-          <strong class="stat-value">{{ unclassifiedCount }}</strong>
-          <span class="stat-label">未分类</span>
-        </div>
-      </div>
-      <div class="stat-card stat-success">
-        <span class="stat-icon">✅</span>
-        <div class="stat-content">
-          <strong class="stat-value">{{ matchedCount }}</strong>
-          <span class="stat-label">完整</span>
-        </div>
+        <ElButton text @click="router.push('/library/playlists')">歌单管理</ElButton>
+        <ElButton text :icon="EditPen" @click="router.push('/library/songs/metadata')">整理元数据</ElButton>
+        <ElButton text :icon="FolderOpened" @click="router.push('/library/media')">管理来源</ElButton>
       </div>
     </div>
 
     <!-- 筛选与搜索 -->
-    <ElCard shadow="never" class="filters-card">
+    <ElCard shadow="never" class="filters-card" aria-label="歌曲搜索与筛选">
       <div class="filters-row">
         <ElInput
           v-model="keyword"
-          placeholder="搜索歌曲或文件名..."
+          placeholder="搜索文件名（歌名 / 歌手）"
+          aria-label="搜索歌曲文件"
           :prefix-icon="Search"
           maxlength="200"
           clearable
@@ -157,21 +139,28 @@ onBeforeUnmount(() => { active = false; generation++ })
         <ElButton type="primary" @click="apply()" :loading="loading">搜索</ElButton>
       </div>
 
-      <QuickFilters
-        v-model:status="status"
-        v-model:unclassified="unclassified"
-        v-model:tag-ids="tagIds"
-        @update:status="apply()"
-        @update:unclassified="apply()"
-      />
+      <div class="songs-filter-selects">
+        <ElSelect v-model="sourceId" aria-label="歌曲来源" placeholder="全部来源" filterable clearable @change="apply()"><ElOption label="全部来源" value="" /><ElOption v-for="source in sources" :key="source.id" :label="source.name" :value="source.id" /></ElSelect>
+        <ElSelect v-model="tagIds" aria-label="分类标签" placeholder="按分类筛选" filterable multiple collapse-tags clearable @change="apply()"><ElOption v-for="tag in tags.filter(t => t.active)" :key="tag.id" :label="tag.name" :value="tag.id" /></ElSelect>
+      </div>
+      <p v-if="sourcesError" class="filter-load-error">{{ sourcesError }} <ElButton link @click="loadSources">重试来源</ElButton></p>
+      <p v-if="classificationError" class="filter-load-error">{{ classificationError }} <ElButton link @click="loadTags">重试分类</ElButton></p>
+      <ElButton v-if="filtered || keyword.trim() || sourceId || tagIds.length" class="filter-reset" text @click="reset">重置筛选</ElButton>
     </ElCard>
 
     <!-- 操作栏 -->
     <div class="songs-toolbar">
       <div class="toolbar-left">
-        <h2>全部歌曲 <span class="count-badge">{{ total }}</span></h2>
+        <h2>{{ filtered ? '筛选结果' : '歌曲列表' }} <span class="count-badge">{{ total }}</span></h2>
+        <span v-if="loaded && items.length" class="page-range">第 {{ visibleRange }} 首</span><span class="table-scroll-hint">更多列可横向滚动</span>
       </div>
       <div class="toolbar-right">
+        <label class="page-size-selector top-page-size">每页<select v-model.number="pageSize" aria-label="每页歌曲数" :disabled="loading" @change="changeSize"><option :value="20">20</option><option :value="50">50</option><option :value="100">100</option></select>首</label>
+        <label class="density-control"><input v-model="compact" type="checkbox">紧凑显示</label>
+        <ElPopover placement="bottom-end" :width="245" trigger="click">
+          <template #reference><ElButton class="column-settings-button">显示列</ElButton></template>
+          <div class="column-settings"><strong>自定义表格信息</strong><p>歌曲、歌手和操作始终显示</p><label v-for="column in songColumns" :key="column.id"><input v-model="columns" type="checkbox" :value="column.id">{{ column.label }}</label><ElButton text type="primary" @click="columns = [...defaultSongColumns]">恢复默认列</ElButton></div>
+        </ElPopover>
         <ElButton
           v-if="!selectionMode"
           @click="enterSelectionMode"
@@ -181,6 +170,21 @@ onBeforeUnmount(() => { active = false; generation++ })
         <ElButton :icon="RefreshRight" :loading="loading" @click="load">刷新</ElButton>
       </div>
     </div>
+
+    <div v-if="loaded && items.length && !loading" class="page-summary" aria-label="当前页歌曲统计"><span>仅本页</span><span><b>{{ reviewCount }}</b> 待复核</span><span><b>{{ matchedCount }}</b> 文件名完整</span><span v-if="reviewedCount"><b>{{ reviewedCount }}</b> 已复核</span><span v-if="tagsLoaded"><b>{{ unclassifiedCount }}</b> 未分类</span></div>
+
+
+      <div v-if="selectionMode" class="batch-toolbar" role="region" aria-label="歌曲批量操作">
+        <div class="batch-info">
+          <span class="batch-count">已选 {{ selectedIds.length }} 首 · 本页</span><ElButton text @click="selectedIds = items.map(song => song.id)">全选本页</ElButton><ElButton v-if="selectedIds.length" text @click="selectedIds = []">清空选择</ElButton>
+        </div>
+        <div class="batch-actions">
+          <ElButton :disabled="!selectedIds.length" type="primary" @click="openScrape">刮削元数据</ElButton>
+          <ElButton :disabled="!selectedIds.length" @click="classifySelected">AI 分类</ElButton>
+          <ElButton :disabled="!selectedIds.length" @click="convertSelected">生成兼容版本</ElButton>
+          <ElButton @click="exitSelectionMode">取消</ElButton>
+        </div>
+      </div>
 
     <!-- 错误提示 -->
     <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon class="error-alert">
@@ -197,20 +201,12 @@ onBeforeUnmount(() => { active = false; generation++ })
       <ElButton v-else type="primary" @click="router.push('/library/media')">前往添加来源</ElButton>
     </ElEmpty>
 
-    <!-- 歌曲卡片流 -->
-    <div v-if="items.length" class="songs-grid">
-      <SongCard
-        v-for="song in items"
-        :key="song.id"
-        :song="song"
-        :selection-mode="selectionMode"
-        :selected="selectedIds.includes(song.id)"
-        @play="playing = song"
-        @edit="openReview(song)"
-        @click="openDetail(song)"
-        @select="toggleSelection"
-      />
+    <ElSkeleton v-if="loading && !items.length" :rows="5" animated aria-label="正在加载歌曲" />
+    <div v-if="items.length" :aria-busy="loading" class="songs-results">
+      <SongLibraryTable class="desktop-song-table" :items="items" :tags="tags" :columns="columns" :compact="compact" :selection-mode="selectionMode" :selected-ids="selectedIds" @play="playing = $event" @review="openReview" @detail="openDetail" @select="toggleSelection" @select-page="selectedIds = $event ? items.map(song => song.id) : []" />
+      <div class="songs-grid mobile-song-list"><SongCard v-for="song in items" :key="song.id" :song="song" :tags="tags" :selection-mode="selectionMode" :selected="selectedIds.includes(song.id)" @play="playing = song" @edit="openReview(song)" @click="openDetail(song)" @select="toggleSelection" /></div>
     </div>
+    <ElEmpty v-if="loaded && total > 0 && !items.length && !loading && !error" description="这一页已经没有歌曲"><ElButton @click="apply(1)">返回第一页</ElButton></ElEmpty>
 
     <!-- 分页 -->
     <div v-if="total > 0" class="songs-pagination">
@@ -234,18 +230,7 @@ onBeforeUnmount(() => { active = false; generation++ })
     </div>
 
     <!-- 批量操作工具栏 -->
-    <Teleport to="body">
-      <div v-if="selectionMode" class="batch-toolbar">
-        <div class="batch-info">
-          <span class="batch-count">已选 {{ selectedIds.length }} 首</span>
-        </div>
-        <div class="batch-actions">
-          <ElButton v-if="selectedIds.length" type="primary" @click="openScrape">刮削元数据</ElButton>
-          <ElButton v-if="selectedIds.length" @click="classifySelected">AI 分类</ElButton>
-          <ElButton @click="exitSelectionMode">取消</ElButton>
-        </div>
-      </div>
-    </Teleport>
+
 
     <!-- 播放弹窗 -->
     <SongVideoDialog :song="playing" @close="playing = null" />
@@ -253,10 +238,12 @@ onBeforeUnmount(() => { active = false; generation++ })
     <!-- 详情抽屉 -->
     <SongDetailDrawer
       :song="detailSong"
+      :tags="tags"
       :visible="!!detailSong"
       @close="detailSong = null"
       @play="playing = detailSong"
       @edit="openReview(detailSong!)"
+      @classify="editingClasses = detailSong ? [detailSong.id] : []; detailSong = null"
     />
 
     <!-- 元数据刮削弹窗 -->
@@ -274,225 +261,13 @@ onBeforeUnmount(() => { active = false; generation++ })
   </section>
 </template>
 
+
+
 <style scoped>
-.songs-page {
-  max-width: 1400px;
-}
-
-.page-heading {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4);
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--space-6);
-}
-
-.page-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.songs-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: var(--space-4);
-  margin-bottom: var(--space-5);
-}
-
-.stat-card {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
-  background: var(--surface-2);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-}
-
-.stat-card.stat-warning { border-left: 3px solid var(--semantic-warn); }
-.stat-card.stat-info { border-left: 3px solid var(--accent-primary); }
-.stat-card.stat-success { border-left: 3px solid var(--semantic-ok); }
-
-.stat-icon {
-  font-size: 32px;
-  line-height: 1;
-}
-
-.stat-content {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.stat-value {
-  font-size: 28px;
-  font-weight: 680;
-  color: var(--text-primary);
-  line-height: 1;
-  font-family: var(--font-mono);
-}
-
-.stat-label {
-  font-size: var(--font-meta);
-  color: var(--text-secondary);
-}
-
-.filters-card {
-  margin-bottom: var(--space-5);
-}
-
-.filters-card :deep(.el-card__body) {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.filters-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--space-3);
-}
-
-.search-input {
-  min-width: 0;
-}
-
-.songs-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--space-4);
-}
-
-.toolbar-left h2 {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.toolbar-right {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.error-alert {
-  margin-bottom: var(--space-5);
-}
-
-.songs-empty {
-  padding: var(--space-10) var(--space-5);
-}
-
-.songs-grid {
-  display: grid;
-  gap: var(--space-3);
-  margin-bottom: var(--space-5);
-}
-
-.songs-pagination {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4);
-  align-items: center;
-  justify-content: space-between;
-  margin-top: var(--space-5);
-}
-
-.page-size-selector {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--font-meta);
-  color: var(--text-secondary);
-}
-
-.page-size-selector select {
-  min-width: 80px;
-}
-
-.batch-toolbar {
-  position: fixed;
-  bottom: 0;
-  left: var(--sidebar-width);
-  right: 0;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-4) var(--space-8);
-  background: var(--surface-2);
-  border-top: 1px solid var(--accent-primary);
-  box-shadow: 0 -4px 12px rgb(0 0 0 / 0.32);
-  backdrop-filter: blur(12px);
-}
-
-.batch-info {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.batch-count {
-  font-size: var(--font-body);
-  font-weight: 620;
-  color: var(--accent-primary);
-}
-
-.batch-actions {
-  display: flex;
-  gap: var(--space-2);
-}
-
-@media (max-width: 1200px) {
-  .batch-toolbar {
-    left: 0;
-  }
-}
-
-@media (max-width: 768px) {
-  .page-heading {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .songs-stats {
-    grid-template-columns: 1fr;
-  }
-
-  .filters-row {
-    grid-template-columns: 1fr;
-  }
-
-  .songs-toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .toolbar-left,
-  .toolbar-right {
-    width: 100%;
-  }
-
-  .toolbar-right {
-    justify-content: space-between;
-  }
-
-  .batch-toolbar {
-    flex-direction: column;
-    gap: var(--space-3);
-    align-items: stretch;
-  }
-
-  .batch-actions {
-    width: 100%;
-  }
-
-  .batch-actions .el-button {
-    flex: 1;
-  }
-}
+.songs-page{min-width:0}.songs-page .page-heading{margin-bottom:14px;gap:12px;align-items:center}.songs-page .page-heading h1{font-size:21px;margin:0;line-height:1.4}.songs-page .page-description{font-size:13px;margin:0}.page-actions{display:flex;gap:4px;flex-wrap:wrap}.page-actions :deep(.el-button){font-size:12px;padding:8px 10px;color:var(--sv-text-secondary)}.page-actions :deep(.el-button){margin:0}.filters-card{margin-bottom:16px;border-radius:12px;box-shadow:none}.filters-card :deep(.el-card__body){padding:12px;display:grid;grid-template-columns:minmax(0,380px) minmax(0,420px) auto;gap:12px 16px;align-items:center;justify-content:start}.filters-row{display:flex;gap:8px;min-width:0}.songs-filter-selects{display:flex;gap:10px;min-width:0}.songs-filter-selects>*{min-width:0;flex:1}.filter-reset{margin:0;justify-self:start;font-size:12px}.filter-load-error{grid-column:1/-1;color:var(--sv-semantic-danger);font-size:12px;margin:0}.songs-toolbar,.toolbar-left,.toolbar-right{display:flex;align-items:center;flex-wrap:wrap;gap:10px}.songs-toolbar{justify-content:space-between;margin-bottom:10px}.toolbar-left h2{font-size:15px;margin:0;display:flex;gap:8px;align-items:center}.table-scroll-hint{display:none;font-size:11px;color:var(--sv-text-tertiary)}.page-range{font-size:12px;color:var(--sv-text-secondary)}.toolbar-right :deep(.el-button){margin:0}.density-control{font-size:12px;color:var(--sv-text-secondary);display:flex;gap:5px;align-items:center;margin-right:4px}.density-control input{accent-color:var(--sv-accent-primary)}.page-summary{display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--sv-text-secondary);margin-bottom:12px}.page-summary b{font-weight:600;color:var(--sv-text-primary)}.page-summary>span:first-child{padding:2px 6px;border-radius:4px;background:var(--sv-surface-3)}.songs-results{margin-bottom:16px}.mobile-song-list{display:none}.error-alert{margin-bottom:16px}.songs-pagination{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.page-size-selector{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--sv-text-secondary)}.page-size-selector select{min-width:66px}.top-page-size select{min-width:58px;padding:5px 8px}.feature-note{font-size:11px}.batch-toolbar{position:relative;display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:var(--sv-accent-soft);border:1px solid var(--sv-border-default);border-radius:var(--sv-radius-md);margin:0 0 14px;gap:16px}.batch-info,.batch-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.batch-count{color:var(--sv-accent-primary);font-weight:600;font-size:13px}.batch-actions :deep(.el-button){margin:0}
+@media(max-width:1050px){.table-scroll-hint{display:inline}.filters-card :deep(.el-card__body){grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto}.toolbar-right{gap:6px}}
+@media(max-width:700px){.songs-page .page-heading h1{font-size:20px;white-space:nowrap}.songs-page .page-heading{align-items:center;flex-wrap:nowrap;gap:8px}.page-actions{gap:0;flex-wrap:nowrap}.page-actions :deep(.el-button){padding:8px 6px;font-size:11px}.filters-card :deep(.el-card__body){grid-template-columns:minmax(0,1fr);padding:12px;gap:12px}.songs-filter-selects{flex-wrap:wrap}.songs-filter-selects>*{flex-basis:120px}.toolbar-left,.toolbar-right{width:100%}.toolbar-right{justify-content:flex-end}.toolbar-right .density-control,.column-settings-button{display:none}.songs-toolbar{gap:12px}.desktop-song-table,.table-scroll-hint{display:none}.mobile-song-list{display:grid;gap:12px}.page-summary{gap:10px}.songs-pagination :deep(.el-pagination__jump){display:none}.songs-pagination :deep(.el-pagination){flex-wrap:wrap;gap:4px}.batch-toolbar{flex-direction:column;align-items:stretch;padding:12px;gap:8px}.batch-actions{justify-content:flex-end}}
+</style>
+<style>
+.column-settings{display:grid;gap:12px;font-size:12px}.column-settings p{margin:0;color:var(--sv-text-secondary);font-size:11px}.column-settings label{display:flex;gap:8px;align-items:center;cursor:pointer}.column-settings input{accent-color:var(--sv-accent-primary);width:15px;height:15px}.column-settings .el-button{justify-self:start;margin:0}
 </style>

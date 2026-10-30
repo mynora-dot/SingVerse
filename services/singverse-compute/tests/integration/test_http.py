@@ -39,6 +39,7 @@ class ComputeHttpTest(unittest.TestCase):
   def test_health_is_process_health(self):
     with urlopen(self.base + "/health", timeout=2) as response:
       self.assertEqual(response.status, 200)
+      self.assertRegex(response.headers["X-Request-ID"], r"^[a-f0-9]{32}$")
       self.assertEqual(response.headers.get_content_type(), "application/json")
       self.assertEqual(json.load(response), {"status": "UP"})
 
@@ -58,6 +59,6 @@ class ComputeHttpTest(unittest.TestCase):
       raised.exception.close()
 
   def test_checked_in_contract_matches_served_openapi(self):
-    contract = Path(__file__).resolve().parents[3] / "contracts/openapi/compute-internal.openapi.json"
+    contract = Path(__file__).resolve().parents[4] / "contracts/openapi/compute-internal.openapi.json"
     with urlopen(self.base + "/openapi.json", timeout=2) as response:
       self.assertEqual(json.load(response), json.loads(contract.read_text(encoding="utf-8")))

@@ -5,10 +5,22 @@ import java.util.*;
 public final class ClassificationDtos {
     private ClassificationDtos() {}
     public static final Set<String> DIMENSIONS = Set.of("LANGUAGE", "DECADE", "GENRE", "MOOD", "SCENE", "CUSTOM");
-    public record Settings(boolean enabled, String endpoint, String model, boolean hasKey, int timeoutSeconds, int intervalSeconds, long revision) {}
+    public record Settings(boolean enabled, String endpoint, String model, boolean hasKey, int timeoutSeconds, int intervalSeconds, long revision, String serviceId, String serviceName, String protocol, String outputMode) {}
     public record SaveSettings(boolean enabled, String endpoint, String model, String apiKey, boolean clearKey, int timeoutSeconds, int intervalSeconds) {}
-    public record ModelConfig(boolean enabled, String endpoint, String model, String encryptedKey, int timeoutSeconds, int intervalSeconds, long revision) {}
-    public record Tag(String id, String dimension, String name, List<String> aliases, boolean active, long revision, long count) {}
+    public record ModelConfig(boolean enabled, String endpoint, String model, String encryptedKey, int timeoutSeconds,
+            int intervalSeconds, long revision, String protocol, String outputMode, String credentialPurpose, String serviceId) {
+        public ModelConfig {
+            if (protocol == null) protocol = "CHAT_COMPLETIONS";
+            if (outputMode == null) outputMode = "JSON_SCHEMA";
+            if (credentialPurpose == null) credentialPurpose = "singverse:classification:v1";
+        }
+        public ModelConfig(boolean enabled,String endpoint,String model,String encryptedKey,int timeoutSeconds,int intervalSeconds,long revision) {
+            this(enabled,endpoint,model,encryptedKey,timeoutSeconds,intervalSeconds,revision,null,null,null,null);
+        }
+    }
+    public record Tag(String id, String dimension, String name, List<String> aliases, boolean active, long revision, long count, String coverPath, String coverVersion) {
+        public Tag(String id,String dimension,String name,List<String> aliases,boolean active,long revision,long count) {this(id,dimension,name,aliases,active,revision,count,null,null);}
+    }
     public record SaveTag(String dimension, String name, List<String> aliases, boolean active, long revision) {}
     public record Value(List<String> tagIds, String origin, boolean locked, boolean confirmed) {}
     public record State(String songId, long revision, Map<String,Value> dimensions) {}

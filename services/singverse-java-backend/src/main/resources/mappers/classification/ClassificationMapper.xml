@@ -6,7 +6,12 @@
   <update id="cooldown">UPDATE classification_settings SET next_request_at=CASE WHEN next_request_at &gt; #{next} THEN next_request_at ELSE #{next} END WHERE id=1</update>
   <update id="lock">UPDATE classification_settings SET revision=revision WHERE id=1</update>
   <update id="saveSettings">UPDATE classification_settings SET enabled=#{c.enabled}, endpoint=#{c.endpoint}, model=#{c.model}, secret_encrypted=#{c.encryptedKey}, timeout_seconds=#{c.timeoutSeconds}, interval_seconds=#{c.intervalSeconds}, revision=revision+1 WHERE id=1</update>
-  <select id="tags" resultType="map">SELECT t.*, (SELECT COUNT(*) FROM classification_assignment a JOIN media_song s ON s.id=a.song_id WHERE a.tag_id=t.id) AS song_count FROM classification_tag t ORDER BY t.dimension,t.name,t.id</select>
+  <select id="tags" resultType="map">SELECT t.*, c.version AS cover_version, (SELECT COUNT(*) FROM classification_assignment a JOIN media_song s ON s.id=a.song_id WHERE a.tag_id=t.id) AS song_count FROM classification_tag t LEFT JOIN classification_tag_cover c ON c.tag_id=t.id ORDER BY t.dimension,t.name,t.id</select>
+  <resultMap id="tagCoverMap" type="map" autoMapping="true"><result property="image_bytes" column="image_bytes" typeHandler="org.apache.ibatis.type.ByteArrayTypeHandler"/></resultMap>
+  <select id="tagCover" resultMap="tagCoverMap">SELECT c.*,t.active FROM classification_tag_cover c JOIN classification_tag t ON t.id=c.tag_id WHERE c.tag_id=#{id}</select>
+  <insert id="insertCover">INSERT INTO classification_tag_cover(tag_id,version,content_type,image_bytes) VALUES(#{id},#{version},'image/jpeg',#{bytes,jdbcType=BLOB})</insert>
+  <update id="updateCover">UPDATE classification_tag_cover SET version=#{version},image_bytes=#{bytes,jdbcType=BLOB},content_type='image/jpeg' WHERE tag_id=#{id}</update>
+  <delete id="deleteCover">DELETE FROM classification_tag_cover WHERE tag_id=#{id}</delete>
   <insert id="insertTag">INSERT INTO classification_tag(id,dimension,name,aliases_json,active,revision) VALUES(#{id},#{dimension},#{name},#{aliases},#{active},1)</insert>
   <update id="updateTag">UPDATE classification_tag SET name=#{name},aliases_json=#{aliases},active=#{active},revision=revision+1 WHERE id=#{id} AND revision=#{revision}</update>
   <select id="songIds" resultType="string">SELECT id FROM media_song ORDER BY id LIMIT #{limit}</select>

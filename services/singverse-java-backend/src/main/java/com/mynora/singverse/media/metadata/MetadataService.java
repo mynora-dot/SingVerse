@@ -117,7 +117,8 @@ public class MetadataService {
         if (track.coverUrl() != null) present.add("cover");
         if (track.durationMs() != null && track.durationMs() > 0) present.add("durationMs");
         Set<String> selectedFields = new LinkedHashSet<>(fields); selectedFields.retainAll(present);
-        if (selectedFields.isEmpty()) throw bad("候选没有所选字段可写入，原元数据未修改");
+        if (song.metadata() != null && !song.metadata().stale()) selectedFields.removeIf(field -> song.metadata().origins().containsKey(field) && "FILE".equals(song.metadata().origins().get(field).kind()));
+        if (selectedFields.isEmpty()) throw bad("候选没有可写入字段，文件内嵌标签优先，原元数据未修改");
         fields = Set.copyOf(selectedFields);
         var prior = song.metadata() != null && !song.metadata().stale() ? song.metadata() : null;
         ExternalTrack previous = prior == null ? track : prior.track();

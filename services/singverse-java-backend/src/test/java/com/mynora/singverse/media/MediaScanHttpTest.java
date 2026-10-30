@@ -20,7 +20,33 @@ import org.springframework.test.context.*;
 @ActiveProfiles("sqlite")
 class MediaScanHttpTest {
     @TempDir static Path temp;
+    static com.sun.net.httpserver.HttpServer computeStub;
+    static void startComputeStub() {
+        if (computeStub != null) return;
+        try {
+            computeStub = com.sun.net.httpserver.HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            computeStub.createContext("/internal/v1/media/tags", exchange -> {
+                var mapper = new ObjectMapper();
+                boolean authorized = "Bearer isolated-compute-token-01234567890123456789".equals(exchange.getRequestHeaders().getFirst("Authorization"));
+                byte[] response = "{}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                if (authorized) {
+                    String file = mapper.readTree(exchange.getRequestBody()).path("path").asText();
+                    if (Files.readString(Path.of(file)).startsWith("tagged")) response = mapper.writeValueAsBytes(Map.of("title", "内嵌歌名", "artists", List.of("内嵌歌手"), "album", "内嵌专辑", "releaseDate", "2021-02-03"));
+                }
+                exchange.sendResponseHeaders(authorized ? 200 : 401, response.length);
+                try (var output = exchange.getResponseBody()) { output.write(response); }
+            });
+            computeStub.start();
+        } catch (Exception error) { throw new IllegalStateException(error); }
+    }
+    @AfterAll static void stopComputeStub() { if (computeStub != null) computeStub.stop(0); }
+
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) {
+        startComputeStub();
+        try { Files.writeString(temp.resolve("compute-token"), "isolated-compute-token-01234567890123456789"); }
+        catch (Exception error) { throw new IllegalStateException(error); }
+        registry.add("singverse.compute.base-url", () -> "http://127.0.0.1:" + computeStub.getAddress().getPort());
+        registry.add("singverse.compute.token-file", () -> temp.resolve("compute-token").toString());
         registry.add("singverse.sqlite.path", () -> temp.resolve("scan.db").toString());
         registry.add("singverse.auth.key-file", () -> temp.resolve("master.key").toString());
     }
@@ -79,6 +105,43 @@ class MediaScanHttpTest {
         assertThat(request(source + "/scan", "POST", null, true).statusCode()).isEqualTo(200);
         return body(request(source + "/songs", "GET", null, false)).at("/items/0/id").asText();
     }
+    @Test void localAudioAndVideoTagsOverrideFilenameAndRefreshWithoutWritingOriginals() throws Exception {
+        login(); createProfile();
+        Path directory = Files.createTempDirectory(temp, "embedded-");
+        Path audio = directory.resolve("错误歌名-错误歌手.flac");
+        Path videoFile = directory.resolve("错误视频-错误歌手.mkv");
+        Files.writeString(audio, "tagged audio fixture");
+        Files.writeString(videoFile, "tagged video fixture");
+        var original = Files.readAllBytes(audio);
+        String source = local(directory);
+        assertThat(request(source + "/scan", "POST", null, true).statusCode()).isEqualTo(200);
+        var indexed = body(request(source + "/songs", "GET", null, false));
+        assertThat(indexed.path("totalElements").asInt()).isEqualTo(2);
+        for (var song : indexed.path("items")) {
+            assertThat(song.at("/result/title").asText()).startsWith("错误");
+            assertThat(song.at("/metadata/track/title").asText()).isEqualTo("内嵌歌名");
+            assertThat(song.at("/metadata/track/artists/0").asText()).isEqualTo("内嵌歌手");
+            assertThat(song.at("/metadata/track/album").asText()).isEqualTo("内嵌专辑");
+            assertThat(song.at("/metadata/track/releaseDate").asText()).isEqualTo("2021-02-03");
+            assertThat(song.at("/metadata/origins/title/kind").asText()).isEqualTo("FILE");
+            assertThat(song.at("/metadata/stale").asBoolean()).isFalse();
+            String reviewPath = "/api/v1/metadata/songs/" + song.path("id").asText() + "/review";
+            var review = body(request(reviewPath, "GET", null, false));
+            var applied = request(reviewPath + "/apply", "POST", Map.of("requestId", UUID.randomUUID().toString(),
+                    "fingerprint", review.path("fingerprint").asText(), "version", review.path("version").asText(),
+                    "fields", List.of("title"), "edits", Map.of("title", "不能覆盖文件标签")), true);
+            assertThat(applied.statusCode()).isEqualTo(200);
+            assertThat(body(applied).path("updated").isEmpty()).isTrue();
+            assertThat(body(request(reviewPath, "GET", null, false)).at("/values/title").asText()).isEqualTo("内嵌歌名");
+        }
+        assertThat(Files.readAllBytes(audio)).isEqualTo(original);
+        // Removing tags must not keep old FILE-origin fields from a prior scan.
+        Files.writeString(audio, "not a media file");
+        assertThat(request(source + "/scan", "POST", null, true).statusCode()).isEqualTo(200);
+        indexed = body(request(source + "/songs", "GET", null, false));
+        for (var song : indexed.path("items")) if (song.path("relativePath").asText().endsWith(".flac")) assertThat(song.path("metadata").isNull()).isTrue();
+    }
+
     @Test void localVideoRequiresSessionSupportsRangesAndRejectsEscapedFiles() throws Exception {
         assertThat(video("missing", null, "GET").statusCode()).isEqualTo(401);
         login();

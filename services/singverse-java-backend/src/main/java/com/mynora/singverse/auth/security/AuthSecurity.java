@@ -129,7 +129,7 @@ public class AuthSecurity {
                                         "/api/v1/auth/mfa/verify")
                                 .permitAll()
                                 .requestMatchers("/api/**")
-                                .authenticated()
+                                .hasAuthority("ADMIN")
                                 .anyRequest()
                                 .permitAll());
         http.exceptionHandling(

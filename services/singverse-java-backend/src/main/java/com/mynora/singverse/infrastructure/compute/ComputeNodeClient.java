@@ -14,18 +14,24 @@ import org.springframework.stereotype.Component;
 /** 内部能力探测入口；不参与主服务健康检查，也不在启动时要求计算节点在线。 */
 @Component
 public class ComputeNodeClient {
-    private final URI endpoint;
+    private final java.util.function.Supplier<URI> endpoints;
     private final HttpClient http;
     private final ObjectMapper json;
     private final Duration timeout;
 
     @Autowired
+    public ComputeNodeClient(com.mynora.singverse.compute.ComputeNodeSettings settings, ObjectMapper json) {
+        this.endpoints=()->{var connection=settings.current();return connection==null?null:connection.origin().resolve("/internal/v1/capabilities");};
+        this.json=json; this.timeout=Duration.ofSeconds(2);
+        this.http=HttpClient.newBuilder().connectTimeout(timeout).followRedirects(HttpClient.Redirect.NEVER).build();
+    }
+
     public ComputeNodeClient(@Value("${singverse.compute.base-url:}") String baseUrl, ObjectMapper json) {
         this(baseUrl, json, Duration.ofSeconds(2));
     }
 
     ComputeNodeClient(String baseUrl, ObjectMapper json, Duration timeout) {
-        this.endpoint = endpoint(baseUrl);
+        var fixed=endpoint(baseUrl); this.endpoints=()->fixed;
         this.json = json;
         this.timeout = timeout;
         this.http = HttpClient.newBuilder().connectTimeout(timeout)
@@ -33,6 +39,7 @@ public class ComputeNodeClient {
     }
 
     public Probe probe() {
+        URI endpoint=endpoints.get();
         if (endpoint == null) return new Probe("disabled", List.of());
         try {
             var request = HttpRequest.newBuilder(endpoint).timeout(timeout)

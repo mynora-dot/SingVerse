@@ -1,0 +1,14 @@
+# Docker Desktop cannot pass VideoToolbox through to a Linux container.
+# Start scripts/macos-compute.py first; run Compose from the repository root.
+services:
+  singverse-java-backend:
+    environment:
+      COMPUTE_NODE_URL: http://host.docker.internal:18090
+    volumes:
+      # Matching absolute paths let AUTO mode read the same local media on both nodes.
+      - type: bind
+        source: ${PWD}/data/macos-compute/media
+        target: ${PWD}/data/macos-compute/media
+        read_only: true
+  singverse-compute:
+    profiles: [container-compute]

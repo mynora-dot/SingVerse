@@ -3,6 +3,7 @@
 import argparse
 
 import uvicorn
+from .core.logging import logging_config
 
 
 def main() -> None:
@@ -12,7 +13,7 @@ def main() -> None:
   args = parser.parse_args()
   if not 1 <= args.port <= 65535:
     parser.error("port must be between 1 and 65535")
-  uvicorn.run("singverse_compute.app:app", host=args.host, port=args.port, workers=1)
+  uvicorn.run("singverse_compute.bootstrap:create_app", factory=True, host=args.host, port=args.port, workers=1, log_config=logging_config())
 
 
 if __name__ == "__main__":

@@ -6,6 +6,8 @@
   <name>SingVerse Java Backend</name>
   <properties><java.version>21</java.version><sqlite-jdbc.version>3.49.1.0</sqlite-jdbc.version></properties>
   <dependencies>
+    <dependency><groupId>org.jmdns</groupId><artifactId>jmdns</artifactId><version>3.5.10</version></dependency>
+    <dependency><groupId>com.belerweb</groupId><artifactId>pinyin4j</artifactId><version>2.5.1</version></dependency>
     <dependency><groupId>com.google.re2j</groupId><artifactId>re2j</artifactId><version>1.8</version></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-security</artifactId></dependency>
     <dependency><groupId>org.bouncycastle</groupId><artifactId>bcprov-jdk18on</artifactId><version>1.84</version></dependency>
@@ -44,7 +46,7 @@
       <build><plugins><plugin>
         <groupId>org.apache.maven.plugins</groupId><artifactId>maven-failsafe-plugin</artifactId>
         <configuration>
-          <includes><include>**/ComputeIntegrationIT.java</include></includes>
+          <includes><include>**/ComputeIntegrationIT.java</include><include>**/TranscodeIntegrationIT.java</include></includes>
           <failIfNoTests>true</failIfNoTests>
           <systemPropertyVariables><compute.python>${compute.python}</compute.python></systemPropertyVariables>
         </configuration>

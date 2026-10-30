@@ -1,9 +1,9 @@
 name: singverse-backend
 on:
   push:
-    paths: ['services/singverse-compute/**', 'services/singverse-java-backend/**', 'services/singverse-frontend/**', 'contracts/openapi/compute-internal.openapi.json', '.github/workflows/singverse-backend.yml', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh', '.editorconfig', '.gitignore']
+    paths: ['services/singverse-compute/**', 'services/singverse-java-backend/**', 'services/singverse-frontend/**', 'contracts/openapi/compute-internal.openapi.json', '.github/workflows/singverse-backend.yml', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh', 'scripts/setup-transcode-tools.py', '.editorconfig', '.gitignore']
   pull_request:
-    paths: ['services/singverse-compute/**', 'services/singverse-java-backend/**', 'services/singverse-frontend/**', 'contracts/openapi/compute-internal.openapi.json', '.github/workflows/singverse-backend.yml', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh', '.editorconfig', '.gitignore']
+    paths: ['services/singverse-compute/**', 'services/singverse-java-backend/**', 'services/singverse-frontend/**', 'contracts/openapi/compute-internal.openapi.json', '.github/workflows/singverse-backend.yml', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh', 'scripts/setup-transcode-tools.py', '.editorconfig', '.gitignore']
   workflow_dispatch:
 permissions:
   contents: read
@@ -26,6 +26,11 @@ jobs:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: services/singverse-compute/requirements.lock
+      - name: Install checksum-pinned media tools
+        run: |
+          python scripts/setup-transcode-tools.py
+          echo "$GITHUB_WORKSPACE/.tools/jellyfin-ffmpeg" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/.tools/jellyfin-ffmpeg/bin" >> "$GITHUB_PATH"
       - name: Install database migration tool
         run: make -C "${{ github.workspace }}" dbmate-setup
       - uses: actions/setup-java@v4

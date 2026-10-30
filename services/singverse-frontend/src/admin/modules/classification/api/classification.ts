@@ -1,10 +1,20 @@
-import { authRequest } from '../../../core/auth/api'
+import { authRequest, ApiError } from '../../../core/auth/api'
 import type { ClassState, Dimension, History, Preview, SaveSettings, Settings, Start, Tag, Task } from '../types'
 const base = '/api/v1/classification'
 const send = <T>(path: string, method: string, body?: unknown) => authRequest<T>(base + path, method, body, path === '/settings/test' ? 190000 : 60000)
 export const classification = {
   tags: () => authRequest<Tag[]>(base + '/tags'),
   saveTag: (tag: Omit<Tag, 'id' | 'count'>, id?: string) => send<Tag>('/tags' + (id ? '/' + id : ''), id ? 'PUT' : 'POST', tag),
+  uploadCover: async (id: string, version: string, file: File, signal?: AbortSignal): Promise<Tag> => {
+    const csrf = await authRequest<{ token: string }>('/api/v1/auth/csrf')
+    const form = new FormData(); form.append('file', file); form.append('version', version)
+    let response: Response
+    try { response = await fetch(`${base}/tags/${encodeURIComponent(id)}/cover`, { method: 'PUT', headers: { 'X-CSRF-Token': csrf.token }, body: form, credentials: 'same-origin', redirect: 'error', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000) }) }
+    catch { throw new Error(signal?.aborted ? '上传已取消' : '上传失败，请检查网络后重试') }
+    if (!response.ok) { const problem = await response.json().catch(() => ({})); if(response.status === 401) window.dispatchEvent(new Event('singverse:session-expired')); throw new ApiError(response.status, problem.detail ?? '封面上传失败') }
+    return response.json() as Promise<Tag>
+  },
+  removeCover: (id: string, version: string) => send<Tag>(`/tags/${encodeURIComponent(id)}/cover?version=${encodeURIComponent(version)}`, 'DELETE'),
   settings: () => authRequest<Settings>(base + '/settings'),
   saveSettings: (settings: SaveSettings) => send<Settings>('/settings', 'PUT', settings),
   test: () => send<{ success: boolean; message: string }>('/settings/test', 'POST'),

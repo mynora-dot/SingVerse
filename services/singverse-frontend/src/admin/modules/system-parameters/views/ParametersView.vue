@@ -98,6 +98,6 @@ async function closeRecovery() {
 .setup-secret {
   margin: 0 0 12px;
   font-size: 13px;
-  color: var(--sv-text-muted);
+  color: var(--sv-text-secondary);
 }
 </style>

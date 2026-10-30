@@ -24,9 +24,9 @@ const origin = window.location.origin
           ><a href="/party/" target="_blank" rel="noopener">{{ origin }}/party/</a></ElDescriptionsItem
         ></ElDescriptions
       ></ElCard
-    ><ElAlert title="当前为基础版本" type="info" :closable="false" show-icon
+    ><ElAlert title="关于服务状态" type="info" :closable="false" show-icon
       ><p>
-        服务健康表示主服务可以响应。扫码配对、曲库和播放仍待实现；后台媒体处理与设备状态将在对应功能接入后展示。
+        服务健康表示主服务可以响应。曲库扫描、分类、元数据管理与原始音视频在线播放已提供；亲友点歌、配对与电视会话播放仍在筹备中。
       </p></ElAlert
     >
   </section>
