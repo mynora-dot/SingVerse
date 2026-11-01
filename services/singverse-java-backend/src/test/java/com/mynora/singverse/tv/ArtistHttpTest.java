@@ -298,6 +298,10 @@ class ArtistHttpTest {
         var next =
                 ok(admin, "/api/v1/artists?q=订正歌手", "GET", null, null, false).path("items").get(0);
         String id = next.path("id").asText();
+        assertThat(ok(admin, "/api/v1/artists?type=UNKNOWN&countLessThan=2", "GET", null, null, false).path("totalElements").asInt()).isGreaterThan(0);
+        ok(admin, "/api/v1/artists/" + id + "/category", "PUT", Map.of("type", "FEMALE", "revision", next.path("revision").asLong()), null, true);
+        assertThat(ok(admin, "/api/v1/artists?q=订正歌手&type=FEMALE&countLessThan=2", "GET", null, null, false).path("totalElements").asInt()).isEqualTo(1);
+        assertThat(ok(admin, "/api/v1/artists?q=订正歌手&type=GROUP", "GET", null, null, false).path("totalElements").asInt()).isZero();
         assertThat(ok(admin,"/api/v1/artists/"+old,"GET",null,null,false).path("count").asInt()).isZero();
         assertThat(
                         ok(

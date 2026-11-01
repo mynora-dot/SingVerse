@@ -25,19 +25,21 @@ beforeEach(() => {
   vi.mocked(embeddedMetadata.detail).mockResolvedValue({ state: 'PARTIAL', changed: 1, result: { state: 'PARTIAL', fields: { lyrics: 'UNKNOWN' }, technical: { container: 'mp3' }, lyrics: { text: '内嵌歌词', timing: 'none' } } })
 })
 afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks() })
-it('主操作直接开启和暂停完善，无需勾选和额外保存', async () => {
+it('内嵌元数据主操作直接开启和暂停提取，无需勾选和额外保存', async () => {
   wrapper = mount(WebDavMetadataDialog, { props: { source }, global: { stubs: { teleport: true } } })
   await flushPromises()
   expect(wrapper.text()).not.toContain('MiB')
   expect(wrapper.find('.el-tabs').exists()).toBe(false)
-  await wrapper.findAllComponents(ElButton).find(button => button.text() === '完善歌曲信息')!.trigger('click')
+  expect(wrapper.get('.embedded-action h3').text()).toBe('获取内嵌元数据')
+  expect(wrapper.get('.embedded-action').element.closest('details')).toBeNull()
+  await wrapper.findAllComponents(ElButton).find(button => button.text() === '开始自动提取')!.trigger('click')
   await flushPromises()
   expect(embeddedMetadata.configure).toHaveBeenLastCalledWith('source', { enabled: true, paused: false, accessGroup: 'shared-cloud', privateOrigins: [] })
   vi.mocked(embeddedMetadata.configure).mockResolvedValue({ ...summary, enabled: true, paused: true })
-  await wrapper.findAllComponents(ElButton).find(button => button.text() === '暂停完善')!.trigger('click')
+  await wrapper.findAllComponents(ElButton).find(button => button.text() === '暂停自动提取')!.trigger('click')
   await flushPromises()
   expect(embeddedMetadata.configure).toHaveBeenLastCalledWith('source', { enabled: true, paused: true, accessGroup: 'shared-cloud', privateOrigins: [] })
-  expect(wrapper.text()).toContain('继续完善')
+  expect(wrapper.text()).toContain('继续自动提取')
 })
 it('仅在满足空库确认条件后提供全部下架操作', async () => {
   vi.mocked(embeddedMetadata.summary).mockResolvedValue({ ...summary, emptyScans: 2, canConfirmEmpty: true })
@@ -91,12 +93,11 @@ it('ZIP 导入使用当前来源、会话与 CSRF，并刷新状态', async () =
   } finally { vi.unstubAllGlobals() }
 })
 
-it('试提取一首不会开启整库自动提取，分享不再暴露旧版入口', async () => {
+it('主区域试提取一首不会开启整库自动提取，分享不再暴露旧版入口', async () => {
   wrapper = mount(WebDavMetadataDialog, { props: { source }, global: { stubs: { teleport: true } } })
   await flushPromises()
-  await openAdvanced()
   vi.mocked(embeddedMetadata.detail).mockResolvedValueOnce({ state: 'PENDING' })
-  await wrapper.findAllComponents(ElButton).find(button => button.text() === '检查一首歌曲')!.trigger('click')
+  await wrapper.findAllComponents(ElButton).find(button => button.text() === '试提取一首')!.trigger('click')
   await flushPromises()
   expect(embeddedMetadata.refresh).toHaveBeenCalledWith(['trial'])
   expect(embeddedMetadata.configure).not.toHaveBeenCalled()
@@ -106,8 +107,8 @@ it('试提取一首不会开启整库自动提取，分享不再暴露旧版入�
 
 it('已完成样本复用缓存，未知字段不显示为确认没有', async () => {
   wrapper = mount(WebDavMetadataDialog, { props: { source }, global: { stubs: { teleport: true } } })
-  await flushPromises(); await openAdvanced()
-  await wrapper.findAllComponents(ElButton).find(button => button.text() === '检查一首歌曲')!.trigger('click')
+  await flushPromises()
+  await wrapper.findAllComponents(ElButton).find(button => button.text() === '试提取一首')!.trigger('click')
   await flushPromises()
   expect(embeddedMetadata.refresh).not.toHaveBeenCalled()
   expect(wrapper.text()).toContain('尚未读取到内嵌歌名')

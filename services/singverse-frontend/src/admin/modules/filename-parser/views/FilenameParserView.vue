@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '../../../shared/ui/PageHeader.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElAlert, ElButton, ElCard, ElDialog, ElForm, ElFormItem, ElInput, ElMessage, ElTable, ElTableColumn, ElTag } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
@@ -89,7 +90,7 @@ onMounted(() => { void load() })
 
 <template>
   <section class="rules-page management-page">
-    <div class="page-heading"><div><h1>解析规则</h1><p class="page-description">只有需要自己写匹配表达式时才用这一页；平时在<RouterLink class="library-link" to="/library/filename-parser-profiles">解析方案</RouterLink>里点选格式就够了。</p></div></div>
+    <PageHeader title="自定义规则"><template #description>高级功能：仅在需要自己编写模板或正则时使用。日常在<RouterLink class="library-link" to="/library/filename-parser-profiles">解析方案</RouterLink>中点选格式即可。</template></PageHeader>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" role="alert"><RouterLink v-for="profile in referencedBy" :key="profile.id" :to="{ path: '/library/filename-parser-profiles', query: { profile: profile.id } }">{{ profile.name }} </RouterLink></ElAlert>
     <ElButton v-if="error || conflict" :disabled="loading" @click="load">加载最新规则库，保留编辑内容</ElButton>
     <p v-if="loading" role="status">正在读取规则库…</p>

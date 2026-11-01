@@ -22,11 +22,13 @@ class MetadataMechanicsTest {
         assertThat(matcher.score("晴天", List.of("周杰伦"), track("晴天 Live", List.of("周杰伦")))).isLessThan(.95);
         assertThat(matcher.score("Ｓｕｎｎｙ", List.of("Singer"), track("sunny", List.of("singer")))).isEqualTo(.95);
     }
-    @Test void closeCandidatesNeverAutomaticallyApply() {
+    @Test void highestCandidateAutomaticallyAppliesWhenThresholdIsMet() {
         var one = new MetadataDtos.Candidate("1", track("晴天", List.of("周杰伦")), .95);
         var close = new MetadataDtos.Candidate("2", track("晴天", List.of("周杰伦")), .94);
         assertThat(MetadataWorker.automatic(List.of(one), .95)).isTrue();
-        assertThat(MetadataWorker.automatic(List.of(one, close), .95)).isFalse();
+        assertThat(MetadataWorker.automatic(List.of(one, close), .95)).isTrue();
+        assertThat(MetadataWorker.automatic(List.of(one, new MetadataDtos.Candidate("3", track("晴天", List.of("周杰伦")), .95)), .8)).isTrue();
+        assertThat(MetadataWorker.automatic(List.of(one, close), .96)).isFalse();
         assertThat(MetadataWorker.automatic(List.of(one), Double.POSITIVE_INFINITY)).isFalse();
     }
     @Test void oversizedHttpResponseCancelsSubscriptionBeforeAccumulatingBody() {

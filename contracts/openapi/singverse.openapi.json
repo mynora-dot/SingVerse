@@ -3717,7 +3717,7 @@
     "/api/v1/metadata/batches": {
       "post": {
         "operationId": "startMetadataBatch",
-        "summary": "Start one durable global batch; selected up to 500, full library up to 5000; unchanged applied songs skipped",
+        "summary": "Start one durable batch; selected up to 500, full library or one media source up to 5000; unchanged applied songs skipped",
         "security": [
           {
             "sessionCookie": []
@@ -4425,6 +4425,26 @@
             }
           }
         ]
+      }
+    },
+    "/api/v1/metadata/batches/{id}/items/{itemId}/review/apply": {
+      "post": {
+        "operationId": "applyBatchSongReview",
+        "summary": "Apply the shared song review draft and mark the batch item as manually applied",
+        "security": [{ "sessionCookie": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "itemId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReviewApply" } } } },
+        "responses": {
+          "200": { "description": "Applied", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReviewResult" } } } },
+          "400": { "description": "Invalid review", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+          "401": { "description": "Session required", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+          "403": { "description": "Origin or CSRF rejected", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+          "404": { "description": "Batch item or song missing", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+          "409": { "description": "Batch state, file or metadata changed", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } }
+        }
       }
     },
     "/api/v1/metadata/batches/{id}/items/{itemId}/apply": {
@@ -11403,6 +11423,18 @@
             }
           },
           {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["", "MALE", "FEMALE", "GROUP", "UNKNOWN"] }
+          },
+          {
+            "name": "countLessThan",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "maximum": 1000000 }
+          },
+          {
             "name": "page",
             "in": "query",
             "required": false,
@@ -11608,6 +11640,26 @@
           }
         },
         "deprecated": true
+      }
+    },
+    "/api/v1/artists/{id}/category": {
+      "put": {
+        "operationId": "setArtistCategory",
+        "summary": "Manually label an artist as male, female, group or unclassified",
+        "security": [{ "sessionCookie": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": {
+          "type": "object", "required": ["type", "revision"],
+          "properties": {
+            "type": { "type": "string", "enum": ["MALE", "FEMALE", "GROUP", "UNKNOWN"] },
+            "revision": { "type": "integer", "minimum": 0 }
+          }
+        } } } },
+        "responses": {
+          "200": { "description": "Updated artist", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArtistProfile" } } } },
+          "400": { "description": "Invalid category", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+          "409": { "description": "Artist revision changed", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } }
+        }
       }
     },
     "/api/v1/artists/{id}/songs": {
@@ -12509,6 +12561,15 @@
               "minimum": 1,
               "maximum": 100,
               "default": 20
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["UPDATED_DESC", "NAME_ASC", "SONGS_DESC"],
+              "default": "UPDATED_DESC"
             }
           },
           {
@@ -16522,14 +16583,14 @@
           },
           "minIntervalSeconds": {
             "type": "integer",
-            "minimum": 2,
+            "minimum": 0,
             "maximum": 300,
             "default": 3,
             "description": "Batch delay range in seconds after each song. Maximum must be >= minimum; omitted fields use defaults."
           },
           "maxIntervalSeconds": {
             "type": "integer",
-            "minimum": 2,
+            "minimum": 0,
             "maximum": 300,
             "default": 8,
             "description": "Batch delay range in seconds after each song. Maximum must be >= minimum; omitted fields use defaults."
@@ -16863,6 +16924,10 @@
               "type": "string"
             },
             "maxItems": 500
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "Optional media source ID when all is true; limits the batch to that source"
           }
         },
         "required": []
@@ -18961,6 +19026,8 @@
           "type": {
             "enum": [
               "PERSON",
+              "MALE",
+              "FEMALE",
               "GROUP",
               "UNKNOWN"
             ]
@@ -19064,6 +19131,8 @@
           "type": {
             "enum": [
               "PERSON",
+              "MALE",
+              "FEMALE",
               "GROUP",
               "UNKNOWN"
             ]

@@ -259,6 +259,8 @@ class PlaylistHttpTest {
                                 .asText())
                 .startsWith("/api/v1/tv/library/songs/");
         assertThat(first.path("count").asInt()).isEqualTo(2);
+        assertThat(ok(admin, "/api/v1/playlists?sort=SONGS_DESC", "GET", null, null, false).path("totalElements").asInt()).isGreaterThan(0);
+        assertThat(req(admin, "/api/v1/playlists?sort=INVALID", "GET", null, null, false).statusCode()).isEqualTo(400);
         createPlaylist(id, List.of(one, two));
         assertThat(
                         req(

@@ -86,6 +86,15 @@ it('词表提供分类真实数量和停用状态，不自动发布新标签建�
   expect(wrapper.text()).toContain('流行')
   expect(classification.saveTag).not.toHaveBeenCalled()
 })
+it('词表可按分类内容快速筛选并返回全部', async () => {
+  await page(); await button('分类词表').trigger('click'); await flushPromises()
+  const filters = wrapper.get('.vocabulary-quick-filters')
+  await filters.findAll('button').find(item => item.text().includes('自定义'))!.trigger('click')
+  expect(wrapper.findAll('.vocabulary-row').every(item => item.text().includes('自定义'))).toBe(true)
+  expect(wrapper.findAll('.vocabulary-row').length).toBeGreaterThan(0)
+  await filters.findAll('button')[0]!.trigger('click')
+  expect(wrapper.findAll('.vocabulary-row').length).toBeGreaterThan(1)
+})
 
 it('分类仅展示当前模型摘要，不再内联配置地址和密钥', async () => {
   await page()

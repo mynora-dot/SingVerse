@@ -3,8 +3,10 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, expect, it, vi } from 'vitest'
 import TvDevices from '../src/admin/modules/tv-devices/TvDevicesView.vue'
 import { authRequest } from '../src/admin/core/auth/api'
+import { confirmDanger } from '../src/admin/shared/ui/confirm'
 
 vi.mock('../src/admin/core/auth/api')
+vi.mock('../src/admin/shared/ui/confirm', () => ({ confirmDanger: vi.fn() }))
 const pending = [
   { id: 'first', name: '客厅电视', expiresAt: '2026-10-30T04:00:00+08:00' },
   { id: 'second', name: '客厅电视', expiresAt: '2026-10-30T04:00:00+08:00' },
@@ -52,4 +54,37 @@ it('非六位数字不批准；服务端拒绝时保留已填授权码供修改'
     expect((form.get('input').element as HTMLInputElement).value).toBe('012345')
     expect(form.get('button[type="submit"]').attributes('disabled')).toBeUndefined()
   } finally { wrapper.unmount() }
+})
+
+it('撤销访问使用危险确认；取消时不发请求，确认后撤销并刷新列表', async () => {
+  vi.mocked(authRequest).mockResolvedValue({ devices: [{ id: 'tv1', name: '客厅电视', revoked: false }, { id: 'tv0', name: '旧电视', revoked: true }], pending: [] })
+  const wrapper = mount(TvDevices)
+  try {
+    await flushPromises()
+    const rows = wrapper.findAll('article.device-row')
+    expect(rows[0]!.text()).toContain('已授权')
+    expect(rows[1]!.text()).toContain('已撤销')
+    expect(rows[1]!.find('button').exists()).toBe(false)
+    vi.mocked(confirmDanger).mockResolvedValueOnce(false)
+    await rows[0]!.get('button').trigger('click'); await flushPromises()
+    expect(confirmDanger).toHaveBeenCalledWith('撤销电视访问', expect.stringContaining('客厅电视'), '撤销访问', '保留')
+    expect(authRequest).not.toHaveBeenCalledWith('/api/v1/admin/tv-devices/tv1', 'DELETE')
+    vi.mocked(confirmDanger).mockResolvedValueOnce(true)
+    await rows[0]!.get('button').trigger('click'); await flushPromises()
+    expect(authRequest).toHaveBeenCalledWith('/api/v1/admin/tv-devices/tv1', 'DELETE')
+  } finally { wrapper.unmount() }
+})
+
+it('操作失败的提示不会被后台轮询的成功刷新清除', async () => {
+  vi.useFakeTimers()
+  const wrapper = mount(TvDevices)
+  try {
+    await flushPromises()
+    const form = wrapper.get('form.authorization-form')
+    await form.get('input').setValue('123456')
+    vi.mocked(authRequest).mockRejectedValueOnce(new Error('授权码已过期'))
+    await form.trigger('submit'); await flushPromises()
+    await vi.advanceTimersByTimeAsync(5000); await flushPromises()
+    expect(wrapper.text()).toContain('授权码已过期')
+  } finally { wrapper.unmount(); vi.useRealTimers() }
 })

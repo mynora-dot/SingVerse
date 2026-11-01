@@ -87,6 +87,20 @@ class MetadataHttpTest {
         assertThat(response.statusCode()).isEqualTo(201);
         return body(response).path("id").asText();
     }
+    @Test void batchCanTargetOneMediaSource() throws Exception {
+        login(); enable(false);
+        String firstSong = song(), firstSource = sourcePath.substring(sourcePath.lastIndexOf('/') + 1);
+        String secondSong = song();
+        assertThat(request(BASE + "/batches", "POST", Map.of("all", false, "songIds", List.of(secondSong), "sourceId", firstSource), true).statusCode()).isEqualTo(400);
+        assertThat(request(BASE + "/batches", "POST", Map.of("all", true, "songIds", List.of(), "sourceId", "missing-source"), true).statusCode()).isEqualTo(404);
+        var response = request(BASE + "/batches", "POST", Map.of("all", true, "songIds", List.of(), "sourceId", firstSource), true);
+        assertThat(response.statusCode()).isEqualTo(201);
+        var result = body(response);
+        assertThat(result.path("mode").asText()).isEqualTo("SOURCE");
+        assertThat(result.path("total").asInt()).isEqualTo(1);
+        assertThat(result.at("/items/0/songId").asText()).isEqualTo(firstSong);
+        assertThat(result.at("/items/0/sourceId").asText()).isEqualTo(firstSource);
+    }
     JsonNode batch(String id) throws Exception { return body(request(BASE + "/batches/" + id, "GET", null, false)); }
 
     @Test void defaultsAreDisabledAndAuthenticationAndCsrfAreRequired() throws Exception {
@@ -145,7 +159,7 @@ class MetadataHttpTest {
         assertThat(request(BASE + "/songs/" + id + "/search", "POST", Map.of(), true).statusCode()).isEqualTo(200);
     }
 
-    @Test void explicitAutoApplyWorksButAmbiguousCandidatesWaitForReview() throws Exception {
+    @Test void explicitAutoApplyUsesFirstCandidateEvenWhenScoresTie() throws Exception {
         login(); enable(true); String id = song(); String batchId = start(id);
         worker.processNext();
         assertThat(batch(batchId).at("/items/0/status").asText()).isEqualTo("AUTO_APPLIED");
@@ -153,9 +167,11 @@ class MetadataHttpTest {
         db.update("DELETE FROM song_metadata");
         doReturn(List.of(track("a", "晴天", "周杰伦", "甲专辑"), track("b", "晴天", "周杰伦", "乙专辑"))).when(upstream).search(anyString(), anyInt(), any(Duration.class));
         String ambiguous = start(id); worker.processNext();
-        assertThat(batch(ambiguous).at("/items/0/status").asText()).isEqualTo("REVIEW");
-        assertThat(batch(ambiguous).at("/items/0/confidence").asText()).isEqualTo("HIGH");
-        assertThat(currentSong().path("metadata").isNull()).isTrue();
+        var matched = batch(ambiguous);
+        assertThat(matched.at("/items/0/status").asText()).isEqualTo("AUTO_APPLIED");
+        assertThat(matched.at("/items/0/confidence").asText()).isEqualTo("HIGH");
+        assertThat(currentSong().at("/metadata/track/externalId").asText())
+                .isEqualTo(matched.at("/items/0/candidates/0/track/externalId").asText());
     }
 
     @Test void pausingInflightWorkAndDisablingAutoApplyPreventsWritesOnResume() throws Exception {
@@ -243,7 +259,10 @@ class MetadataHttpTest {
         assertThat(body(request(BASE + "/settings", "GET", null, false)).path("maxIntervalSeconds").asInt()).isEqualTo(20);
         input.put("minIntervalSeconds", 21);
         assertThat(request(BASE + "/settings", "PUT", input, true).statusCode()).isEqualTo(400);
-        input.put("minIntervalSeconds", 1);
+        input.put("minIntervalSeconds", 0); input.put("maxIntervalSeconds", 0);
+        assertThat(request(BASE + "/settings", "PUT", input, true).statusCode()).isEqualTo(200);
+        assertThat(body(request(BASE + "/settings", "GET", null, false)).path("minIntervalSeconds").asInt()).isZero();
+        input.put("minIntervalSeconds", -1);
         assertThat(request(BASE + "/settings", "PUT", input, true).statusCode()).isEqualTo(400);
         input.put("minIntervalSeconds", 3); input.put("maxIntervalSeconds", 301);
         assertThat(request(BASE + "/settings", "PUT", input, true).statusCode()).isEqualTo(400);

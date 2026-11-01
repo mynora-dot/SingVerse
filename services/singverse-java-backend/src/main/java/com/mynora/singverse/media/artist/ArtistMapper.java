@@ -14,6 +14,8 @@ public interface ArtistMapper {
 
     Map<String, Object> find(@Param("id") String id);
 
+    int category(@Param("id") String id, @Param("type") String type, @Param("revision") long revision, @Param("now") String now);
+
     int insert(
             @Param("id") String id,
             @Param("input") ArtistDtos.Save input,

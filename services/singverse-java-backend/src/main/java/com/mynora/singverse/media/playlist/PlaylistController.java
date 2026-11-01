@@ -19,9 +19,10 @@ public class PlaylistController {
     @GetMapping("")
     public Map<String, Object> list(
             @RequestParam(defaultValue = "") String q,
+            @RequestParam(defaultValue = "UPDATED_DESC") String sort,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        var result = service.list(q, page, size);
+        var result = service.list(q, sort, page, size);
         for (Object item : (List<?>) result.get("items")) admin((ObjectNode) item);
         return result;
     }

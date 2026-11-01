@@ -5,6 +5,7 @@ import static com.mynora.singverse.media.metadata.MetadataJson.*;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.mynora.singverse.media.dto.MediaSongDtos.Song;
 import com.mynora.singverse.media.repository.MediaSongRepository;
+import com.mynora.singverse.media.repository.MediaSourceRepository;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
@@ -22,14 +23,15 @@ public class MetadataService {
     private final MetadataJson json;
     private final MetadataSettingsService settings;
     private final MediaSongRepository songs;
+    private final MediaSourceRepository sources;
     private final MetadataMatcher matcher;
     private final Map<MusicProvider, MusicMetadataProvider> providers = new EnumMap<>(MusicProvider.class);
     private final TransactionTemplate transaction;
 
     public MetadataService(MetadataMapper mapper, MetadataJson json, MetadataSettingsService settings,
-            MediaSongRepository songs, MetadataMatcher matcher, List<MusicMetadataProvider> providers,
+            MediaSongRepository songs, MediaSourceRepository sources, MetadataMatcher matcher, List<MusicMetadataProvider> providers,
             PlatformTransactionManager manager) {
-        this.mapper = mapper; this.json = json; this.settings = settings; this.songs = songs; this.matcher = matcher;
+        this.mapper = mapper; this.json = json; this.settings = settings; this.songs = songs; this.sources = sources; this.matcher = matcher;
         providers.forEach(provider -> this.providers.put(provider.provider(), provider));
         this.transaction = new TransactionTemplate(manager);
     }
@@ -146,16 +148,19 @@ public class MetadataService {
             mapper.lock(); var config = settings.require();
             if (!mapper.active().isEmpty()) throw conflict("已有运行或暂停的批次，请先完成或恢复当前批次");
             List<String> ids = input.songIds() == null ? List.of() : input.songIds().stream().filter(Objects::nonNull).distinct().toList();
+            String sourceId = input.sourceId();
             if (input.all() && !ids.isEmpty()) throw bad("全量与指定歌曲不能同时提供");
+            if (sourceId != null && (sourceId.isBlank() || !sourceId.matches("[A-Za-z0-9-]{1,36}") || !input.all() || !ids.isEmpty())) throw bad("媒体来源只能用于指定来源的全量刮削");
+            if (sourceId != null) sources.get(sourceId);
             if (ids.stream().anyMatch(id -> !id.matches("[A-Za-z0-9-]{1,36}"))) throw bad("歌曲 ID 无效");
             if (!input.all() && (ids.isEmpty() || ids.size() > 500)) throw bad("请选择 1～500 首歌曲");
-            var targets = mapper.targetSongs(ids, input.all());
+            var targets = mapper.targetSongs(ids, input.all(), sourceId);
             if (targets.size() > 5000) throw bad("单批次最多 5000 首，请分批选择歌曲");
             if (!input.all() && targets.size() != ids.size()) throw conflict("部分歌曲已移除，请刷新列表后重试");
             var pending = targets.stream().map(songs::song).filter(song -> song.metadata() == null || song.metadata().stale()).toList();
             if (pending.isEmpty()) throw bad("没有待刮削歌曲；已应用的歌曲可从单曲入口重新匹配");
             String id = UUID.randomUUID().toString(), time = now();
-            mapper.insertBatch(id, input.all() ? "ALL" : "SELECTED", json.encode(config.providers()), config.autoApply(), config.threshold(), targets.size() - pending.size(), time);
+            mapper.insertBatch(id, sourceId != null ? "SOURCE" : input.all() ? "ALL" : "SELECTED", json.encode(config.providers()), config.autoApply(), config.threshold(), targets.size() - pending.size(), time);
             for (Song song : targets.stream().map(songs::song).toList()) {
                 String itemId=UUID.randomUUID().toString();
                 mapper.insertItem(itemId, id, song.id(), MediaSongRepository.fingerprint(song), title(song), json.encode(artists(song)), time);
@@ -257,5 +262,25 @@ public class MetadataService {
             Applied result = applyLocked(row.get("song_id").toString(), input, row.get("fingerprint").toString());
             mapper.itemStatus(itemId, previous, "MANUAL_APPLIED", (String) row.get("candidates_json"), null, now());
             return result; });
+    }
+    public void markReviewedItem(String batchId, String itemId, String songId, String fingerprint) {
+        transaction.executeWithoutResult(status -> { mapper.lock();
+            var row = requireItem(batchId, itemId);
+            if (!songId.equals(row.get("song_id")) || !fingerprint.equals(row.get("fingerprint"))) throw conflict("批次歌曲已变化，请刷新后重试");
+            String previous = row.get("status").toString();
+            if ("MANUAL_APPLIED".equals(previous)) return;
+            if (!Set.of("REVIEW", "FAILED").contains(previous)) throw conflict("该明细当前不能人工应用");
+            mapper.itemStatus(itemId, previous, "MANUAL_APPLIED", (String) row.get("candidates_json"), null, now());
+        });
+    }
+    public void requireReviewableItem(String batchId, String itemId, String songId, String fingerprint) {
+        transaction.executeWithoutResult(status -> { mapper.lock();
+            var row = requireItem(batchId, itemId);
+            if (!songId.equals(row.get("song_id")) || !fingerprint.equals(row.get("fingerprint"))) throw conflict("批次歌曲已变化，请刷新后重试");
+            if (!Set.of("REVIEW", "FAILED", "MANUAL_APPLIED").contains(row.get("status").toString())) throw conflict("该明细当前不能人工应用");
+        });
+    }
+    public String batchItemSong(String batchId, String itemId) {
+        return transaction.execute(status -> requireItem(batchId, itemId).get("song_id").toString());
     }
 }

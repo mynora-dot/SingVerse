@@ -182,6 +182,16 @@ public class ArtistService {
         throw fail(410, "歌手库已改为从歌曲自动生成，请在歌曲中订正歌手信息");
     }
 
+    public ObjectNode category(String id, String type, long revision) {
+        if (type == null || !Set.of("MALE", "FEMALE", "GROUP", "UNKNOWN").contains(type)) throw fail(400, "歌手分类无效");
+        return tx.execute(status -> {
+            mapper.lock(); required(id);
+            if (mapper.category(id, type, revision, java.time.Instant.now().toString()) != 1) throw fail(409, "歌手分类已变化，请刷新");
+            events.publishEvent(new ArtistDtos.Changed());
+            return get(id);
+        });
+    }
+
     public void bind(ArtistDtos.Bind input) {
         throw fail(410, "无需手动关联，请在歌曲中订正歌手信息");
     }

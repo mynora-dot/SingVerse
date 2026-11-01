@@ -35,9 +35,17 @@ public class ArtistController {
     @GetMapping("")
     public Map<String, Object> list(
             @RequestParam(defaultValue = "") String q,
+            @RequestParam(defaultValue = "") String type,
+            @RequestParam(required = false) Integer countLessThan,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return library.managedArtists(q, page, size);
+        return library.managedArtists(q, type, countLessThan, page, size);
+    }
+
+    public record CategoryInput(String type, long revision) {}
+    @PutMapping("/{id}/category") public ObjectNode category(@PathVariable String id, @RequestBody CategoryInput input) {
+        if (input == null) throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST, "歌手分类无效");
+        return artists.category(id, input.type(), input.revision());
     }
 
     @PostMapping("")

@@ -129,6 +129,15 @@ public class SingleReviewService {
             return result;
         });
     }
+    public Result applyBatch(String batchId, String itemId, Apply input) {
+        if (input == null) throw bad("请选择有效的应用字段并提供提交标识");
+        var row = reviewBatchSong(batchId, itemId);
+        metadata.requireReviewableItem(batchId, itemId, row, input.fingerprint());
+        var result = apply(row, input);
+        metadata.markReviewedItem(batchId, itemId, row, input.fingerprint());
+        return result;
+    }
+    private String reviewBatchSong(String batchId, String itemId) { return metadata.batchItemSong(batchId, itemId); }
     private static boolean present(Object value) { return value!=null && (!(value instanceof String v)||!v.isBlank()) && (!(value instanceof List<?> v)||!v.isEmpty()); }
     @SuppressWarnings("unchecked") private static List<String> strings(Object value) { return value==null?List.of():(List<String>)value; }
     private static Object validate(String field,Object value) {

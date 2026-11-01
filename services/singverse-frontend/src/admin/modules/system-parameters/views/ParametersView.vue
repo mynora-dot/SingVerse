@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '../../../shared/ui/PageHeader.vue'
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElAlert, ElButton, ElCard, ElInput, ElForm, ElFormItem, ElDialog, ElMessageBox, ElIcon, ElTag } from 'element-plus'
@@ -54,7 +55,7 @@ async function closeRecovery() {
 </script>
 <template>
   <div class="parameters-page">
-    <div class="page-heading"><div><h1>系统参数</h1><p class="page-description">管理你的管理员账号，守护家庭音乐空间。</p></div><span class="page-context"><ElIcon><Lock /></ElIcon> 账号与安全</span></div>
+    <PageHeader title="账号与安全" description="修改管理员密码，开启或管理二次验证。修改密码后所有设备都需要重新登录。" />
     <ElAlert v-if="auth.account?.defaultPassword" title="当前仍在使用默认密码，请及时修改并开启二次验证。" type="warning" :closable="false" show-icon />
     <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon />
     <div class="account-banner"><span class="settings-icon"><ElIcon><User /></ElIcon></span><div><h2>admin</h2><p>管理员 · 管理当前 NAS 的全部设置</p></div><ElTag effect="plain" round>单管理员账号</ElTag></div>

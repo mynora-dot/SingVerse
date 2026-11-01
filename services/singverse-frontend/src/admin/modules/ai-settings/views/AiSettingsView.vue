@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '../../../shared/ui/PageHeader.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute } from 'vue-router'
 import { ElAlert, ElButton, ElCard, ElCheckbox, ElDialog, ElEmpty, ElForm, ElFormItem, ElIcon, ElInput, ElInputNumber, ElMessage, ElMessageBox, ElOption, ElRadioButton, ElRadioGroup, ElSelect, ElSwitch, ElTag } from 'element-plus'
@@ -133,7 +134,7 @@ onBeforeUnmount(() => { active = false; generation++; testGeneration++; draft.ap
 
 <template>
   <section class="ai-settings-page management-page">
-    <div class="page-heading"><div><p class="page-eyebrow">AI WORKSPACE / SETTINGS</p><h1>AI 设置</h1><p class="page-description">连接模型与搜索服务，让每项 AI 能力各有所用。</p></div><ElButton :loading="loading" :disabled="busy || editing || featureDirty || assistantDirty" @click="load">刷新配置</ElButton></div>
+    <PageHeader title="AI 设置" description="先添加模型或搜索服务，再在功能配置中为歌曲分类、歌单推荐等功能选择要使用的服务。"><template #actions><ElButton :loading="loading" :disabled="busy || editing || featureDirty || assistantDirty" @click="load">刷新配置</ElButton></template></PageHeader>
     <nav class="ai-tabs" aria-label="AI 设置分区"><RouterLink to="/system/ai/models" :aria-current="section === 'models' ? 'page' : undefined"><ElIcon><MagicStick /></ElIcon>模型服务</RouterLink><RouterLink to="/system/ai/search" :aria-current="section === 'search' ? 'page' : undefined"><ElIcon><Search /></ElIcon>搜索服务</RouterLink><RouterLink to="/system/ai/features" :aria-current="section === 'features' ? 'page' : undefined"><ElIcon><Setting /></ElIcon>功能配置</RouterLink></nav>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon><ElButton v-if="!ready" text @click="load">重新加载</ElButton></ElAlert>
     <p v-if="loading && !ready" role="status" class="ai-loading">正在读取 AI 配置…</p>

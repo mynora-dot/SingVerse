@@ -29,7 +29,7 @@ public class MetadataSettingsService {
         if (input.enabled() && input.providers().isEmpty()) throw bad("请至少选择一个元数据平台");
         int min = input.minIntervalSeconds() == null ? 3 : input.minIntervalSeconds();
         int max = input.maxIntervalSeconds() == null ? 8 : input.maxIntervalSeconds();
-        if (min < 2 || max > 300 || max < min) throw bad("批量间隔需要在 2～300 秒之间，最大值不能小于最小值");
+        if (min < 0 || max > 300 || max < min) throw bad("批量间隔需要在 0～300 秒之间，最大值不能小于最小值");
         mapper.lock();
         mapper.pauseActive(now());
         mapper.saveSettings(input.enabled(), json.encode(input.providers()), input.autoApply(), input.threshold(), min, max, now());

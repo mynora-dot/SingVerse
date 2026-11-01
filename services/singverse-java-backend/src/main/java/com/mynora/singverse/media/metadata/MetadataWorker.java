@@ -104,8 +104,7 @@ public class MetadataWorker {
         }
     }
     static boolean automatic(List<Candidate> candidates, double threshold) {
-        return !candidates.isEmpty() && candidates.getFirst().score() >= threshold
-                && (candidates.size() == 1 || candidates.getFirst().score() - candidates.get(1).score() >= .08);
+        return !candidates.isEmpty() && candidates.getFirst().score() >= threshold;
     }
     private void finish(String batchId) {
         if (mapper.itemCount(batchId, "PENDING") == 0 && mapper.itemCount(batchId, "PROCESSING") == 0)

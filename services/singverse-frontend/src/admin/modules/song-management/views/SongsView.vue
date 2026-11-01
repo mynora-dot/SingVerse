@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '../../../shared/ui/PageHeader.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElAlert, ElButton, ElCard, ElEmpty, ElInput, ElPagination, ElSelect, ElOption, ElSkeleton, ElPopover } from 'element-plus'
@@ -125,14 +126,15 @@ onBeforeUnmount(() => { active = false; generation++ })
 
 <template>
   <section class="songs-page" :class="{ 'is-selecting': selectionMode }">
-    <div class="page-heading">
-      <h1>全部歌曲</h1>
-      <div class="page-actions">
-        <ElButton text @click="router.push('/library/playlists')">歌单管理</ElButton>
-        <ElButton text :icon="EditPen" @click="router.push('/library/songs/metadata')">整理元数据</ElButton>
-        <ElButton text :icon="FolderOpened" @click="router.push('/library/media')">管理来源</ElButton>
-      </div>
-    </div>
+    <PageHeader title="全部歌曲" description="媒体库扫描得到的全部歌曲。可筛选、播放、复核文件名识别结果或编辑歌曲信息。">
+      <template #actions>
+        <div class="page-actions">
+          <ElButton text @click="router.push('/library/playlists')">歌单管理</ElButton>
+          <ElButton text :icon="EditPen" @click="router.push('/library/songs/metadata')">整理元数据</ElButton>
+          <ElButton text :icon="FolderOpened" @click="router.push('/library/media')">管理来源</ElButton>
+        </div>
+      </template>
+    </PageHeader>
 
     <!-- 筛选与搜索 -->
     <ElCard shadow="never" class="filters-card" aria-label="歌曲搜索与筛选">

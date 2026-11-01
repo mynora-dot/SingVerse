@@ -15,7 +15,7 @@ public final class MetadataDtos {
     public record ProviderError(MusicProvider provider, String message) {}
     public record SearchResult(List<Candidate> candidates, List<ProviderError> errors) {}
     public record ApplyInput(String candidateId, Set<String> fields) {}
-    public record StartInput(boolean all, List<String> songIds) {}
+    public record StartInput(boolean all, List<String> songIds, String sourceId) {}
     public record Item(String id, String songId, String title, List<String> artists, String status,
             List<Candidate> candidates, String error, String updatedAt, String confidence, boolean coverAvailable, String sourceId, String relativePath) {}
     public record Batch(String id, String mode, String status, int total, int completed,

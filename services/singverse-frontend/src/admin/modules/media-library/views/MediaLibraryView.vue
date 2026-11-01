@@ -4,14 +4,20 @@ import { ElIcon, ElLoading, ElAlert, ElButton, ElCard, ElDialog, ElEmpty, ElForm
 import { FolderOpened, Plus, RefreshRight } from '@element-plus/icons-vue'
 import { parserProfiles } from '../../filename-parser/api/rules'
 import type { ParserWorkspace } from '../../filename-parser/types'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import PageHeader from '../../../shared/ui/PageHeader.vue'
 import { media, type MediaSource, type SourceType, type ScanTask, type DirectoryPage } from '../api/media'
 
 import WebDavMetadataDialog from '../components/WebDavMetadataDialog.vue'
 const metadataSource = ref<MediaSource | null>(null)
 const router = useRouter()
+const route = useRoute()
 const vLoading = ElLoading.directive
 const items = ref<MediaSource[]>([])
+function displayLocation(row: MediaSource) {
+  if (row.type !== 'WEBDAV') return row.location
+  try { return decodeURI(row.location) } catch { return row.location }
+}
 const moreSources = ref(false), sourcePage = ref(0)
 const advanced = ref(false), picker = ref(false), directoryLoading = ref(false), directoryError = ref('')
 const directory = ref<DirectoryPage | null>(null), selectedDirectory = ref(''), directoryPage = ref(0)
@@ -165,16 +171,20 @@ async function remove(item: MediaSource) {
   try { await media.remove(item.id); ElMessage.success('已移除媒体库配置'); await load() }
   catch (e) { error.value = e instanceof Error ? e.message : '移除失败' }
 }
-onMounted(() => { void load(); void loadProfiles() })
+onMounted(() => {
+  void load(); void loadProfiles()
+  // 概览等入口通过 ?add=LOCAL|WEBDAV 直接打开添加弹窗，打开后移除参数避免刷新重复弹出。
+  const add = route.query.add
+  if (add === 'LOCAL' || add === 'WEBDAV') { open(add); const query = { ...route.query }; delete query.add; void router.replace({ query }) }
+})
 onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; loadGeneration++; directoryGeneration++; clearTimeout(taskTimer); draft.password = '' })
 </script>
 
 <template>
   <div class="media-library-page management-page">
-    <div class="media-heading page-heading">
-      <div><h1>媒体库</h1><p class="page-description">添加歌曲所在的文件夹，扫描后整理到歌曲库。</p></div>
-      <div class="media-actions"><ElButton :icon="RefreshRight" :loading="loading" @click="load()">刷新</ElButton><ElButton type="primary" :icon="Plus" @click="open('LOCAL')">添加媒体库</ElButton></div>
-    </div>
+    <PageHeader class="media-heading" title="媒体库" description="添加歌曲所在的本地目录或 WebDAV，扫描后歌曲会出现在曲库中。扫描只读取文件，不会修改原文件。">
+      <template #actions><div class="media-actions"><ElButton :icon="RefreshRight" :loading="loading" @click="load()">刷新</ElButton><ElButton type="primary" :icon="Plus" @click="open('LOCAL')">添加媒体库</ElButton></div></template>
+    </PageHeader>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon class="media-error"><ElButton text @click="load()">重试</ElButton></ElAlert>
     <section v-loading="loading" class="source-cards" aria-label="媒体库">
       <ElEmpty v-if="loaded && !items.length && !error" description="添加本地目录或 WebDAV，开始整理你的歌曲。"><ElButton type="primary" @click="open('LOCAL')">添加第一个目录</ElButton></ElEmpty>
@@ -183,7 +193,7 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
           <span class="source-icon"><ElIcon><FolderOpened /></ElIcon></span>
           <div class="source-info">
             <div class="source-title"><h2>{{ row.name }}</h2><ElTag type="info" effect="plain">{{ row.type === 'LOCAL' ? '本地目录' : 'WebDAV' }}</ElTag></div>
-            <p class="source-location">{{ row.location }}</p>
+            <p class="source-location">{{ displayLocation(row) }}</p>
             <div v-if="tasks[row.id]" class="scan-progress" aria-live="polite">
               <strong>{{ taskLabel(tasks[row.id]!) }}</strong>
               <span>已处理 {{ tasks[row.id]!.directories }} 个目录、{{ tasks[row.id]!.entries }} 个条目；{{ tasks[row.id]!.totalSongs }} 首，{{ tasks[row.id]!.needsReviewSongs }} 首需复核</span>
@@ -200,7 +210,7 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
           <div class="source-actions">
             <ElButton type="primary" :loading="scanning === row.id" :disabled="!!scanning || taskActive(tasks[row.id])" @click="scan(row)">扫描歌曲</ElButton>
             <ElButton @click="showSongs(row)">查看歌曲</ElButton>
-            <ElButton @click="metadataSource = row">整理与分享</ElButton>
+            <ElButton @click="metadataSource = row">{{ row.type === 'WEBDAV' ? '内嵌元数据与分享' : '整理与分享' }}</ElButton>
             <details class="source-menu"><summary :aria-label="`${row.name}的更多操作`">⋯</summary><div><ElButton text @click="open(row.type, row)">编辑</ElButton><ElButton text type="danger" @click="remove(row)">移除</ElButton></div></details>
           </div>
         </div>

@@ -1,34 +1,39 @@
-import { CollectionTag, Document, FolderOpened, Headset, House, MagicStick, Monitor, Setting, Tools } from '@element-plus/icons-vue'
+import { Collection, CollectionTag, Connection, Document, FolderOpened, Headset, House, Key, MagicStick, Microphone, Monitor, Odometer, Setting, Tools } from '@element-plus/icons-vue'
 
-/** User-facing navigation order; URLs stay compatible with saved links. */
+/** 按管理员日常任务分组；URL 保持不变以兼容已保存的链接。 */
 export const overviewEntry = { path: '/overview', label: '概览', icon: House }
 export const navigationGroups = [
   {
-    id: 'library', label: '曲库管理', icon: Headset,
+    id: 'library', label: '曲库',
     children: [
       { path: '/library/songs', label: '全部歌曲', icon: Headset },
-      { path: '/library/artists', label: '歌手库', icon: Headset },
-      { path: '/library/playlists', label: '歌单管理', icon: CollectionTag },
+      { path: '/library/artists', label: '歌手库', icon: Microphone },
+      { path: '/library/playlists', label: '歌单管理', icon: Collection },
       { path: '/library/classification', label: '歌曲分类', icon: CollectionTag },
-      { path: '/library/media', label: '媒体库', icon: FolderOpened },
       { path: '/library/songs/metadata', label: '元数据整理', icon: MagicStick },
     ],
   },
   {
-    id: 'parsing', label: '文件名解析', icon: Document,
+    id: 'sources', label: '来源与导入',
     children: [
+      { path: '/library/media', label: '媒体库', icon: FolderOpened },
       { path: '/library/filename-parser-profiles', label: '解析方案', icon: Document },
-      { path: '/library/filename-parser', label: '自定义规则', icon: Tools },
+      { path: '/library/filename-parser', label: '自定义规则', icon: Tools, advanced: true },
     ],
   },
   {
-    id: 'system', label: '系统设置', icon: Setting,
+    id: 'devices', label: '设备与服务',
     children: [
-      { path: '/system/ai', label: 'AI 设置', icon: MagicStick },
       { path: '/system/tv-devices', label: '电视设备', icon: Monitor },
-      { path: '/system/compute', label: '性能节点配置', icon: Monitor },
-      { path: '/system', label: '服务状态', icon: Monitor },
-      { path: '/system/parameters', label: '账号与安全', icon: Setting },
+      { path: '/system', label: '服务状态', icon: Odometer },
+      { path: '/system/compute', label: '性能节点配置', icon: Connection },
+    ],
+  },
+  {
+    id: 'system', label: '系统设置',
+    children: [
+      { path: '/system/ai', label: 'AI 设置', icon: Setting },
+      { path: '/system/parameters', label: '账号与安全', icon: Key },
     ],
   },
 ]

@@ -115,19 +115,34 @@ public class PlaylistService {
     }
 
     public Map<String, Object> list(String q, int page, int size) {
+        return list(q, "UPDATED_DESC", page, size);
+    }
+
+    public Map<String, Object> list(String q, String sort, int page, int size) {
         validatePage(q, page, size);
+        if (sort == null || !java.util.Set.of("UPDATED_DESC", "NAME_ASC", "SONGS_DESC").contains(sort)) throw fail(400, "歌单排序无效");
         String query = TvLibrary.normalize(q);
-        return page(
-                mapper.list().stream()
+        var matches = mapper.list().stream()
                         .filter(
                                 r ->
                                         TvLibrary.searchable(
                                                         r.get("name") + " " + r.get("description"))
                                                 .contains(query))
-                        .map(r -> view(r, false))
-                        .toList(),
-                page,
-                size);
+                        .toList();
+        if (sort.equals("SONGS_DESC"))
+            return page(matches.stream().map(r -> view(r, false))
+                    .sorted(java.util.Comparator.comparingInt((ObjectNode p) -> p.path("count").asInt()).reversed()
+                            .thenComparing(p -> p.path("id").asText())).toList(), page, size);
+        java.util.Comparator<Map<String, Object>> ordering = sort.equals("NAME_ASC")
+                ? java.util.Comparator.comparing((Map<String, Object> r) -> r.get("name").toString(), String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(r -> r.get("id").toString())
+                : java.util.Comparator.comparing((Map<String, Object> r) -> r.get("updated_at").toString()).reversed()
+                        .thenComparing(r -> r.get("id").toString());
+        var ordered = matches.stream().sorted(ordering).toList();
+        int start = (int) Math.min(ordered.size(), (long) page * size);
+        var visible = ordered.subList(start, Math.min(ordered.size(), start + size)).stream()
+                .map(r -> view(r, false)).toList();
+        return Map.of("items", visible, "totalElements", ordered.size(), "page", page, "size", size);
     }
 
     public Map<String, Object> songs(String id, int page, int size) {

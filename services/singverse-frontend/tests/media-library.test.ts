@@ -29,6 +29,18 @@ afterEach(() => { wrapper?.unmount(); document.body.innerHTML = ''; vi.clearAllM
 function button(text: string) {
   return wrapper.findAll('button').find(item => item.text() === text)!
 }
+it('WebDAV 地址在卡片中显示解码后的中文，编辑时保留原地址', async () => {
+  const location = 'http://nas.example.invalid/%E5%AA%92%E4%BD%93%E5%BA%93/ktv/music/'
+  vi.mocked(media.list).mockResolvedValue({ items: [{ id: 'source-1', name: 'all', type: 'WEBDAV', location, username: '', parserProfileId: 'default', passwordConfigured: false, createdAt: '', updatedAt: '' }], page: 0, size: 20, totalElements: 1 })
+  wrapper = mount(MediaLibraryView, { global: { plugins: [router], stubs: { teleport: true } } })
+  await flushPromises()
+  expect(wrapper.get('.source-location').text()).toBe('http://nas.example.invalid/媒体库/ktv/music/')
+  expect(button('内嵌元数据与分享').exists()).toBe(true)
+  await wrapper.get('summary[aria-label="all的更多操作"]').trigger('click')
+  await button('编辑').trigger('click')
+  await flushPromises()
+  expect((wrapper.findComponent(ElDialog).get('input[placeholder="https://nas.example/dav/歌曲目录/"]').element as HTMLInputElement).value).toBe(location)
+})
 it('本地目录表单独立于远端认证，保存后刷新真实列表', async () => {
   wrapper = mount(MediaLibraryView, { global: { plugins: [router], stubs: { teleport: true } } })
   await flushPromises()
@@ -226,4 +238,14 @@ it('目录加载失败禁止选择，重试后可浏览与自动命名', async (
   await button('选择此文件夹').trigger('click'); await flushPromises()
   await wrapper.findComponent(ElDialog).get('form').trigger('submit'); await flushPromises()
   expect(media.save).toHaveBeenCalledWith(expect.objectContaining({ name: 'songs', location: '/media/songs' }), undefined)
+})
+it('从概览带 ?add=WEBDAV 进入时直接打开对应添加表单，并移除参数避免刷新重复弹出', async () => {
+  await router.push('/library/media?add=WEBDAV')
+  wrapper = mount(MediaLibraryView, { global: { plugins: [router], stubs: { teleport: true } } })
+  await flushPromises()
+  const form = wrapper.findComponent(ElDialog)
+  expect(form.props('modelValue')).toBe(true)
+  expect(form.text()).toContain('WebDAV 目录地址')
+  expect(router.currentRoute.value.query.add).toBeUndefined()
+  expect(router.currentRoute.value.path).toBe('/library/media')
 })

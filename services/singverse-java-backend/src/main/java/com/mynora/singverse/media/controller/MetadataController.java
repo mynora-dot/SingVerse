@@ -34,6 +34,10 @@ public class MetadataController {
     @PostMapping("/batches/{id}/cancel") public Batch cancel(@PathVariable String id) { return service.cancel(id); }
     @PostMapping("/batches/{id}/items/{itemId}/retry") public Batch retry(@PathVariable String id, @PathVariable String itemId) { return service.retry(id, itemId); }
     @PostMapping("/batches/{id}/items/{itemId}/apply") public Applied applyItem(@PathVariable String id, @PathVariable String itemId, @RequestBody ApplyInput input) { return service.applyItem(id, itemId, input); }
+    @PostMapping("/batches/{id}/items/{itemId}/review/apply") public SingleReviewDtos.Result reviewApplyItem(@PathVariable String id, @PathVariable String itemId, @RequestBody SingleReviewDtos.Apply input) {
+        var result = review.applyBatch(id, itemId, input);
+        return result;
+    }
     @GetMapping("/candidates/{id}/cover") public ResponseEntity<byte[]> candidateCover(@PathVariable String id) { return image(covers.candidate(id)); }
     @GetMapping("/songs/{songId}/cover") public ResponseEntity<byte[]> songCover(@PathVariable String songId) { return image(covers.applied(songId)); }
     private ResponseEntity<byte[]> image(MetadataCoverService.Cover cover) {

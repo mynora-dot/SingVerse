@@ -303,11 +303,22 @@ public class TvLibrary {
     }
 
     public Map<String, Object> managedArtists(String q, int page, int size) {
+        return managedArtists(q, "", null, page, size);
+    }
+
+    public Map<String, Object> managedArtists(String q, String type, Integer countLessThan, int page, int size) {
         validate(q, page, size);
+        if (type == null || !java.util.Set.of("", "MALE", "FEMALE", "GROUP", "UNKNOWN").contains(type)
+                || countLessThan != null && (countLessThan < 1 || countLessThan > 1000000))
+            throw TvService.fail(400, "歌手筛选条件无效");
         String needle = normalize(q);
         return page(
                 current().profiles().values().stream()
                         .filter(p -> matchesArtist(p, needle))
+                        .filter(p -> type.isEmpty() || ("UNKNOWN".equals(type)
+                                ? !java.util.Set.of("MALE", "FEMALE", "GROUP").contains(p.path("type").asText())
+                                : type.equals(p.path("type").asText())))
+                        .filter(p -> countLessThan == null || p.path("count").asInt() < countLessThan)
                         .sorted(
                                 Comparator.comparing((ObjectNode n) -> n.path("name").asText())
                                         .thenComparing(n -> n.path("id").asText()))

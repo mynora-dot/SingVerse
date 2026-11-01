@@ -13,7 +13,7 @@ import type { CoverSelection, Values, ReviewField } from '../single-types'
 import MetadataFieldComparison from './MetadataFieldComparison.vue'
 import SingleMetadataEditor from './SingleMetadataEditor.vue'
 import SingleCoverPicker from './SingleCoverPicker.vue'
-const props = defineProps<{ song: MediaSong | null }>()
+const props = defineProps<{ song?: MediaSong | null; songId?: string | null; initialCandidates?: MetadataCandidate[]; batchId?: string; itemId?: string; autoSelectThreshold?: number }>()
 const emit = defineEmits<{ close: []; applied: [] }>()
 const state = useSingleSongScrape()
 const { review, keyword, providers, available, enabled, loading, searching, applying, error, searchError, warning, candidates,
@@ -33,7 +33,8 @@ const currentCover = computed(() => review.value?.values.cover ? metadata.songCo
 const fileFormat = computed(() => (review.value?.song.relativePath.split('.').pop() ?? '').toUpperCase())
 const fileSize = computed(() => review.value?.song.fileSize == null ? '大小未知' : `${(review.value.song.fileSize / 1024 / 1024).toFixed(1)} MB`)
 const coverKeyword = computed(() => draft.value ? [draft.value.title, ...(draft.value.artists as string[] ?? []), draft.value.album].filter(Boolean).join(' ').slice(0, 200) : keyword.value)
-watch(() => props.song?.id, id => { editorOpen.value = false; coverOpen.value = false; if (id) void state.open(id); else state.invalidate() }, { immediate: true })
+const activeSongId = computed(() => props.songId ?? props.song?.id ?? null)
+watch(activeSongId, id => { editorOpen.value = false; coverOpen.value = false; if (id) void state.open(id, props.initialCandidates, props.autoSelectThreshold); else state.invalidate() }, { immediate: true })
 onBeforeUnmount(state.invalidate)
 function display(value: unknown, field = '') {
   if (!present(value)) return '—'
@@ -67,13 +68,13 @@ async function openSettings() {
   if (dirty.value && !await discard('前往设置会离开当前审核并放弃草稿。')) return
   state.invalidate(); emit('close'); window.location.hash = '/library/songs/metadata'
 }
-async function reload() { if (!props.song) return; if (dirty.value && !await discard('重新加载会放弃草稿，并读取最新歌曲数据。')) return; await state.open(props.song.id) }
+async function reload() { if (!activeSongId.value) return; if (dirty.value && !await discard('重新加载会放弃草稿，并读取最新歌曲数据。')) return; await state.open(activeSongId.value, props.initialCandidates, props.autoSelectThreshold) }
 function saveEdits(values: Values) { state.saveEdits(values); editorOpen.value = false }
 function chooseCover(value: CoverSelection) { state.chooseCover(value); coverOpen.value = false }
-async function apply() { resultCoverFailed.value = false; await state.apply(); if (result.value) emit('applied') }
+async function apply() { resultCoverFailed.value = false; await state.apply(props.batchId && props.itemId ? (_songId, input) => singleReview.applyBatch(props.batchId!, props.itemId!, input) : singleReview.apply); if (result.value) emit('applied') }
 </script>
 <template>
-  <ElDialog :model-value="!!song" title="元数据刮削 · 匹配与审核" :width="result ? 'min(780px, calc(100vw - 32px))' : 'min(1240px, calc(100vw - 32px))'" top="4vh" :class="['single-scrape-dialog', { 'single-scrape-success': !!result }]" :close-on-click-modal="false" :close-on-press-escape="!applying" :show-close="!applying" :before-close="close">
+  <ElDialog :model-value="!!activeSongId" title="元数据刮削 · 匹配与审核" :width="result ? 'min(780px, calc(100vw - 32px))' : 'min(1240px, calc(100vw - 32px))'" top="4vh" :class="['single-scrape-dialog', { 'single-scrape-success': !!result }]" :close-on-click-modal="false" :close-on-press-escape="!applying" :show-close="!applying" :before-close="close">
     <div v-if="result" class="review-success" role="status"><CircleCheckFilled class="success-icon" /><h2>元数据已应用成功</h2><p>本次更新 {{ result.updated.length }} 项，跳过 {{ result.skipped.length }} 项，保留 {{ result.retained.length }} 项。</p><table><thead><tr><th>字段</th><th>应用前</th><th>应用后</th></tr></thead><tbody><tr v-for="field in result.updated" :key="field"><td>{{ fieldNames[field] }}</td><td>{{ display(result.before[field as ReviewField], field) }}</td><td><template v-if="field === 'cover' && resultCover && !resultCoverFailed"><img class="result-cover" :src="resultCover" alt="已实际应用的歌曲封面" @error="resultCoverFailed = true" /><span>封面已应用</span></template><template v-else>{{ field === 'cover' && resultCoverFailed ? '封面已应用，图片暂不可预览' : display(result.after[field as ReviewField], field) }}</template></td></tr></tbody></table><p v-if="result.skipped.length">跳过（无变化或无值）：{{ skippedLabels }}</p><p>保留：{{ retainedLabels || '无' }}。原始媒体文件未修改。</p></div>
     <div v-else class="review-body">
       <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon><ElButton text :disabled="applying" @click="reload">重新加载歌曲</ElButton><span>重新加载会提示放弃草稿；网络失败可直接重试应用。</span></ElAlert>
@@ -91,7 +92,7 @@ async function apply() { resultCoverFailed.value = false; await state.apply(); i
           <div v-else class="candidate-scroll"><button v-for="candidate in candidates" :key="candidate.id" type="button" class="review-candidate" :class="{ chosen: selected?.id === candidate.id }" :aria-pressed="selected?.id === candidate.id" :disabled="applying" @click="choose(candidate)"><span class="candidate-radio">{{ selected?.id === candidate.id ? '◉' : '○' }}</span><img v-if="candidate.track.coverUrl" :src="metadata.candidateCover(candidate.id)" alt="候选歌曲封面" loading="lazy" @error="($event.target as HTMLImageElement).style.opacity = '0.2'" /><span v-else class="candidate-no-cover">♫</span><span class="candidate-info"><strong>{{ candidate.track.title }}</strong><span>{{ candidate.track.artists.join('、') || '未知歌手' }}</span><small>{{ candidate.track.album || '未知专辑' }} · {{ candidate.track.releaseDate || '日期未知' }}</small><ElTag size="small" effect="plain">{{ providerNames[candidate.track.provider] }}</ElTag></span><span class="candidate-score"><strong>{{ Math.round(candidate.score * 100) }}%</strong><small>匹配相似度</small></span></button></div>
         </section><section class="preview-pane" aria-label="元数据预览与审核"><div class="pane-title"><h3>{{ selected ? '选中候选与应用预览' : manualDraft ? '手工编辑草稿 · 尚未应用' : '当前入库信息 · 尚未选择候选' }}</h3><div><ElButton v-if="selected" link :disabled="applying" @click="clearSelection">取消候选</ElButton><ElButton link type="primary" :icon="Edit" :disabled="applying" @click="editorOpen = true">编辑元数据</ElButton><ElButton link type="primary" :icon="Picture" :disabled="applying" @click="coverOpen = true">选择封面</ElButton></div></div>
           <div class="preview-scroll"><p v-if="autoSelected && selected" class="selection-hint">已自动选中高相似度候选，仅用于预览，尚未写入。{{ hasCloseAlternative(candidates, selected) ? '存在其他接近候选，请核对版本后确认。' : '核对字段后点击确认应用。' }}</p><p class="selection-hint">{{ selected ? '下方预览仅包含勾选的有效变更，取消勾选会保留当前值。' : manualDraft ? '正在编辑本次草稿，确认应用前不会写入。' : '尚未选择候选，当前显示原始入库信息与有效确认值。' }}</p><div class="selected-preview"><img v-if="previewCover" :src="previewCover" alt="审核草稿封面" @error="($event.target as HTMLImageElement).style.visibility = 'hidden'" /><div v-else class="cover-placeholder">♫</div><div class="preview-copy"><h3>{{ display(preview?.title) }}</h3><p>{{ display(preview?.artists) }}</p><p>{{ display(preview?.album) }} · {{ display(preview?.releaseDate) }}</p><ElTag v-if="selected" size="small">{{ providerNames[selected.track.provider] }}</ElTag><ElTag v-else size="small" type="info">{{ manualDraft ? '手工草稿 · 尚未应用' : '当前有效值' }}</ElTag><small v-if="cover?.kind === 'asset' && changed.includes('cover')" class="upload-note">本地封面已上传，尚未应用</small></div><div v-if="selected" class="preview-score">{{ Math.round(selected.score * 100) }}%<small>相似度</small></div></div>
-          <p v-if="Object.values(song?.metadata?.origins ?? {}).some(origin => origin.kind === 'FILE')" class="selection-hint">歌手可手工订正，保存到 NAS 后优先显示，重新扫描仍会保留；其他内嵌字段继续以文件为准。</p><div class="comparison-title"><strong>将更新的字段</strong><span>共 {{ changed.length }} 项</span></div><MetadataFieldComparison :before="review.values" :draft="draft" :fields="fields" :edits="edits" :disabled="applying" @change="fields = $event" />
+          <p v-if="Object.values(review.song.metadata?.origins ?? {}).some(origin => origin.kind === 'FILE')" class="selection-hint">歌手可手工订正，保存到 NAS 后优先显示，重新扫描仍会保留；其他内嵌字段继续以文件为准。</p><div class="comparison-title"><strong>将更新的字段</strong><span>共 {{ changed.length }} 项</span></div><MetadataFieldComparison :before="review.values" :draft="draft" :fields="fields" :edits="edits" :disabled="applying" @change="fields = $event" />
           <p class="overwrite-note">勾选“将修改”的字段会覆盖当前确认值；未勾选、无变化及空值均保留现状。</p>
         </div></section></div>
         <SingleMetadataEditor :open="editorOpen" :before="review.values" :draft="draft" :original="selected ? candidateValues(selected) : null" @close="editorOpen = false" @save="saveEdits" @cover="coverOpen = true" />

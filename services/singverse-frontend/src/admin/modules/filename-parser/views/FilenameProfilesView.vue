@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '../../../shared/ui/PageHeader.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
 import { ElAlert, ElButton, ElCard, ElForm, ElFormItem, ElInput, ElMessage, ElMessageBox, ElSwitch, ElTag } from 'element-plus'
@@ -230,7 +231,7 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
 
 <template>
   <section class="profiles-page management-page">
-    <div class="page-heading"><div><h1>解析方案</h1><p class="page-description">填一个真实的文件名，挑出能识别的格式，保存后曲库就能自动分出歌手和歌名。</p></div></div>
+    <PageHeader title="解析方案" description="填一个真实的文件名，挑出能识别的格式并保存，扫描时会按方案从文件名中提取歌名和歌手。" />
     <div v-if="error || conflict || parseError" class="page-feedback"><ElAlert v-if="error" :title="error" type="error" :closable="false" role="alert" /><ElButton :disabled="loading || busy" @click="load(!!workspace)">{{ workspace ? '加载最新配置，保留草稿' : '重试加载' }}</ElButton></div>
     <p v-if="loading" class="page-status" role="status">正在读取解析方案…</p>
     <template v-if="workspace">

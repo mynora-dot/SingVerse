@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '../../../shared/ui/PageHeader.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { ElAlert, ElButton, ElInput, ElMessageBox, ElSkeleton, ElTag } from 'element-plus'
@@ -131,7 +132,7 @@ onBeforeUnmount(() => { active = false; currentGeneration++; draftGeneration++; 
 
 <template>
   <section class="compute-settings">
-    <header class="compute-heading"><h1>性能节点配置</h1><p>连接计算服务，读取歌曲信息并管理视频转码与硬件加速。</p></header>
+    <PageHeader class="compute-heading" title="性能节点配置" description="连接计算服务，用于读取歌曲内嵌信息、视频转码与硬件加速。不使用时可关闭，不影响曲库管理。" />
     <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon><ElButton text @click="load">重新读取</ElButton></ElAlert>
     <ElSkeleton v-if="loading && !settings" :rows="5" animated />
     <template v-if="settings">
@@ -173,8 +174,8 @@ onBeforeUnmount(() => { active = false; currentGeneration++; draftGeneration++; 
 .compute-settings { max-width: 1040px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .compute-heading { margin-bottom: 24px; }
-.compute-heading h1 { margin: 0; font-size: 24px; line-height: 1.4; }
-.compute-heading p { margin: 8px 0 0; color: var(--sv-text-secondary); font-size: 13px; line-height: 1.7; }
+
+
 .connection-card, .connection-editor { padding: 28px; background: var(--sv-surface-1); border: 1px solid var(--sv-border-default); border-radius: 16px; }
 .connection-card { border-top: 3px solid var(--sv-border-default); }
 .connection-card.ready { border-top-color: var(--sv-accent-primary); }
@@ -246,7 +247,7 @@ summary span { color: var(--sv-text-secondary); margin-left: 8px; font-size: 11p
   .editor-actions small { width: 100%; margin: 2px 0 0; }
 }
 @media(max-width: 480px) {
-  .compute-heading h1 { font-size: 22px; }
+  
   .connection-card, .connection-editor { padding: 18px; }
   .connection-summary { gap: 12px; flex-wrap: wrap; }
   .connection-emblem { flex-basis: 38px; height: 38px; border-radius: 10px; }

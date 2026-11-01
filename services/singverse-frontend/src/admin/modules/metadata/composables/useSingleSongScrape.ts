@@ -36,7 +36,7 @@ export function useSingleSongScrape() {
     edits.value = {}; cover.value = null; fields.value = []; result.value = null; attempt = null
   }
   function invalidate() { session++; searchGeneration++ }
-  async function open(songId: string) {
+  async function open(songId: string, initialCandidates?: MetadataCandidate[], threshold?: number) {
     invalidate(); const token = session
     autoSelected.value = false; review.value = null; draft.value = null; selected.value = null; candidates.value = []; result.value = null
     edits.value = {}; cover.value = null; fields.value = []; error.value = ''; warning.value = ''; searchError.value = ''; searching.value = false; attempt = null
@@ -48,11 +48,15 @@ export function useSingleSongScrape() {
       keyword.value = [context.value.values.title, ...(context.value.values.artists as string[])].filter(Boolean).join(' ').slice(0, 200)
     } else error.value = context.reason instanceof Error ? context.reason.message : '读取歌曲失败'
     if (settings.status === 'fulfilled') {
-      settingsStatus.value = 'ready'; enabled.value = settings.value.enabled; selectionThreshold.value = settings.value.threshold
+      settingsStatus.value = 'ready'; enabled.value = settings.value.enabled; selectionThreshold.value = threshold ?? settings.value.threshold
       available.value = settings.value.enabled ? [...settings.value.providers] : []; providers.value = [...available.value]
     } else { settingsStatus.value = 'error'; warning.value = '平台设置读取失败，仍可手工编辑；重新加载后可重试平台查询。' }
     loading.value = false
-    if (review.value && enabled.value && providers.value.length) await search()
+    if (review.value && initialCandidates) {
+      candidates.value = initialCandidates; searched.value = true
+      const best = highSimilarityCandidate(initialCandidates, selectionThreshold.value)
+      if (best) { choose(best); autoSelected.value = true }
+    } else if (review.value && enabled.value && providers.value.length) await search()
   }
   async function search() {
     if (!canSearch.value || !review.value) return
@@ -93,7 +97,7 @@ export function useSingleSongScrape() {
     if (!fields.value.includes('cover')) fields.value.push('cover')
     result.value = null; error.value = ''; attempt = null
   }
-  async function apply() {
+  async function apply(execute: (songId: string, input: ReviewApply) => Promise<ReviewResult> = singleReview.apply) {
     if (!review.value || !draft.value || !changed.value.length || applying.value) return
     const token = session
     const base = { fingerprint: review.value.fingerprint, version: review.value.version, candidateId: selected.value?.id ?? null,
@@ -101,7 +105,7 @@ export function useSingleSongScrape() {
     const signature = JSON.stringify(base)
     if (!attempt || attempt.signature !== signature) attempt = { signature, input: { ...base, requestId: crypto.randomUUID() } }
     applying.value = true; error.value = ''
-    try { const response = await singleReview.apply(review.value.song.id, attempt.input); if (token === session) result.value = response }
+    try { const response = await execute(review.value.song.id, attempt.input); if (token === session) result.value = response }
     catch (failure) { if (token === session) error.value = failure instanceof Error ? failure.message : '应用失败，请重试' }
     finally { if (token === session) applying.value = false }
   }

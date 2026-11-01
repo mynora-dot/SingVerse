@@ -21,7 +21,7 @@ public interface MetadataMapper {
             @Param("skipped") int skipped, @Param("now") String now);
     int batchStatus(@Param("id") String id, @Param("expected") String expected,
             @Param("status") String status, @Param("now") String now);
-    List<Map<String, Object>> targetSongs(@Param("ids") List<String> ids, @Param("all") boolean all);
+    List<Map<String, Object>> targetSongs(@Param("ids") List<String> ids, @Param("all") boolean all, @Param("sourceId") String sourceId);
     int insertItem(@Param("id") String id, @Param("batchId") String batchId, @Param("songId") String songId,
             @Param("fingerprint") String fingerprint, @Param("title") String title,
             @Param("artists") String artists, @Param("now") String now);

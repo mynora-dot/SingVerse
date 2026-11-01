@@ -27,8 +27,9 @@
     FROM media_song song JOIN media_source source ON source.id = song.source_id
     LEFT JOIN song_metadata meta ON meta.song_id = song.id
     <where>
+      <if test="sourceId != null">song.source_id = #{sourceId}</if>
       <if test="!all">
-        song.id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        AND song.id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
       </if>
     </where>
     ORDER BY song.id LIMIT 5001
