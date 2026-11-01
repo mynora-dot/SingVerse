@@ -536,10 +536,69 @@ class ArtistHttpTest {
     @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     @Autowired org.springframework.context.ApplicationEventPublisher events;
 
+    @Test
+    void fanartKeyIsEncryptedAndOnlyConfigurationStateIsReturned() throws Exception {
+        ok(admin, "/api/v1/auth/login", "POST", Map.of("username", "admin", "password", "admin"), null, true);
+        var saved = ok(admin, "/api/v1/artists/artwork-settings", "PUT", Map.of("fanartKey", "sample-personal-key", "clearFanartKey", false), null, true);
+        assertThat(saved.path("fanartConfigured").asBoolean()).isTrue();
+        assertThat(saved.toString()).doesNotContain("sample-personal-key");
+        assertThat(artists.fanartKey()).doesNotContain("sample-personal-key");
+        assertThat(ok(admin, "/api/v1/artists/artwork-settings", "GET", null, null, false).path("fanartConfigured").asBoolean()).isTrue();
+        assertThat(ok(admin, "/api/v1/artists/artwork-settings", "PUT", Map.of("clearFanartKey", true), null, true).path("fanartConfigured").asBoolean()).isFalse();
+    }
+
+    @Test
+    void existingPortraitDoesNotBlockBackgroundFetch() throws Exception {
+        device();
+        fixture.update("UPDATE artist_image_fetch SET state='NO_MATCH'");
+        song("背景测试曲", List.of("背景测试歌手"));
+        var result = library.managedArtists("背景测试歌手",0,12);
+        String id = ((JsonNode)((List<?>)result.get("items")).getFirst()).path("id").asText();
+        byte[] image = png(0x427688);
+        artistService.upload(id,"portrait","",new org.springframework.mock.web.MockMultipartFile("file","portrait.png","image/png",image));
+        var supplements = org.mockito.Mockito.mock(com.mynora.singverse.media.artist.ArtistArtworkSources.class);
+        org.mockito.Mockito.when(supplements.find(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyList()))
+                .thenReturn(List.of(new com.mynora.singverse.media.artist.ArtistArtworkSources.Choice("THEAUDIODB","123","d84d02ad-d74c-4227-8073-6f13a039cfac","","https://r2.theaudiodb.com/background.jpg","TheAudioDB")));
+        var worker = new com.mynora.singverse.media.artist.ArtistArtworkWorker(artists,artistService,library,
+                org.mockito.Mockito.mock(com.mynora.singverse.media.metadata.ArtistArtworkProvider.class),supplements,json,transactions,events,false) {
+            @Override protected byte[] read(String url) { return image; }
+        };
+        try {
+            worker.tick();
+            worker.tick();
+            assertThat(artists.image(id,"PORTRAIT").get("origin")).isEqualTo("UPLOAD");
+            assertThat(artists.image(id,"BACKGROUND").get("origin")).isEqualTo("AUTO");
+            assertThat(artists.imageFetch(id,"BACKGROUND").get("state")).isEqualTo("READY");
+        } finally { worker.destroy(); }
+    }
+
+    @Test
+    void unverifiedArtworkBecomesReviewCandidate() throws Exception {
+        device();
+        fixture.update("UPDATE artist_image_fetch SET state='NO_MATCH'");
+        song("候选歌曲",List.of("候选歌手"));
+        var result=library.managedArtists("候选歌手",0,12);
+        String id=((JsonNode)((List<?>)result.get("items")).getFirst()).path("id").asText();
+        var supplements=org.mockito.Mockito.mock(com.mynora.singverse.media.artist.ArtistArtworkSources.class);
+        org.mockito.Mockito.when(supplements.find(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyList()))
+                .thenReturn(List.of(new com.mynora.singverse.media.artist.ArtistArtworkSources.Choice("THEAUDIODB","123","","https://r2.theaudiodb.com/portrait.jpg","","TheAudioDB",false)));
+        var worker=new com.mynora.singverse.media.artist.ArtistArtworkWorker(artists,artistService,library,
+                org.mockito.Mockito.mock(com.mynora.singverse.media.metadata.ArtistArtworkProvider.class),supplements,json,transactions,events,false);
+        try {
+            worker.tick();
+            assertThat(artists.image(id,"PORTRAIT")).isNull();
+            assertThat(artists.imageFetch(id,"PORTRAIT").get("state")).isEqualTo("NEEDS_REVIEW");
+            assertThat(artistService.candidates(id,"portrait")).hasSize(1);
+        } finally { worker.destroy(); }
+    }
+
     com.mynora.singverse.media.artist.ArtistArtworkWorker worker(
             com.mynora.singverse.media.metadata.ArtistArtworkProvider provider, byte[] image) {
+        var artworkSources = org.mockito.Mockito.mock(com.mynora.singverse.media.artist.ArtistArtworkSources.class);
+        org.mockito.Mockito.when(artworkSources.find(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyList()))
+                .thenReturn(List.of());
         return new com.mynora.singverse.media.artist.ArtistArtworkWorker(
-                artists, artistService, library, provider, transactions, events, false) {
+                artists, artistService, library, provider, artworkSources, json, transactions, events, false) {
             @Override
             protected byte[] read(String url) {
                 return image;
@@ -550,7 +609,7 @@ class ArtistHttpTest {
     @Test
     void automaticArtworkNeverOverwritesConcurrentUploadAndRetriesAreBounded() throws Exception {
         device();
-        fixture.update("UPDATE artist SET fetch_state='NO_MATCH'");
+        fixture.update("UPDATE artist_image_fetch SET state='NO_MATCH'");
         song("取图歌曲", List.of("取图歌手"));
         var profile = library.managedArtists("取图歌手", 0, 12);
         String id =
@@ -581,7 +640,8 @@ class ArtistHttpTest {
         try {
             worker.tick();
             assertThat(artists.image(id, "PORTRAIT").get("origin")).isEqualTo("UPLOAD");
-            assertThat(artists.find(id).get("fetch_state")).isEqualTo("READY");
+            assertThat(artists.imageFetch(id,"PORTRAIT").get("state")).isEqualTo("READY");
+            fixture.update("UPDATE artist_image_fetch SET state='READY' WHERE artist_id=? AND image_kind='BACKGROUND'", id);
             String version = artists.image(id, "PORTRAIT").get("version").toString();
             artistService.removeImage(id, "portrait", version);
             artistService.retry(id);
@@ -593,11 +653,11 @@ class ArtistHttpTest {
                                     org.mockito.ArgumentMatchers.anyList()))
                     .thenThrow(new IllegalStateException("offline"));
             for (int i = 0; i < 4; i++) {
-                fixture.update("UPDATE artist SET fetch_after='' WHERE id=?", id);
+                fixture.update("UPDATE artist_image_fetch SET fetch_after='' WHERE artist_id=? AND image_kind='PORTRAIT'", id);
                 worker.tick();
             }
-            assertThat(artists.find(id).get("fetch_state")).isEqualTo("FAILED");
-            assertThat(((Number) artists.find(id).get("fetch_attempts")).intValue()).isEqualTo(4);
+            assertThat(artists.imageFetch(id,"PORTRAIT").get("state")).isEqualTo("FAILED");
+            assertThat(((Number) artists.imageFetch(id,"PORTRAIT").get("attempts")).intValue()).isEqualTo(4);
             org.mockito.Mockito.verify(provider, org.mockito.Mockito.times(4))
                     .find(
                             org.mockito.ArgumentMatchers.anyString(),
@@ -606,7 +666,7 @@ class ArtistHttpTest {
             artistService.retry(id);
             org.mockito.Mockito.reset(provider);
             worker.tick();
-            assertThat(artists.find(id).get("fetch_state")).isEqualTo("NO_MATCH");
+            assertThat(artists.imageFetch(id,"PORTRAIT").get("state")).isEqualTo("NO_MATCH");
             worker.tick();
             org.mockito.Mockito.verify(provider, org.mockito.Mockito.times(1))
                     .find(

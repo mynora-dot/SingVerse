@@ -23,6 +23,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class WebDavScanService {
     private record Context(Source source, FilenameParserConfigService.ProfileSnapshot profile, String encrypted) {}
+    private final com.mynora.singverse.media.webdav.metadata.WebDavMetadataService embedded;
+    private final com.mynora.singverse.media.webdav.metadata.WebDavAccess access;
     private final ScanTaskMapper tasks;
     private final MediaSourceRepository sources;
     private final MediaSourceMapper sourceMapper;
@@ -58,8 +60,10 @@ public class WebDavScanService {
     }
     public WebDavScanService(ScanTaskMapper tasks, MediaSourceRepository sources, MediaSourceMapper sourceMapper,
             MediaSongMapper songMapper, MediaSongRepository songs, MetadataMapper metadata,
-            FilenameParserConfigService profiles, AuthCrypto crypto, WebDavClient client, PlatformTransactionManager manager) {
-        this.tasks = tasks; this.sources = sources; this.sourceMapper = sourceMapper; this.songMapper = songMapper;
+            FilenameParserConfigService profiles, AuthCrypto crypto, WebDavClient client, PlatformTransactionManager manager,
+            com.mynora.singverse.media.webdav.metadata.WebDavMetadataService embedded,
+            com.mynora.singverse.media.webdav.metadata.WebDavAccess access) {
+        this.embedded=embedded; this.access=access; this.tasks = tasks; this.sources = sources; this.sourceMapper = sourceMapper; this.songMapper = songMapper;
         this.songs = songs; this.metadata = metadata; this.profiles = profiles; this.crypto = crypto; this.client = client;
         transaction = new TransactionTemplate(manager);
     }
@@ -87,6 +91,7 @@ public class WebDavScanService {
             if (!"WEBDAV".equals(source.type())) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "本地目录请使用原扫描入口");
             if (!tasks.activeSource(sourceId).isEmpty()) throw conflict("该媒体来源正在扫描，请稍后重试");
             if (tasks.activeCount() >= 34) throw conflict("后台扫描队列已满，请稍后重试");
+            embedded.prepare(source);
             Context snapshot = new Context(source, profiles.savedProfile(source.parserProfileId()),
                     (String) sources.find(sourceId).get("password_encrypted"));
             tasks.insert(id, sourceId, Instant.now().toString());
@@ -146,8 +151,14 @@ public class WebDavScanService {
                 var directory = next.getFirst();
                 String path = directory.get("path").toString();
                 int depth = ((Number) directory.get("depth")).intValue();
-                client.list(root, path, authorization, deadline, () -> control.check(deadline), control::track,
-                        entry -> traversal.accept(entry, depth));
+                access.request(source.id(), () -> {
+                    client.list(root, path, authorization, deadline, () -> control.check(deadline), control::track,
+                        entry -> traversal.accept(entry, depth), (status, retry) -> {
+                            if(status==401||status==403) access.block(source.id(),true,Instant.now());
+                            if(status==429) access.block(source.id(),false,com.mynora.singverse.media.webdav.metadata.WebDavMetadataInput.retryAfter(retry));
+                        });
+                    return null;
+                });
                 traversal.directories++;
                 traversal.flush();
                 tasks.processed(id, directory.get("path_hash").toString());
@@ -158,8 +169,6 @@ public class WebDavScanService {
                 Source current = sources.get(source.id());
                 if (!com.mynora.singverse.media.dto.MediaSourceDtos.sameScanConfiguration(current, source) || profiles.savedProfile(current.parserProfileId()).revision() != context.profile().revision())
                     throw conflict("媒体来源或解析方案已修改，本次扫描未保存，请重新扫描");
-                if (traversal.total == 0 && songs.count(source.id()) > 0)
-                    throw conflict("本次未发现媒体文件，已有歌曲索引已保留；请检查挂载与文件类型");
                 if (tasks.committing(id) != 1) throw new CancellationException();
             });
             // Separate transaction makes the COMMITTING phase visible and cancellation unambiguous.
@@ -171,7 +180,7 @@ public class WebDavScanService {
                 if (sourceMapper.touch(source.id(), source.updatedAt(), Instant.now().toString()) != 1)
                     throw conflict("媒体来源已修改，本次扫描未保存，请重新扫描");
                 metadata.lock();
-                songMapper.delete(source.id()); tasks.publish(id); metadata.cleanupOrphans(source.id());
+                embedded.publish(source,id,traversal.total);
                 tasks.finish(id, "SUCCEEDED", null, Instant.now().toString());
                 tasks.clearSongs(id); tasks.clearDirectories(id);
             });
@@ -217,7 +226,7 @@ public class WebDavScanService {
                     batch.put(songId, new MediaSongRepository.Stored(songId, context.source().id(), relative,
                             AuthCrypto.hash(relative), entry.size(), entry.modifiedAt(), scannedAt,
                             context.profile().id(), context.profile().revision(),
-                            parsed.selectedRule() == null ? null : parsed.selectedRule().id(), songs.encode(parsed.result()), parsed.result().needsReview()));
+                            parsed.selectedRule() == null ? null : parsed.selectedRule().id(), songs.encode(parsed.result()), parsed.result().needsReview(), null, entry.etag()));
                 }
             }
             if (entries % 100 == 0) flush();
@@ -246,7 +255,7 @@ public class WebDavScanService {
         return new ScanTask(text(row, "id"), text(row, "source_id"), text(row, "status"), text(row, "phase"),
                 number(row, "directories"), number(row, "entries"), (int) number(row, "total_songs"),
                 (int) number(row, "matched_songs"), (int) number(row, "review_songs"), number(row, "skipped_files"),
-                number(row, "cancel_requested") != 0, text(row, "error"), text(row, "created_at"), text(row, "started_at"), text(row, "finished_at"));
+                number(row, "cancel_requested") != 0, text(row, "error"), text(row, "created_at"), text(row, "started_at"), text(row, "finished_at"), (int)number(row,"added_songs"), (int)number(row,"reused_songs"), (int)number(row,"missing_songs"), (int)number(row,"removed_songs"));
     }
     private static String text(Map<String, Object> row, String name) { return (String) row.get(name); }
     private static long number(Map<String, Object> row, String name) { return ((Number) row.get(name)).longValue(); }

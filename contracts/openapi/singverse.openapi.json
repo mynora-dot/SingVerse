@@ -12175,6 +12175,209 @@
         }
       }
     },
+    "/api/v1/artists/artwork-settings": {
+      "get": {
+        "summary": "Read optional Fanart.tv key state",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Administrator required"
+          }
+        }
+      },
+      "put": {
+        "summary": "Save or clear encrypted Fanart.tv personal key",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Administrator required"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fanartKey": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "clearFanartKey": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/artists/{id}/images/{kind}/candidates": {
+      "get": {
+        "summary": "List candidate artist images for administrator review",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Administrator required"
+          }
+        }
+      }
+    },
+    "/api/v1/artists/{id}/images/{kind}/selection": {
+      "post": {
+        "summary": "Apply a reviewed candidate image",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Administrator required"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "provider",
+                  "externalId"
+                ],
+                "properties": {
+                  "provider": {
+                    "type": "string"
+                  },
+                  "externalId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/artists/{id}/images/{kind}/candidates/{provider}/{externalId}/preview": {
+      "get": {
+        "summary": "Read authenticated candidate JPEG preview",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "externalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Administrator required"
+          }
+        }
+      }
+    },
     "/api/v1/artists/{id}/images/retry": {
       "post": {
         "summary": "Retry automatic artwork without replacing administrator uploads",
@@ -14161,6 +14364,667 @@
           }
         }
       }
+    },
+    "/api/v1/media-sources/{id}/embedded-metadata": {
+      "get": {
+        "operationId": "getWebDavEmbeddedMetadata",
+        "summary": "Extraction progress and durable derived-file synchronization for WebDAV or local sources.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddedMetadataSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Administrator session or CSRF required"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "State conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      },
+      "put": {
+        "operationId": "saveWebDavEmbeddedMetadata",
+        "summary": "Enable or pause bounded extraction; settings do not bypass group cooldown.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddedMetadataSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Administrator session or CSRF required"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "State conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbeddedMetadataSettings"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media-sources/{id}/embedded-metadata/confirm-empty": {
+      "post": {
+        "operationId": "confirmEmptyWebDavLibrary",
+        "summary": "After two complete empty scans at least 30 minutes apart, archive indexed songs; retain cache for 30 days.",
+        "responses": {
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Administrator session or CSRF required"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "State conflict"
+          },
+          "204": {
+            "description": "Songs archived; remote files unchanged."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/media-songs/{id}/embedded-metadata": {
+      "get": {
+        "operationId": "getEmbeddedMetadata",
+        "summary": "Cached extraction status, technical information and embedded lyrics.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddedMetadataDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Administrator session or CSRF required"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "State conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/media-songs/{id}/embedded-metadata/cover": {
+      "get": {
+        "operationId": "getEmbeddedMetadataCover",
+        "summary": "Authenticated local PNG derived from embedded cover.",
+        "responses": {
+          "200": {
+            "description": "Cover image",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Administrator session or CSRF required"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "State conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/media-songs/embedded-metadata/refresh": {
+      "post": {
+        "operationId": "refreshEmbeddedMetadata",
+        "summary": "Manually extract selected WebDAV songs without enabling automatic library processing; bounded and coalesced.",
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "accepted"
+                  ],
+                  "properties": {
+                    "accepted": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Administrator session or CSRF required"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "State conflict"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbeddedMetadataRefresh"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/metadata-input/{id}": {
+      "get": {
+        "operationId": "readMetadataInput",
+        "summary": "Task-authorized bounded Range read for compute; requires active grant and node bearer.",
+        "responses": {
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Administrator session or CSRF required"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "State conflict"
+          },
+          "206": {
+            "description": "At most 1 MiB verified byte range",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Grant ended"
+          },
+          "413": {
+            "description": "Read budget exhausted"
+          },
+          "422": {
+            "description": "Upstream ignores Range"
+          },
+          "429": {
+            "description": "Access group cooling down"
+          },
+          "502": {
+            "description": "Upstream failure"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^bytes=[0-9]+-[0-9]+$"
+            }
+          }
+        ],
+        "security": [
+          {
+            "computeBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/media-sources/{id}/embedded-metadata/share": {
+      "post": {
+        "operationId": "importWebDavShareIndex",
+        "summary": "Import into recipient source root without remote reads; existing songs are skipped; requires session and CSRF.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/zip": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Imported/skipped counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "imported": {
+                      "type": "integer"
+                    },
+                    "skipped": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid package"
+          },
+          "413": {
+            "description": "Outer upload exceeds 8 GiB or a nested part exceeds 32 MiB compressed/expanded."
+          }
+        },
+        "description": "Accepts a version 2 single part (32 MiB compressed/expanded, up to 5000 songs), or the downloaded outer share-set ZIP (8 GiB compressed/expanded in total). Outer sets are streamed in declared part order without buffering the entire archive; each part retains its 32 MiB limit. Persistent receipts allow resubmitting the same whole ZIP after an interrupted upload. Existing songs and manual changes are preserved; deletion advisories are not applied."
+      }
+    },
+    "/api/v1/media-sources/{id}/embedded-metadata/share-jobs": {
+      "post": {
+        "operationId": "createShareExport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Durable export job, bounded package, or deletion advisory (never applied automatically)."
+          },
+          "409": {
+            "description": "Another export is active or the selected baseline is not compatible."
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "baseId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "Local and WebDAV sources. Automatically waits for durable text-file synchronization in WAITING state, then fixes the snapshot in the background. One active export per source. Maximum 5000 songs per part, with a 32 MiB compressed/expanded bound. Optional unavailable artwork does not block current text metadata."
+      }
+    },
+    "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/latest": {
+      "get": {
+        "operationId": "latestShareExport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Durable export job, bounded package, or deletion advisory (never applied automatically)."
+          }
+        }
+      }
+    },
+    "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/{jobId}": {
+      "get": {
+        "operationId": "getShareExport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Durable export job, bounded package, or deletion advisory (never applied automatically)."
+          }
+        }
+      }
+    },
+    "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/{jobId}/resume": {
+      "post": {
+        "operationId": "resumeShareExport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Durable export job, bounded package, or deletion advisory (never applied automatically)."
+          }
+        }
+      }
+    },
+    "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/{jobId}/index": {
+      "get": {
+        "operationId": "getShareExportIndex",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Durable export job, bounded package, or deletion advisory (never applied automatically)."
+          }
+        }
+      }
+    },
+    "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/{jobId}/parts/{part}": {
+      "get": {
+        "operationId": "getShareExportPart",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "part",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Durable export job, bounded package, or deletion advisory (never applied automatically)."
+          }
+        }
+      }
+    },
+    "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/{jobId}/deletions/{part}": {
+      "get": {
+        "operationId": "getShareDeletionAdvisory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "part",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Durable export job, bounded package, or deletion advisory (never applied automatically)."
+          }
+        }
+      }
+    },
+    "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/{jobId}/download": {
+      "get": {
+        "operationId": "downloadShareSet",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Streamed ZIP containing index and bounded package ZIPs; unpack once before import",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Export is not complete"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -14184,6 +15048,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Configured compute node token plus task-scoped media input reference; never a client credential"
+      },
+      "computeBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Configured internal compute identity plus an active task grant."
       }
     },
     "schemas": {
@@ -15584,6 +16453,22 @@
           },
           "cancelRequested": {
             "type": "boolean"
+          },
+          "addedSongs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reusedSongs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "missingSongs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "removedSongs": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": [
@@ -18127,19 +19012,28 @@
               "RETRY",
               "FAILED",
               "NO_MATCH",
+              "NEEDS_REVIEW",
               "DORMANT"
             ]
           },
+          "portraitFetchState": {"type":"string","description":"Independent portrait fetch state"},
+          "backgroundFetchState": {"type":"string","description":"Independent background fetch state"},
+          "portraitSource": {"type":"string"},
+          "backgroundSource": {"type":"string"},
+          "portraitAttribution": {"type":"string"},
+          "backgroundAttribution": {"type":"string"},
           "portraitOrigin": {
             "enum": [
               "AUTO",
-              "UPLOAD"
+              "UPLOAD",
+              "SELECTED"
             ]
           },
           "backgroundOrigin": {
             "enum": [
               "AUTO",
-              "UPLOAD"
+              "UPLOAD",
+              "SELECTED"
             ]
           }
         }
@@ -18881,6 +19775,247 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "EmbeddedMetadataSettings": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "paused"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "accessGroup": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+          },
+          "privateOrigins": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "maxItems": 16,
+            "items": {
+              "type": "string",
+              "format": "uri"
+            }
+          }
+        }
+      },
+      "EmbeddedMetadataRefresh": {
+        "type": "object",
+        "required": [
+          "songIds"
+        ],
+        "properties": {
+          "songIds": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "deep": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "EmbeddedMetadataSummary": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "paused",
+          "accessGroup",
+          "counts",
+          "presence",
+          "budget",
+          "emptyScans",
+          "canConfirmEmpty"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "accessGroup": {
+            "type": "string"
+          },
+          "privateOrigins": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blockedUntil": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "blockedReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "emptyScans": {
+            "type": "integer"
+          },
+          "emptySince": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "canConfirmEmpty": {
+            "type": "boolean"
+          },
+          "counts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "presence": {
+            "type": "object",
+            "properties": {
+              "missing": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "archived": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "changed": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          },
+          "budget": {
+            "type": "object",
+            "properties": {
+              "day_key": {
+                "type": "string"
+              },
+              "files_started": {
+                "type": "integer"
+              },
+              "bytes_read": {
+                "type": "integer"
+              },
+              "blocked_until": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "description": "Daily activity counters and cooldown timestamps only. No daily song-count or byte quota; per-file bounds and access-group pacing/cooldowns still apply."
+          },
+          "remoteReady": {
+            "type": "boolean"
+          },
+          "nodeStatus": {
+            "type": "string"
+          },
+          "nodeMessage": {
+            "type": "string"
+          },
+          "files": {
+            "type": "object",
+            "required": [
+              "pending",
+              "failed",
+              "directory"
+            ],
+            "properties": {
+              "pending": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "failed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "directory": {
+                "type": "string",
+                "description": "Managed directory relative to WEBDAV_METADATA_PATH; never the original media directory."
+              },
+              "attachments": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Optional artwork pending retry; text metadata and sharing remain available."
+              }
+            }
+          }
+        }
+      },
+      "EmbeddedMetadataDetail": {
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "properties": {
+          "state": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer"
+          },
+          "changed": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "missing_scans": {
+            "type": "integer"
+          },
+          "bytes_read": {
+            "type": "integer"
+          },
+          "request_count": {
+            "type": "integer"
+          },
+          "elapsed_ms": {
+            "type": "integer"
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "result": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Persisted tags, technical streams, field coverage, cover hash and embedded lyrics. Never contains WebDAV credentials or download URLs."
           }
         }
       }

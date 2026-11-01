@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "SingVerse Python 计算节点骨架"
 requires-python = ">=3.12"
 dependencies = [
+  "mutagen==1.47.0",
   "fastapi==0.121.3",
   "uvicorn==0.38.0",
 ]

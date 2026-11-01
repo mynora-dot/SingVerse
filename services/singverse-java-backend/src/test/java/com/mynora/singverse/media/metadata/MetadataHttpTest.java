@@ -29,12 +29,14 @@ class MetadataHttpTest {
         properties.add("singverse.sqlite.path", () -> temp.resolve("metadata.db").toString());
         properties.add("singverse.auth.key-file", () -> temp.resolve("auth.key").toString());
         properties.add("singverse.metadata.cache-path", () -> temp.resolve("covers").toString());
+        properties.add("singverse.webdav.metadata-path", () -> temp.resolve("derived").toString());
         properties.add("singverse.metadata.worker-enabled", () -> false);
     }
     @LocalServerPort int port;
     @Autowired ObjectMapper json;
     @Autowired JdbcTemplate db;
     @Autowired MetadataWorker worker;
+    @Autowired MetadataFileService metadataFiles;
     @MockitoSpyBean NeteaseMusicMetadataProvider upstream;
     @MockitoSpyBean QqMusicMetadataProvider qq;
     HttpClient client;
@@ -43,7 +45,7 @@ class MetadataHttpTest {
     static final String BASE = "/api/v1/metadata";
 
     @BeforeEach void reset() {
-        for (String table : List.of("song_metadata", "metadata_candidate", "metadata_item", "metadata_batch", "media_song", "media_source", "filename_parser_config")) db.update("DELETE FROM " + table);
+        for (String table : List.of("media_metadata_file", "song_metadata", "metadata_candidate", "metadata_item", "metadata_batch", "media_song", "media_source", "filename_parser_config")) db.update("DELETE FROM " + table);
         db.update("UPDATE metadata_settings SET enabled=0,providers_json='[\"NETEASE\"]',auto_apply=0,threshold=0.95 WHERE id=1");
         client = HttpClient.newBuilder().cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ALL)).build();
         doReturn(List.of(track("one", "晴天", "周杰伦", "叶惠美"))).when(upstream).search(anyString(), anyInt(), any(Duration.class));
@@ -113,6 +115,9 @@ class MetadataHttpTest {
         assertThat(applied.at("/track/album").asText()).isEqualTo("新版专辑");
         assertThat(applied.at("/origins/title/externalId").asText()).isEqualTo("one");
         assertThat(applied.at("/origins/album/externalId").asText()).isEqualTo("two");
+        metadataFiles.runNext();
+        var file=metadataFiles.directory(currentSong().path("sourceId").asText(),id).resolve("media.nfo");
+        assertThat(Files.readString(file)).contains("新版专辑","晴天","周杰伦");
         assertThat(currentSong().path("result").toString()).isEqualTo(original);
         assertThat(request(sourcePath + "/scan", "POST", null, true).statusCode()).isEqualTo(200);
         assertThat(currentSong().at("/metadata/stale").asBoolean()).isFalse();

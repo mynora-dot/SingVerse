@@ -15,5 +15,5 @@ export interface MetadataBatch {
   createdAt: string; updatedAt: string; items: MetadataItem[]; page: number; size: number; totalElements: number; processableTotal?: number; legacySkipped?: number; observedAt?: string
 }
 export const providerNames: Record<MusicProvider, string> = { NETEASE: '网易云音乐', QQ: 'QQ 音乐', KUGOU: '酷狗音乐' }
-export const fieldNames: Record<string, string> = { title: '歌名', artists: '歌手', album: '专辑', releaseDate: '发行日期', aliases: '别名', durationMs: '平台时长', cover: '封面' }
+export const fieldNames: Record<string, string> = { title: '歌名', artists: '歌手', album: '专辑', releaseDate: '发行日期', aliases: '别名', durationMs: '时长', cover: '封面' }
 export const itemStatusNames: Record<string, string> = { PENDING: '等待处理', PROCESSING: '匹配中', REVIEW: '待审核', FAILED: '失败', AUTO_APPLIED: '已自动应用', MANUAL_APPLIED: '已确认应用', SKIPPED_EXISTING: '已跳过' }

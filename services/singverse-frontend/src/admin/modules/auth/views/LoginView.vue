@@ -33,7 +33,7 @@ function restart() { stage.value = false; code.value = ''; password.value = ''; 
       <div>
         <div class="login-hero"><p class="login-eyebrow">THE SOUND OF HOME</p>
           <h2>让每一次相聚，<br />都有好歌相伴。</h2>
-          <p>自己的歌曲，熟悉的朋友。登录后整理歌曲、连接歌曲位置，收藏属于家人的旋律。</p>
+          <p>自己的歌曲，熟悉的朋友。登录后整理歌曲、连接媒体库，收藏属于家人的旋律。</p>
         </div>
         <div class="waveform"><i v-for="(height, index) in bars" :key="index" :style="{ height: `${height}px`, animationDelay: `${index * 0.11}s` }" /></div>
       </div>

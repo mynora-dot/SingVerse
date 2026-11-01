@@ -32,7 +32,7 @@ function button(text: string) {
 it('本地目录表单独立于远端认证，保存后刷新真实列表', async () => {
   wrapper = mount(MediaLibraryView, { global: { plugins: [router], stubs: { teleport: true } } })
   await flushPromises()
-  await button('添加歌曲位置').trigger('click')
+  await button('添加媒体库').trigger('click')
   await flushPromises()
   const form = wrapper.findComponent(ElDialog)
   expect(form.text()).toContain('歌曲文件夹')
@@ -66,7 +66,7 @@ it('列表失败提供重试，保存失败保留表单并显示原因', async (
   expect(wrapper.text()).toContain('读取失败')
   await button('重试').trigger('click')
   await flushPromises()
-  await button('添加歌曲位置').trigger('click'); await flushPromises(); await button('WebDAV').trigger('click')
+  await button('添加媒体库').trigger('click'); await flushPromises(); await button('WebDAV').trigger('click')
   await flushPromises()
   const form = wrapper.findComponent(ElDialog)
   const inputs = form.findAllComponents(ElInput)
@@ -83,7 +83,7 @@ it('本地与 WebDAV 都保存所选完整方案，编辑可回显方案', async
   wrapper = mount(MediaLibraryView, { global: { plugins: [router], stubs: { teleport: true } } })
   await flushPromises()
   for (const [label, location] of [['LOCAL', '/media/songs'], ['WEBDAV', 'https://nas.example.invalid/dav/']]) {
-    await button('添加歌曲位置').trigger('click'); await flushPromises()
+    await button('添加媒体库').trigger('click'); await flushPromises()
     if (label === 'WEBDAV') await button('WebDAV').trigger('click'); await flushPromises()
     const form = wrapper.findComponent(ElDialog)
     const inputs = form.findAllComponents(ElInput)
@@ -95,6 +95,7 @@ it('本地与 WebDAV 都保存所选完整方案，编辑可回显方案', async
     expect(form.text()).toContain('1 条启用规则')
     await form.get('form').trigger('submit'); await flushPromises()
     expect(media.save).toHaveBeenLastCalledWith(expect.objectContaining({ parserProfileId: 'reverse-profile' }), undefined)
+    await button('关闭').trigger('click'); await flushPromises()
   }
 })
 
@@ -102,7 +103,7 @@ it('方案加载失败时禁止保存，重新加载后可继续编辑', async (
   wrapper = mount(MediaLibraryView, { global: { plugins: [router], stubs: { teleport: true } } })
   await flushPromises()
   vi.mocked(parserProfiles.load).mockRejectedValueOnce(new Error('方案读取失败'))
-  await button('添加歌曲位置').trigger('click'); await flushPromises()
+  await button('添加媒体库').trigger('click'); await flushPromises()
   expect(wrapper.findComponent(ElDialog).text()).toContain('方案读取失败')
   expect(button('添加位置').attributes('disabled')).toBeDefined()
   await button('重新加载解析方案').trigger('click'); await flushPromises()
@@ -194,7 +195,7 @@ it('少量位置使用卡片且不显示筛选与分页表格', async () => {
 })
 it('添加来源支持五段 cron 配置，六段表达式阻止提交', async () => {
   wrapper = mount(MediaLibraryView, { global: { plugins: [router], stubs: { teleport: true } } })
-  await flushPromises(); await button('添加歌曲位置').trigger('click'); await flushPromises()
+  await flushPromises(); await button('添加媒体库').trigger('click'); await flushPromises()
   const dialog = wrapper.findComponent(ElDialog)
   const inputs = dialog.findAllComponents(ElInput)
   await inputs[0]!.setValue('定时歌曲'); await selectFolder()
@@ -215,7 +216,7 @@ async function selectFolder() {
 }
 it('目录加载失败禁止选择，重试后可浏览与自动命名', async () => {
   wrapper = mount(MediaLibraryView, { global: { plugins: [router], stubs: { teleport: true } } }); await flushPromises()
-  await button('添加歌曲位置').trigger('click'); await flushPromises()
+  await button('添加媒体库').trigger('click'); await flushPromises()
   vi.mocked(media.directories).mockRejectedValueOnce(new Error('目录不可读'))
   await button('选择文件夹').trigger('click'); await flushPromises()
   expect(wrapper.text()).toContain('目录不可读')

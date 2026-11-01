@@ -99,4 +99,14 @@ public interface ArtistMapper {
             @Param("provider") String provider,
             @Param("external") String external,
             @Param("url") String url);
+    int attribution(@Param("id") String id, @Param("kind") String kind, @Param("value") String value);
+    int ensureFetch(@Param("id") String id, @Param("kind") String kind);
+    List<Map<String,Object>> pendingImage(@Param("now") String now);
+    Map<String,Object> imageFetch(@Param("id") String id,@Param("kind") String kind);
+    int imageCandidates(@Param("id") String id,@Param("kind") String kind,@Param("value") String value,@Param("generation") long generation);
+    int imageFetchState(@Param("id") String id,@Param("kind") String kind,@Param("state") String state,@Param("attempts") int attempts,@Param("after") String after,@Param("generation") long generation);
+    int retryImage(@Param("id") String id,@Param("kind") String kind);
+    String fanartKey();
+    int saveFanartKey(@Param("encrypted") String encrypted);
+    int requeueMissingBackgrounds();
 }

@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElAlert, ElButton, ElCard, ElEmpty, ElInput, ElPagination, ElSelect, ElOption, ElSkeleton, ElPopover } from 'element-plus'
 import { RefreshRight, Search, FolderOpened, EditPen } from '@element-plus/icons-vue'
 import { playback as transcoding } from '../../transcoding/playback'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { classification } from '../../classification/api/classification'
 import ClassificationEditor from '../../classification/components/ClassificationEditor.vue'
 import type { Tag } from '../../classification/types'
@@ -18,6 +18,17 @@ import SongDetailDrawer from '../components/SongDetailDrawer.vue'
 import { songs } from '../api/songs'
 import type { MediaSong, MediaSource } from '../../media-library/types'
 
+import { embeddedMetadata } from '../../media-library/api/embeddedMetadata'
+const refreshingEmbedded = ref(false)
+async function refreshEmbedded(deep = false) {
+  if (refreshingEmbedded.value || !selectedIds.value.length) return
+  const ids = [...selectedIds.value]
+  if (deep) try { await ElMessageBox.confirm(`为选中的 ${ids.length} 首歌曲执行深度提取，每首最多读取 128 MiB，仍遵守来源请求间隔与冷却。`, '深度提取内嵌元数据', { confirmButtonText: '加入提取队列', cancelButtonText: '取消' }) } catch { return }
+  refreshingEmbedded.value = true
+  try { const result = await embeddedMetadata.refresh(ids, deep); ElMessage.success(`已提交 ${result.accepted} 首内嵌元数据提取任务`) }
+  catch (e) { ElMessage.error(e instanceof Error ? e.message : '提交失败') }
+  finally { refreshingEmbedded.value = false }
+}
 const route = useRoute(), router = useRouter()
 const columns = ref<SongColumn[]>([...defaultSongColumns]), compact = ref(true)
 const tagsLoaded = ref(false)
@@ -180,6 +191,8 @@ onBeforeUnmount(() => { active = false; generation++ })
         </div>
         <div class="batch-actions">
           <ElButton :disabled="!selectedIds.length" type="primary" @click="openScrape">刮削元数据</ElButton>
+          <ElButton :disabled="!selectedIds.length || refreshingEmbedded" @click="refreshEmbedded()">刷新内嵌元数据</ElButton>
+          <ElButton :disabled="!selectedIds.length || refreshingEmbedded" @click="refreshEmbedded(true)">深度提取</ElButton>
           <ElButton :disabled="!selectedIds.length" @click="classifySelected">AI 分类</ElButton>
           <ElButton :disabled="!selectedIds.length" @click="convertSelected">生成兼容版本</ElButton>
           <ElButton @click="exitSelectionMode">取消</ElButton>

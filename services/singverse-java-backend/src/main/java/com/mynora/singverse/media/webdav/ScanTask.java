@@ -4,4 +4,4 @@ package com.mynora.singverse.media.webdav;
 public record ScanTask(String id, String sourceId, String status, String phase,
         long directories, long entries, int totalSongs, int matchedSongs, int needsReviewSongs,
         long skippedFiles, boolean cancelRequested, String error, String createdAt,
-        String startedAt, String finishedAt) {}
+        String startedAt, String finishedAt, int addedSongs, int reusedSongs, int missingSongs, int removedSongs) {}

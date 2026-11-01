@@ -7,6 +7,8 @@ import type { ParserWorkspace } from '../../filename-parser/types'
 import { useRouter } from 'vue-router'
 import { media, type MediaSource, type SourceType, type ScanTask, type DirectoryPage } from '../api/media'
 
+import WebDavMetadataDialog from '../components/WebDavMetadataDialog.vue'
+const metadataSource = ref<MediaSource | null>(null)
 const router = useRouter()
 const vLoading = ElLoading.directive
 const items = ref<MediaSource[]>([])
@@ -98,7 +100,7 @@ function profileName(id: string) {
 }
 async function scan(item: MediaSource) {
   if (scanning.value) return
-  try { await ElMessageBox.confirm('扫描会按已保存的解析方案更新该来源的歌曲索引，移除已不存在的文件记录。不会修改原始文件。', item.type === 'WEBDAV' ? '扫描 WebDAV 歌曲' : '扫描本地歌曲', { confirmButtonText: '开始扫描', cancelButtonText: '取消' }) }
+  try { await ElMessageBox.confirm('扫描会按已保存的解析方案更新歌曲索引。WebDAV 缺失文件需两次完整扫描确认后下架；已提取的内嵌元数据会复用。不会修改原始文件。', item.type === 'WEBDAV' ? '扫描 WebDAV 歌曲' : '扫描本地歌曲', { confirmButtonText: '开始扫描', cancelButtonText: '取消' }) }
   catch { return }
   scanning.value = item.id; error.value = ''
   try {
@@ -148,11 +150,11 @@ async function save() {
   if (draft.scanEnabled && draft.scanCron.trim().split(/\s+/).length !== 5) { formError.value = '请输入五段 cron：分 时 日 月 周'; return }
   saving.value = true; formError.value = ''
   try {
-    await media.save({ name: draft.name.trim() || (draft.type === 'LOCAL' ? draft.location.split(/[\\/]/).filter(Boolean).pop() || '本地歌曲' : 'WebDAV 歌曲').slice(0, 100), type: draft.type, location: draft.location, parserProfileId: draft.parserProfileId,
+    const saved = await media.save({ name: draft.name.trim() || (draft.type === 'LOCAL' ? draft.location.split(/[\\/]/).filter(Boolean).pop() || '本地歌曲' : 'WebDAV 歌曲').slice(0, 100), type: draft.type, location: draft.location, parserProfileId: draft.parserProfileId,
       ...(draft.scanEnabled || editing.value?.scanEnabled || editing.value?.scanCron ? { scanEnabled: draft.scanEnabled, scanCron: draft.scanCron.trim() } : {}),
       ...(draft.type === 'WEBDAV' ? { username: draft.username,
         password: clearPassword.value ? '' : draft.password || (editing.value ? undefined : '') } : {}) }, editing.value?.id)
-    dialog.value = false; draft.password = ''; ElMessage.success('媒体库配置已保存'); await load()
+    dialog.value = false; draft.password = ''; ElMessage.success('媒体库配置已保存'); await load(); if (saved) metadataSource.value = saved
   } catch (e) { formError.value = e instanceof Error ? e.message : '保存失败' }
   finally { saving.value = false }
 }
@@ -170,11 +172,11 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
 <template>
   <div class="media-library-page management-page">
     <div class="media-heading page-heading">
-      <div><h1>歌曲位置</h1><p class="page-description">添加歌曲所在的文件夹，扫描后整理到歌曲库。</p></div>
-      <div class="media-actions"><ElButton :icon="RefreshRight" :loading="loading" @click="load()">刷新</ElButton><ElButton type="primary" :icon="Plus" @click="open('LOCAL')">添加歌曲位置</ElButton></div>
+      <div><h1>媒体库</h1><p class="page-description">添加歌曲所在的文件夹，扫描后整理到歌曲库。</p></div>
+      <div class="media-actions"><ElButton :icon="RefreshRight" :loading="loading" @click="load()">刷新</ElButton><ElButton type="primary" :icon="Plus" @click="open('LOCAL')">添加媒体库</ElButton></div>
     </div>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon class="media-error"><ElButton text @click="load()">重试</ElButton></ElAlert>
-    <section v-loading="loading" class="source-cards" aria-label="歌曲位置">
+    <section v-loading="loading" class="source-cards" aria-label="媒体库">
       <ElEmpty v-if="loaded && !items.length && !error" description="添加本地目录或 WebDAV，开始整理你的歌曲。"><ElButton type="primary" @click="open('LOCAL')">添加第一个目录</ElButton></ElEmpty>
       <ElCard v-for="row in items" :key="row.id" shadow="never" class="source-card">
         <div class="source-content">
@@ -185,6 +187,7 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
             <div v-if="tasks[row.id]" class="scan-progress" aria-live="polite">
               <strong>{{ taskLabel(tasks[row.id]!) }}</strong>
               <span>已处理 {{ tasks[row.id]!.directories }} 个目录、{{ tasks[row.id]!.entries }} 个条目；{{ tasks[row.id]!.totalSongs }} 首，{{ tasks[row.id]!.needsReviewSongs }} 首需复核</span>
+              <span v-if="tasks[row.id]!.status === 'SUCCEEDED'">新增 {{ tasks[row.id]!.addedSongs ?? 0 }} · 复用 {{ tasks[row.id]!.reusedSongs ?? 0 }} · 待确认删除 {{ tasks[row.id]!.missingSongs ?? 0 }} · 下架 {{ tasks[row.id]!.removedSongs ?? 0 }}</span>
               <span v-if="tasks[row.id]!.error" class="scan-error">{{ tasks[row.id]!.error }}</span>
               <ElButton v-if="taskActive(tasks[row.id]) && tasks[row.id]!.phase === 'SCANNING'" link type="warning" :loading="cancelling[row.id]" :disabled="tasks[row.id]!.cancelRequested" @click="cancelScan(row)">取消扫描</ElButton>
             </div>
@@ -197,14 +200,16 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
           <div class="source-actions">
             <ElButton type="primary" :loading="scanning === row.id" :disabled="!!scanning || taskActive(tasks[row.id])" @click="scan(row)">扫描歌曲</ElButton>
             <ElButton @click="showSongs(row)">查看歌曲</ElButton>
+            <ElButton @click="metadataSource = row">整理与分享</ElButton>
             <details class="source-menu"><summary :aria-label="`${row.name}的更多操作`">⋯</summary><div><ElButton text @click="open(row.type, row)">编辑</ElButton><ElButton text type="danger" @click="remove(row)">移除</ElButton></div></details>
           </div>
         </div>
       </ElCard>
       <ElButton v-if="moreSources" :loading="loading" @click="load(true)">显示更多位置</ElButton>
     </section>
-    <p class="feature-note">本地目录优先读取音频与视频内嵌标签，缺失信息用文件名补充；WebDAV 按文件名整理。扫描不会修改原文件，不代表已验证可播放。</p>
-    <ElDialog v-model="dialog" :title="editing ? '编辑歌曲位置' : '添加歌曲位置'" width="min(560px, calc(100vw - 32px))" class="media-dialog" :close-on-click-modal="false" :close-on-press-escape="!saving" :show-close="!saving" :before-close="done => { if (!saving) done() }" @closed="closed">
+    <p class="feature-note">本地目录优先读取音频与视频内嵌标签，缺失信息用文件名补充；WebDAV 可启用后台内嵌元数据提取，同路径复用缓存。扫描不会修改原文件，不代表已验证可播放。</p>
+    <WebDavMetadataDialog v-if="metadataSource" :source="metadataSource" @songs="showSongs(metadataSource!); metadataSource = null" @close="metadataSource = null" />
+    <ElDialog v-model="dialog" :title="editing ? '编辑媒体库' : '添加媒体库'" width="min(560px, calc(100vw - 32px))" class="media-dialog" :close-on-click-modal="false" :close-on-press-escape="!saving" :show-close="!saving" :before-close="done => { if (!saving) done() }" @closed="closed">
       <ElForm label-position="top" @submit.prevent="save">
         <div v-if="!editing" class="source-types" aria-label="位置类型"><ElButton :type="draft.type === 'LOCAL' ? 'primary' : 'default'" :disabled="saving" @click="changeType('LOCAL')">本地目录</ElButton><ElButton :type="draft.type === 'WEBDAV' ? 'primary' : 'default'" :disabled="saving" @click="changeType('WEBDAV')">WebDAV</ElButton></div>
         <template v-if="draft.type === 'LOCAL'">

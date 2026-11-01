@@ -5,7 +5,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory, type Router } from 'vue-router'
 import ElementPlus from 'element-plus'
 import SongLibraryTable from '../src/admin/modules/song-management/components/SongLibraryTable.vue'
-import { defaultSongColumns, fileSize } from '../src/admin/modules/song-management/presentation'
+import { defaultSongColumns, fileSize, identityReviewed, needsSongReview, songReviewLabel } from '../src/admin/modules/song-management/presentation'
 import SongsView from '../src/admin/modules/song-management/views/SongsView.vue'
 import type { MediaSong } from '../src/admin/modules/media-library/types'
 import { songs } from '../src/admin/modules/song-management/api/songs'
@@ -247,7 +247,7 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
     await flushPromises()
     await wrapper.find('.song-card').trigger('click')
     await flushPromises()
-    const editBtn = wrapper.find('.el-drawer__body .detail-actions button:nth-child(2)')
+    const editBtn = wrapper.find('.song-primary-actions').findAll('button').find(button => button.text() === '核对信息')!
     await editBtn.trigger('click')
     await flushPromises()
     expect(wrapper.findComponent({ name: 'SongDetailDrawer' }).props('visible')).toBe(false)
@@ -318,15 +318,25 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
 
 describe('歌曲明细表信息与交互', () => {
   const props = () => ({ items: [song()], tags: [] as Tag[], columns: [...defaultSongColumns], compact: true, selectionMode: false, selectedIds: [] as string[] })
-  it('只展示已确认且未过期的元数据，平台时长有独立标识', async () => {
+  it('只展示已确认且未过期的元数据，时长有独立标识', async () => {
     const row = song()
     row.metadata = { track: { provider: null, externalId: null, title: null, artists: [], album: '叶惠美', releaseDate: '2003-07-31', durationMs: 269000, aliases: [], coverUrl: null, availability: 'UNKNOWN', fetchedAt: '' }, fields: ['album', 'releaseDate', 'durationMs'], appliedAt: '', stale: false, origins: {} }
     const w = mount(SongLibraryTable, { props: { ...props(), items: [row] } })
-    expect(w.text()).toContain('叶惠美'); expect(w.text()).toContain('2003-07-31'); expect(w.text()).toContain('平台时长 4:29'); expect(w.text()).toContain('MP4'); expect(w.text()).toContain('12.2 MB')
+    expect(w.text()).toContain('叶惠美'); expect(w.text()).toContain('2003-07-31'); expect(w.text()).toContain('时长 4:29'); expect(w.text()).toContain('MP4'); expect(w.text()).toContain('12.2 MB')
     await w.setProps({ items: [{ ...row, metadata: { ...row.metadata, fields: ['album'] } }] })
-    expect(w.text()).not.toContain('平台时长'); expect(w.text()).not.toContain('2003-07-31')
+    expect(w.text()).not.toContain('时长 4:29'); expect(w.text()).not.toContain('2003-07-31')
     await w.setProps({ items: [{ ...row, metadata: { ...row.metadata, stale: true } }] })
     expect(w.text()).not.toContain('叶惠美'); expect(w.text()).toContain('元数据需重审'); w.unmount()
+  })
+  it('共享核心信息须核对，人工确认后才解除提示', () => {
+    const row = song()
+    row.metadata = { track: { provider: null, externalId: null, title: '共享歌名', artists: ['共享歌手'], album: null, releaseDate: null, durationMs: 1000, aliases: [], coverUrl: null, availability: 'UNKNOWN', fetchedAt: '' }, fields: ['title', 'artists', 'durationMs'], appliedAt: '', stale: false, origins: { title: { provider: null, externalId: null, appliedAt: '', kind: 'SHARED' } } }
+    expect(identityReviewed(row)).toBe(false)
+    expect(needsSongReview(row)).toBe(true)
+    expect(songReviewLabel(row)).toBe('共享信息待核对')
+    row.metadata.origins.title!.kind = 'MANUAL'
+    expect(identityReviewed(row)).toBe(true)
+    expect(needsSongReview(row)).toBe(false)
   })
   it('确认歌名歌手后解除复核提示，部分确认或文件变化后仍需复核', async () => {
     const row = pending()

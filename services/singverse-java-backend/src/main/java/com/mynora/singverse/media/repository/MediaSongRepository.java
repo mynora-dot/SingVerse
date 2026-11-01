@@ -12,10 +12,14 @@ import org.springframework.stereotype.Repository;
 public class MediaSongRepository {
     public record Stored(String id, String sourceId, String relativePath, String pathHash,
             Long fileSize, String modifiedAt, String scannedAt, String profileId, long revision,
-            String ruleId, String resultJson, boolean needsReview, String embeddedTagsJson) {
+            String ruleId, String resultJson, boolean needsReview, String embeddedTagsJson, String etag) {
+        public Stored(String id, String sourceId, String relativePath, String pathHash, Long fileSize, String modifiedAt,
+                String scannedAt, String profileId, long revision, String ruleId, String resultJson, boolean needsReview, String embeddedTagsJson) {
+            this(id,sourceId,relativePath,pathHash,fileSize,modifiedAt,scannedAt,profileId,revision,ruleId,resultJson,needsReview,embeddedTagsJson,null);
+        }
         public Stored(String id, String sourceId, String relativePath, String pathHash, Long fileSize, String modifiedAt,
                 String scannedAt, String profileId, long revision, String ruleId, String resultJson, boolean needsReview) {
-            this(id, sourceId, relativePath, pathHash, fileSize, modifiedAt, scannedAt, profileId, revision, ruleId, resultJson, needsReview, null);
+            this(id, sourceId, relativePath, pathHash, fileSize, modifiedAt, scannedAt, profileId, revision, ruleId, resultJson, needsReview, null, null);
         }
     }
     private final MediaSongMapper mapper;
@@ -59,7 +63,12 @@ public class MediaSongRepository {
     public static String fingerprint(String id, Long size, String modifiedAt) {
         return com.mynora.singverse.auth.crypto.AuthCrypto.hash(id + ":" + size + ":" + modifiedAt);
     }
-    public static String fingerprint(Song song) { return fingerprint(song.id(), song.fileSize(), song.modifiedAt()); }
+    public static String fingerprint(Song song) { return song.contentFingerprint()==null?fingerprint(song.id(), song.fileSize(), song.modifiedAt()):song.contentFingerprint(); }
+    private static String contentFingerprint(Map<String,Object> row) {
+        boolean remote=row.get("remote_resource_id")!=null;
+        Long length=remote?(row.get("identity_size") instanceof Number n?n.longValue():null):size(row);
+        return fingerprint(row.get("id").toString(),length,(String)row.get(remote?"identity_modified":"modified_at"));
+    }
     private static Long size(Map<String, Object> row) {
         return row.get("file_size") == null ? null : ((Number) row.get("file_size")).longValue();
     }
@@ -72,7 +81,7 @@ public class MediaSongRepository {
                     (String) row.get("selected_rule_id"),
                     json.readValue(row.get("result_json").toString(), FilenameParseResult.class), artistOverride(row,effectiveApplied(row)), new com.mynora.singverse.media.classification.ClassificationDtos.State(
                             row.get("id").toString(), row.get("classification_revision")==null?0:((Number)row.get("classification_revision")).longValue(),
-                            row.get("classification_state")==null?java.util.Map.of():json.readValue(row.get("classification_state").toString(),new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String,com.mynora.singverse.media.classification.ClassificationDtos.Value>>() {})));
+                            row.get("classification_state")==null?java.util.Map.of():json.readValue(row.get("classification_state").toString(),new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String,com.mynora.singverse.media.classification.ClassificationDtos.Value>>() {})), contentFingerprint(row));
         } catch (JsonProcessingException error) {
             throw new IllegalStateException("Stored song result is invalid", error);
         }
@@ -97,23 +106,40 @@ public class MediaSongRepository {
     private com.mynora.singverse.media.metadata.MetadataDtos.Applied effectiveApplied(Map<String,Object> row) throws JsonProcessingException {
         var prior = applied(row);
         if (row.get("embedded_tags_json") == null) return prior;
+        var remote = row.get("remote_metadata_json")==null?json.nullNode():json.readTree(row.get("remote_metadata_json").toString());
+        String originKind=remote.path("origin").asText().equals("SHARED")?"SHARED":"FILE";
+        Integer duration = null;
+        try { double seconds=Double.parseDouble(remote.path("technical").path("duration").asText("0")); if(Double.isFinite(seconds)&&seconds>0&&seconds<604800) duration=(int)Math.round(seconds*1000); } catch(NumberFormatException ignored) {}
+        String embeddedCover=remote.path("cover").asText("").matches("[a-f0-9]{64}")?"embedded:"+row.get("id"):null;
         var tags = json.readValue(row.get("embedded_tags_json").toString(), com.mynora.singverse.infrastructure.compute.MediaTagsClient.Tags.class);
         var valid = prior != null && !prior.stale() ? prior : null;
         var track = valid == null ? null : valid.track();
         var fields = new java.util.HashSet<String>(valid == null ? java.util.Set.of() : valid.fields());
         var origins = new java.util.HashMap<String, com.mynora.singverse.media.metadata.MetadataDtos.Origin>(valid == null ? java.util.Map.of() : valid.origins());
+        java.util.List<String> sharedAliases=originKind.equals("SHARED")&&remote.path("aliases").isArray()?json.convertValue(remote.path("aliases"),new com.fasterxml.jackson.core.type.TypeReference<java.util.List<String>>(){}):null;
         String now = row.get("scanned_at").toString();
-        for (String field : tags.fields()) {
-            fields.add(field); origins.put(field, new com.mynora.singverse.media.metadata.MetadataDtos.Origin(null,null,now,"FILE"));
+        if(originKind.equals("SHARED") && valid!=null) {
+            var manual=new java.util.HashSet<String>();
+            valid.origins().forEach((field,origin)->{if(!"SHARED".equals(origin.kind()))manual.add(field);});
+            tags=new com.mynora.singverse.infrastructure.compute.MediaTagsClient.Tags(manual.contains("title")?null:tags.title(),manual.contains("artists")?List.of():tags.artists(),manual.contains("album")?null:tags.album(),manual.contains("releaseDate")?null:tags.releaseDate());
+            if(manual.contains("durationMs"))duration=null;
+            if(manual.contains("cover"))embeddedCover=null;
+            if(manual.contains("aliases"))sharedAliases=null;
         }
-        if (tags.fields().isEmpty()) return prior;
+        for (String field : tags.fields()) {
+            fields.add(field); origins.put(field, new com.mynora.singverse.media.metadata.MetadataDtos.Origin(null,null,now,originKind));
+        }
+        if(duration!=null) { fields.add("durationMs"); origins.put("durationMs",new com.mynora.singverse.media.metadata.MetadataDtos.Origin(null,null,now,originKind)); }
+        if(embeddedCover!=null) { fields.add("cover"); origins.put("cover",new com.mynora.singverse.media.metadata.MetadataDtos.Origin(null,null,now,originKind)); }
+        if(sharedAliases!=null) { fields.add("aliases"); origins.put("aliases",new com.mynora.singverse.media.metadata.MetadataDtos.Origin(null,null,now,originKind)); }
+        if (tags.fields().isEmpty() && duration==null && embeddedCover==null && sharedAliases==null) return prior;
         var merged = new com.mynora.singverse.media.metadata.ExternalTrack(null,null,
             tags.title() != null ? tags.title() : track == null ? null : track.title(),
             !tags.artists().isEmpty() ? tags.artists() : track == null ? java.util.List.of() : track.artists(),
             tags.album() != null ? tags.album() : track == null ? null : track.album(),
-            track == null ? null : track.durationMs(),
+            duration != null ? duration : track == null ? null : track.durationMs(),
             tags.releaseDate() != null ? tags.releaseDate() : track == null ? null : track.releaseDate(),
-            track == null ? java.util.List.of() : track.aliases(), track == null ? null : track.coverUrl(),"UNKNOWN",java.time.OffsetDateTime.parse(now));
+            sharedAliases!=null ? sharedAliases : track == null ? java.util.List.of() : track.aliases(), embeddedCover != null ? embeddedCover : track == null ? null : track.coverUrl(),"UNKNOWN",java.time.OffsetDateTime.parse(now));
         if(track!=null)merged=merged.withArtistRefs(track.artistRefs());
         return new com.mynora.singverse.media.metadata.MetadataDtos.Applied(merged,fields,now,false,origins);
     }
@@ -126,7 +152,7 @@ public class MediaSongRepository {
         fields.removeIf(field -> origins.containsKey(field) && "FILE".equals(origins.get(field).kind()));
         origins.keySet().retainAll(fields);
         if (fields.isEmpty()) return null;
-        String current = fingerprint(row.get("id").toString(), size(row), (String) row.get("modified_at"));
+        String current = contentFingerprint(row);
         return new com.mynora.singverse.media.metadata.MetadataDtos.Applied(track, fields,
                 row.get("metadata_applied_at").toString(), !current.equals(row.get("metadata_fingerprint")),
                 origins);

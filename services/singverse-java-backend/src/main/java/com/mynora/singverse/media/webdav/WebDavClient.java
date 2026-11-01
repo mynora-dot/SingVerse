@@ -15,10 +15,10 @@ import org.springframework.stereotype.Component;
 /** Only enumerates collections. Never requests media contents, content types or download links. */
 @Component
 public class WebDavClient {
-    public record Entry(String path, boolean directory, Long size, String modifiedAt) {}
+    public record Entry(String path, boolean directory, Long size, String modifiedAt, String etag) {}
     private static final String BODY = """
         <?xml version="1.0" encoding="utf-8"?>
-        <d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getcontentlength/><d:getlastmodified/></d:prop></d:propfind>
+        <d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getcontentlength/><d:getlastmodified/><d:getetag/></d:prop></d:propfind>
         """;
     private static final ScheduledExecutorService TIMEOUTS = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "webdav-response-timeout"); t.setDaemon(true); return t;
@@ -32,6 +32,11 @@ public class WebDavClient {
 
     public void list(URI root, String directory, String authorization, long deadline,
             Runnable check, Consumer<AutoCloseable> track, Consumer<Entry> consumer) {
+        list(root,directory,authorization,deadline,check,track,consumer,(status,retry)->{});
+    }
+    public void list(URI root, String directory, String authorization, long deadline,
+            Runnable check, Consumer<AutoCloseable> track, Consumer<Entry> consumer,
+            java.util.function.BiConsumer<Integer,String> responseStatus) {
         check.run();
         long remaining = Math.min(requestTimeout.toNanos(), deadline - System.nanoTime());
         if (remaining <= 0) throw failure("WebDAV 扫描超过两小时，请拆分来源后重试");
@@ -46,6 +51,7 @@ public class WebDavClient {
             if (authorization != null) request.header("Authorization", authorization);
             var response = http.send(request.build(), HttpResponse.BodyHandlers.ofInputStream());
             try (InputStream input = response.body()) {
+                responseStatus.accept(response.statusCode(),response.headers().firstValue("Retry-After").orElse(null));
                 track.accept(input);
                 var alarm = TIMEOUTS.schedule(() -> close(input), Math.max(0, requestDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
                 try {
@@ -104,7 +110,7 @@ public class WebDavClient {
     private static Entry response(URI root, String directory, XMLStreamReader reader, Runnable check) throws XMLStreamException {
         String href = null;
         boolean typeKnown = false, collection = false;
-        Long size = null; String modified = null;
+        Long size = null; String modified = null; String etag = null;
         while (reader.hasNext()) {
             check.run();
             int event = reader.next();
@@ -118,7 +124,7 @@ public class WebDavClient {
                 if (!success(reader.getElementText())) throw failure("WebDAV 条目读取失败，旧索引已保留");
             } else if (dav(reader, "propstat")) {
                 String status = null; boolean known = false, folder = false;
-                Long length = null; String date = null;
+                Long length = null; String date = null; String tag = null;
                 while (reader.hasNext()) {
                     check.run();
                     event = reader.next();
@@ -136,6 +142,9 @@ public class WebDavClient {
                         String text = reader.getElementText().trim();
                         try { length = Long.valueOf(text); if (length < 0) length = null; }
                         catch (NumberFormatException ignored) { length = null; }
+                    } else if (dav(reader,"getetag")) {
+                        String value=reader.getElementText().trim();
+                        if(value.length()<=512 && !value.chars().anyMatch(Character::isISOControl)) tag=value;
                     } else if (dav(reader, "getlastmodified")) {
                         String text = reader.getElementText().trim();
                         try { date = ZonedDateTime.parse(text, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toString(); }
@@ -146,11 +155,12 @@ public class WebDavClient {
                     if (known) { typeKnown = true; collection = folder; }
                     if (length != null) size = length;
                     if (date != null) modified = date;
+                    if (tag != null) etag = tag;
                 }
             }
         }
         if (href == null || !typeKnown) throw failure("WebDAV 条目缺少路径或目录类型，旧索引已保留");
-        return new Entry(path(root, directory, href, collection), collection, size, modified);
+        return new Entry(path(root, directory, href, collection), collection, size, modified, etag);
     }
 
     static String path(URI root, String directory, String href, boolean collection) {

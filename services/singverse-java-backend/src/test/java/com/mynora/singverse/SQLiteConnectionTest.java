@@ -49,7 +49,7 @@ class SQLiteConnectionTest {
                                     + " LIKE 'sqlite_%'",
                                 String.class))
                 .containsExactlyInAnyOrder(
-                        "schema_migrations",
+                        "schema_migrations", "media_metadata_file", "webdav_share_lock", "webdav_share_job", "webdav_share_entry", "webdav_share_asset", "webdav_share_receipt", "webdav_metadata_source", "webdav_resource", "webdav_metadata_task", "webdav_access_budget",
                         "auth_account",
                         "auth_token",
                         "auth_recovery",
@@ -58,7 +58,7 @@ class SQLiteConnectionTest {
                         "media_source",
                         "media_song", "media_scan_task", "media_scan_directory", "media_scan_song",
                         "metadata_cover_asset", "metadata_review_receipt", "metadata_settings", "metadata_batch", "metadata_item", "metadata_candidate", "song_metadata",
-                        "playlist", "playlist_lock", "media_transcode", "artist_image_policy", "song_artist_override", "artist_registry_lock", "artist", "artist_image", "artist_credit_binding", "classification_tag_cover", "classification_settings", "classification_tag", "classification_song", "classification_assignment",
+                        "playlist", "playlist_lock", "media_transcode", "artist_image_policy", "artist_image_fetch", "artist_artwork_settings", "song_artist_override", "artist_registry_lock", "artist", "artist_image", "artist_credit_binding", "classification_tag_cover", "classification_settings", "classification_tag", "classification_song", "classification_assignment",
                         "classification_task", "classification_item", "classification_history", "classification_receipt",
                         "filename_parser_config", "ai_registry_lock", "ai_service", "ai_feature", "compute_node_settings", "tv_record");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM filename_parser_config", Integer.class)).isZero();

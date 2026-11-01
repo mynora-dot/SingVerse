@@ -4,6 +4,11 @@ import type { MediaSong } from '../../media-library/types'
 const base='/api/v1/artists'
 const segment=encodeURIComponent
 export const artists = {
+  artworkSettings:()=>authRequest<{fanartConfigured:boolean}>(`${base}/artwork-settings`),
+  saveArtworkSettings:(fanartKey:string|null,clearFanartKey=false)=>authRequest<{fanartConfigured:boolean}>(`${base}/artwork-settings`,'PUT',{fanartKey,clearFanartKey}),
+  candidates:(id:string,kind:ImageKind)=>authRequest<Array<{provider:string;externalId:string;attribution:string;portrait:string;background:string}>>(`${base}/${segment(id)}/images/${kind}/candidates`),
+  candidatePreview:(id:string,kind:ImageKind,provider:string,externalId:string)=>`${base}/${segment(id)}/images/${kind}/candidates/${segment(provider)}/${segment(externalId)}/preview`,
+  selectCandidate:(id:string,kind:ImageKind,provider:string,externalId:string)=>authRequest<Artist>(`${base}/${segment(id)}/images/${kind}/selection`,'POST',{provider,externalId}),
   songs:(id:string,page=0)=>authRequest<Page<MediaSong>>(`${base}/${segment(id)}/songs?page=${page}&size=12`),
   retry:(id:string)=>authRequest(`${base}/${segment(id)}/images/retry`,'POST',{}),
   override:(id:string)=>authRequest<{revision:number;overridden:boolean}>(`${base}/song-overrides/${segment(id)}`),

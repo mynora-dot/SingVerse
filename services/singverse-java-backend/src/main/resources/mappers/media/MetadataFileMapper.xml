@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mynora.singverse.media.metadata.MetadataFileMapper">
+<update id="touch">UPDATE media_metadata_file SET revision=revision+1,error=NULL WHERE song_id=#{songId}</update>
+<update id="retrySource">UPDATE media_metadata_file SET revision=revision+1,error=NULL WHERE error IS NOT NULL AND song_id IN(SELECT id FROM media_song WHERE source_id=#{sourceId})</update>
+<select id="previous" resultType="map">SELECT song_id,result_json FROM media_metadata_file WHERE song_id=#{songId}</select>
+<select id="attachments" resultType="int">SELECT COUNT(*) FROM media_metadata_file f JOIN media_song s ON s.id=f.song_id WHERE s.source_id=#{sourceId} AND f.synced_revision=f.revision AND f.error IS NOT NULL</select>
+<insert id="enqueue">INSERT INTO media_metadata_file(song_id) SELECT #{songId} WHERE NOT EXISTS(SELECT 1 FROM media_metadata_file WHERE song_id=#{songId})</insert>
+<insert id="enqueueSource">INSERT INTO media_metadata_file(song_id) SELECT s.id FROM media_song s WHERE s.source_id=#{sourceId} AND NOT EXISTS(SELECT 1 FROM media_metadata_file f WHERE f.song_id=s.id)</insert>
+<update id="touchPath">UPDATE media_metadata_file SET revision=revision+1,error=NULL WHERE song_id IN(SELECT id FROM media_song WHERE source_id=#{source} AND relative_path=#{path})</update>
+<insert id="enqueuePath">INSERT INTO media_metadata_file(song_id) SELECT s.id FROM media_song s WHERE s.source_id=#{source} AND s.relative_path=#{path} AND NOT EXISTS(SELECT 1 FROM media_metadata_file f WHERE f.song_id=s.id)</insert>
+<select id="failures" resultType="int">SELECT COUNT(*) FROM media_metadata_file f JOIN media_song s ON s.id=f.song_id JOIN media_source source ON source.id=s.source_id WHERE s.source_id=#{sourceId} AND (f.synced_revision&lt;f.revision OR COALESCE(f.source_location,'')&lt;&gt;source.location) AND f.error IS NOT NULL</select>
+<select id="pending" resultType="map">SELECT f.song_id,f.revision,s.source_id FROM media_metadata_file f JOIN media_song s ON s.id=f.song_id JOIN media_source source ON source.id=s.source_id WHERE (f.synced_revision&lt;f.revision OR COALESCE(f.source_location,'')&lt;&gt;source.location OR f.error IS NOT NULL) AND (f.error IS NULL OR f.updated_at&lt;#{retryBefore}) ORDER BY f.revision DESC,COALESCE(f.updated_at,'') LIMIT 250</select>
+<update id="complete">UPDATE media_metadata_file SET synced_revision=#{revision},result_json=#{result},source_location=#{location},error=#{error},updated_at=#{now} WHERE song_id=#{songId} AND revision=#{revision}</update>
+<update id="failed">UPDATE media_metadata_file SET error='衍生文件写入失败，后台将重试',updated_at=#{now} WHERE song_id=#{songId} AND revision=#{revision}</update>
+<select id="pendingSource" resultType="int">SELECT COUNT(*) FROM media_metadata_file f JOIN media_song s ON s.id=f.song_id JOIN media_source source ON source.id=s.source_id WHERE s.source_id=#{sourceId} AND (f.synced_revision&lt;f.revision OR COALESCE(f.source_location,'')&lt;&gt;source.location)</select>
+</mapper>

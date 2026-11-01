@@ -87,7 +87,7 @@ it('AI 设置位于系统分组首位，歌曲分类仍属于曲库管理', asyn
   const wrapper = mount(App, { global: { plugins: [router] } })
   await flushPromises()
   const groups = wrapper.findAll('.el-sub-menu')
-  expect(groups[0]!.text()).toContain('歌曲分类')
+  expect(groups[0]!.findAll('.el-menu-item').map(item => item.text())).toEqual(['全部歌曲', '歌手库', '歌单管理', '歌曲分类', '媒体库', '元数据整理'])
   expect(groups[2]!.findAll('.el-menu-item').map(item => item.text())).toEqual(['AI 设置', '电视设备', '性能节点配置', '服务状态', '账号与安全'])
   expect(wrapper.get('.el-menu-item.is-active').text()).toBe('AI 设置')
   expect(wrapper.get('.breadcrumb').text()).toContain('AI 设置')

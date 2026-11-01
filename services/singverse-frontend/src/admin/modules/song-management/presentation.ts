@@ -3,7 +3,7 @@ import type { Tag, Dimension } from '../classification/types'
 import { dimensionNames } from '../classification/types'
 export const songColumns = [
   { id: 'album', label: '专辑与发行信息' }, { id: 'classification', label: '分类标签' },
-  { id: 'file', label: '文件格式与大小' }, { id: 'location', label: '歌曲位置' },
+  { id: 'file', label: '文件格式与大小' }, { id: 'location', label: '媒体库' },
   { id: 'status', label: '解析与元数据状态' }, { id: 'parsed', label: '文件名解析细节' },
   { id: 'timestamps', label: '扫描与修改时间' },
 ] as const
@@ -41,12 +41,15 @@ export const languageLabels: Record<string, string> = { MANDARIN: '国语', CANT
 export const versionLabels: Record<string, string> = { ORIGINAL: '原唱', ACCOMPANIMENT: '伴奏', LIVE: '现场', COVER: '翻唱', UNKNOWN: '版本未知' }
 
 // 原始解析证据保持不变；只有有效且明确确认的核心身份信息才解除业务复核提示。
+export function sharedIdentity(song: MediaSong): boolean {
+  return !song.metadata?.stale && ['title', 'artists'].some(field => song.metadata?.origins[field]?.kind === 'SHARED')
+}
 export function identityReviewed(song: MediaSong): boolean {
   const metadata = song.metadata
-  return !!metadata && !metadata.stale && metadata.fields.includes('title') && metadata.fields.includes('artists')
+  return !!metadata && !metadata.stale && !sharedIdentity(song) && metadata.fields.includes('title') && metadata.fields.includes('artists')
     && !!metadata.track.title?.trim() && metadata.track.artists.some(artist => !!artist.trim())
 }
-export function needsSongReview(song: MediaSong): boolean { return song.result.needsReview && !identityReviewed(song) }
+export function needsSongReview(song: MediaSong): boolean { return sharedIdentity(song) || song.result.needsReview && !identityReviewed(song) }
 export function songReviewLabel(song: MediaSong): string {
-  return identityReviewed(song) ? '歌曲信息已复核' : song.result.needsReview ? '文件名待复核' : '文件名完整'
+  return sharedIdentity(song) ? '共享信息待核对' : identityReviewed(song) ? '歌曲信息已复核' : song.result.needsReview ? '文件名待复核' : '文件名完整'
 }

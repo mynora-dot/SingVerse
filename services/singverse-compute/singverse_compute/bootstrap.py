@@ -7,7 +7,7 @@ from .infrastructure.filesystem import RootedMediaPaths
 from .infrastructure.media.ffprobe import FFprobeReader
 from .api.errors import register_errors
 from .api.middleware import InternalTaskBoundary, RequestContext
-from .api.routers import health, media, transcoding
+from .api.routers import health, media, transcoding, remote_tags
 from .application.transcoding import Transcoding
 from .infrastructure.transcoding.probe import MediaProbe
 from .infrastructure.transcoding.backends import Backends
@@ -41,7 +41,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_errors(app)
     app.include_router(health.router)
     app.include_router(media.router)
+    app.include_router(remote_tags.router)
     app.include_router(transcoding.router)
-    app.add_middleware(InternalTaskBoundary, auth=auth, paths=frozenset({media.TAG_PATH, '/internal/v1/transcoding/probe', '/internal/v1/transcoding/negotiate', '/internal/v1/transcoding/executions', '/internal/v1/transcoding/hardware-settings', '/internal/v1/transcoding/hardware-settings/test'}), limit=config.request_limit)
+    app.add_middleware(InternalTaskBoundary, auth=auth, paths=frozenset({media.TAG_PATH, remote_tags.PATH, '/internal/v1/transcoding/probe', '/internal/v1/transcoding/negotiate', '/internal/v1/transcoding/executions', '/internal/v1/transcoding/hardware-settings', '/internal/v1/transcoding/hardware-settings/test'}), limit=config.request_limit)
     app.add_middleware(RequestContext)
     return app

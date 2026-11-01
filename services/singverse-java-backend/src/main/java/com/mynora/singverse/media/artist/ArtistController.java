@@ -14,10 +14,22 @@ import java.util.Map;
 public class ArtistController {
     private final ArtistService artists;
     private final TvLibrary library;
+    private final ArtistArtworkSettings artworkSettings;
 
-    public ArtistController(ArtistService artists, TvLibrary library) {
+    public ArtistController(ArtistService artists, TvLibrary library, ArtistArtworkSettings artworkSettings) {
         this.artists = artists;
         this.library = library;
+        this.artworkSettings = artworkSettings;
+    }
+
+    @GetMapping("/artwork-settings")
+    public Map<String, Boolean> artworkSettings() { return artworkSettings.view(); }
+
+    public record ArtworkSettingsInput(String fanartKey, boolean clearFanartKey) {}
+
+    @PutMapping("/artwork-settings")
+    public Map<String, Boolean> saveArtworkSettings(@RequestBody ArtworkSettingsInput input) {
+        return artworkSettings.save(input.fanartKey(), input.clearFanartKey());
     }
 
     @GetMapping("")
@@ -80,6 +92,23 @@ public class ArtistController {
     public Map<String, Boolean> retry(@PathVariable String id) {
         artists.retry(id);
         return Map.of("success", true);
+    }
+
+    @GetMapping("/{id}/images/{kind}/candidates")
+    public java.util.List<ArtistArtworkSources.Choice> candidates(@PathVariable String id, @PathVariable String kind) {
+        return artists.candidates(id, kind);
+    }
+
+    public record CandidateSelection(String provider, String externalId) {}
+
+    @PostMapping("/{id}/images/{kind}/selection")
+    public ObjectNode selectCandidate(@PathVariable String id, @PathVariable String kind, @RequestBody CandidateSelection selection) throws Exception {
+        return artists.selectCandidate(id,kind,selection.externalId(),selection.provider());
+    }
+
+    @GetMapping("/{id}/images/{kind}/candidates/{provider}/{externalId}/preview")
+    public ResponseEntity<byte[]> preview(@PathVariable String id,@PathVariable String kind,@PathVariable String provider,@PathVariable String externalId) throws Exception {
+        return artists.candidatePreview(id,kind,externalId,provider);
     }
 
     @GetMapping("/song-overrides/{songId}")

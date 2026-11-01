@@ -13,6 +13,9 @@ async def health() -> Health:
 async def capabilities(request: Request) -> Capabilities:
     ready = request.app.state.internal_auth.available and request.app.state.media_tags.available
     values = ['media-tags'] if ready else []
+    import shutil
+    if request.app.state.internal_auth.available and request.app.state.settings.java_origin and shutil.which(request.app.state.settings.ffprobe) and shutil.which(request.app.state.settings.ffmpeg):
+        values += ['media-remote-tags']
     if request.app.state.transcoding.available:
         values += ['media-probe', 'transcode-hls', 'transcode-offline']
     return Capabilities(capabilities=values)

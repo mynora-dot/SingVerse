@@ -46,6 +46,7 @@ export interface ScanTask {
   id: string; sourceId: string
   status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'INTERRUPTED'
   phase: 'SCANNING' | 'COMMITTING'
+  addedSongs?: number; reusedSongs?: number; missingSongs?: number; removedSongs?: number
   directories: number; entries: number; totalSongs: number; matchedSongs: number
   needsReviewSongs: number; skippedFiles: number; cancelRequested: boolean
   error: string | null; createdAt: string; startedAt: string | null; finishedAt: string | null

@@ -4,10 +4,11 @@
   <select id="list" resultType="map">
     SELECT cls.state_json AS classification_state, cls.revision AS classification_revision, song.id, song.source_id, source.name AS source_name, song.relative_path, song.file_size,
            song.modified_at, song.scanned_at, song.parser_profile_id, song.parser_revision,
-           song.selected_rule_id, song.result_json, song.embedded_tags_json,
+           song.selected_rule_id, song.result_json, song.embedded_tags_json, remote.result_json AS remote_metadata_json, remote.song_id AS remote_resource_id, remote.identity_size, remote.identity_modified,
            meta.track_json AS metadata_track, meta.fields_json AS metadata_fields,
            meta.applied_at AS metadata_applied_at, meta.origins_json AS metadata_origins, meta.fingerprint AS metadata_fingerprint
     FROM media_song song JOIN media_source source ON source.id = song.source_id
+    LEFT JOIN webdav_resource remote ON remote.song_id=song.id AND remote.archived_at IS NULL
     LEFT JOIN song_metadata meta ON meta.song_id = song.id
     LEFT JOIN classification_song cls ON cls.song_id = song.id
     WHERE song.source_id = #{sourceId}
@@ -42,7 +43,7 @@
   <select id="search" resultType="map">
     SELECT cls.state_json AS classification_state, cls.revision AS classification_revision, song.id, song.source_id, source.name AS source_name, song.relative_path, song.file_size,
            song.modified_at, song.scanned_at, song.parser_profile_id, song.parser_revision,
-           song.selected_rule_id, song.result_json, song.embedded_tags_json,
+           song.selected_rule_id, song.result_json, song.embedded_tags_json, remote.result_json AS remote_metadata_json, remote.song_id AS remote_resource_id, remote.identity_size, remote.identity_modified,
            meta.track_json AS metadata_track, meta.fields_json AS metadata_fields,
            meta.applied_at AS metadata_applied_at, meta.origins_json AS metadata_origins, meta.fingerprint AS metadata_fingerprint
     FROM (SELECT song.id, song.scanned_at FROM media_song song
@@ -50,6 +51,7 @@
       ORDER BY song.scanned_at DESC, song.id ASC LIMIT #{limit} OFFSET #{offset}
     ) page_ids JOIN media_song song ON song.id = page_ids.id
     JOIN media_source source ON source.id = song.source_id
+    LEFT JOIN webdav_resource remote ON remote.song_id=song.id AND remote.archived_at IS NULL
     LEFT JOIN song_metadata meta ON meta.song_id = song.id
     LEFT JOIN classification_song cls ON cls.song_id = song.id
     ORDER BY page_ids.scanned_at DESC, page_ids.id ASC
@@ -61,10 +63,11 @@
   <select id="find" resultType="map">
     SELECT cls.state_json AS classification_state, cls.revision AS classification_revision, song.id, song.source_id, source.name AS source_name, song.relative_path, song.file_size,
            song.modified_at, song.scanned_at, song.parser_profile_id, song.parser_revision,
-           song.selected_rule_id, song.result_json, song.embedded_tags_json, meta.track_json AS metadata_track,
+           song.selected_rule_id, song.result_json, song.embedded_tags_json, remote.result_json AS remote_metadata_json, remote.song_id AS remote_resource_id, remote.identity_size, remote.identity_modified, meta.track_json AS metadata_track,
            meta.fields_json AS metadata_fields, meta.applied_at AS metadata_applied_at,
            meta.fingerprint AS metadata_fingerprint, meta.origins_json AS metadata_origins
     FROM media_song song JOIN media_source source ON source.id = song.source_id
+    LEFT JOIN webdav_resource remote ON remote.song_id=song.id AND remote.archived_at IS NULL
     LEFT JOIN song_metadata meta ON meta.song_id = song.id
     LEFT JOIN classification_song cls ON cls.song_id = song.id
     WHERE song.id = #{id}

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper">
+<insert id="insert">INSERT INTO webdav_share_job(id,source_id,binding,state,base_id,created_at) VALUES(#{id},#{sourceId},#{binding},'QUEUED',#{baseId},#{now})</insert>
+<insert id="snapshot">INSERT INTO webdav_share_entry(job_id,song_id,relative_path,file_size,result_json,filename_json) SELECT #{id},s.id,s.relative_path,s.file_size,COALESCE(f.result_json,r.result_json),s.result_json FROM media_song s JOIN media_source source ON source.id=s.source_id LEFT JOIN webdav_resource r ON r.song_id=s.id LEFT JOIN media_metadata_file f ON f.song_id=s.id AND f.revision=f.synced_revision AND f.source_location=source.location WHERE s.source_id=#{sourceId}</insert>
+<update id="count">UPDATE webdav_share_job SET total_count=(SELECT COUNT(*) FROM webdav_share_entry WHERE job_id=#{id}) WHERE id=#{id}</update>
+<update id="sourceCount">UPDATE webdav_share_job SET total_count=(SELECT COUNT(*) FROM media_song WHERE source_id=#{sourceId}) WHERE id=#{id}</update>
+<select id="snapshotCount" resultType="int">SELECT COUNT(*) FROM webdav_share_entry WHERE job_id=#{id}</select>
+<select id="find" resultType="map">SELECT * FROM webdav_share_job WHERE id=#{id} AND source_id=#{sourceId}</select>
+<select id="latest" resultType="map">SELECT * FROM webdav_share_job WHERE source_id=#{sourceId} ORDER BY created_at DESC,id DESC LIMIT 1</select>
+<select id="pending" resultType="map">SELECT * FROM webdav_share_job WHERE state IN ('WAITING','QUEUED','RUNNING') ORDER BY created_at LIMIT 8</select>
+<select id="page" resultType="map">SELECT e.* FROM webdav_share_entry e WHERE e.job_id=#{id} AND e.song_id&gt;#{cursor} AND (#{baseId} IS NULL OR NOT EXISTS(SELECT 1 FROM webdav_share_entry old WHERE old.job_id=#{baseId} AND old.song_id=e.song_id AND old.relative_path=e.relative_path AND COALESCE(old.file_size,-1)=COALESCE(e.file_size,-1) AND COALESCE(old.result_json,'')=COALESCE(e.result_json,'') AND old.filename_json=e.filename_json)) ORDER BY e.song_id LIMIT 50</select>
+<select id="baseEntry" resultType="map">SELECT * FROM webdav_share_entry WHERE job_id=#{baseId} AND song_id=#{songId}</select>
+<select id="deleted" resultType="map">SELECT e.song_id,e.relative_path FROM webdav_share_entry e WHERE e.job_id=#{baseId} AND NOT EXISTS(SELECT 1 FROM webdav_share_entry n WHERE n.job_id=#{id} AND n.song_id=e.song_id) AND e.song_id&gt;#{cursor} ORDER BY e.song_id LIMIT 1000</select>
+<update id="progress">UPDATE webdav_share_job SET state=#{state},cursor_id=#{cursor},processed_count=#{processed},part_count=#{parts},error=#{error} WHERE id=#{id}</update>
+<select id="asset" resultType="map">SELECT hash FROM webdav_share_asset WHERE job_id=#{id} AND hash=#{hash}</select>
+<insert id="assetInsert">INSERT INTO webdav_share_asset(job_id,hash) SELECT #{id},#{hash} WHERE NOT EXISTS(SELECT 1 FROM webdav_share_asset WHERE job_id=#{id} AND hash=#{hash})</insert>
+<select id="receipt" resultType="map">SELECT * FROM webdav_share_receipt WHERE source_id=#{sourceId} AND binding=#{binding} AND hash=#{hash}</select>
+<insert id="receiptInsert">INSERT INTO webdav_share_receipt(source_id,binding,hash) SELECT #{sourceId},#{binding},#{hash} WHERE NOT EXISTS(SELECT 1 FROM webdav_share_receipt WHERE source_id=#{sourceId} AND binding=#{binding} AND hash=#{hash})</insert>
+<update id="receiptUpdate">UPDATE webdav_share_receipt SET processed=#{processed},imported=#{imported},skipped=#{skipped} WHERE source_id=#{sourceId} AND binding=#{binding} AND hash=#{hash}</update>
+<update id="lock">UPDATE webdav_share_lock SET id=id WHERE id=1</update>
+<select id="active" resultType="map">SELECT id FROM webdav_share_job WHERE (#{sourceId} IS NULL OR source_id=#{sourceId}) AND state IN ('WAITING','QUEUED','RUNNING')</select>
+<select id="expired" resultType="map">SELECT id FROM webdav_share_job old WHERE old.created_at&lt;#{before} AND old.state IN ('SUCCEEDED','FAILED') AND NOT EXISTS(SELECT 1 FROM webdav_share_job active WHERE active.base_id=old.id AND active.state IN ('WAITING','QUEUED','RUNNING')) LIMIT 20</select>
+<delete id="deleteEntries">DELETE FROM webdav_share_entry WHERE job_id=#{id}</delete>
+<delete id="deleteAssets">DELETE FROM webdav_share_asset WHERE job_id=#{id}</delete>
+<delete id="deleteJob">DELETE FROM webdav_share_job WHERE id=#{id}</delete>
+<update id="receiptLock">UPDATE webdav_share_receipt SET processed=processed WHERE source_id=#{sourceId} AND binding=#{binding} AND hash=#{hash}</update>
+</mapper>

@@ -26,6 +26,8 @@ singverse:
     key-file: ${SINGVERSE_AUTH_KEY_FILE:}
     public-origin: ${SINGVERSE_PUBLIC_ORIGIN:}
     trusted-proxies: ${SINGVERSE_TRUSTED_PROXIES:}
+  webdav:
+    metadata-path: ${WEBDAV_METADATA_PATH:./data/metadata/webdav}
   metadata:
     cache-path: ${METADATA_CACHE_PATH:./data/metadata/covers}
   transcoding:

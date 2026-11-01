@@ -39,10 +39,10 @@
     WHERE task_id=#{taskId} AND path_hash=#{hash}</select>
   <update id="processed">UPDATE media_scan_directory SET processed=1 WHERE task_id=#{taskId} AND path_hash=#{hash}</update>
   <insert id="stage">INSERT INTO media_scan_song (task_id, id, source_id, relative_path, path_hash,
-    file_size, modified_at, scanned_at, parser_profile_id, parser_revision, selected_rule_id, result_json, needs_review)
+    file_size, modified_at, scanned_at, parser_profile_id, parser_revision, selected_rule_id, result_json, needs_review, etag)
     VALUES <foreach collection="songs" item="song" separator=",">
       (#{taskId}, #{song.id}, #{song.sourceId}, #{song.relativePath}, #{song.pathHash}, #{song.fileSize},
-       #{song.modifiedAt}, #{song.scannedAt}, #{song.profileId}, #{song.revision}, #{song.ruleId}, #{song.resultJson}, #{song.needsReview})
+       #{song.modifiedAt}, #{song.scannedAt}, #{song.profileId}, #{song.revision}, #{song.ruleId}, #{song.resultJson}, #{song.needsReview}, #{song.etag})
     </foreach>
   </insert>
   <select id="stagedIds" resultType="string">SELECT id FROM media_scan_song WHERE task_id=#{taskId}

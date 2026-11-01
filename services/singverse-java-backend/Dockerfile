@@ -47,6 +47,7 @@ ENV SPRING_PROFILES_ACTIVE=sqlite \
     SERVER_PORT=8080 \
     COMPUTE_NODE_URL="" \
     METADATA_CACHE_PATH=/data/metadata/covers \
+    WEBDAV_METADATA_PATH=/data/metadata/webdav \
     SINGVERSE_AUTH_KEY_FILE=/secrets/master.key
 USER 10001:10001
 EXPOSE 8080

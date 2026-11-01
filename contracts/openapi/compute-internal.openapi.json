@@ -342,6 +342,47 @@
         ]
       }
     },
+    "/internal/v1/media/remote-tags": {
+      "post": {
+        "summary": "Remote Tags",
+        "operationId": "remote_tags_internal_v1_media_remote_tags_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/singverse_compute__api__routers__remote_tags__Input"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/internal/v1/transcoding/capabilities": {
       "get": {
         "summary": "Capabilities",
@@ -371,7 +412,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Input"
+                "$ref": "#/components/schemas/singverse_compute__api__routers__transcoding__Input"
               }
             }
           },
@@ -1179,38 +1220,6 @@
         "type": "object",
         "title": "Health"
       },
-      "Input": {
-        "properties": {
-          "path": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 4096,
-                "minLength": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Path"
-          },
-          "reference": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^[a-f0-9-]{36}$"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reference"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "title": "Input"
-      },
       "Negotiate": {
         "properties": {
           "path": {
@@ -1463,6 +1472,77 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "singverse_compute__api__routers__remote_tags__Input": {
+        "properties": {
+          "reference": {
+            "type": "string",
+            "pattern": "^[a-f0-9-]{36}$",
+            "title": "Reference"
+          },
+          "filename": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Filename"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "deep": {
+            "type": "boolean",
+            "title": "Deep",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reference",
+          "filename"
+        ],
+        "title": "Input"
+      },
+      "singverse_compute__api__routers__transcoding__Input": {
+        "properties": {
+          "path": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4096,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9-]{36}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Input"
       }
     },
     "securitySchemes": {

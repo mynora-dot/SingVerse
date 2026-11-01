@@ -19,6 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class MetadataCoverService {
     public record Cover(byte[] bytes, MediaType type) {}
+    private final com.mynora.singverse.media.webdav.metadata.WebDavMetadataService embedded;
     private final MetadataService service;
     private final CoverAssetService assets;
     private final MetadataSettingsService settings;
@@ -28,15 +29,16 @@ public class MetadataCoverService {
     private static final Map<MusicProvider, Set<String>> HOSTS = Map.of(
             MusicProvider.NETEASE, Set.of("music.126.net"), MusicProvider.QQ, Set.of("y.gtimg.cn"),
             MusicProvider.KUGOU, Set.of("kugou.com", "kugoucdn.com", "kgimg.com"));
-    public MetadataCoverService(MetadataService service, MetadataSettingsService settings, MediaSongRepository songs, CoverAssetService assets,
+    public MetadataCoverService(MetadataService service, MetadataSettingsService settings, MediaSongRepository songs, CoverAssetService assets, com.mynora.singverse.media.webdav.metadata.WebDavMetadataService embedded,
             @Value("${singverse.metadata.cache-path:./data/metadata/covers}") String path) {
-        this.assets=assets; this.service = service; this.settings = settings; this.songs = songs; this.cache = Path.of(path).toAbsolutePath().normalize();
+        this.embedded=embedded; this.assets=assets; this.service = service; this.settings = settings; this.songs = songs; this.cache = Path.of(path).toAbsolutePath().normalize();
     }
     public Cover candidate(String id) { var track = service.candidateTrack(id); return load(track.provider(), track.coverUrl()); }
     public Cover applied(String songId) {
         var metadata = songs.get(songId).metadata();
         if (metadata == null || metadata.stale() || !metadata.fields().contains("cover") || !metadata.origins().containsKey("cover")) throw missing();
         if (metadata.track().coverUrl()!=null && metadata.track().coverUrl().startsWith("asset:")) return assets.image(metadata.track().coverUrl().substring(6));
+        if(metadata.track().coverUrl()!=null && metadata.track().coverUrl().startsWith("embedded:")) return new Cover(embedded.cover(songId),MediaType.IMAGE_PNG);
         return load(metadata.origins().get("cover").provider(), metadata.track().coverUrl());
     }
     private Cover load(MusicProvider provider, String url) {
@@ -81,7 +83,7 @@ public class MetadataCoverService {
                     || (bytes.length == 16 && (bytes[0] & 0xfe) == 0xfc)) throw missing();
         }
     }
-    static Cover validate(byte[] bytes) {
+    public static Cover validate(byte[] bytes) {
         if (bytes.length == 0 || bytes.length > 2_000_000) throw missing();
         try (var input = new MemoryCacheImageInputStream(new ByteArrayInputStream(bytes))) {
             var readers = ImageIO.getImageReaders(input);

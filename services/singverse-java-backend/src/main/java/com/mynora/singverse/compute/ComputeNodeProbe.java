@@ -34,7 +34,7 @@ public class ComputeNodeProbe {
                     return result("INCOMPATIBLE","节点能力响应无效",List.of(),start);
                 capabilities.add(capability.asText());
             }
-            return result("AVAILABLE",capabilities.contains("media-tags")?"连接与认证成功，音视频标签读取可用":"连接与认证成功，节点暂未开放媒体能力",List.copyOf(capabilities),start);
+            return result("AVAILABLE",(capabilities.contains("media-tags")||capabilities.contains("media-remote-tags"))?"连接与认证成功，音视频标签读取可用":"连接与认证成功，节点暂未开放媒体能力",List.copyOf(capabilities),start);
         } catch(ResponseStatusException error) {throw error;}
         catch(InterruptedException error) {Thread.currentThread().interrupt();return result("UNAVAILABLE","连接已中断，请重试",List.of(),start);}
         catch(Exception error) {return result("UNAVAILABLE","节点连接失败或超时，请检查地址、服务及网络",List.of(),start);}

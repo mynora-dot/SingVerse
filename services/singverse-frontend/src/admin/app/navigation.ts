@@ -7,11 +7,11 @@ export const navigationGroups = [
     id: 'library', label: '曲库管理', icon: Headset,
     children: [
       { path: '/library/songs', label: '全部歌曲', icon: Headset },
-      { path: '/library/playlists', label: '歌单管理', icon: CollectionTag },
       { path: '/library/artists', label: '歌手库', icon: Headset },
-      { path: '/library/media', label: '歌曲位置', icon: FolderOpened },
-      { path: '/library/songs/metadata', label: '元数据整理', icon: MagicStick },
+      { path: '/library/playlists', label: '歌单管理', icon: CollectionTag },
       { path: '/library/classification', label: '歌曲分类', icon: CollectionTag },
+      { path: '/library/media', label: '媒体库', icon: FolderOpened },
+      { path: '/library/songs/metadata', label: '元数据整理', icon: MagicStick },
     ],
   },
   {

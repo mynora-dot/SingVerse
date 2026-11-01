@@ -18,7 +18,7 @@ const emit = defineEmits<{ click: []; play: []; edit: []; select: [song: MediaSo
     </div>
     <div class="mobile-song-details"><span>{{ fileFormat(song) }} · {{ fileSize(song.fileSize) }}</span><span v-if="confirmedField(song, 'album')">{{ confirmedField(song, 'album') }}</span><div v-if="songTags(song, tags).length" class="mobile-tags"><span v-for="tag in songTags(song, tags)" :key="tag.id">{{ tag.name }}</span></div><span v-else>尚未分类</span></div>
     <div class="song-source"><strong>{{ song.sourceName }}</strong><span :title="song.relativePath">{{ song.relativePath }}</span></div>
-    <div class="song-status-group"><span class="song-status" :class="{ review: needsSongReview(song) }">{{ songReviewLabel(song) }}</span><span class="mobile-metadata-status">{{ song.metadata?.stale ? '元数据需重审' : song.metadata?.fields.length ? `已确认 ${song.metadata.fields.length} 项信息` : '元数据未确认' }}</span></div>
+    <div class="song-status-group"><span class="song-status" :class="{ review: needsSongReview(song) }">{{ songReviewLabel(song) }}</span><span class="mobile-metadata-status">{{ song.metadata?.stale ? '元数据需重审' : Object.values(song.metadata?.origins ?? {}).some(origin => origin.kind === 'SHARED') ? '来自共享索引' : song.metadata?.fields.length ? `已确认 ${song.metadata.fields.length} 项信息` : '元数据未确认' }}</span></div>
     <div class="song-card-actions" @click.stop><ElButton :icon="VideoPlay" :aria-label="`播放 ${songTitle(song)}`" @click="emit('play')">播放</ElButton><ElButton text :icon="EditPen" @click="emit('edit')">{{ needsSongReview(song) ? '复核' : '编辑' }}</ElButton></div>
   </article>
 </template>

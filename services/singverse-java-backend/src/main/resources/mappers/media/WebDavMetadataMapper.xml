@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper">
+  <select id="config" resultType="map">SELECT * FROM webdav_metadata_source WHERE source_id=#{sourceId}</select>
+  <insert id="configInsert">INSERT INTO webdav_metadata_source(source_id,binding,access_group,private_origins) SELECT #{sourceId},#{binding},#{group},'[]' WHERE NOT EXISTS(SELECT 1 FROM webdav_metadata_source WHERE source_id=#{sourceId})</insert>
+  <update id="configSave">UPDATE webdav_metadata_source SET enabled=#{enabled},paused=#{paused},access_group=#{group},private_origins=#{origins},blocked_until=NULL,blocked_reason=NULL WHERE source_id=#{sourceId}</update>
+  <delete id="sourceDelete">DELETE FROM webdav_metadata_source WHERE source_id=#{sourceId}</delete>
+  <delete id="resourcesDelete">DELETE FROM webdav_resource WHERE source_id=#{sourceId}</delete>
+  <delete id="sourceTasksDelete">DELETE FROM webdav_metadata_task WHERE source_id=#{sourceId}</delete>
+  <select id="resource" resultType="map">SELECT r.*,s.enabled,s.paused,s.access_group,s.private_origins,s.blocked_until,s.blocked_reason FROM webdav_resource r JOIN webdav_metadata_source s ON s.source_id=r.source_id AND s.binding=r.binding WHERE r.song_id=#{songId}</select>
+  <insert id="bootstrap">INSERT INTO webdav_resource(song_id,source_id,binding,relative_path,path_hash,task_id,last_seen_at,identity_size,identity_modified,file_size,modified_at)
+ SELECT s.id,s.source_id,#{binding},s.relative_path,s.path_hash,s.id,s.scanned_at,s.file_size,s.modified_at,s.file_size,s.modified_at FROM media_song s
+ WHERE s.source_id=#{sourceId} <if test="songId != null">AND s.id=#{songId}</if> AND NOT EXISTS(SELECT 1 FROM webdav_resource r WHERE r.song_id=s.id)</insert>
+  <insert id="newResources">INSERT INTO webdav_resource(song_id,source_id,binding,relative_path,path_hash,task_id,last_seen_at,last_scan_id,identity_size,identity_modified,file_size,modified_at,etag)
+ SELECT s.id,s.source_id,#{binding},s.relative_path,s.path_hash,s.id,#{now},#{taskId},s.file_size,s.modified_at,s.file_size,s.modified_at,s.etag FROM media_scan_song s
+ WHERE s.task_id=#{taskId} AND NOT EXISTS(SELECT 1 FROM webdav_resource r WHERE r.song_id=s.id)</insert>
+  <update id="observed">UPDATE webdav_resource SET changed=CASE WHEN
+ COALESCE(file_size,-1)&lt;&gt;COALESCE((SELECT s.file_size FROM media_scan_song s WHERE s.task_id=#{taskId} AND s.id=webdav_resource.song_id),-1)
+ OR COALESCE(modified_at,'')&lt;&gt;COALESCE((SELECT s.modified_at FROM media_scan_song s WHERE s.task_id=#{taskId} AND s.id=webdav_resource.song_id),'')
+ OR COALESCE(etag,'')&lt;&gt;COALESCE((SELECT s.etag FROM media_scan_song s WHERE s.task_id=#{taskId} AND s.id=webdav_resource.song_id),'') THEN 1 ELSE changed END,
+ file_size=(SELECT s.file_size FROM media_scan_song s WHERE s.task_id=#{taskId} AND s.id=webdav_resource.song_id),
+ modified_at=(SELECT s.modified_at FROM media_scan_song s WHERE s.task_id=#{taskId} AND s.id=webdav_resource.song_id),
+ etag=(SELECT s.etag FROM media_scan_song s WHERE s.task_id=#{taskId} AND s.id=webdav_resource.song_id),
+ last_seen_at=#{now},last_scan_id=#{taskId},missing_since=NULL,missing_scans=0,archived_at=NULL
+ WHERE source_id=#{sourceId} AND EXISTS(SELECT 1 FROM media_scan_song s WHERE s.task_id=#{taskId} AND s.id=webdav_resource.song_id)</update>
+  <update id="missing">UPDATE webdav_resource SET missing_scans=missing_scans+1,missing_since=COALESCE(missing_since,#{now})
+ WHERE source_id=#{sourceId} AND archived_at IS NULL AND (last_scan_id IS NULL OR last_scan_id&lt;&gt;#{taskId})</update>
+  <update id="archive">UPDATE webdav_resource SET archived_at=#{now},state=CASE WHEN state='RUNNING' THEN 'PENDING' ELSE state END WHERE source_id=#{sourceId} AND archived_at IS NULL
+ AND missing_scans&gt;=2 AND missing_since&lt;=#{missingBefore}</update>
+  <delete id="removeArchivedSongs">DELETE FROM media_song WHERE source_id=#{sourceId} AND id IN(SELECT song_id FROM webdav_resource WHERE source_id=#{sourceId} AND archived_at IS NOT NULL)</delete>
+  <update id="emptyScan">UPDATE webdav_metadata_source SET empty_scans=empty_scans+1,empty_since=COALESCE(empty_since,#{now}),last_empty_scan=#{taskId} WHERE source_id=#{sourceId}</update>
+  <update id="notEmpty">UPDATE webdav_metadata_source SET empty_scans=0,empty_since=NULL,last_empty_scan=NULL WHERE source_id=#{sourceId}</update>
+  <update id="confirmEmpty">UPDATE webdav_resource SET archived_at=#{now},state=CASE WHEN state='RUNNING' THEN 'PENDING' ELSE state END WHERE source_id=#{sourceId} AND archived_at IS NULL</update>
+  <insert id="insertSongs">INSERT INTO media_song(id,source_id,relative_path,path_hash,file_size,modified_at,scanned_at,parser_profile_id,parser_revision,selected_rule_id,result_json,needs_review,embedded_tags_json)
+ SELECT s.id,s.source_id,s.relative_path,s.path_hash,s.file_size,s.modified_at,s.scanned_at,s.parser_profile_id,s.parser_revision,s.selected_rule_id,s.result_json,s.needs_review,r.tags_json
+ FROM media_scan_song s JOIN webdav_resource r ON r.song_id=s.id
+ WHERE s.task_id=#{taskId} AND NOT EXISTS(SELECT 1 FROM media_song old WHERE old.id=s.id)</insert>
+  <update id="counters">UPDATE media_scan_task SET added_songs=#{added},reused_songs=#{reused},missing_songs=#{missing},removed_songs=#{removed} WHERE id=#{taskId}</update>
+  <select id="counts" resultType="map">SELECT state,COUNT(*) AS total FROM webdav_resource WHERE source_id=#{sourceId} AND archived_at IS NULL GROUP BY state</select>
+  <select id="presence" resultType="map">SELECT SUM(CASE WHEN archived_at IS NULL AND missing_scans&gt;0 THEN 1 ELSE 0 END) AS missing,SUM(CASE WHEN archived_at IS NOT NULL THEN 1 ELSE 0 END) AS archived,SUM(changed) AS changed FROM webdav_resource WHERE source_id=#{sourceId}</select>
+  <insert id="queue">INSERT INTO webdav_metadata_task(id,song_id,source_id,binding,generation,available_at,created_at)
+ SELECT r.task_id,r.song_id,r.source_id,r.binding,r.generation,#{now},#{now} FROM webdav_resource r
+ JOIN webdav_metadata_source c ON c.source_id=r.source_id AND c.binding=r.binding
+ WHERE c.enabled=1 AND r.source_id=#{sourceId} AND r.archived_at IS NULL AND r.state='PENDING'
+ AND NOT EXISTS(SELECT 1 FROM webdav_metadata_task t WHERE t.song_id=r.song_id AND t.binding=r.binding AND t.generation=r.generation)</insert>
+  <select id="pending" resultType="map">SELECT t.*,r.relative_path,r.file_size,c.access_group,c.private_origins,c.paused,c.enabled FROM webdav_metadata_task t
+ JOIN webdav_resource r ON r.song_id=t.song_id AND r.binding=t.binding AND r.generation=t.generation AND r.archived_at IS NULL
+ JOIN webdav_metadata_source c ON c.source_id=t.source_id AND c.binding=t.binding
+ WHERE t.state='QUEUED' AND t.available_at&lt;=#{now} AND (c.enabled=1 OR t.manual=1) AND c.paused=0
+ AND (c.blocked_until IS NULL OR c.blocked_until&lt;=#{now})
+ AND NOT EXISTS(SELECT 1 FROM webdav_access_budget b WHERE b.access_group=c.access_group
+  AND ((b.blocked_until IS NOT NULL AND b.blocked_until&gt;#{now})
+   OR (b.next_file_at IS NOT NULL AND b.next_file_at&gt;#{now})))
+ ORDER BY t.manual DESC,t.available_at,t.created_at,t.id LIMIT 32</select>
+  <update id="claim">UPDATE webdav_metadata_task SET state='RUNNING',attempts=attempts+1 WHERE id=#{id} AND state='QUEUED'</update>
+  <update id="running">UPDATE webdav_resource SET state='RUNNING' WHERE song_id=#{songId} AND binding=#{binding} AND generation=#{generation}</update>
+  <update id="finishTask">UPDATE webdav_metadata_task SET state=#{state},error=#{error},available_at=#{availableAt} WHERE id=#{id}</update>
+  <update id="finishResource">UPDATE webdav_resource SET state=#{state},result_json=#{result},tags_json=#{tags},extractor_version=#{version},
+ updated_at=#{now},changed=0
+ WHERE song_id=#{songId} AND binding=#{binding} AND generation=#{generation} AND archived_at IS NULL</update>
+  <update id="applyTags">UPDATE media_song SET embedded_tags_json=#{tags} WHERE id=#{songId}</update>
+  <update id="refresh">UPDATE webdav_resource SET generation=generation+1,task_id=#{taskId},identity_size=file_size,identity_modified=modified_at,state='PENDING' WHERE song_id=#{songId} AND archived_at IS NULL AND state&lt;&gt;'RUNNING' AND state&lt;&gt;'PENDING'</update>
+  <update id="deep">UPDATE webdav_metadata_task SET deep=CASE WHEN #{deep}=1 THEN 1 ELSE deep END WHERE song_id=#{songId} AND generation=#{generation} AND state='QUEUED'</update>
+  <update id="blockSource">UPDATE webdav_metadata_source SET blocked_reason=CASE WHEN blocked_until IS NULL OR blocked_until&lt;#{until} THEN #{reason} ELSE blocked_reason END,blocked_until=CASE WHEN blocked_until IS NULL OR blocked_until&lt;#{until} THEN #{until} ELSE blocked_until END WHERE source_id=#{sourceId}</update>
+  <update id="recover">UPDATE webdav_metadata_task SET state='QUEUED',available_at=#{after} WHERE state='RUNNING'</update>
+  <update id="recoverResources">UPDATE webdav_resource SET state='PENDING' WHERE state='RUNNING'</update>
+  <select id="budget" resultType="map">SELECT * FROM webdav_access_budget WHERE access_group=#{group}</select>
+  <insert id="budgetInsert">INSERT INTO webdav_access_budget(access_group,day_key) SELECT #{group},#{day} WHERE NOT EXISTS(SELECT 1 FROM webdav_access_budget WHERE access_group=#{group})</insert>
+  <update id="budgetReset">UPDATE webdav_access_budget SET day_key=#{day},files_started=0,bytes_read=0 WHERE access_group=#{group} AND day_key&lt;&gt;#{day}</update>
+  <update id="fileStart">UPDATE webdav_access_budget SET files_started=files_started+1,next_file_at=#{after} WHERE access_group=#{group} AND (next_file_at IS NULL OR next_file_at&lt;=#{now})</update>
+  <update id="bytes">UPDATE webdav_access_budget SET bytes_read=bytes_read+#{bytes} WHERE access_group=#{group}</update>
+  <update id="nextRequest">UPDATE webdav_access_budget SET next_request_at=#{after} WHERE access_group=#{group}</update>
+  <update id="blockGroup">UPDATE webdav_access_budget SET blocked_until=CASE WHEN blocked_until IS NULL OR blocked_until&lt;#{until} THEN #{until} ELSE blocked_until END WHERE access_group=#{group}</update>
+  <delete id="pruneTasks">DELETE FROM webdav_metadata_task WHERE song_id IN(SELECT song_id FROM webdav_resource WHERE archived_at&lt;#{before})</delete>
+  <delete id="pruneResources">DELETE FROM webdav_resource WHERE archived_at&lt;#{before}</delete>
+  <update id="updateSongs">UPDATE media_song SET file_size=(SELECT s.file_size FROM media_scan_song s WHERE s.task_id=#{taskId} AND s.id=media_song.id),
+modified_at=(SELECT s.modified_at FROM media_scan_song s WHERE s.task_id=#{taskId} AND s.id=media_song.id),
+scanned_at=(SELECT s.scanned_at FROM media_scan_song s WHERE s.task_id=#{taskId} AND s.id=media_song.id),
+parser_profile_id=(SELECT s.parser_profile_id FROM media_scan_song s WHERE s.task_id=#{taskId} AND s.id=media_song.id),
+parser_revision=(SELECT s.parser_revision FROM media_scan_song s WHERE s.task_id=#{taskId} AND s.id=media_song.id),
+selected_rule_id=(SELECT s.selected_rule_id FROM media_scan_song s WHERE s.task_id=#{taskId} AND s.id=media_song.id),
+result_json=(SELECT s.result_json FROM media_scan_song s WHERE s.task_id=#{taskId} AND s.id=media_song.id),
+needs_review=(SELECT s.needs_review FROM media_scan_song s WHERE s.task_id=#{taskId} AND s.id=media_song.id) WHERE source_id=#{sourceId} AND EXISTS(SELECT 1 FROM media_scan_song s WHERE s.task_id=#{taskId} AND s.id=media_song.id)</update>
+  <update id="resourceState">UPDATE webdav_resource SET state=#{state} WHERE song_id=#{songId} AND binding=#{binding} AND generation=#{generation}</update>
+  <select id="assetReferences" resultType="long">SELECT (SELECT COUNT(*) FROM webdav_resource WHERE result_json LIKE #{pattern})+(SELECT COUNT(*) FROM webdav_share_entry WHERE result_json LIKE #{pattern})+(SELECT COUNT(*) FROM media_metadata_file WHERE result_json LIKE #{pattern})</select>
+  <delete id="pruneMetadata">DELETE FROM song_metadata WHERE song_id IN (SELECT song_id FROM webdav_resource WHERE archived_at&lt;#{before})</delete>
+  <delete id="pruneClassification">DELETE FROM classification_song WHERE song_id IN (SELECT song_id FROM webdav_resource WHERE archived_at&lt;#{before})</delete>
+  <delete id="pruneAssignments">DELETE FROM classification_assignment WHERE song_id IN (SELECT song_id FROM webdav_resource WHERE archived_at&lt;#{before})</delete>
+  <delete id="pruneCredits">DELETE FROM artist_credit_binding WHERE song_id IN (SELECT song_id FROM webdav_resource WHERE archived_at&lt;#{before})</delete>
+  <update id="metrics">UPDATE webdav_resource SET bytes_read=bytes_read+#{bytes},request_count=request_count+#{requests},elapsed_ms=elapsed_ms+#{elapsed} WHERE song_id=#{songId} AND binding=#{binding} AND generation=#{generation}</update>
+  <update id="lockSource">UPDATE webdav_metadata_source SET source_id=source_id WHERE source_id=#{sourceId}</update>
+  <delete id="clearSourceClassification">DELETE FROM classification_song WHERE song_id IN(SELECT song_id FROM webdav_resource WHERE source_id=#{sourceId})</delete>
+  <delete id="clearSourceAssignments">DELETE FROM classification_assignment WHERE song_id IN(SELECT song_id FROM webdav_resource WHERE source_id=#{sourceId})</delete>
+  <delete id="clearSourceCredits">DELETE FROM artist_credit_binding WHERE song_id IN(SELECT song_id FROM webdav_resource WHERE source_id=#{sourceId})</delete>
+  <delete id="clearSourceOverrides">DELETE FROM song_artist_override WHERE source_id=#{sourceId}</delete>
+  <delete id="pruneOverrides">DELETE FROM song_artist_override WHERE EXISTS(SELECT 1 FROM webdav_resource r WHERE r.source_id=song_artist_override.source_id AND r.path_hash=song_artist_override.path_key AND r.archived_at&lt;#{before})</delete>
+  <update id="restorePending">UPDATE webdav_metadata_task SET state='QUEUED',available_at=#{now}
+ WHERE source_id=#{sourceId} AND state='SUPERSEDED' AND EXISTS(SELECT 1 FROM webdav_resource r WHERE r.song_id=webdav_metadata_task.song_id AND r.binding=webdav_metadata_task.binding AND r.generation=webdav_metadata_task.generation AND r.archived_at IS NULL AND r.state='PENDING')</update>
+<insert id="queueManual">INSERT INTO webdav_metadata_task(id,song_id,source_id,binding,generation,available_at,created_at,manual)
+ SELECT r.task_id,r.song_id,r.source_id,r.binding,r.generation,#{now},#{now},1 FROM webdav_resource r
+ WHERE r.song_id=#{songId} AND r.archived_at IS NULL AND r.state='PENDING'
+ AND NOT EXISTS(SELECT 1 FROM webdav_metadata_task t WHERE t.song_id=r.song_id AND t.binding=r.binding AND t.generation=r.generation)</insert>
+<update id="makeManual">UPDATE webdav_metadata_task SET manual=1 WHERE song_id=#{songId} AND generation=#{generation} AND state='QUEUED'</update>
+</mapper>

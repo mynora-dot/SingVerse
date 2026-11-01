@@ -439,6 +439,7 @@ class AuthHttpTest {
                         com.mynora.singverse.media.classification.ClassificationController.class,
                         com.mynora.singverse.media.controller.MediaSourceController.class,
                         com.mynora.singverse.media.webdav.ScanTaskController.class,
+                        com.mynora.singverse.media.webdav.metadata.WebDavMetadataController.class,
                         com.mynora.singverse.media.controller.MediaSongController.class,
                         com.mynora.singverse.media.controller.MetadataController.class,
                         com.mynora.singverse.media.controller.FilenameParserController.class,

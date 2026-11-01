@@ -25,6 +25,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import androidx.tv.material3.*
 import org.json.JSONObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 internal val Ink = Color(0xFF08090B)
 internal val Panel = Color(0xFF191B20)
@@ -153,15 +155,53 @@ internal fun JSONObject.artists(): String = optJSONArray("artists")?.let { array
 
 @Composable internal fun ArtistArtwork(app: TvApp, artist: JSONObject, kind: String, modifier: Modifier) {
     var bitmap by remember(artist.optString("id"),kind) {mutableStateOf<Bitmap?>(null)}
-    LaunchedEffect(artist.optString("id"),artist.optString(kind+"Version"),app.client.base) {
-        bitmap=null;val path=artist.optString(kind+"Path")
+    var derived by remember(artist.optString("id"),kind) {mutableStateOf(false)}
+    LaunchedEffect(artist.optString("id"),artist.optString(kind+"Version"),artist.optString("portraitVersion"),app.client.base) {
+        bitmap=null;derived=false
+        val path=artist.optString(kind+"Path")
         if(path.isNotBlank())bitmap=try {app.client.image(path,artist.optString(kind+"Version"))}catch(cancelled:kotlinx.coroutines.CancellationException){throw cancelled}catch(failure:Exception){null}
+        if(kind=="background" && bitmap==null) {
+            val portraitPath=artist.optString("portraitPath")
+            if(portraitPath.isNotBlank()) {
+                val portrait=try {app.client.image(portraitPath,artist.optString("portraitVersion"))}catch(cancelled:kotlinx.coroutines.CancellationException){throw cancelled}catch(failure:Exception){null}
+                if(portrait!=null) { bitmap=withContext(Dispatchers.Default) { softenedArtistBackground(portrait) };derived=true }
+            }
+        }
     }
     val shape=if(kind=="portrait") androidx.compose.foundation.shape.CircleShape else RoundedCornerShape(20.dp)
     Box(modifier.clip(shape).background(Brush.linearGradient(listOf(Color(0xFF354352),Panel))),contentAlignment=Alignment.Center) {
-        if(bitmap!=null)Image(bitmap!!.asImageBitmap(),"${artist.optString("name")}${if(kind=="portrait") "头像" else "背景图"}",Modifier.fillMaxSize(),contentScale=androidx.compose.ui.layout.ContentScale.Crop)
+        if(bitmap!=null)Image(bitmap!!.asImageBitmap(),"${artist.optString("name")}${if(kind=="portrait") "头像" else if(derived) "由头像生成的背景" else "背景图"}",Modifier.fillMaxSize(),contentScale=androidx.compose.ui.layout.ContentScale.Crop)
         else if(kind=="portrait")Text(artist.optString("name").take(1),color=Muted,fontSize=36.sp,lineHeight=44.sp,fontWeight=FontWeight.Medium)
+        if(derived) Box(Modifier.fillMaxSize().background(Ink.copy(alpha=.28f)))
+        if(derived)Text("头像生成背景",color=Paper.copy(alpha=.84f),fontSize=11.sp,lineHeight=15.sp,
+            modifier=Modifier.align(Alignment.TopEnd).padding(10.dp).background(Ink.copy(alpha=.72f),RoundedCornerShape(6.dp)).padding(horizontal=8.dp,vertical=4.dp))
     }
+}
+
+/** A small, softened presentation bitmap; the original portrait and NAS image data remain intact. */
+internal fun softenedArtistBackground(source: Bitmap): Bitmap {
+    val width=minOf(96,source.width).coerceAtLeast(1)
+    val height=minOf(96,source.height).coerceAtLeast(1)
+    val sample=Bitmap.createScaledBitmap(source,width,height,true)
+    var pixels=IntArray(width*height)
+    sample.getPixels(pixels,0,width,0,0,width,height)
+    if(sample!==source)sample.recycle()
+    repeat(2) {
+        val horizontal=IntArray(pixels.size)
+        for(y in 0 until height)for(x in 0 until width){
+            var red=0;var green=0;var blue=0;var count=0
+            for(dx in -6..6){val color=pixels[y*width+(x+dx).coerceIn(0,width-1)];red+=android.graphics.Color.red(color);green+=android.graphics.Color.green(color);blue+=android.graphics.Color.blue(color);count++}
+            horizontal[y*width+x]=android.graphics.Color.rgb(red/count,green/count,blue/count)
+        }
+        val vertical=IntArray(pixels.size)
+        for(y in 0 until height)for(x in 0 until width){
+            var red=0;var green=0;var blue=0;var count=0
+            for(dy in -6..6){val color=horizontal[(y+dy).coerceIn(0,height-1)*width+x];red+=android.graphics.Color.red(color);green+=android.graphics.Color.green(color);blue+=android.graphics.Color.blue(color);count++}
+            vertical[y*width+x]=android.graphics.Color.rgb(red/count,green/count,blue/count)
+        }
+        pixels=vertical
+    }
+    return Bitmap.createBitmap(pixels,width,height,Bitmap.Config.ARGB_8888)
 }
 @Composable internal fun ArtistCard(app: TvApp, artist: JSONObject) {
     var focused by remember {mutableStateOf(false)}

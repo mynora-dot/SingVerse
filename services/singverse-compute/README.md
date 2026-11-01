@@ -106,3 +106,13 @@ docker compose -f compose.compute.yaml exec -T singverse-compute cat /run/singve
 管理员可在“系统设置 → 性能节点配置 → 转码与硬件加速”测试及保存后端，设置持久化在转码缓存根目录 `hardware-settings.json`。后台选择优先于 `COMPUTE_HARDWARE_BACKEND`，选择“遵循部署配置”恢复部署默认。仅影响新任务，不自动修改容器设备和驱动；接口、生命周期及部署前提见[转码说明](../../docs/transcoding.md)。
 
 完整硬件图通过 `infrastructure/transcoding/pipelines.py` 的固定模板选择，执行前用实际素材试跑。任务返回 `pipeline` 各阶段和观测 RSS；能力页的硬解/零拷贝/GPU 色调映射只来源于已通过的素材试跑。`COMPUTE_PROCESS_MEMORY_BYTES` 默认 1 GiB，以观测 RSS 检查并终止超限子进程；Linux 容器额外默认 2 GiB 内存/2 CPU 硬限制，可按 NAS 资源调整。
+
+## WebDAV 远程内嵌元数据
+
+新增 `media-remote-tags` 能力，需要内部凭据、FFmpeg/ffprobe 和部署参数 `COMPUTE_JAVA_ORIGIN`，不依赖本地媒体目录白名单。Java 通过 Bearer 鉴权 POST `/internal/v1/media/remote-tags`，请求 `{reference, filename, size, deep}`；仅接收任务 UUID，禁止传任意 URL、路径或 WebDAV 凭据。`reference` 对应 Java 临时授权的 `/api/v1/internal/metadata-input/{id}`，不是可公开分享的播放链接。
+
+工作器用有界、可 seek 的 Range 文件对象读取，Mutagen 读取标签、封面、USLT/SYLT、MP4/Vorbis 歌词；ffprobe 读取容器和流信息，FFmpeg 仅提取附图或明确的封面附件，不截图。Mutagen、ffprobe 和 FFmpeg 共享任务内字节块缓存，不拼接头尾伪造文件。普通预算 16 MiB/16 请求/60 秒，深度预算 128 MiB/64 请求/180 秒；Python 与 Java 分别约束，Java 另计入重定向请求和实际流量，保留访问组限速与冷却，不设每日累计提取额度。超限保留已有信息，字段状态区分 PRESENT/ABSENT/UNKNOWN。
+
+结果包含 tags、technical、cover（仅内部传输的有界 Base64）、lyrics、字段覆盖状态、提取器版本及统计。封面最大 2 MB、歌词最大 256 KiB，Java 校验和保存本地衍生文件，Python 不写业务库。普通歌词与同步歌词保留原格式；SYLT 帧时间不误标为毫秒。MP3/FLAC/M4A/MP4/OGG/Opus/MKV 的常见结构纳入测试，未知结构允许部分完成。远程读取需要 Range 支持，忽略范围的来源不会降级完整下载。
+
+保留 `/internal/v1/media/tags` 的本地兼容行为；旧文档中“WebDAV 不读取内容”适用于未启用远程提取的来源。运行 `make compute-setup` 安装锁定的 Mutagen 1.47.0，再运行 `make compute-check`；新增测试使用本机随机端口、临时音视频、尾部 MP4 索引和 MKV 附件，不连接真实网盘。

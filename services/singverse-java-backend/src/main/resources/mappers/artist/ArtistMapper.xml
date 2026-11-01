@@ -2,7 +2,7 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.mynora.singverse.media.artist.ArtistMapper">
  <update id="lock">UPDATE artist_registry_lock SET revision=revision+1 WHERE id=1</update>
- <sql id="profile">SELECT a.*,p.version AS portrait_version,b.version AS background_version,p.origin AS portrait_origin,b.origin AS background_origin,p.source_url AS portrait_source,b.source_url AS background_source FROM artist a LEFT JOIN artist_image p ON p.artist_id=a.id AND p.image_kind='PORTRAIT' LEFT JOIN artist_image b ON b.artist_id=a.id AND b.image_kind='BACKGROUND'</sql>
+ <sql id="profile">SELECT a.*,p.version AS portrait_version,b.version AS background_version,p.origin AS portrait_origin,b.origin AS background_origin,p.source_url AS portrait_source,b.source_url AS background_source,p.attribution AS portrait_attribution,b.attribution AS background_attribution,pf.state AS portrait_fetch_state,bf.state AS background_fetch_state FROM artist a LEFT JOIN artist_image p ON p.artist_id=a.id AND p.image_kind='PORTRAIT' LEFT JOIN artist_image b ON b.artist_id=a.id AND b.image_kind='BACKGROUND' LEFT JOIN artist_image_fetch pf ON pf.artist_id=a.id AND pf.image_kind='PORTRAIT' LEFT JOIN artist_image_fetch bf ON bf.artist_id=a.id AND bf.image_kind='BACKGROUND'</sql>
  <select id="legacy" resultType="map"><include refid="profile"/> WHERE a.name_key IS NULL ORDER BY a.id</select>
  <select id="list" resultType="map"><include refid="profile"/> ORDER BY a.name,a.id</select>
  <select id="find" resultType="map"><include refid="profile"/> WHERE a.id=#{id}</select>
@@ -31,4 +31,14 @@
  <update id="fetchState">UPDATE artist SET fetch_state=#{state},fetch_attempts=#{attempts},fetch_after=#{after} WHERE id=#{id} AND fetch_generation=#{generation}</update>
  <update id="retry">UPDATE artist SET fetch_state='PENDING',fetch_attempts=0,fetch_after='',fetch_generation=fetch_generation+1 WHERE id=#{id}</update>
  <update id="imageSource">UPDATE artist_image SET origin=#{origin},provider=#{provider},external_id=#{external},source_url=#{url} WHERE artist_id=#{id} AND image_kind=#{kind}</update>
+ <update id="attribution">UPDATE artist_image SET attribution=#{value} WHERE artist_id=#{id} AND image_kind=#{kind}</update>
+ <insert id="ensureFetch">INSERT INTO artist_image_fetch(artist_id,image_kind) VALUES(#{id},#{kind})</insert>
+ <select id="pendingImage" resultType="map">SELECT artist_id,image_kind,attempts,generation FROM artist_image_fetch WHERE state IN ('PENDING','RETRY') AND fetch_after &lt;= #{now} ORDER BY fetch_after,artist_id,CASE image_kind WHEN 'PORTRAIT' THEN 0 ELSE 1 END LIMIT 1</select>
+ <select id="imageFetch" resultType="map">SELECT state,attempts,generation,candidates_json FROM artist_image_fetch WHERE artist_id=#{id} AND image_kind=#{kind}</select>
+ <update id="imageCandidates">UPDATE artist_image_fetch SET candidates_json=#{value} WHERE artist_id=#{id} AND image_kind=#{kind} AND generation=#{generation}</update>
+ <update id="imageFetchState">UPDATE artist_image_fetch SET state=#{state},attempts=#{attempts},fetch_after=#{after} WHERE artist_id=#{id} AND image_kind=#{kind} AND generation=#{generation}</update>
+ <update id="retryImage">UPDATE artist_image_fetch SET state='PENDING',attempts=0,fetch_after='',generation=generation+1,candidates_json=NULL WHERE artist_id=#{id} AND image_kind=#{kind}</update>
+ <select id="fanartKey" resultType="string">SELECT fanart_key_encrypted FROM artist_artwork_settings WHERE id=1</select>
+ <update id="saveFanartKey">UPDATE artist_artwork_settings SET fanart_key_encrypted=#{encrypted} WHERE id=1</update>
+ <update id="requeueMissingBackgrounds">UPDATE artist_image_fetch SET state='PENDING',attempts=0,fetch_after='',generation=generation+1 WHERE image_kind='BACKGROUND' AND state IN ('NO_MATCH','FAILED') AND NOT EXISTS(SELECT 1 FROM artist_image i WHERE i.artist_id=artist_image_fetch.artist_id AND i.image_kind='BACKGROUND') AND NOT EXISTS(SELECT 1 FROM artist_image_policy p WHERE p.artist_id=artist_image_fetch.artist_id AND p.image_kind='BACKGROUND' AND p.blocked=1)</update>
 </mapper>

@@ -13,6 +13,7 @@ import java.util.*;
 
 @Service
 public class MediaSourceService {
+    private final com.mynora.singverse.media.webdav.metadata.WebDavMetadataService embedded;
     private final FilenameParserConfigService profiles;
     private final com.mynora.singverse.media.repository.MediaSongRepository songs;
     private final MediaSourceRepository repository;
@@ -20,8 +21,8 @@ public class MediaSourceService {
     private final com.mynora.singverse.media.repository.MediaSourceMapper schedules;
 
     public MediaSourceService(MediaSourceRepository repository, AuthCrypto crypto, FilenameParserConfigService profiles,
-            com.mynora.singverse.media.repository.MediaSongRepository songs, com.mynora.singverse.media.repository.MediaSourceMapper schedules) {
-        this.schedules = schedules;
+            com.mynora.singverse.media.repository.MediaSongRepository songs, com.mynora.singverse.media.repository.MediaSourceMapper schedules, com.mynora.singverse.media.webdav.metadata.WebDavMetadataService embedded) {
+        this.embedded=embedded; this.schedules = schedules;
         this.profiles = profiles; this.songs = songs;
         this.repository = repository;
         this.crypto = crypto;
@@ -61,6 +62,7 @@ public class MediaSourceService {
     public void delete(String id) {
         profiles.lockBindings();
         songs.delete(id);
+        embedded.reset(id);
         repository.delete(id);
     }
 
@@ -153,6 +155,9 @@ public class MediaSourceService {
         String next = enabled ? StandardScanCron.next(cron, Instant.now()).toString() : null;
         boolean changed = previous == null || input.scanEnabled() != null || input.scanCron() != null;
         String now = Instant.now().toString();
+        if(previous!=null && !location.equals(previous.get("location"))) {
+            songs.delete(id); embedded.reset(id);
+        }
         repository.save(id, name, type, location, username, encrypted, profileId, now, previous == null);
         if (changed) schedules.schedule(id, enabled, cron, next);
         return repository.get(id);
