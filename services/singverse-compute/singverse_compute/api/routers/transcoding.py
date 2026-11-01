@@ -140,6 +140,7 @@ class HardwareSelection(BaseModel):
     backend: Literal['deployment','auto','software','qsv','vaapi','nvenc','amf','videotoolbox','rkmpp']
 
 class HardwareSave(HardwareSelection):
+    cpuFallback: bool | None = None
     revision: int = Field(ge=0)
 
 @router.get('/hardware-settings')
@@ -152,4 +153,4 @@ def test_hardware(request: Request, body: HardwareSelection):
 
 @router.post('/hardware-settings')
 def save_hardware(request: Request, body: HardwareSave):
-    return request.app.state.hardware_settings.save(body.backend, body.revision)
+    return request.app.state.hardware_settings.save(body.backend, body.revision, body.cpuFallback)

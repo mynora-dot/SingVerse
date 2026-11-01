@@ -317,6 +317,23 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
 
 
 describe('歌曲明细表信息与交互', () => {
+  it('显示确认封面，加载失败显示占位并在封面更新后恢复', async () => {
+    const row = song()
+    row.metadata = { track: { provider: null, externalId: null, title: null, artists: [], album: null, releaseDate: null, durationMs: null, aliases: [], coverUrl: 'asset:cover-one', availability: 'UNKNOWN', fetchedAt: '' }, fields: ['cover'], appliedAt: '', stale: false, origins: {} }
+    const w = mount(SongLibraryTable, { props: { ...props(), items: [row] } })
+    expect(w.get('.song-cover img').attributes('src')).toBe('/api/v1/metadata/songs/song-1/cover')
+    expect(w.get('.song-cover img').attributes('loading')).toBe('lazy')
+    await w.get('.song-cover img').trigger('error')
+    expect(w.find('.song-cover img').exists()).toBe(false)
+    expect(w.find('[aria-label="暂无歌曲封面"]').exists()).toBe(true)
+    await w.setProps({ items: [{ ...row, metadata: { ...row.metadata, track: { ...row.metadata.track, coverUrl: 'asset:cover-two' } } }] })
+    expect(w.find('.song-cover img').exists()).toBe(true)
+    await w.setProps({ items: [{ ...row, metadata: { ...row.metadata, stale: true } }] })
+    expect(w.find('.song-cover img').exists()).toBe(false)
+    await w.setProps({ items: [song()] })
+    expect(w.find('[aria-label="暂无歌曲封面"]').exists()).toBe(true)
+  })
+
   const props = () => ({ items: [song()], tags: [] as Tag[], columns: [...defaultSongColumns], compact: true, selectionMode: false, selectedIds: [] as string[] })
   it('只展示已确认且未过期的元数据，时长有独立标识', async () => {
     const row = song()

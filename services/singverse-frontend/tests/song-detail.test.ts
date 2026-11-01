@@ -5,6 +5,8 @@ import { ElButton } from 'element-plus'
 import SongDetailDrawer from '../src/admin/modules/song-management/components/SongDetailDrawer.vue'
 import { embeddedMetadata } from '../src/admin/modules/media-library/api/embeddedMetadata'
 import type { MediaSong } from '../src/admin/modules/media-library/types'
+import { authRequest } from '../src/admin/core/auth/api'
+vi.mock('../src/admin/core/auth/api', () => ({ authRequest: vi.fn() }))
 vi.mock('../src/admin/modules/media-library/api/embeddedMetadata', async original => ({ ...await original<typeof import('../src/admin/modules/media-library/api/embeddedMetadata')>(), embeddedMetadata: { detail: vi.fn(), refresh: vi.fn() } }))
 function song(id = 'song-one'): MediaSong {
   return { id, sourceId: 'nas', sourceName: '家庭曲库', relativePath: 'music/long filename.flac', fileSize: 22544384, modifiedAt: null, scannedAt: '2026-10-31T10:00:00Z', parserProfileId: 'default', parserRevision: 1, selectedRuleId: null,
@@ -14,6 +16,7 @@ function song(id = 'song-one'): MediaSong {
 let wrapper: ReturnType<typeof mount>
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(authRequest).mockResolvedValue({ state: 'UNKNOWN', revision: 0, streams: [{ id: 'stream:1' }, { id: 'stream:2' }], jobs: [] })
   vi.mocked(embeddedMetadata.detail).mockResolvedValue({ state: 'PARTIAL', result: { state: 'PARTIAL', cover: 'embedded-cover', technical: { container: 'flac', duration: 352 }, lyrics: { text: '[ti:曲名]\n[00:01.00]第一句歌词\n[00:02.50]第二句歌词', timing: 'lrc' } } })
 })
 afterEach(() => wrapper?.unmount())
@@ -54,4 +57,15 @@ it('无已确认信息时可显示缓存封面、媒体时长和结构化歌词'
   expect(wrapper.get('.song-quick-facts').text()).toContain('5:55')
   expect(wrapper.get('.lyrics-content').text()).toContain('结构歌词第一句\n结构歌词第二句')
   expect(wrapper.get('.lyrics-content').text()).not.toContain('原始同步内容')
+})
+it('原唱与伴奏显示真实音轨状态并直达处理入口', async () => {
+  vi.mocked(embeddedMetadata.detail).mockResolvedValue({ state: 'PENDING' })
+  wrapper = mount(SongDetailDrawer, { props: { song: song(), visible: true }, global: { stubs: { teleport: true, transition: false, RouterLink: { props: ['to'], template: '<a :data-to="JSON.stringify(to)"><slot /></a>' } } } }); await flushPromises()
+  const section = wrapper.get('.audio-summary')
+  expect(authRequest).toHaveBeenCalledWith('/api/v1/media-songs/song-one/audio-roles')
+  expect(section.text()).toContain('待标记'); expect(section.text()).toContain('需要确认哪条是原唱'); expect(section.text()).toContain('去处理')
+  expect(section.get('a').attributes('data-to')).toContain('"song":"song-one"')
+  vi.mocked(authRequest).mockRejectedValueOnce(new Error('offline'))
+  await wrapper.setProps({ song: song('two') }); await flushPromises()
+  expect(wrapper.get('.audio-summary').text()).toContain('暂时无法读取音轨信息')
 })

@@ -885,6 +885,7 @@
     "/internal/v1/audio-roles/tasks": {
       "post": {
         "summary": "Submit",
+        "description": "FAST reads paired explicit role labels first; otherwise compares paired vocal scores on three short dual-track excerpts with optional PANNs Cnn6 (fast-vocal-v2), adding up to three excerpts only for sparse evidence. Missing classifier or ambiguous evidence remains UNKNOWN, with no automatic separation fallback. ANALYZE is explicit deep recognition and uses up to five disjoint windows, first trying two. Task result includes state, reason for UNKNOWN, and evidence with analysisVersion=vocal-activity-v2, vocalRatio pairs, votes, informativeWindows and window activity. Silent intervals abstain; conflicting directions or labels remain UNKNOWN. Ratios are evidence, not probabilities. Existing task identifiers retain idempotency; Java creates a new identifier for explicit re-analysis of an UNKNOWN result.",
         "operationId": "submit_internal_v1_audio_roles_tasks_post",
         "requestBody": {
           "content": {
@@ -1634,6 +1635,17 @@
             ],
             "title": "Backend"
           },
+          "cpuFallback": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cpufallback"
+          },
           "revision": {
             "type": "integer",
             "minimum": 0.0,
@@ -1761,6 +1773,7 @@
             "type": "string",
             "enum": [
               "PROBE",
+              "FAST",
               "ANALYZE",
               "SEPARATE"
             ],

@@ -54,4 +54,71 @@ class AudioJobServiceTest {
         verify(mapper).updateJob(eq(id),eq("FAILED"),eq("{}"),anyString(),anyLong());
         assertThat(Files.exists(root.resolve(id+".m4a"))).isFalse();assertThat(Files.exists(root.resolve(id+".part"))).isFalse();
     }
+    @Test void unknownAnalysisCanBeResubmittedButActiveAndConfidentResultsAreReused() {
+        var service=service("current");when(compute.connection()).thenReturn(connection);when(connection.origin()).thenReturn(java.net.URI.create("http://compute:8000"));
+        var prior=new HashMap<String,Object>();prior.put("id",id);prior.put("kind","ANALYZE");prior.put("state","SUCCEEDED");prior.put("result_json","{\"state\":\"UNKNOWN\"}");
+        when(mapper.forSong("song","current")).thenReturn(List.of(prior));
+        assertThat(service.submit("song","ANALYZE").path("id").asText()).isNotEqualTo(id);
+        verify(mapper).insertJob(argThat(row->row.get("kind").equals("ANALYZE")));
+        clearInvocations(mapper);
+        prior.put("state","RUNNING");assertThat(service.submit("song","ANALYZE").path("id").asText()).isEqualTo(id);
+        prior.put("state","SUCCEEDED");prior.put("result_json","{\"state\":\"CONFIDENT\"}");
+        assertThat(service.submit("song","ANALYZE").path("id").asText()).isEqualTo(id);
+        verify(mapper,never()).insertJob(any());
+    }
+    @Test void statusExposesUnknownReasonAndEvidenceForOldAndNewAnalyses() {
+        var service=service("current");
+        var roleService=mock(AudioRoleService.class);when(roleService.role("song")).thenReturn(json.createObjectNode().put("state","UNKNOWN"));
+        service=new AudioJobService(mapper,roleService,songs,mock(MediaSourceRepository.class),mock(MediaPlaybackService.class),compute,json,root.toString());
+        when(mapper.forSong("song","current")).thenReturn(List.of(Map.of("id",id,"kind","ANALYZE","state","SUCCEEDED","result_json","{\"state\":\"UNKNOWN\",\"reason\":\"CONFLICTING_WINDOWS\",\"evidence\":{\"analysisVersion\":\"vocal-activity-v2\",\"vocalRatio\":[[0.6,0.01],[0.01,0.6]]}}")));
+        var result=service.status("song");
+        assertThat(result.at("/jobs/0/resultState").asText()).isEqualTo("UNKNOWN");
+        assertThat(result.at("/jobs/0/reason").asText()).isEqualTo("CONFLICTING_WINDOWS");
+        assertThat(result.at("/jobs/0/evidence/vocalRatio").size()).isEqualTo(2);
+    }
+    @Test void discoveryQueuesFastOnlyAndDoesNotLoopOnUnknown() throws Exception {
+        var service=service("current");when(compute.connection()).thenReturn(connection);
+        when(connection.origin()).thenReturn(java.net.URI.create("http://compute:8000"));
+        when(compute.call(connection,"/internal/v1/status","GET",null)).thenReturn(json.readTree("{\"capabilities\":[\"media-probe\",\"audio-role-fast\",\"audio-role-fast-classifier\"]}"));
+        when(mapper.candidates(anyString())).thenReturn(List.of("song"));
+        var probe=Map.<String,Object>of("kind","PROBE","state","SUCCEEDED","result_json","{\"streams\":[{},{}]}");
+        when(mapper.forSong("song","current")).thenReturn(List.of(probe));
+        service.discover();verify(mapper).insertJob(argThat(row->row.get("kind").equals("FAST")));
+        clearInvocations(mapper);
+        when(mapper.forSong("song","current")).thenReturn(List.of(Map.of("kind","FAST","state","SUCCEEDED","result_json","{\"state\":\"UNKNOWN\",\"reason\":\"AMBIGUOUS_VOCALS\"}"),probe));
+        service.discover();verify(mapper,never()).insertJob(any());
+        when(mapper.forSong("song","current")).thenReturn(List.of(Map.of("kind","FAST","state","SUCCEEDED","result_json","{\"state\":\"UNKNOWN\",\"reason\":\"FAST_MODEL_MISSING\"}"),probe));
+        service.discover();verify(mapper).insertJob(argThat(row->row.get("kind").equals("FAST")));
+    }
+    @Test void discoveryPreservesConfirmedRolesAndProbesNewSongs() throws Exception {
+        service("current");when(compute.connection()).thenReturn(connection);
+        when(connection.origin()).thenReturn(java.net.URI.create("http://compute:8000"));
+        when(compute.call(connection,"/internal/v1/status","GET",null)).thenReturn(json.readTree("{\"capabilities\":[\"media-probe\",\"audio-role-fast\"]}"));
+        when(mapper.candidates(anyString())).thenReturn(List.of("song"));
+        var roles=mock(AudioRoleService.class);when(roles.role("song")).thenReturn(json.createObjectNode().put("state","CONFIRMED"));
+        var service=new AudioJobService(mapper,roles,songs,mock(MediaSourceRepository.class),mock(MediaPlaybackService.class),compute,json,root.toString());
+        when(mapper.forSong("song","current")).thenReturn(List.of(Map.of("kind","PROBE","state","SUCCEEDED","result_json","{\"streams\":[{},{}]}")));
+        service.discover();verify(mapper,never()).insertJob(any());
+        when(mapper.forSong("song","current")).thenReturn(List.of());
+        service.discover();verify(mapper).insertJob(argThat(row->row.get("kind").equals("PROBE")));
+    }
+
+    @Test void upgradedPairedClassifierRetriesOldUnknownOnceOnlyWhenNodeIsUpgraded() throws Exception {
+        var service=service("current");when(compute.connection()).thenReturn(connection);
+        when(connection.origin()).thenReturn(java.net.URI.create("http://compute:8000"));
+        var capability=json.readTree("{\"capabilities\":[\"media-probe\",\"audio-role-fast\",\"audio-role-fast-classifier\"]}");
+        when(compute.call(connection,"/internal/v1/status","GET",null)).thenReturn(capability);
+        when(mapper.candidates(anyString())).thenReturn(List.of("song"));
+        var probe=Map.<String,Object>of("kind","PROBE","state","SUCCEEDED","result_json","{\"streams\":[{},{}]}");
+        var prior=new HashMap<String,Object>();prior.put("kind","FAST");prior.put("state","SUCCEEDED");
+        prior.put("result_json","{\"state\":\"UNKNOWN\",\"evidence\":{\"analysisVersion\":\"fast-vocal-v1\"}}");
+        when(mapper.forSong("song","current")).thenReturn(List.of(prior,probe));
+        service.discover();verify(mapper,never()).insertJob(any());
+        ((com.fasterxml.jackson.databind.node.ArrayNode)capability.get("capabilities")).add("audio-role-fast-v2");
+        service.discover();verify(mapper).insertJob(argThat(row->row.get("kind").equals("FAST")));
+        clearInvocations(mapper);
+        prior.put("result_json","{\"state\":\"UNKNOWN\",\"evidence\":{\"analysisVersion\":\"fast-vocal-v2\"}}");
+        service.discover();verify(mapper,never()).insertJob(any());
+    }
+
 }

@@ -446,4 +446,35 @@ class MetadataHttpTest {
         assertThat(currentSong().path("metadata").isNull()).isTrue();
     }
 
+    @Test void fileOnlyMetadataAllowsPlatformApplicationAndRecovery() throws Exception {
+        login(); enable(true); String id=song();
+        db.update("UPDATE media_song SET embedded_tags_json=? WHERE id=?", "{\"title\":\"晴天\",\"artists\":[\"周杰伦\"],\"album\":null,\"releaseDate\":null}", id);
+        String batchId=start(id); worker.processNext();
+        assertThat(batch(batchId).at("/items/0/status").asText()).isEqualTo("AUTO_APPLIED");
+        assertThat(currentSong().at("/metadata/track/album").asText()).isEqualTo("叶惠美");
+        assertThat(currentSong().at("/metadata/track/releaseDate").asText()).isEqualTo("2003-07-31");
+        assertThat(currentSong().at("/metadata/origins/title/kind").asText()).isEqualTo("FILE");
+        assertThat(currentSong().at("/metadata/origins/album/kind").asText()).isEqualTo("PLATFORM");
+        String item=batch(batchId).at("/items/0/id").asText();
+        db.update("DELETE FROM song_metadata WHERE song_id=?",id);
+        db.update("UPDATE metadata_item SET status='MANUAL_APPLIED',error_message=? WHERE id=?", "查询期间歌曲已确认，保留已有元数据",item);
+        assertThat(request(BASE+"/batches/"+batchId+"/items/"+item+"/retry","POST",null,true).statusCode()).isEqualTo(200);
+        worker.processNext();
+        assertThat(batch(batchId).at("/items/0/status").asText()).isEqualTo("AUTO_APPLIED");
+        assertThat(currentSong().at("/metadata/track/album").asText()).isEqualTo("叶惠美");
+    }
+
+    @Test void webdavTechnicalDurationDoesNotPretendCandidateWasApplied() throws Exception {
+        login(); enable(true); String id=song();
+        db.update("UPDATE media_song SET embedded_tags_json=? WHERE id=?", "{\"title\":null,\"artists\":[],\"album\":null,\"releaseDate\":null}", id);
+        db.update("INSERT INTO webdav_resource(song_id,source_id,binding,relative_path,path_hash,task_id,last_seen_at,identity_size,identity_modified,result_json) SELECT id,source_id,'test',relative_path,path_hash,'test',scanned_at,file_size,modified_at,? FROM media_song WHERE id=?", "{\"technical\":{\"duration\":\"304.053\"}}",id);
+        String batchId=start(id); worker.processNext();
+        assertThat(batch(batchId).at("/items/0/status").asText()).isEqualTo("AUTO_APPLIED");
+        assertThat(currentSong().at("/metadata/track/album").asText()).isEqualTo("叶惠美");
+        assertThat(currentSong().at("/metadata/track/durationMs").asInt()).isEqualTo(304053);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM song_metadata WHERE song_id=?",Integer.class,id)).isEqualTo(1);
+        assertThat(body(request("/api/v1/media-songs","GET",null,false)).at("/items/0/metadata/track/album").asText()).isEqualTo("叶惠美");
+        db.update("DELETE FROM webdav_resource WHERE song_id=?",id);
+    }
+
 }

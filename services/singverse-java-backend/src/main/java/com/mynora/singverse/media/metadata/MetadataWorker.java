@@ -84,7 +84,7 @@ public class MetadataWorker {
             else if (candidates.isEmpty()) message = "没有找到候选，请修改关键词后从单曲入口重新匹配";
             else if (work.autoApply() && automatic(candidates, service.autoThreshold(work.threshold()))) {
                 var latestSong = songs.get(work.song().id());
-                if (latestSong.metadata() != null && !latestSong.metadata().stale()) {
+                if (MetadataService.hasConfirmedMetadata(latestSong)) {
                     mapper.itemStatus(work.itemId(), "PROCESSING", "MANUAL_APPLIED", json.encode(candidates), "查询期间歌曲已确认，保留已有元数据", now());
                     finish(work.batchId()); return;
                 }

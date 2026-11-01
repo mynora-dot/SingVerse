@@ -5,6 +5,7 @@ import os
 import time
 import importlib.util
 import math
+import wave
 import shutil
 import sys
 import tempfile
@@ -13,8 +14,9 @@ import json
 import hashlib
 import uuid
 from importlib.metadata import version, PackageNotFoundError
-import wave
 
+from .audio_analysis import classify, sampling_windows, vocal_activity
+from .fast_audio_roles import classify_labels, classify_scores, VERSION as FAST_VERSION
 from ..core.errors import ComputeError
 from ..infrastructure.transcoding.process import run
 
@@ -34,30 +36,6 @@ def _rms(path: Path) -> float:
             total += sum(value * value for value in values)
             samples += count
         return math.sqrt(total / samples) / 32768 if samples else 0.0
-
-
-def classify(samples: list[tuple[float, float]], titles: tuple[str, str]) -> dict:
-    """Require two consistent, strongly separated windows; tags never decide alone."""
-    if len(samples) < 2 or any(min(a, b) < 0 for a, b in samples):
-        return {'state': 'UNKNOWN', 'reason': 'INSUFFICIENT_EVIDENCE'}
-    ratios = []
-    for first, second in samples:
-        if max(first, second) < 0.006:
-            return {'state': 'UNKNOWN', 'reason': 'NO_RELIABLE_VOCALS'}
-        ratios.append((first + 0.001) / (second + 0.001))
-    if all(r >= 6 for r in ratios) and all(a >= .25 and b <= .06 for a, b in samples):
-        original, backing = 0, 1
-    elif all(r <= 1/6 for r in ratios) and all(b >= .25 and a <= .06 for a, b in samples):
-        original, backing = 1, 0
-    else:
-        return {'state': 'UNKNOWN', 'reason': 'AMBIGUOUS_VOCALS'}
-    # Explicit opposite labels are evidence of a different rendition or incorrect sampling.
-    original_title = titles[original].lower()
-    backing_title = titles[backing].lower()
-    if any(word in original_title for word in ('伴奏', 'instrumental', 'karaoke')) or any(word in backing_title for word in ('原唱', 'vocal', 'lead')):
-        return {'state': 'UNKNOWN', 'reason': 'CONFLICTING_LABELS'}
-    return {'state': 'CONFIDENT', 'original': original, 'backing': backing,
-            'evidence': {'vocalRatio': samples, 'model': 'htdemucs'}}
 
 
 @dataclass
@@ -159,9 +137,13 @@ class AudioRoles:
         if any(t.target.purpose == 'REALTIME' and t.state in ('RUNNING', 'ACCEPTED') for t in list(self.transcoding.tasks.values())):
             task.cancel.set()
         diagnosis = []
+        hardware_error, blocked = [], []
+        from ..infrastructure.hardware import accelerator_failure, non_accelerator_failure
         def observe(line):
+            if non_accelerator_failure(line): blocked.append(True)
+            if accelerator_failure(line): hardware_error.append(line)
             if 'Output channels > 65536 not supported' in line or 'not currently implemented for the MPS' in line:
-                diagnosis.append('所选推理后端不支持模型所需算子，请选择通过试跑的CPU；不会隐式切换后端')
+                diagnosis.append('所选推理后端不支持模型所需算子，请检查硬件及自动降级设置')
             elif 'out of memory' in line.lower():
                 diagnosis.append('模型执行内存或显存不足，请释放资源后重试')
         try:
@@ -169,11 +151,30 @@ class AudioRoles:
                 memory_limit=self.settings.audio_memory_bytes, error_line=observe,
                 env={**os.environ, 'OMP_NUM_THREADS': str(self.settings.audio_threads), 'MKL_NUM_THREADS': str(self.settings.audio_threads), 'PYTORCH_ENABLE_MPS_FALLBACK': '0'})
         except ComputeError as error:
+            if hardware_error and not blocked and not non_accelerator_failure(error.message) and not task.cancel.is_set():
+                raise ComputeError(422, 'Hardware accelerator execution failed：所选推理后端不支持模型所需算子或设备运行失败') from error
             if diagnosis and not task.cancel.is_set():
                 raise ComputeError(422, diagnosis[-1]) from error
             raise
 
     def _separate(self, wav: Path, output: Path, task: AudioTask):
+        from ..infrastructure.hardware import accelerator_failure
+        try:
+            return AudioRoles._separate_once(self, wav, output, task)
+        except ComputeError as error:
+            if (getattr(task, 'backend', 'cpu') == 'cpu' or not getattr(task, 'cpu_fallback', False)
+                    or task.result.get('fallbackReason') or task.cancel.is_set() or not accelerator_failure(error.message)):
+                raise
+            if not self.backend_runtime_available('cpu') or not any(item['id'] == 'cpu' and item['state'] == 'AVAILABLE' for item in self.models.entries()):
+                raise ComputeError(503, 'CPU 降级不可用，请安装 CPU 模型并完成试跑') from error
+            self.models.check_resources('cpu')
+            shutil.rmtree(output, ignore_errors=True)
+            task.backend = 'cpu'
+            task.fallback_reason = 'ACCELERATOR_EXECUTION_FAILED'
+            task.result['fallbackReason'] = task.fallback_reason
+            return AudioRoles._separate_once(self, wav, output, task)
+
+    def _separate_once(self, wav: Path, output: Path, task: AudioTask):
         backend = getattr(task, 'backend', 'cpu')
         if backend == 'openvino':
             from .audio_catalog import OPENVINO, model_digest
@@ -208,9 +209,58 @@ class AudioRoles:
                    '-map', f'0:{stream}', '-t', str(seconds), '-vn', '-ac', '2', '-ar', '44100',
                    '-af', 'aresample=async=1:first_pts=0,apad', '-c:a', 'pcm_s16le', '-y', str(output)], task)
 
+    def _fast_analyze(self, source, network, audio, duration, task):
+        def unknown(reason):
+            return {'state': 'UNKNOWN', 'reason': reason,
+                    'evidence': {'analysisVersion': FAST_VERSION, 'method': 'LABELS', 'windows': []}}
+        if len(audio) != 2:
+            return unknown('NOT_DUAL_AUDIO')
+        titles = (audio[0].title, audio[1].title)
+        labeled = classify_labels(titles)
+        if labeled:
+            labeled['backend'] = 'metadata'
+            return labeled
+        if duration < 6:
+            return unknown('INSUFFICIENT_DURATION')
+        if not getattr(self, 'fast', None) or not self.fast.available:
+            return unknown('FAST_MODEL_MISSING')
+        seconds = min(6.0, duration / 3)
+        windows, pairs = [], []
+        # Three initial reads; only sparse evidence receives three additional excerpts.
+        # No full-song decoding or implicit stem separation, even when still uncertain.
+        with tempfile.TemporaryDirectory(prefix='work-' + task.id + '-', dir=self.root) as temporary:
+            for fractions in ((.25, .5, .75), (.1, .4, .9)):
+                paths = []
+                for fraction in fractions:
+                    window = {'start': max(0, duration * fraction - seconds / 2), 'seconds': seconds}
+                    index = len(windows)
+                    windows.append(window)
+                    command = [self.settings.ffmpeg, '-nostdin', '-v', 'error', '-protocol_whitelist',
+                               'file,http,tcp' if network else 'file', '-ss', str(window['start']), '-i', source]
+                    # Read both streams together, including WebDAV.
+                    for stream in audio:
+                        path = Path(temporary) / f'fast-{index}-{stream.index}.wav'
+                        command.extend(['-map', f'0:{stream.index}', '-t', str(seconds), '-vn', '-ac', '1', '-ar', '32000',
+                                        '-af', 'aresample=async=1:first_pts=0,apad', '-c:a', 'pcm_s16le', '-y', str(path)])
+                        paths.append(path)
+                    self._run(command, task)
+                scores = self.fast.predict(paths, task.cancel)
+                pairs.extend(zip(scores[::2], scores[1::2]))
+                result = classify_scores(pairs, titles)
+                # Short media cannot provide independent extra six-second excerpts.
+                if result['state'] == 'CONFIDENT' or result.get('reason') != 'AMBIGUOUS_VOCALS' or duration < 60:
+                    break
+        result['evidence']['windows'] = windows
+        from .audio_catalog import FAST, manifest
+        file = manifest(FAST)['files'][0]
+        result.update(backend='cpu', model=FAST, modelVersion=manifest(FAST)['version'], modelDigest=file['sha256'])
+        return result
+
     def submit(self, identifier, path, reference, mode, backend=None):
-        if str(uuid.UUID(identifier)) != identifier or mode not in ('PROBE', 'ANALYZE', 'SEPARATE'):
+        if str(uuid.UUID(identifier)) != identifier or mode not in ('PROBE', 'FAST', 'ANALYZE', 'SEPARATE'):
             raise ComputeError(400, 'Invalid audio task')
+        if mode in ('ANALYZE', 'SEPARATE') and backend == 'cpu' and hasattr(self, 'models') and any(item.get('detected') for item in self.models.entries()):
+            raise ComputeError(422, '检测到加速硬件，CPU 仅用于自动降级')
         signature = hashlib.sha256(json.dumps([path, reference, mode, backend]).encode()).hexdigest()
         with self.lock:
             if identifier in self.tasks:
@@ -221,13 +271,17 @@ class AudioRoles:
             # before checking resources so the next batch member stays queued.
             if self.active:
                 raise ComputeError(429, 'Audio model worker busy')
-        if self.stopping or not self.transcoding.available or (mode != 'PROBE' and not (self.backend_runtime_available(backend) if backend else self.available)):
+        selected = None if mode in ('PROBE', 'FAST') else backend or (self.models.selected() if hasattr(self, 'models') else 'cpu')
+        if mode in ('ANALYZE', 'SEPARATE') and hasattr(self, 'models'):
+            available = {item['id'] for item in self.models.entries() if item['state'] == 'AVAILABLE'}
+            if selected not in available and getattr(self.transcoding.backends, 'cpu_fallback', True) and 'cpu' in available:
+                selected = 'cpu'
+        if self.stopping or not self.transcoding.available or (mode in ('ANALYZE', 'SEPARATE') and not ((self.backend_runtime_available(selected) if selected else False) if hasattr(self, 'models') else self.available)):
             raise ComputeError(503, 'Audio model is not installed and configured')
         if self.root is None or shutil.disk_usage(self.root).free < self.settings.minimum_free_bytes:
             raise ComputeError(507, 'Insufficient audio working space')
-        selected = backend or (self.models.selected() if hasattr(self, 'models') else 'cpu')
         # GPU/runtime subprocess queries must not hold the realtime scheduling lock.
-        if mode != 'PROBE' and hasattr(self, 'models'):
+        if mode in ('ANALYZE', 'SEPARATE') and hasattr(self, 'models'):
             if not any(item['id'] == selected and item['state'] == 'AVAILABLE' for item in self.models.entries()):
                 raise ComputeError(422, 'Selected inference backend has not passed qualification')
             try:
@@ -249,7 +303,11 @@ class AudioRoles:
             self.active = True
             task = AudioTask(identifier)
             task.backend = selected
-            if mode != 'PROBE':
+            task.cpu_fallback = getattr(self.transcoding.backends, 'cpu_fallback', True)
+            if mode in ('ANALYZE', 'SEPARATE') and selected == 'cpu' and hasattr(self, 'models') and any(item.get('detected') for item in self.models.entries()):
+                task.fallback_reason = 'ACCELERATOR_NOT_READY'
+                task.result['fallbackReason'] = task.fallback_reason
+            if mode in ('ANALYZE', 'SEPARATE'):
                 task.result.update(self.execution(selected))
             task.signature = signature
             self.tasks[identifier] = task
@@ -284,6 +342,15 @@ class AudioRoles:
                         task.result = {'state': 'UNKNOWN', 'reason': 'PROBED', 'streams': [asdict(s) for s in audio], 'duration': media.duration}
                         task.state = 'CANCELLED' if task.cancel.is_set() else 'SUCCEEDED'
                         return
+                    if mode == 'FAST':
+                        result = self._fast_analyze(source, network, audio, media.duration, task)
+                        if result['state'] == 'CONFIDENT':
+                            result['original'] = audio[result['original']].id
+                            result['backing'] = audio[result['backing']].id
+                        result.update(streams=[asdict(stream) for stream in audio], duration=media.duration)
+                        task.result = result
+                        task.state = 'CANCELLED' if task.cancel.is_set() else 'SUCCEEDED'
+                        return
                     expected = 2 if mode == 'ANALYZE' else 1
                     if mode == 'ANALYZE' and len(audio) != 2:
                         task.result = {'state': 'UNKNOWN', 'reason': 'NOT_DUAL_AUDIO', 'streams': [asdict(s) for s in audio], 'duration': media.duration}
@@ -301,16 +368,23 @@ class AudioRoles:
                     with tempfile.TemporaryDirectory(prefix='work-'+identifier+'-', dir=self.root) as temp:
                         work = Path(temp)
                         if mode == 'ANALYZE':
-                            evidence = []
-                            for position in (max(0, media.duration * .25 - 10), max(0, media.duration * .7 - 10)):
-                                levels = []
+                            evidence, windows = [], []
+                            for position, seconds in sampling_windows(media.duration):
+                                levels, activity = [], []
                                 for stream in audio:
                                     wav = work / f'input-{len(evidence)}-{stream.index}.wav'
-                                    self._extract(source, network, stream.index, position, 20, wav, task)
+                                    self._extract(source, network, stream.index, position, seconds, wav, task)
                                     vocal, _ = self._separate(wav, work / f'out-{len(evidence)}-{stream.index}', task)
-                                    levels.append(_rms(vocal) / max(_rms(wav), .001))
+                                    measured = vocal_activity(wav, vocal)
+                                    levels.append(measured['level'])
+                                    activity.append(measured)
                                 evidence.append(tuple(levels))
-                            result = classify(evidence, (audio[0].title, audio[1].title))
+                                windows.append({'start': position, 'seconds': seconds, 'tracks': activity})
+                                result = classify(evidence, (audio[0].title, audio[1].title))
+                                # Easy cases retain the two-window cost; uncertain cases get up to five.
+                                if result['state'] == 'CONFIDENT' or result.get('reason') in ('CONFLICTING_WINDOWS', 'CONFLICTING_LABELS', 'BOTH_VOCAL_TRACKS'):
+                                    break
+                            result['evidence']['windows'] = windows
                             if result['state'] == 'CONFIDENT':
                                 result['original'] = audio[result['original']].id
                                 result['backing'] = audio[result['backing']].id
@@ -346,7 +420,8 @@ class AudioRoles:
                 for suffix in ('.part', '.m4a'):
                     (self.root / f'{identifier}{suffix}').unlink(missing_ok=True)
             finally:
-                if mode != 'PROBE':
+                if mode in ('ANALYZE', 'SEPARATE'):
+                    if getattr(task, 'fallback_reason', ''): task.result['fallbackReason'] = task.fallback_reason
                     task.result.update(self.execution(task.backend))
                     if task.backend == 'mps':
                         task.result['pipeline'] = 'mps+cpu-stft'
@@ -425,6 +500,8 @@ class AudioRoles:
 
         if self.thread:
             self.thread.join(timeout=5)
+        if getattr(self, 'fast', None):
+            self.fast.close()
 
     def view(self, identifier):
         task = self.tasks.get(identifier)

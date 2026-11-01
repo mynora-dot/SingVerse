@@ -4,9 +4,19 @@ import json
 
 BASELINE = 'htdemucs'
 OPENVINO = 'htdemucs-openvino'
+FAST = 'panns-cnn6'
 REVISION = 'efb3d2bc54f93899b13b72b12c57001e19f09ae2'
 OV_SOURCE = f'https://huggingface.co/Intel/demucs-openvino/resolve/{REVISION}/htdemucs_v4/'
 MODELS = {
+    FAST: {
+        'id': FAST, 'version': 'audioset-0.343', 'format': 'pytorch', 'license': 'CC-BY-4.0',
+        'purpose': 'fast-audio-roles', 'backends': ['cpu'], 'sampleRate': 32000,
+        'attribution': 'PANNs: Large-Scale Pretrained Audio Neural Networks for Audio Pattern Recognition, Qiuqiang Kong et al., Zenodo 3987831',
+        'maxBytes': 32 * 1024**2,
+        'files': [{'name': 'Cnn6_mAP=0.343.pth', 'size': 23698321,
+                   'sha256': '8a17541944f2623a2a0164e072ac2f915dcedca99968083cc44bfbc7eb682275',
+                   'url': 'https://zenodo.org/records/3987831/files/Cnn6_mAP%3D0.343.pth?download=1'}],
+    },
     BASELINE: {
         'id': BASELINE, 'version': '955717e8', 'format': 'pytorch', 'license': 'MIT',
         'backends': ['cpu', 'cuda', 'rocm', 'mps'], 'sampleRate': 44100,

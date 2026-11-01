@@ -21,7 +21,7 @@ class LifecycleTest(unittest.TestCase):
             class Probe:
                 def read(self,*args):return Media('mkv',100,10000,(Stream('stream:0',0,'video','h264',width=16,height=16),))
             class Backends:
-                def select(self, codec='h264'):return 'software'
+                def select(self, codec='h264', cpu_fallback=None, preferred=None):return 'software'
             class Encoder:
                 def execute(self,source,network,media,target,directory,cancel,progress,backend):
                     entered.set();cancel.wait(10)

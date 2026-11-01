@@ -48,4 +48,14 @@ class AudioRoleServiceTest {
         service.verifyImported("song","current",claim);
         verify(mapper).insertRole(argThat(row->row.get("origin").equals("SHARED")&&row.get("original_id").equals("stream:1")));
     }
+    @Test void fastSuggestionsCannotOverwriteAnyConfirmedRole() throws Exception {
+        var service=service();
+        var suggestion=json.readTree("{\"state\":\"CONFIDENT\",\"original\":\"stream:1\",\"backing\":\"stream:2\",\"evidence\":{\"analysisVersion\":\"fast-vocal-v1\"}}");
+        for(String origin:List.of("AUTO","MANUAL","SHARED")){
+            when(mapper.role("song")).thenReturn(Map.of("origin",origin,"fingerprint","current","revision",2));
+            service.applySuggestion("song","current",suggestion);
+        }
+        verify(mapper,never()).updateRole(any());verify(mapper,never()).insertRole(any());
+    }
+
 }

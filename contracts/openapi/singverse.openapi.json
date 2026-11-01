@@ -4329,7 +4329,7 @@
     "/api/v1/metadata/batches/{id}/items/{itemId}/retry": {
       "post": {
         "operationId": "retryMetadataItem",
-        "summary": "Retry failed or review item; cancelled batches cannot resume",
+        "summary": "Retry failed, review or MANUAL_APPLIED item without saved confirmation; cancelled batches cannot resume",
         "security": [
           {
             "sessionCookie": []
@@ -14157,7 +14157,18 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "properties": {
+                    "cpuFallback": {
+                      "type": "boolean"
+                    },
+                    "detectedBackends": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -14196,7 +14207,18 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "properties": {
+                    "cpuFallback": {
+                      "type": "boolean"
+                    },
+                    "detectedBackends": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -14242,6 +14264,11 @@
                   "revision": {
                     "type": "integer",
                     "minimum": 0
+                  },
+                  "cpuFallback": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Omission preserves saved policy; defaults to true for older node settings."
                   }
                 },
                 "required": [
@@ -15507,7 +15534,7 @@
     },
     "/api/v1/media-songs/{song}/audio-jobs": {
       "post": {
-        "summary": "Administrator submits an offline audio task",
+        "summary": "Administrator submits an offline audio task; completed UNKNOWN analyses can be resubmitted, active and confident analyses are reused",
         "security": [
           {
             "sessionCookie": []
@@ -15551,6 +15578,7 @@
                   "kind": {
                     "enum": [
                       "PROBE",
+                      "FAST",
                       "ANALYZE",
                       "SEPARATE"
                     ]
@@ -15921,8 +15949,19 @@
           {
             "name": "state",
             "in": "query",
+            "description": "Empty for all songs. Category values match the row category; FAILED means a separation job for the current media failed; UNCONFIRMED means two source audio streams without confirmed roles.",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "",
+                "UNPROBED",
+                "ELIGIBLE",
+                "READY",
+                "PROCESSING",
+                "INAPPLICABLE",
+                "FAILED",
+                "UNCONFIRMED"
+              ]
             }
           },
           {
@@ -16462,6 +16501,7 @@
             "schema": {
               "type": "string",
               "enum": [
+                "panns-cnn6",
                 "htdemucs",
                 "htdemucs-openvino"
               ],
@@ -16650,7 +16690,7 @@
     },
     "/api/v1/audio-processing/model/import": {
       "post": {
-        "summary": "Stream fixed raw htdemucs weights (100 MiB) or exact OpenVINO XML/BIN ZIP bundle (128 MiB)",
+        "summary": "Stream fixed raw htdemucs weights (100 MiB), PANNs single-file ZIP (32 MiB), or OpenVINO XML/BIN ZIP (128 MiB)",
         "operationId": "audioProcessingPostModelImport",
         "security": [
           {
@@ -16709,6 +16749,7 @@
             "schema": {
               "type": "string",
               "enum": [
+                "panns-cnn6",
                 "htdemucs",
                 "htdemucs-openvino"
               ],
@@ -21759,6 +21800,7 @@
           "kind": {
             "enum": [
               "PROBE",
+              "FAST",
               "ANALYZE",
               "SEPARATE"
             ]
@@ -21774,6 +21816,22 @@
           },
           "error": {
             "type": "string"
+          },
+          "resultState": {
+            "type": "string",
+            "description": "Analysis outcome (CONFIDENT or UNKNOWN), separate from task execution state. Empty for legacy results without an outcome."
+          },
+          "reason": {
+            "type": "string",
+            "description": "UNKNOWN analysis reason: NO_RELIABLE_VOCALS, AMBIGUOUS_VOCALS, BOTH_VOCAL_TRACKS, CONFLICTING_WINDOWS, CONFLICTING_LABELS, INSUFFICIENT_EVIDENCE, INVALID_EVIDENCE, INSUFFICIENT_DURATION or NOT_DUAL_AUDIO. FAST_MODEL_MISSING indicates optional fast classifier weights/runtime are not installed."
+          },
+          "evidence": {
+            "type": "object",
+            "description": "Optional bounded diagnostic evidence, including analysisVersion, vocalRatio pairs, votes, informativeWindows and up to five windows (start, seconds, tracks with level, activeFrames, totalFrames, vocalFrames). Ratios are not calibrated probabilities. Legacy unknown results may omit evidence. FAST uses method LABELS or PANNS_CNN6, optional vocalScores pairs, and initially three, at most six short windows. fast-vocal-v2 uses paired score differences and consensus, retaining decisionPolicy and thresholds. Scores are classification evidence, not calibrated accuracy."
+          },
+          "fallbackReason": {
+            "type": "string",
+            "description": "Empty unless CPU fallback occurred; ACCELERATOR_NOT_READY or ACCELERATOR_EXECUTION_FAILED. The backend field records actual execution."
           }
         },
         "required": [
@@ -22052,6 +22110,10 @@
           },
           "audio": {
             "$ref": "#/components/schemas/AudioRoles"
+          },
+          "coverAvailable": {
+            "type": "boolean",
+            "description": "Confirmed, non-stale cover is available through the song cover endpoint."
           }
         }
       },
@@ -22067,7 +22129,13 @@
           "backends": {
             "type": "array",
             "items": {
-              "type": "object"
+              "type": "object",
+              "properties": {
+                "detected": {
+                  "type": "boolean",
+                  "description": "Physical device evidence, independent of model or runtime readiness."
+                }
+              }
             }
           },
           "selection": {
@@ -22107,6 +22175,53 @@
               "minimumFreeBytes": {
                 "type": "integer",
                 "format": "int64"
+              }
+            }
+          },
+          "cpuFallback": {
+            "type": "boolean",
+            "default": true,
+            "description": "Shared automatic CPU fallback policy for audio inference and video transcoding."
+          },
+          "fastClassifier": {
+            "type": "object",
+            "description": "Optional scan classifier, independent of separation-device selection. CPU-only bounded inference; no accelerator selection or Demucs fallback. installed and ready are separate.",
+            "properties": {
+              "id": {
+                "const": "panns-cnn6"
+              },
+              "installed": {
+                "type": "boolean"
+              },
+              "ready": {
+                "type": "boolean"
+              },
+              "writable": {
+                "type": "boolean"
+              }
+            }
+          },
+          "startupCheck": {
+            "type": "object",
+            "description": "Background startup qualification of installed models only; valid environment-bound qualifications are reused. Playback has priority. No automatic downloads.",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "IDLE",
+                  "CHECKING",
+                  "WAITING",
+                  "TESTING",
+                  "COMPLETED",
+                  "FAILED",
+                  "CANCELLED"
+                ]
+              },
+              "backend": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
               }
             }
           }

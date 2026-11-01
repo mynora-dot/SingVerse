@@ -18,6 +18,7 @@ class AudioModelManagementTest(unittest.TestCase):
         root = Path(self.temporary.name)
         audio = SimpleNamespace(root=root/'tasks', repo=root/'htdemucs', runtime_available=True,
                                 digest=AudioRoles.digest, settings=SimpleNamespace(minimum_free_bytes=0, audio_memory_bytes=1024))
+        audio.transcoding = SimpleNamespace(backends=SimpleNamespace(cpu_fallback=True))
         audio.root.mkdir()
         self.manager = AudioModels(audio)
         self.manager.environment = {'fingerprint': 'env1', 'devices': {'cpu': {'name': 'CPU'}, 'cuda': {'name': 'GPU'}}, 'versions': {}}
@@ -102,3 +103,67 @@ class AudioModelManagementTest(unittest.TestCase):
             with self.assertRaises(ComputeError) as caught: AudioRoles._run(audio,['test'],AudioTask('test'))
         self.assertIn('所需算子',caught.exception.message)
         self.assertNotIn('/private',caught.exception.message)
+
+    def test_hardware_cpu_guard_and_legacy_selection(self):
+        manager = self.manager
+        with patch.object(manager, 'entries', return_value=[{'id':'cpu','state':'AVAILABLE','detected':False}, {'id':'cuda','state':'UNVERIFIED','detected':True}]):
+            self.assertEqual(manager.selected(), 'cpu')
+            with self.assertRaises(ComputeError): manager.choose('cpu')
+            manager.audio.transcoding.backends.cpu_fallback = False
+            self.assertIsNone(manager.selected())
+            manager.selection = 'cpu'
+            self.assertIsNone(manager.selected())
+        with patch.object(manager, 'entries', return_value=[{'id':'cpu','state':'AVAILABLE','detected':False}]):
+            self.assertEqual(manager.selected(), 'cpu')
+
+
+class StartupQualificationTest(unittest.TestCase):
+    setUp = AudioModelManagementTest.setUp
+
+    def prepare_startup(self):
+        import threading
+        manager = self.manager
+        manager.audio.lock = threading.RLock()
+        manager.audio.active = False
+        manager.audio.transcoding.lock = threading.RLock()
+        manager.audio.transcoding.realtime_reserved_until = 0
+        manager.audio.transcoding.tasks = {}
+        return manager
+
+    def test_startup_qualifies_only_unverified_installed_backends_and_cpu_fallback(self):
+        import threading
+        manager = self.prepare_startup()
+        entries = [{'id': 'cpu', 'state': 'UNVERIFIED'}, {'id': 'mps', 'state': 'UNVERIFIED', 'detected': True},
+                   {'id': 'cuda', 'state': 'MODEL_MISSING'}, {'id': 'openvino', 'state': 'AVAILABLE'}]
+        calls = []
+        def test(backend):
+            calls.append(backend)
+            manager.thread = threading.Thread(target=lambda: None)
+            manager.thread.start()
+        with patch.object(manager, 'probe'), patch.object(manager, 'entries', return_value=entries), patch.object(manager, 'test', side_effect=test):
+            manager.start(); manager.start(); manager.startup_thread.join(2)
+        self.assertEqual(calls, ['mps', 'cpu'])
+        self.assertEqual(manager.startup_check['state'], 'COMPLETED')
+
+    def test_startup_skips_valid_qualifications_and_disabled_cpu_fallback(self):
+        manager = self.prepare_startup()
+        manager.audio.transcoding.backends.cpu_fallback = False
+        entries = [{'id': 'cpu', 'state': 'UNVERIFIED'}, {'id': 'mps', 'state': 'AVAILABLE', 'detected': True}]
+        with patch.object(manager, 'probe'), patch.object(manager, 'entries', return_value=entries), patch.object(manager, 'test') as trial:
+            manager.start(); manager.startup_thread.join(2)
+        trial.assert_not_called()
+        self.assertEqual(manager.startup_check['state'], 'COMPLETED')
+
+    def test_startup_waits_for_playback_and_can_be_cancelled_without_running_inference(self):
+        import time
+        manager = self.prepare_startup()
+        manager.audio.transcoding.realtime_reserved_until = time.monotonic() + 60
+        with patch.object(manager, 'probe'), patch.object(manager, 'entries', return_value=[{'id': 'cpu', 'state': 'UNVERIFIED'}]), patch.object(manager, 'test') as trial:
+            manager.start()
+            deadline = time.monotonic() + 2
+            while manager.startup_check['state'] != 'WAITING' and time.monotonic() < deadline:
+                time.sleep(.01)
+            self.assertEqual(manager.startup_check['state'], 'WAITING')
+            manager.close()
+        trial.assert_not_called()
+        self.assertEqual(manager.startup_check['state'], 'CANCELLED')

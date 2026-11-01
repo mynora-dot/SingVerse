@@ -1,7 +1,8 @@
 import { authRequest } from '../../core/auth/api'
+import type { AudioRoles } from '../audio-processing/api'
 
 export type SourceTrack = { id: string; kind: string; codec: string; title: string; language: string; channels: number }
-export type Resource = { subtitleUrl?: string; id?: string; mode: string; status: string; state?: string; error?: string; url: string; offset: number;
+export type Resource = { subtitleUrl?: string; audioRoles?: AudioRoles; backingUrl?: string; id?: string; mode: string; status: string; state?: string; error?: string; url: string; offset: number;
   media?: { duration: number; streams: SourceTrack[] };
   execution?: { pipeline?: { name: string; hardwareDecode: boolean; zeroCopy: boolean; gpuToneMapping: boolean; dolbyVision: boolean; fallbackReason: string }; error?: string; media?: { duration: number; streams: SourceTrack[] }; reasons?: string[] } }
 export type OfflineTask = { id: string; songId: string; state: string; error: string }
@@ -23,6 +24,7 @@ export function browserCapabilities() {
   }
 }
 export const playback = {
+  roles: (song: string) => authRequest<AudioRoles>(`/api/v1/media-songs/${encodeURIComponent(song)}/audio-roles`),
   start: (song: string, options: object) => authRequest<Resource>(`/api/v1/transcoding/playback/${encodeURIComponent(song)}`, 'POST', { client: browserCapabilities(), ...options }, 45000),
   status: (id: string) => authRequest<Resource>(`/api/v1/transcoding/sessions/${id}`),
   cancel: (id: string) => authRequest(`/api/v1/transcoding/sessions/${id}/cancel`, 'POST'),

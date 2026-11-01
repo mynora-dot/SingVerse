@@ -109,6 +109,23 @@ class TranscodingHttpTest(unittest.TestCase):
                 self.assertEqual(restarted.state.transcoding.view(identifier)['state'],'SUCCEEDED')
                 restarted.state.transcoding.close()
             self.assertEqual(hashlib.sha256(self.source.read_bytes()).digest(),self.digest)
+    def test_selected_source_audio_really_plays_the_requested_track(self):
+        from array import array
+        for stream, expected in [('stream:1', 400), ('stream:2', 800)]:
+            identifier, _ = self.create(audio_id=stream, fmp4=True)
+            result = self.wait(identifier)
+            self.assertEqual(result['state'], 'SUCCEEDED', result)
+            self.assertEqual([item['sourceId'] for item in result['trackMapping'] if item['kind'] == 'audio'], [stream])
+            playlist = self.root/'cache'/identifier/'stream_audio0.m3u8'
+            decoded = subprocess.check_output(['ffmpeg', '-v', 'error', '-i', str(playlist),
+                                               '-t', '1', '-ac', '1', '-ar', '16000', '-f', 'f32le', '-'])
+            samples = array('f'); samples.frombytes(decoded)
+            middle = samples[1600:14400]
+            crossings = sum(left <= 0 < right for left, right in zip(middle, middle[1:]))
+            frequency = crossings * 16000 / len(middle)
+            self.assertAlmostEqual(frequency, expected, delta=15)
+        self.assertEqual(hashlib.sha256(self.source.read_bytes()).digest(), self.digest)
+
     def test_single_audio_fmp4_has_resolvable_initialization_uri(self):
         audio=self.root/'media'/'single-audio.wav'
         subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i','sine=duration=1',str(audio)],check=True)
@@ -216,12 +233,12 @@ class TranscodingHttpTest(unittest.TestCase):
         tested=json.loads(self.request('/hardware-settings/test',{'backend':'software'})[1])
         self.assertTrue(tested['passed']);self.assertEqual(tested['backend'],'software')
         self.assertEqual(json.loads(self.request('/hardware-settings')[1]),current)
-        saved=json.loads(self.request('/hardware-settings',{'backend':'software','revision':current['revision']})[1])
-        self.assertEqual(saved['effectiveBackend'],'software')
+        saved=json.loads(self.request('/hardware-settings',{'backend':'auto','revision':current['revision'],'cpuFallback':False})[1])
+        self.assertEqual(saved['effectiveBackend'],'auto'); self.assertFalse(saved['cpuFallback'])
         restarted=create_app(replace(self.settings, hardware_backend='auto'))
         restored_settings=restarted.state.hardware_settings.read()
-        self.assertEqual(restored_settings['backend'],'software')
-        self.assertEqual(restored_settings['effectiveBackend'],'software')
+        self.assertEqual(restored_settings['backend'],'auto')
+        self.assertEqual(restored_settings['effectiveBackend'],'auto'); self.assertFalse(restored_settings['cpuFallback'])
         self.assertEqual(restored_settings['deploymentBackend'],'auto')
         self.assertEqual(restored_settings['revision'],saved['revision'])
         restarted.state.transcoding.close()
@@ -235,7 +252,7 @@ class TranscodingHttpTest(unittest.TestCase):
         self.assertEqual(caught.exception.code,422);caught.exception.close()
         self.assertEqual(json.loads(self.request('/hardware-settings')[1]),saved)
         restored=json.loads(self.request('/hardware-settings',{'backend':'deployment','revision':saved['revision']})[1])
-        self.assertEqual(restored['effectiveBackend'],self.settings.hardware_backend)
+        self.assertEqual(restored['effectiveBackend'], 'auto' if restored['detectedBackends'] and self.settings.hardware_backend == 'software' else self.settings.hardware_backend)
         self.assertEqual(restored['backend'],'deployment')
 
     def test_actual_pgs_and_dvd_bitmap_burn_in_appears_and_disappears_on_time(self):

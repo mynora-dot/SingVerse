@@ -49,7 +49,7 @@ public class TranscodeClient {
         if (!path.equals("/internal/v1/status")
                 && !path.matches("/internal/v1/(?:transcoding|audio-roles)/[a-zA-Z0-9/_.-]+")
                 && !path.equals("/internal/v1/audio-roles/models?refresh=true")
-                && !path.matches("/internal/v1/audio-roles/models/(?:download|import)\\?model=(?:htdemucs|htdemucs-openvino)")) {
+                && !path.matches("/internal/v1/audio-roles/models/(?:download|import)\\?model=(?:panns-cnn6|htdemucs|htdemucs-openvino)")) {
             throw fail(400, "无效的计算资源");
         }
         return HttpRequest.newBuilder(c.origin().resolve(path))

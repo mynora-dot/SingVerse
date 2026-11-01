@@ -21,6 +21,7 @@ class AudioBundleTest(unittest.TestCase):
         audio = SimpleNamespace(root=root/'tasks', repo=root/'htdemucs', digest=AudioRoles.digest,
                                 dependencies_available=True, runtime_available=False,
                                 settings=SimpleNamespace(minimum_free_bytes=0, audio_memory_bytes=1024))
+        audio.transcoding = SimpleNamespace(backends=SimpleNamespace(cpu_fallback=True))
         audio.root.mkdir()
         self.manager = AudioModels(audio)
         self.data = {'htdemucs_fwd.xml': b'controlled xml', 'htdemucs_fwd.bin': b'controlled weights'}
@@ -88,3 +89,20 @@ class AudioBundleTest(unittest.TestCase):
         with self.manager.stage() as stage, self.assertRaises(ComputeError):
             self.manager.import_bundle(self.archive(), Path(stage), OPENVINO)
         self.assertTrue(self.manager.model_valid(OPENVINO))
+
+    def test_fast_single_file_bundle_is_independent_of_separation_qualification(self):
+        from singverse_compute.application.audio_catalog import FAST
+        data = b'controlled classifier'
+        file = {'name': 'Cnn6_mAP=0.343.pth', 'size': len(data), 'sha256': hashlib.sha256(data).hexdigest(), 'url': 'https://example.invalid/classifier'}
+        with patch.dict(MODELS, {FAST: {**MODELS[FAST], 'files': [file]}}):
+            self.manager.begin('IMPORTING', FAST)
+            with self.manager.stage() as stage:
+                self.manager.import_bundle(self.archive({file['name']: data}), Path(stage), FAST)
+            self.assertTrue(self.manager.model_valid(FAST))
+            self.assertFalse(self.manager.weights_valid())
+            self.assertFalse(self.manager.qualified)
+            status = self.manager.status()
+            self.assertEqual(status['fastClassifier']['id'], FAST)
+            self.assertTrue(status['fastClassifier']['installed'])
+            self.assertFalse(status['fastClassifier']['ready'])
+            self.assertNotIn(FAST, [model['id'] for model in status['models']])

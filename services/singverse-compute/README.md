@@ -119,16 +119,44 @@ docker compose -f compose.compute.yaml exec -T singverse-compute cat /run/singve
 
 ## 原唱识别与伴奏分离
 
+### 扫描快速识别（可选模型）
+
+Mac 原生节点首次安装：
+
+```bash
+make compute-fast-audio-setup
+services/singverse-compute/.venv/bin/python scripts/macos-compute.py restart
+```
+
+复用固定 `requirements-audio.lock` 中的 Torch 2.5.1 / NumPy 1.26.4，不引入 TensorFlow 或在线推理服务；安装此目标只下载分类权重，不下载 Demucs 分离权重。现有音频运行环境已满足时，也可仅在“性能节点配置 → 伴奏模型”下载快速人声分类模型。PANNs 权重独立存放在 `COMPUTE_AUDIO_MODEL_REPO` 同级 `panns-cnn6/Cnn6_mAP=0.343.pth`，脚本默认 `.tools/panns-cnn6`；自定义目录使用 `scripts/setup-fast-audio-model.py --directory <绝对路径>`。缺少路径时需先配置模型目录；不会在扫描时自动联网安装。Docker 使用已有固定音频运行库镜像（如 `compose.audio-cpu.yaml`），随后在网页下载快速分类模型；快速识别不要求下载 Demucs 权重或完成分离设备试跑。原生 setup 命令不能替换正在运行的容器环境。
+
+作者发行版 Zenodo 3987831，23,698,321 字节，SHA-256 `8a17541944f2623a2a0164e072ac2f915dcedca99968083cc44bfbc7eb682275`；权重 CC BY 4.0，归属 Qiuqiang Kong 等，PANNs: Large-Scale Pretrained Audio Neural Networks for Audio Pattern Recognition。网络结构适配固定修订 `d2f4b8c18eab44737fcc0de1248ae21eb43f6aa4` 的 Cnn6；MIT 归属见 `singverse_compute/infrastructure/PANNS_LICENSE.txt`。加载前检查固定体积及完整摘要，使用 `weights_only=True`，不执行上传模型代码。离线导入接受只含此 PTH 文件的根目录 ZIP，上限 32MiB；保留下载/导入/取消及原子安装规则。
+
+分类使用固定 CPU 小模型，不参与分离/转码的设备选择；无需 GPU 试跑资格。独立常驻子进程复用已加载模型，线程数 2，单次最多 6×6 秒，45 秒超时；RSS 上限取节点音频预算与 1GiB 的较小值。推理取消（含实时播放抢占）、异常或节点关闭时停止分类进程；不确定结果保留人工纠正及显式深度识别。`audio-role-fast` 表示标签快速路径可用，`audio-role-fast-classifier` 才表示分类权重与固定运行环境齐备；节点 `fastClassifier.ready` 与分离模型就绪状态独立。
+
+显式本地权重检查（不会下载模型）：
+
+```bash
+SINGVERSE_TEST_FAST_MODEL_REPO="$PWD/.tools/demucs-htdemucs" \
+  services/singverse-compute/.venv/bin/python -m unittest discover \
+  -s services/singverse-compute/tests/integration -p test_fast_audio.py -v
+```
+
+
 可选模型运行时固定为 Demucs 4.0.1、torch/torchaudio 2.5.1；CPU依赖见 `requirements-audio.lock`，Linux x86_64 CUDA 12.4 / ROCm 6.2 分别见 `requirements-audio-cuda.lock` / `requirements-audio-rocm.lock`。原生节点先执行 `make compute-setup`，CPU/Mac可用 `make compute-audio-setup`（同时显式下载模型到 `.tools/demucs-htdemucs`）；CUDA/ROCm分别执行 `make compute-audio-cuda-setup` / `make compute-audio-rocm-setup`（仅安装环境）。节点不能在HTTP请求中安装Python依赖或驱动。
 
-管理端“曲库 → 原唱与伴奏 → 节点与模型”可显式下载官方权重到当前节点，也可导入官方原始 `.th` 文件（不是压缩包或任意PyTorch模型），上限100MiB。固定文件大小84,141,911字节及完整SHA-256校验通过后，自动写入 `htdemucs.yaml` 并原子安装；没有推理任务会隐式下载权重。断网、取消、摘要错误或节点重启均保留已有模型；目录内容冲突时须管理员先保留或移动旧目录。
+### 深度识别与伴奏分离
+
+管理端“设备与服务 → 性能节点配置”可显式下载官方权重到当前节点，也可导入官方原始 `.th` 文件（不是压缩包或任意PyTorch模型），上限100MiB。固定文件大小84,141,911字节及完整SHA-256校验通过后，自动写入 `htdemucs.yaml` 并原子安装；没有推理任务会隐式下载权重。断网、取消、摘要错误或节点重启均保留已有模型；目录内容冲突时须管理员先保留或移动旧目录。
 
 原生节点设置 `COMPUTE_AUDIO_MODEL_REPO` 为模型目录绝对路径，且父目录预先存在并可写；安装到已有只读目录时可正常使用预置模型，但不能通过网页下载/导入。下载完成还需“重新检测环境 → 对所需后端执行模型试跑 → 自动选择或指定后端”。试跑使用8秒合成音，只验证执行、声道、时间线及数值有效性，不能代替真实歌曲音质和长曲验收。未通过环境与模型试跑不声明识别/分离能力，探测和人工纠正仍可用。
 
-- Java 提交 `/internal/v1/audio-roles/tasks`，`mode=PROBE|ANALYZE|SEPARATE`，沿用内部 Bearer、只读根目录及 WebDAV 授权回源。稳定 UUID 绑定输入和模式；查询、取消、读取及释放产物均在该任务路径下。
-- ANALYZE 只接受两条源音轨。全曲不足 60 秒、两个 20 秒片段证据不一致、两轨都有人声/都近似伴奏、标签冲突均保留 UNKNOWN。高置信使用两片段的人声与输入 RMS 比例及两轨差异，不能视为已校准的概率；阈值仍需真实歌曲语料验证。立体声左右声道不会被当作两条音轨。
+- Java 提交 `/internal/v1/audio-roles/tasks`，`mode=PROBE|FAST|ANALYZE|SEPARATE`，沿用内部 Bearer、只读根目录及 WebDAV 授权回源。稳定 UUID 绑定输入和模式；查询、取消、读取及释放产物均在该任务路径下。
+- FAST 是扫描默认识别：明确的原唱/伴奏音轨标签成对出现时直接使用；否则先抽取 25%、50%、75% 附近各最长 6 秒的双轨片段，一次批量调用轻量 PANNs Cnn6。`fast-vocal-v2` 使用两轨相对差异，不要求模型分数达到 0.4：有效片段要求较高分 ≥0.05、分差 ≥0.03、平滑后比例 ≥2.5，至少两个片段方向一致且无反向强证据才标记。仅证据不足且歌曲 ≥60 秒时，在 10%、40%、90% 补采最多三个独立片段，总计最多六个；冲突和两轨强人声不通过补采强行决定。每段两轨一起读取；不生成分离音频。双轨强人声、相反证据、标签冲突或缺少模型/运行环境均保持 UNKNOWN，不自动转去跑 ANALYZE。分类得分不是准确率概率，不能承诺 90%。
+- ANALYZE 是管理员显式选择的“深度识别”，只接受两条源音轨。`vocal-activity-v2` 把歌曲分为五个区域，先分析两个、不确定时最多五个互不重叠的片段（每段最长 20 秒，60～100 秒歌曲缩短片段）；全曲不足 60 秒仍保留 UNKNOWN。按半秒帧计算人声/输入 RMS 比，在排除静音后取中位数，至少四帧有声才有有效数值，减少间奏、静音及瞬时强音干扰。强方向判断继续要求人声比 ≥0.25、另一轨 ≤0.06、两轨比例 ≥6；至少两个一致片段且占非弱人声片段的 2/3，无反向强证据，才能自动标记。弱人声片段不投票，方向或标签冲突保留 UNKNOWN；深度识别中的标签不会单独决定角色，`No Vocals` 不再被当作原唱标签。立体声左右声道不会被当作两条音轨。
+- 完成采样的正常/不确定分析均保存版本、片段起点/时长、人声比及活跃帧数，供 Java 管理界面诊断。两轨均有较强人声也保留 UNKNOWN。能量比不是准确率，也未校准为概率；真实歌曲的自动标记覆盖率与标反率仍须分别验收。不确定歌曲允许管理员重新分析，后台发现任务不会循环自动重试；FAST_MODEL_MISSING 在安装分类器后允许自动再识别一次；新版节点具备 `audio-role-fast-v2` 时，旧版 FAST 的 UNKNOWN 也由 Java 自动补跑一次，同版本不循环重试。快速识别不覆盖任何已确认角色，深度识别仍保护人工/共享确认结果。
 - SEPARATE 仅对单音轨执行，保持原始时间线的前置静音和尾部填充，输出独立 AAC M4A；校验起点、时长、体积与 SHA-256。临时工作目录、取消/失败产物清理；重启后未完成任务报告 NODE_RESTARTED，Java 展示失败并允许管理员重试。
-- 音频任务一次一个，默认 CPU 线程 2、进程 RSS 上限 4 GiB（`COMPUTE_AUDIO_THREADS`、`COMPUTE_AUDIO_MEMORY_BYTES`），共享磁盘预算及最小空余限制，超时 2 小时。实时播放先终止音频任务，再重试获取执行容量；音频任务不能进入实时预留期间。compute被抢占任务显示 CANCELLED / REALTIME_PREEMPTED，Java记录为失败，批量页面可显式重试；不会在执行中静默切换到CPU。
+- 音频任务一次一个，默认 CPU 线程 2、进程 RSS 上限 4 GiB（`COMPUTE_AUDIO_THREADS`、`COMPUTE_AUDIO_MEMORY_BYTES`），共享磁盘预算及最小空余限制，超时 2 小时。实时播放先终止音频任务，再重试获取执行容量；音频任务不能进入实时预留期间。compute被抢占任务显示 CANCELLED / REALTIME_PREEMPTED，Java记录为失败，批量页面可显式重试；默认开启的统一 CPU 自动降级仅对明确的加速后端故障重试一次，记录实际设备及原因；关闭后不切换。无效媒体、磁盘不足、取消和进程内存预算错误不重试。
 - Java 校验下载的产物后保存至自己的衍生目录，确认成功后释放 compute 副本；未收到确认的 compute 音频在后续任务回收时保留最长一天。不要把衍生目录放入原始媒体目录。
 
 Compose默认不安装音频运行环境或下载权重，但已提供持久卷 `singverse-audio-models`，默认模型目录 `/var/lib/singverse-models/htdemucs`。CPU部署使用 `compose.audio-cpu.yaml`，设置 `COMPUTE_AUDIO_RUNTIME=cpu` 和 `COMPUTE_CONTAINER_MEMORY_LIMIT=6g` 后重建compute；随后从网页下载模型和试跑。原有只读模型挂载可通过override继续使用。默认2g容器不满足默认4GiB音频预算，不会因识别到CPU就启用任务。Java的 `AUDIO_DERIVED_PATH` 为持久卷 `/data/audio-roles`；原媒体卷只读。
@@ -142,7 +170,7 @@ make compute-audio-setup
 services/singverse-compute/.venv/bin/python scripts/macos-compute.py restart
 ```
 
-启动器将固定模型目录 `.tools/demucs-htdemucs` 传入节点，默认音频预算 4096MiB；内存较紧张时可显式 `restart --audio-memory-mib 2048`，后续重启保留预算。本机 M2 的 8／60 秒验收使用 2048MiB；这不是任意歌曲的内存保证。模型安装仍是显式操作，网页也可下载或导入。进入“曲库 → 原唱与伴奏 → 节点与模型”，对 CPU 和 MPS 分别试跑；自动选择优先使用通过验证的 MPS。升级代码或运行环境后重新试跑。
+启动器将固定模型目录 `.tools/demucs-htdemucs` 传入节点，默认音频预算 4096MiB；内存较紧张时可显式 `restart --audio-memory-mib 2048`，后续重启保留预算。本机 M2 的 8／60 秒验收使用 2048MiB；这不是任意歌曲的内存保证。模型安装仍是显式操作，网页也可下载或导入。进入“设备与服务 → 性能节点配置”，对 CPU 和 MPS 分别试跑；自动选择优先使用通过验证的 MPS。升级代码或运行环境后重新试跑。
 
 `mps_audio.py` 仅对超长一维卷积及转置卷积进行分块，按原始 stride／padding／dilation 保留感受野，转置卷积累加重叠贡献并只加一次偏置。没有缩短模型片段、变更权重或开启 PyTorch CPU 回退。频谱处理仍由 Demucs 在 CPU 完成，任务记录 `mps+cpu-stft`。原生节点忙碌及 RAM 暂时不足返回可重试状态，Java 保留后续批量成员排队。
 
@@ -244,7 +272,7 @@ services:
 
 `htdemucs` 保持基准模型。`htdemucs-openvino` 使用 Intel 官方仓库固定修订 `efb3d2bc54f93899b13b72b12c57001e19f09ae2` 下 `htdemucs_v4/htdemucs_fwd.xml` 与 `.bin`；文件大小、SHA-256、采样率和输出源顺序显式记录在 `application/audio_catalog.py`。神经网络在指定 `GPU.*` 执行，STFT／逆变换／重叠拼接复用 Demucs 4.0.1 的 CPU 流程；不使用 `AUTO`／`HETERO` 隐式回退。编译缓存按模型摘要、环境指纹及构建身份隔离，不与权重混用。
 
-管理员可在「原唱与伴奏 → 节点与模型」选择模型后下载，或在有网络的源码设备执行：
+管理员可在「设备与服务 → 性能节点配置」选择模型后下载，或在有网络的源码设备执行：
 
 ```sh
 services/singverse-compute/.venv/bin/python scripts/setup-audio-model.py \
@@ -264,3 +292,7 @@ SINGVERSE_TEST_OPENVINO_MODEL_REPO=/absolute/path/to/.tools/htdemucs-openvino \
 ```
 
 官方参考：Immich 的硬件镜像与远程 ML 文档、Intel `demucs-openvino` 模型库。镜像构建、合成音试跑不替代真实歌曲质量、长曲、NAS 和对应 GPU 真机验收。
+
+视频转码与伴奏推理共用节点 `hardware-settings.json` 的 `cpuFallback`，旧配置默认开启；通过现有硬件设置 API 保存并校验 revision，只对新任务生效。返回 `detectedBackends`，音频后端返回 `detected` 区分物理存在与运行就绪；仅安装编码器不算硬件存在。有加速硬件时拒绝手选 CPU，旧固定 CPU 配置按硬件优先解析。降级须满足 CPU 运行条件，推理还需独立试跑；任务结果记录 `fallbackReason`。HLS 已发布播放清单后不切换后端。
+
+节点启动后在后台检测推理环境，自动为已安装模型的未验证设备执行一次真实分离试跑，优先加速设备；允许 CPU 自动降级时同时验证 CPU。复用当前环境与权重仍匹配的资格，不自动下载模型，也不循环重试已失败的设备；缺失依赖或模型继续给出配置原因。实时播放或模型操作占用时等待，取消试跑或停止节点会中止后续自动检查。模型状态返回 `startupCheck`（检测、等待、试跑、完成、失败或取消）；启动健康检查不等待模型推理完成。

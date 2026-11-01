@@ -185,16 +185,16 @@ SINGVERSE_MACOS_COMPUTE=1 make docker-check
 
 后台性能节点连接方式使用“自动识别”。Java 经 `host.docker.internal:18090` 连接仅监听回环的 Mac 节点，复用现有内部凭据，使用 VideoToolbox；WebDAV 仍通过 Java 读取。可选本地媒体目录 `data/macos-compute/media` 按相同绝对路径只读映射到 Java，新建本地来源时填写该绝对路径。节点缓存与凭据也保存在被忽略的 `data/macos-compute`，均不放入媒体目录。启动器使用当前用户的 launchd 保持节点运行，并在 `~/Library/LaunchAgents` 注册指向本地运行配置的登录启动项；保留本仓库及虚拟环境路径。`scripts/macos-compute.py status` 查询、`stop` 停止节点并移除本启动器自己的登录启动项。Java HTTP 入口需为本机默认 18080；其他端口部署请调整启动器的内部来源地址。重启应用继续带上 macOS 覆盖文件，以保留此连接配置。
 
-Mac 原唱／伴奏使用原生 CPU 或 MPS：显式执行 `make compute-audio-setup` 安装固定依赖及权重后，用 `scripts/macos-compute.py restart` 加载音频配置，再到“曲库 → 原唱与伴奏 → 节点与模型”对 CPU／MPS 试跑。启动器默认 4GiB 音频预算，可显式指定 `--audio-memory-mib 2048`，后续重启保留该预算。本机 M2 已通过 MPS 分块卷积、CPU 数值对照及 8／60 秒批量分离验证；不启用隐式 CPU 算子回退。复验可执行 `make macos-audio-check`，完整说明见 compute README。
+Mac 原唱／伴奏使用原生 CPU 或 MPS：显式执行 `make compute-audio-setup` 安装固定依赖及权重后，用 `scripts/macos-compute.py restart` 加载音频配置，再到“设备与服务 → 性能节点配置”对 CPU／MPS 试跑。启动器默认 4GiB 音频预算，可显式指定 `--audio-memory-mib 2048`，后续重启保留该预算。本机 M2 已通过 MPS 分块卷积、CPU 数值对照及 8／60 秒批量分离验证；不启用隐式 CPU 算子回退。复验可执行 `make macos-audio-check`，完整说明见 compute README。
 
 可选真机验证：`make transcode-fixtures` 下载校验固定的 Jellyfin 官方 Dolby Vision 测试素材（不进入生产镜像）；设置仓库媒体工具 PATH 后，可在目标设备运行 `services/singverse-compute/.venv/bin/python services/singverse-compute/tests/smoke/verify_hardware.py --backend videotoolbox --fixtures .tools/transcode-fixtures`。其他设备替换 backend；输出会区分实际硬解、CPU 回传、零拷贝和 GPU 色调映射。
 
 ## 原唱与伴奏
 
-双轨扫描后后台探测与保守识别；不确定结果保持待确认，手机、TV 与已加入聚会的亲友 H5 可纠正同一份全曲库音轨角色。单轨由管理员在歌曲详情按需生成独立伴奏，原件只读，视频时间线保持不变。WebDAV v2 分享只携带角色元数据，分离音频由接收方自行生成。
+双轨扫描后后台探测与快速识别（明确音轨标签优先，否则三个短片段人声分类，不自动运行深度分离）；不确定结果保持待确认，手机、TV 与已加入聚会的亲友 H5 可纠正同一份全曲库音轨角色。单轨由管理员在“原唱与伴奏”的单曲音轨面板（歌曲详情可直达）按需生成独立伴奏，原件只读，视频时间线保持不变。WebDAV v2 分享只携带角色元数据，分离音频由接收方自行生成。
 
-模型默认关闭；需要时先 `make compute-setup`、`make compute-audio-setup`，设置本地模型路径并重启 compute。固定版本、Compose 可选部署、资源预算和真实模型冒烟命令见 [计算节点 README](services/singverse-compute/README.md#原唱识别与伴奏分离)。真实歌曲效果与手机/TV/NAS 同步尚需验收，不能以合成音冒烟替代。
+模型需显式安装；扫描快速分类使用 `make compute-setup compute-fast-audio-setup`，深度识别/伴奏生成另用 `make compute-audio-setup`，设置本地模型路径并重启 compute。Mac 使用原生启动器的 `restart` 加载新代码。固定版本、Compose 可选部署、资源预算和真实模型冒烟命令见 [计算节点 README](services/singverse-compute/README.md#原唱识别与伴奏分离)。真实歌曲效果与手机/TV/NAS 同步尚需验收，不能以合成音冒烟替代。
 
-伴奏管理入口：**曲库 → 原唱与伴奏**。支持跨页/全部筛选结果批量生成、持久任务及取消/重试；“节点与模型”可下载/离线导入固定模型并执行后端试跑。部署CPU、NVIDIA CUDA、AMD ROCm及Mac MPS的方式和当前Intel GPU/RKNN限制见计算节点README；实际只有一个计算节点，不做多节点分配。
+伴奏管理入口：**曲库 → 原唱与伴奏**，分“歌曲 / 生成任务”。可按状态快速找出待标记原唱、可生成伴奏等歌曲，跨页/全部筛选结果批量生成，持久任务支持进度查看、停止及重试；“设备与服务 → 性能节点配置”统一管理连接、实际硬件、CPU 自动降级及模型下载/导入和试跑。部署CPU、NVIDIA CUDA、AMD ROCm及Mac MPS的方式和当前Intel GPU/RKNN限制见计算节点README；实际只有一个计算节点，不做多节点分配。
 
 计算节点现提供 CPU（amd64/arm64）、CUDA、ROCm、OpenVINO 镜像构建目标及正式 release 发布工作流；模型独立下载／离线导入。部署选择见 [compute 说明](services/singverse-compute/README.md)。GPU 和设备效果必须单独验收，RKNN 尚无合格模型。

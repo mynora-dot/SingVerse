@@ -142,6 +142,12 @@ public class MetadataService {
         return new Applied(merged, Set.copyOf(appliedFields), appliedAt, false, Map.copyOf(origins));
     }
 
+    // Probe-only/file-origin fields are not an administrator's platform confirmation.
+    static boolean hasConfirmedMetadata(Song song) {
+        var applied = song.metadata();
+        return applied != null && !applied.stale() && applied.fields().stream().anyMatch(field ->
+                !applied.origins().containsKey(field) || !"FILE".equals(applied.origins().get(field).kind()));
+    }
     public Batch start(StartInput input) {
         if (input == null) throw bad("请选择要刮削的歌曲");
         return transaction.execute(status -> {
@@ -157,14 +163,14 @@ public class MetadataService {
             var targets = mapper.targetSongs(ids, input.all(), sourceId);
             if (targets.size() > 5000) throw bad("单批次最多 5000 首，请分批选择歌曲");
             if (!input.all() && targets.size() != ids.size()) throw conflict("部分歌曲已移除，请刷新列表后重试");
-            var pending = targets.stream().map(songs::song).filter(song -> song.metadata() == null || song.metadata().stale()).toList();
+            var pending = targets.stream().map(songs::song).filter(song -> !hasConfirmedMetadata(song)).toList();
             if (pending.isEmpty()) throw bad("没有待刮削歌曲；已应用的歌曲可从单曲入口重新匹配");
             String id = UUID.randomUUID().toString(), time = now();
             mapper.insertBatch(id, sourceId != null ? "SOURCE" : input.all() ? "ALL" : "SELECTED", json.encode(config.providers()), config.autoApply(), config.threshold(), targets.size() - pending.size(), time);
             for (Song song : targets.stream().map(songs::song).toList()) {
                 String itemId=UUID.randomUUID().toString();
                 mapper.insertItem(itemId, id, song.id(), MediaSongRepository.fingerprint(song), title(song), json.encode(artists(song)), time);
-                if (song.metadata()!=null && !song.metadata().stale()) mapper.itemStatus(itemId,"PENDING","SKIPPED_EXISTING",null,"已有确认元数据且文件未变化，本批次保留原结果",time);
+                if (hasConfirmedMetadata(song)) mapper.itemStatus(itemId,"PENDING","SKIPPED_EXISTING",null,"已有确认元数据且文件未变化，本批次保留原结果",time);
             }
             mapper.pruneCandidates(Instant.now().minus(Duration.ofDays(7)).toString());
             return details(id, null, 0, 20);
@@ -244,7 +250,7 @@ public class MetadataService {
     public Batch retry(String batchId, String itemId) {
         return transaction.execute(status -> { mapper.lock(); settings.require();
             var row = requireItem(batchId, itemId); String previous = row.get("status").toString();
-            if (!Set.of("REVIEW", "FAILED").contains(previous)) throw conflict("仅待审核或失败项可以重试");
+            if (!Set.of("REVIEW", "FAILED").contains(previous) && !("MANUAL_APPLIED".equals(previous) && !hasConfirmedMetadata(songs.get(row.get("song_id").toString())))) throw conflict("仅待审核、失败或尚未保存确认元数据的项可以重试");
             var batch = batchRow(batchId);
             if (batch.get("status").equals("CANCELLED")) throw conflict("已终止的批次不能重试，请新建批次");
             if (batch.get("status").equals("COMPLETED")) {

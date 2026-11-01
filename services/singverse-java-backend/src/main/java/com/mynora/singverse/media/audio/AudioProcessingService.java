@@ -40,6 +40,7 @@ public class AudioProcessingService {
     ObjectNode row(Song song){
         var status=jobs.status(song.id());
         var value=json.createObjectNode().put("id",song.id()).put("title",title(song)).put("sourceId",song.sourceId()).put("sourceName",song.sourceName()).put("relativePath",song.relativePath());
+        value.put("coverAvailable",song.metadata()!=null&&!song.metadata().stale()&&song.metadata().fields().contains("cover")&&song.metadata().track().coverUrl()!=null);
         value.set("artists",json.valueToTree(artists(song)));value.set("audio",status);value.put("category",category(status));
         return value;
     }
@@ -50,6 +51,8 @@ public class AudioProcessingService {
         if(filter.streams()!=null&&(!row.path("audio").has("streams")||filter.streams()!=row.path("audio").path("streams").size()))return false;
         String state=clean(filter.state());
         if(state.equals("FAILED"))return java.util.stream.StreamSupport.stream(row.path("audio").path("jobs").spliterator(),false).anyMatch(j->j.path("kind").asText().equals("SEPARATE")&&j.path("state").asText().equals("FAILED"));
+        // 双音轨但尚未确认原唱的歌曲，是管理员需要人工标记的主要对象。
+        if(state.equals("UNCONFIRMED"))return row.path("audio").path("streams").size()==2&&!row.path("audio").path("state").asText().equals("CONFIRMED");
         return state.isEmpty()||state.equals(row.path("category").asText());
     }
     void visit(Filter filter,Consumer<ObjectNode> consume){
@@ -100,9 +103,10 @@ public class AudioProcessingService {
         if(!text(batch,"state").equals("PREVIEW"))return detail(id,0,50);
         var node=compute.call(compute.connection(),"/internal/v1/audio-roles/models","GET",null);
         String backend=text(batch,"backend");
+        if(backend.equals("cpu")&&java.util.stream.StreamSupport.stream(node.path("backends").spliterator(),false).anyMatch(b->!b.path("id").asText().equals("cpu")&&(b.path("detected").asBoolean()||b.path("device").isObject())))throw AudioJobService.fail(422,"检测到加速硬件，CPU 仅用于自动降级");
         boolean ready=backend.isEmpty()?!node.path("selected").isNull()&&!node.path("selected").asText().isEmpty():java.util.stream.StreamSupport.stream(node.path("backends").spliterator(),false).anyMatch(b->b.path("id").asText().equals(backend)&&b.path("state").asText().equals("AVAILABLE"));
-        if(!ready)throw AudioJobService.fail(422,"请先在节点与模型中安装模型并完成试跑");
-        if(!node.path("resourceReady").asBoolean(true))throw AudioJobService.fail(422,"节点当前内存或磁盘空间不足，请查看节点与模型中的资源预算");
+        if(!ready)throw AudioJobService.fail(422,"请先在性能节点配置中安装模型并完成试跑");
+        if(!node.path("resourceReady").asBoolean(true))throw AudioJobService.fail(422,"节点当前内存或磁盘空间不足，请查看性能节点配置中的资源预算");
         mapper.start(id,System.currentTimeMillis());mapper.finish(id,System.currentTimeMillis());return detail(id,0,50);
     }
     public synchronized ObjectNode cancel(String id){

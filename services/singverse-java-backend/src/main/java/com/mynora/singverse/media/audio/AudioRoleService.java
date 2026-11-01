@@ -67,6 +67,7 @@ public class AudioRoleService {
         String original=result.path("original").asText(),backing=result.path("backing").asText();
         if(!original.matches("stream:[0-9]{1,3}")||!backing.matches("stream:[0-9]{1,3}")||original.equals(backing)) return;
         var prior=mapper.role(song);
+        if(prior!=null && value(prior,"fingerprint").equals(sourceFingerprint) && result.path("evidence").path("analysisVersion").asText().startsWith("fast-"))return;
         if(prior!=null && java.util.Set.of("MANUAL","SHARED").contains(value(prior,"origin")) && value(prior,"fingerprint").equals(sourceFingerprint)) return;
         if(!fingerprint(song).equals(sourceFingerprint)) return;
         long revision=prior==null?0:((Number)prior.get("revision")).longValue();

@@ -18,6 +18,7 @@ class Backends:
     def __init__(self, executable, preferred='auto', device='/dev/dri/renderD128', memory_limit=1024**3):
         self.executable, self.preferred, self.device = executable, preferred, device
         self.memory_limit = memory_limit
+        self.cpu_fallback = True
         self._results = None
         self._features = None
         self._lock = threading.Lock()
@@ -54,6 +55,8 @@ class Backends:
     def inspect(self, refresh=False):
         with self._lock:
             if refresh:
+                from ..hardware import accelerators
+                accelerators.cache_clear()
                 self._results = None
             if self._results is not None:
                 return self._results
@@ -104,10 +107,21 @@ class Backends:
                 'deinterlace_vaapi','vpp_qsv','tonemap_opencl','scale_d3d11','scale_rkrga','hwmap')}
         return self._features
 
-    def select(self, codec='h264'):
+    def detected(self):
+        from ..hardware import accelerators
+        detected = set(accelerators()['video'])
+        # A successful device trial is also physical evidence (including Windows).
+        if self._results:
+            detected.update(r['backend'] for r in self._results if r['backend'] != 'software' and r.get('probeAvailable'))
+        return sorted(detected)
+
+    def select(self, codec='h264', cpu_fallback=None, preferred=None):
+        fallback = self.cpu_fallback if cpu_fallback is None else cpu_fallback
         results = self.inspect()
-        order = [self.preferred] if self.preferred != 'auto' else ['qsv','vaapi','nvenc','videotoolbox','amf','rkmpp']
-        for name in order + ['software']:
+        preferred = self.preferred if preferred is None else preferred
+        preferred = 'auto' if preferred == 'software' and self.detected() else preferred
+        order = [preferred] if preferred != 'auto' else ['qsv','vaapi','nvenc','videotoolbox','amf','rkmpp']
+        for name in order + (['software'] if fallback or not self.detected() else []):
             if any(r['backend'] == name and r['codecs'].get(codec, {}).get('samplePassed') for r in results):
                 return name
         raise ComputeError(503, 'No verified encoder available')

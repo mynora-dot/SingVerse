@@ -14,7 +14,7 @@ import uuid
 import wave
 import zipfile
 from copy import deepcopy
-from .audio_catalog import BASELINE, OPENVINO, MODELS, manifest, model_for_backend, model_digest
+from .audio_catalog import BASELINE, OPENVINO, FAST, MODELS, manifest, model_for_backend, model_digest
 from ..core.build_info import build_info, includes_backend
 import math
 from array import array
@@ -93,6 +93,9 @@ class AudioModels:
         self.lock = threading.RLock()
         self.cancel = threading.Event()
         self.thread = None
+        self.startup_thread = None
+        self.startup_stop = threading.Event()
+        self.startup_check = {'state': 'IDLE'}
         self.operation = {'state': 'IDLE', 'bytes': 0}
         self.selection = 'auto'
         self.qualified = {}
@@ -126,6 +129,8 @@ class AudioModels:
     def probe(self, refresh=False):
         with self.lock:
             if self.environment is None or refresh:
+                from ..infrastructure.hardware import accelerators
+                accelerators.cache_clear()
                 from ..infrastructure.transcoding.process import run
                 try:
                     self.environment = json.loads(run([sys.executable, '-c', PROBE], timeout=30, limit=65536))
@@ -206,11 +211,20 @@ class AudioModels:
                 item['pipeline'] = 'mps+cpu-stft'
                 item['reason'] += '；Demucs频谱变换在CPU执行，神经网络使用MPS'
             values.append(item)
+        from ..infrastructure.hardware import accelerators
+        physical = accelerators()['audio']
+        for item in values:
+            item['detected'] = item['id'] != 'cpu' and (bool(item.get('device')) or item['id'] in physical)
         return values
 
     def selected(self):
         available = {item['id'] for item in self.entries() if item['state'] == 'AVAILABLE'}
-        choices = ('cuda', 'rocm', 'openvino', 'mps', 'cpu') if self.selection == 'auto' else (self.selection,)
+        hardware = any(item.get('detected') for item in self.entries())
+        selection = 'auto' if self.selection == 'cpu' and hardware else self.selection
+        fallback = getattr(self.audio.transcoding.backends, 'cpu_fallback', True)
+        choices = ('cuda', 'rocm', 'openvino', 'mps') if selection == 'auto' else (selection,)
+        if not hardware or fallback:
+            choices += ('cpu',)
         return next((item for item in choices if item in available), None)
 
     def status(self, refresh=False):
@@ -222,8 +236,10 @@ class AudioModels:
                 'limits': {'audioProcessBudgetBytes': self.audio.settings.audio_memory_bytes, 'minimumFreeBytes': self.audio.settings.minimum_free_bytes},
                 'model': {'id': 'htdemucs', 'version': '955717e8', 'filename': NAME, 'sha256': DIGEST, 'size': MODEL_BYTES, 'maxBytes': MAX_BYTES,
                           'downloadUrl': URL, 'installed': self.weights_valid(), 'runtimeReady': self.audio.runtime_available, 'writable': self.writable()},
-                'selection': self.selection, 'selected': self.selected(), 'backends': self.entries(), 'operation': dict(self.operation),
-                'models': [self.model_status(key) for key in MODELS], 'build': build_info(), 'deployment': self.deployment(),
+                'startupCheck': dict(self.startup_check),
+                'cpuFallback': getattr(self.audio.transcoding.backends, 'cpu_fallback', True), 'selection': self.selection, 'selected': self.selected(), 'backends': self.entries(), 'operation': dict(self.operation),
+                'fastClassifier': {**self.model_status(FAST), 'ready': bool(getattr(self.audio, 'fast', None) and self.audio.fast.available)},
+                'models': [self.model_status(key) for key in MODELS if key != FAST], 'build': build_info(), 'deployment': self.deployment(),
                 'instructions': {'openvino': 'make compute-audio-openvino-setup', 'cpu': 'make compute-setup compute-audio-setup',
                                  'cuda': 'make compute-audio-cuda-setup', 'rocm': 'make compute-audio-rocm-setup',
                                  'mps': 'make compute-setup compute-audio-setup'}}
@@ -289,6 +305,8 @@ class AudioModels:
     def choose(self, backend):
         if backend not in ('auto', *BACKENDS):
             raise ComputeError(400, 'Unknown audio inference backend')
+        if backend == 'cpu' and any(item.get('detected') for item in self.entries()):
+            raise ComputeError(422, '检测到加速硬件，CPU 仅用于自动降级')
         if backend != 'auto' and not any(b['id'] == backend and b['state'] == 'AVAILABLE' for b in self.entries()):
             raise ComputeError(422, 'Backend has not passed model qualification')
         with self.lock:
@@ -424,6 +442,50 @@ class AudioModels:
         self.thread.start()
         return dict(self.operation)
 
+    def start(self):
+        """Qualify installed models once, in the background; never download weights."""
+        if not self.root or self.startup_thread:
+            return
+        self.startup_check = {'state': 'CHECKING'}
+        def worker():
+            try:
+                self.probe(True)
+                entries = self.entries()
+                hardware = any(item.get('detected') for item in entries)
+                fallback = getattr(self.audio.transcoding.backends, 'cpu_fallback', True)
+                candidates = [item['id'] for item in entries if item['state'] == 'UNVERIFIED'
+                              and (item['id'] != 'cpu' or not hardware or fallback)]
+                candidates.sort(key=lambda backend: backend == 'cpu')
+                for backend in candidates:
+                    while not self.startup_stop.is_set():
+                        with self.audio.transcoding.lock, self.audio.lock, self.lock:
+                            if self.startup_stop.is_set():
+                                return
+                            busy = (self.audio.active or time.monotonic() < self.audio.transcoding.realtime_reserved_until
+                                    or any(t.state in ('ACCEPTED', 'RUNNING') for t in self.audio.transcoding.tasks.values())
+                                    or self.operation['state'] in ('DOWNLOADING', 'IMPORTING', 'VERIFYING', 'TESTING'))
+                            self.startup_check = {'state': 'WAITING' if busy else 'TESTING', 'backend': backend}
+                            if not busy:
+                                if any(item['id'] == backend and item['state'] == 'UNVERIFIED' for item in self.entries()):
+                                    self.test(backend)
+                                    trial = self.thread
+                                else:
+                                    trial = None
+                                break
+                        self.startup_stop.wait(2)
+                    else:
+                        return
+                    if trial:
+                        trial.join()
+                self.startup_check = {'state': 'COMPLETED'}
+            except Exception:
+                self.startup_check = {'state': 'FAILED', 'reason': '自动检测未完成，请重新检测'}
+            finally:
+                if self.startup_stop.is_set():
+                    self.startup_check = {'state': 'CANCELLED'}
+        self.startup_thread = threading.Thread(target=worker, daemon=True, name='audio-startup-check')
+        self.startup_thread.start()
+
     def test(self, backend):
         environment = self.probe(True)
         if backend not in ('cpu', 'cuda', 'rocm', 'mps', 'openvino') or backend not in environment.get('devices', {}):
@@ -467,7 +529,8 @@ class AudioModels:
                 self.qualified[backend] = {'state': 'AVAILABLE', 'environment': environment['fingerprint'], 'digest': model_digest(model_id), 'elapsedMs': round((time.monotonic()-started)*1000)}
                 self.operation.update(state='SUCCEEDED', backend=backend)
             except Exception as error:
-                self.qualified[backend] = {'state': 'FAILED', 'environment': environment['fingerprint'], 'digest': model_digest(model_id), 'reason': error.message if isinstance(error, ComputeError) else '模型试跑失败'}
+                if not self.cancel.is_set() and not (isinstance(error, ComputeError) and error.status == 429):
+                    self.qualified[backend] = {'state': 'FAILED', 'environment': environment['fingerprint'], 'digest': model_digest(model_id), 'reason': error.message if isinstance(error, ComputeError) else '模型试跑失败'}
                 self.failed(error)
             finally:
                 task.state = 'CANCELLED' if self.cancel.is_set() else 'SUCCEEDED'
@@ -498,10 +561,14 @@ class AudioModels:
                 raise ComputeError(422, 'GPU free memory below 2 GiB')
 
     def stop(self):
-        self.cancel.set()
+        with self.lock:
+            self.startup_stop.set()
+            self.cancel.set()
         return dict(self.operation)
 
     def close(self):
         self.stop()
         if self.thread:
             self.thread.join(timeout=5)
+        if self.startup_thread:
+            self.startup_thread.join(timeout=5)

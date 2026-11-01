@@ -109,8 +109,18 @@ class Encoder:
                 key, val = value.split('=', 1)
                 if key in ('out_time_us','speed','progress'):
                     progress(key, val)
-        run(command, timeout=max(60, min(21600, (media.duration or 3600)*4)), cancel=cancel,
-            limit=8*1024*1024, line=report, cwd=directory, memory_limit=self.memory_limit, metrics=lambda peak: progress('memory',peak))
+        from ..hardware import accelerator_failure, non_accelerator_failure
+        failures, blocked = [], []
+        def observe_error(line):
+            if non_accelerator_failure(line): blocked.append(True)
+            if accelerator_failure(line): failures.append(line)
+        try:
+            run(command, timeout=max(60, min(21600, (media.duration or 3600)*4)), cancel=cancel,
+            limit=8*1024*1024, line=report, cwd=directory, memory_limit=self.memory_limit, metrics=lambda peak: progress('memory',peak), error_line=observe_error)
+        except ComputeError as error:
+            if failures and not blocked and not non_accelerator_failure(error.message) and not cancel.is_set():
+                raise ComputeError(422, 'Hardware accelerator execution failed') from error
+            raise
         if target.purpose == 'OFFLINE':
             output = directory / 'output.partial.mp4'
             result = self.probe.read(output)

@@ -17,7 +17,9 @@ async def capabilities(request: Request) -> Capabilities:
     if request.app.state.internal_auth.available and request.app.state.settings.java_origin and shutil.which(request.app.state.settings.ffprobe) and shutil.which(request.app.state.settings.ffmpeg):
         values += ['media-remote-tags']
     if request.app.state.transcoding.available:
-        values += ['media-probe', 'transcode-hls', 'transcode-offline']
+        values += ['media-probe', 'transcode-hls', 'transcode-offline', 'audio-role-fast']
+        if request.app.state.audio_roles.fast.available:
+            values += ['audio-role-fast-classifier', 'audio-role-fast-v2']
     if request.app.state.audio_roles.available:
         values += ['audio-role-analysis', 'audio-separation']
     return Capabilities(capabilities=values)

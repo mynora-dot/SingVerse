@@ -41,7 +41,7 @@ public class AudioJobService {
         var list=result.putArray("jobs");
         for(var row:mapper.forSong(song,fingerprint(song))){
             var view=list.addObject().put("id",text(row,"id")).put("kind",text(row,"kind")).put("state",text(row,"state")).put("error",text(row,"error"));
-            try{var data=json.readTree(text(row,"result_json"));view.put("backend",data.path("backend").asText()).put("modelVersion",data.path("modelVersion").asText());if(!result.has("streams") && data.path("streams").isArray())result.set("streams",data.get("streams"));}catch(IOException ignored){}
+            try{var data=json.readTree(text(row,"result_json"));view.put("backend",data.path("backend").asText()).put("modelVersion",data.path("modelVersion").asText()).put("fallbackReason",data.path("fallbackReason").asText());if(Set.of("FAST","ANALYZE").contains(text(row,"kind"))){view.put("resultState",data.path("state").asText()).put("reason",data.path("reason").asText());if(data.path("evidence").isObject())view.set("evidence",data.get("evidence"));}if(!result.has("streams") && data.path("streams").isArray())result.set("streams",data.get("streams"));}catch(IOException ignored){}
         }
         if(result.path("streams").size()==1){
             result.put("originalId",result.path("streams").get(0).path("id").asText()).put("state","CONFIRMED").put("origin","SOURCE");
@@ -58,9 +58,16 @@ public class AudioJobService {
     }
     public synchronized ObjectNode submit(String song,String kind,String backend){
         if(!Set.of("","cpu","cuda","rocm","mps","openvino").contains(backend))throw fail(400,"未知推理后端");
-        if(!Set.of("PROBE","ANALYZE","SEPARATE").contains(kind))throw fail(400,"未知音轨任务");
+        if(!Set.of("PROBE","FAST","ANALYZE","SEPARATE").contains(kind))throw fail(400,"未知音轨任务");
         String fingerprint=fingerprint(song);
-        for(var row:mapper.forSong(song,fingerprint))if(text(row,"kind").equals(kind)&&Set.of("QUEUED","RUNNING","SUCCEEDED").contains(text(row,"state"))&&(!kind.equals("SEPARATE")||!text(row,"state").equals("SUCCEEDED")||Files.isRegularFile(root.resolve(text(row,"id")+".m4a"))))return jobView(row);
+        var history=mapper.forSong(song,fingerprint).stream().filter(row->text(row,"kind").equals(kind)).toList();
+        for(var row:history)if(Set.of("QUEUED","RUNNING").contains(text(row,"state")))return jobView(row);
+        if(Set.of("FAST","ANALYZE").contains(kind)){
+            // A completed UNKNOWN analysis must not permanently prevent explicit re-analysis.
+            if(!history.isEmpty()&&text(history.get(0),"state").equals("SUCCEEDED"))try{
+                if(json.readTree(text(history.get(0),"result_json")).path("state").asText().equals("CONFIDENT"))return jobView(history.get(0));
+            }catch(IOException ignored){}
+        }else for(var row:history)if(text(row,"state").equals("SUCCEEDED")&&(!kind.equals("SEPARATE")||Files.isRegularFile(root.resolve(text(row,"id")+".m4a"))))return jobView(row);
         var connection=compute.connection();String id=UUID.randomUUID().toString();
         var row=new HashMap<String,Object>();row.put("id",id);row.put("song_id",song);row.put("kind",kind);row.put("state","QUEUED");
         row.put("fingerprint",fingerprint);row.put("backend",backend);row.put("node_origin",connection.origin().toString());row.put("created_at",System.currentTimeMillis());row.put("updated_at",System.currentTimeMillis());
@@ -115,7 +122,7 @@ public class AudioJobService {
                 String phase=state.path("state").asText();
                 if(phase.equals("SUCCEEDED")){
                     var result=state.path("result");
-                    if(text(row,"kind").equals("ANALYZE"))roles.applySuggestion(text(row,"song_id"),text(row,"fingerprint"),result);
+                    if(Set.of("FAST","ANALYZE").contains(text(row,"kind")))roles.applySuggestion(text(row,"song_id"),text(row,"fingerprint"),result);
                     else if(text(row,"kind").equals("SEPARATE"))receive(connection,id,result);
                     roles.verifyImported(text(row,"song_id"),text(row,"fingerprint"),result);
                     update(id,"SUCCEEDED",result.toString(),"");
@@ -137,15 +144,27 @@ public class AudioJobService {
         try {
             var capability=compute.call(compute.connection(),"/internal/v1/status","GET",null);
             if(!capability.path("capabilities").toString().contains("media-probe"))return;
-            boolean analyze=capability.path("capabilities").toString().contains("audio-role-analysis");
+            boolean fast=capability.path("capabilities").toString().contains("audio-role-fast");
+            boolean classifier=capability.path("capabilities").toString().contains("audio-role-fast-classifier");
+            boolean paired=capability.path("capabilities").toString().contains("audio-role-fast-v2");
             var candidates=mapper.candidates(scanCursor);
             if(candidates.isEmpty()){scanCursor="";return;}
             for(String song:candidates){
                 scanCursor=song;var history=mapper.forSong(song,fingerprint(song));
                 if(history.isEmpty()){submit(song,"PROBE");continue;}
-                boolean hasAnalysis=history.stream().anyMatch(row->text(row,"kind").equals("ANALYZE"));
-                if(analyze&&!hasAnalysis)for(var row:history)if(text(row,"kind").equals("PROBE")&&text(row,"state").equals("SUCCEEDED")){
-                    var probe=json.readTree(text(row,"result_json"));if(probe.path("streams").size()==2)submit(song,"ANALYZE");break;
+                if(!fast)continue;
+                var confirmed=roles.role(song);if(confirmed!=null&&confirmed.path("state").asText().equals("CONFIRMED"))continue;
+                var previous=history.stream().filter(row->text(row,"kind").equals("FAST")).findFirst();
+                // Retry once when an explicitly installed classifier becomes available; never loop on ambiguity.
+                boolean missing=previous.isPresent()&&text(previous.get(),"state").equals("SUCCEEDED")&&json.readTree(text(previous.get(),"result_json")).path("reason").asText().equals("FAST_MODEL_MISSING");
+                boolean obsolete=false;
+                if(paired&&previous.isPresent()&&text(previous.get(),"state").equals("SUCCEEDED")){
+                    var prior=json.readTree(text(previous.get(),"result_json"));
+                    obsolete=prior.path("state").asText().equals("UNKNOWN")&&!prior.path("evidence").path("analysisVersion").asText().equals("fast-vocal-v2");
+                }
+                if(previous.isPresent()&&!(missing&&classifier)&&!obsolete)continue;
+                for(var row:history)if(text(row,"kind").equals("PROBE")&&text(row,"state").equals("SUCCEEDED")){
+                    var probe=json.readTree(text(row,"result_json"));if(probe.path("streams").size()==2)submit(song,"FAST");break;
                 }
             }
         } catch(Exception unavailable){/* Optional compute must not block scans. */}

@@ -41,6 +41,16 @@ it('可选择指定媒体来源创建批次，确认文案与请求范围一致'
   expect(metadata.start).toHaveBeenCalledWith(true, [], 'source-1')
 })
 afterEach(() => { wrapper?.unmount(); document.body.innerHTML = ''; vi.restoreAllMocks(); vi.clearAllMocks(); vi.useRealTimers() })
+it('历史查询期间误标已应用的记录可重新匹配，正常应用记录不显示恢复入口', async () => {
+  const item = { id: 'item-1', songId: 'song-1', title: '晴天', artists: ['周杰伦'], status: 'MANUAL_APPLIED' as const, candidates: [candidate], error: '查询期间歌曲已确认，保留已有元数据', updatedAt: '', confidence: 'HIGH' as const }
+  const recovered = { ...batch('COMPLETED'), completed: 2, pending: 0, applied: 2, items: [item, { ...item, id: 'item-2', error: null }], total: 2, totalElements: 2 }
+  vi.mocked(metadata.latest).mockResolvedValue(recovered)
+  vi.mocked(metadata.retry).mockResolvedValue(batch())
+  await page()
+  expect(wrapper.findAll('button').filter(item => item.text() === '重新匹配')).toHaveLength(1)
+  await button('重新匹配').trigger('click'); await flushPromises()
+  expect(metadata.retry).toHaveBeenCalledWith('batch-1', 'item-1')
+})
 it('关闭状态阻止启动，修改设置需先保存，自动写入保持关闭', async () => {
   vi.mocked(metadata.settings).mockResolvedValue({ ...config, enabled: false })
   vi.mocked(metadata.saveSettings).mockResolvedValue(config)

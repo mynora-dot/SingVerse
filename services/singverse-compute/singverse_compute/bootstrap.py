@@ -9,6 +9,7 @@ from .api.errors import register_errors
 from .api.middleware import InternalTaskBoundary, RequestContext
 from .api.routers import health, media, transcoding, remote_tags, audio_roles
 from .application.audio_roles import AudioRoles
+from .application.fast_audio_roles import FastAudioRoles
 from .application.audio_models import AudioModels
 from .application.transcoding import Transcoding
 from .infrastructure.transcoding.probe import MediaProbe
@@ -27,9 +28,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     backends = Backends(config.ffmpeg, config.hardware_backend, config.hardware_device, memory_limit=config.process_memory_bytes)
     execution = Transcoding(config, paths, auth, probe, Encoder(config.ffmpeg, probe, backends, memory_limit=config.process_memory_bytes), backends, remote_input)
     hardware_settings = HardwareSettings(config.transcode_root, backends)
+    execution.hardware_settings = hardware_settings
     @asynccontextmanager
     async def lifespan(app):
         execution.start()
+        app.state.audio_roles.models.start()
         try:
             yield
         finally:
@@ -43,6 +46,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.transcoding = execution
     app.state.audio_roles = AudioRoles(execution)
     app.state.audio_roles.models = AudioModels(app.state.audio_roles)
+    app.state.audio_roles.fast = FastAudioRoles(app.state.audio_roles)
     app.state.hardware_settings = hardware_settings
     register_errors(app)
     app.include_router(health.router)

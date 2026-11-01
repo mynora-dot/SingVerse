@@ -54,6 +54,17 @@ class AudioProcessingServiceTest {
         verify(mapper).insertBatch(anyString(),eq("openvino"),anyLong());
         @SuppressWarnings("unchecked") ArgumentCaptor<Map<String,Object>> captured=ArgumentCaptor.forClass(Map.class);verify(mapper,times(1)).insertItem(captured.capture());assertThat(captured.getValue()).containsEntry("state","SKIPPED").containsEntry("fingerprint","current").containsEntry("category","READY");
     }
+    @Test void unconfirmedFilterOnlyMatchesDualStreamsWithoutConfirmedRoles()throws Exception{
+        var filter=new AudioProcessingService.Filter("","",null,null,"UNCONFIRMED",null);
+        var pending=(com.fasterxml.jackson.databind.node.ObjectNode)json.readTree("{\"title\":\"\",\"artists\":[],\"category\":\"INAPPLICABLE\",\"audio\":{\"state\":\"UNKNOWN\",\"streams\":[{\"id\":\"stream:1\"},{\"id\":\"stream:2\"}],\"jobs\":[]}}");
+        assertThat(service.matches(pending,filter)).isTrue();
+        ((com.fasterxml.jackson.databind.node.ObjectNode)pending.get("audio")).put("state","CONFIRMED");
+        assertThat(service.matches(pending,filter)).isFalse();
+        var single=(com.fasterxml.jackson.databind.node.ObjectNode)json.readTree("{\"title\":\"\",\"artists\":[],\"category\":\"ELIGIBLE\",\"audio\":{\"state\":\"CONFIRMED\",\"streams\":[{\"id\":\"stream:1\"}],\"jobs\":[]}}");
+        assertThat(service.matches(single,filter)).isFalse();
+        var unprobed=(com.fasterxml.jackson.databind.node.ObjectNode)json.readTree("{\"title\":\"\",\"artists\":[],\"category\":\"UNPROBED\",\"audio\":{\"state\":\"UNKNOWN\",\"jobs\":[]}}");
+        assertThat(service.matches(unprobed,filter)).isFalse();
+    }
     @Test void startRequiresQualifiedBackendAndResubmissionDoesNotCreateJobs(){
         when(compute.call(any(),eq("/internal/v1/audio-roles/models"),eq("GET"),isNull())).thenReturn(json.createObjectNode().putNull("selected"));
         assertThatThrownBy(()->service.start("batch")).hasMessageContaining("试跑");verify(mapper,never()).start(anyString(),anyLong());
@@ -61,4 +72,25 @@ class AudioProcessingServiceTest {
         assertThatThrownBy(()->service.start("batch")).hasMessageContaining("空间不足");verify(mapper,never()).start(anyString(),anyLong());
         when(mapper.batch("batch")).thenReturn(Map.of("id","batch","state","QUEUED","backend","","created_at",1L));service.start("batch");verify(mapper,never()).start(anyString(),anyLong());
     }
+    @Test void songRowOnlyAdvertisesConfirmedNonStaleCover() {
+        var song=songs.get("song");
+        var parsed=mock(com.mynora.singverse.media.filename.FilenameParseResult.class);
+        when(parsed.title()).thenReturn("测试");when(parsed.artists()).thenReturn(List.of("歌手"));when(song.result()).thenReturn(parsed);
+        when(jobs.status("song")).thenReturn(json.createObjectNode());when(song.id()).thenReturn("song");
+        assertThat(service.row(song).path("coverAvailable").asBoolean()).isFalse();
+        var metadata=mock(com.mynora.singverse.media.metadata.MetadataDtos.Applied.class);
+        var track=mock(com.mynora.singverse.media.metadata.ExternalTrack.class);
+        when(song.metadata()).thenReturn(metadata);when(metadata.fields()).thenReturn(Set.of("cover"));when(metadata.track()).thenReturn(track);when(track.coverUrl()).thenReturn("asset:cover");
+        assertThat(service.row(song).path("coverAvailable").asBoolean()).isTrue();
+        when(metadata.stale()).thenReturn(true);
+        assertThat(service.row(song).path("coverAvailable").asBoolean()).isFalse();
+        verify(jobs,never()).submit(anyString(),anyString());
+    }
+    @Test void hardwarePresenceRejectsManualCpuAtBatchStart() throws Exception {
+        when(mapper.batch("batch")).thenReturn(Map.of("id","batch","state","PREVIEW","backend","cpu","created_at",1L));
+        when(compute.call(any(),eq("/internal/v1/audio-roles/models"),eq("GET"),isNull())).thenReturn(json.readTree("{\"selected\":\"cpu\",\"backends\":[{\"id\":\"cuda\",\"detected\":true,\"state\":\"UNVERIFIED\"}]}"));
+        assertThatThrownBy(()->service.start("batch")).hasMessageContaining("CPU 仅用于自动降级");
+        verify(mapper,never()).start(anyString(),anyLong());
+    }
+
 }

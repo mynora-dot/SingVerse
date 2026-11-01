@@ -18,6 +18,7 @@ class Execution:
     state: str = 'ACCEPTED'
     backend: str = ''
     error: str = ''
+    fallback_reason: str = ''
     position: float = 0
     speed: float = 0
     peak_memory_bytes: int = 0
@@ -29,7 +30,7 @@ class Execution:
     cancel: threading.Event = field(default_factory=threading.Event)
 
     def view(self):
-        return {'id':self.id, 'state':self.state, 'backend':self.backend, 'error':self.error,
+        return {'id':self.id, 'state':self.state, 'backend':self.backend, 'error':self.error, 'fallbackReason':self.fallback_reason,
                 'position':self.position, 'speed':self.speed, 'sampledPeakRssBytes':self.peak_memory_bytes, 'offset':self.target.start,
                 'purpose':self.target.purpose, 'effectiveMode':self.target.mode, 'trackMapping':self.mapping,
                 'ready':self.state == 'SUCCEEDED', 'output':self.output, 'pipeline':self.pipeline,
@@ -58,6 +59,7 @@ class Transcoding:
                         continue
                     task.state = record['state'] if record['state'] in ('SUCCEEDED','FAILED','CANCELLED') else 'FAILED'
                     task.error = record.get('error','') if task.state == record['state'] else 'NODE_RESTARTED'
+                    task.fallback_reason = record.get('fallbackReason', '')
                     task.mapping, task.backend = record.get('trackMapping',[]), record.get('backend','')
                     task.output = record.get('output', {})
                     task.pipeline = record.get('pipeline', {})
@@ -137,6 +139,8 @@ class Transcoding:
             if self.usage() >= self.settings.cache_bytes or shutil.disk_usage(self.root).free < self.settings.minimum_free_bytes:
                 raise ComputeError(507, 'Transcode storage budget exhausted')
             task = Execution(identifier, signature, target)
+            task.cpu_fallback = getattr(self.backends, 'cpu_fallback', True)
+            task.preferred_backend = getattr(self.backends, 'preferred', 'auto')
             directory = self.root / identifier
             directory.mkdir(exist_ok=False)
             self.tasks[identifier] = task
@@ -158,7 +162,10 @@ class Transcoding:
                     raise ComputeError(422, 'Start position exceeds media duration')
                 selected = [s for s in media.streams if s.kind == 'video'][:1] + [s for s in media.streams if s.kind == 'audio' and (not task.target.audio_id or s.id == task.target.audio_id)]
                 task.mapping = [{'sourceId':s.id, 'outputIndex':i, 'kind':s.kind, 'language':s.language, 'title':s.title, 'channels':s.channels} for i,s in enumerate(selected)]
-                backend = self.backends.select(task.target.codec) if task.target.mode == 'TRANSCODE' and any(s.kind == 'video' for s in media.streams) else 'software'
+                cpu_fallback = getattr(task, 'cpu_fallback', True)
+                backend = self.backends.select(task.target.codec, cpu_fallback=cpu_fallback, preferred=getattr(task, 'preferred_backend', 'auto')) if task.target.mode == 'TRANSCODE' and any(s.kind == 'video' for s in media.streams) else 'software'
+                if backend == 'software' and task.target.mode == 'TRANSCODE' and hasattr(self.backends, 'detected') and self.backends.detected():
+                    task.fallback_reason = 'ACCELERATOR_NOT_READY'
                 def progress(key, value):
                     if key == 'pipeline':
                         task.pipeline = value
@@ -179,10 +186,12 @@ class Transcoding:
                     try:
                         task.mapping = self.encoder.execute(source, network, media, task.target, directory, task.cancel, progress, backend)
                         break
-                    except ComputeError:
+                    except ComputeError as error:
+                        from ..infrastructure.hardware import accelerator_failure
                         # Never mix hardware and software segments already exposed to a player.
-                        if attempt or backend == 'software' or task.cancel.is_set() or (directory / 'master.m3u8').exists():
+                        if attempt or backend == 'software' or not cpu_fallback or not accelerator_failure(error.message) or task.cancel.is_set() or (directory / 'master.m3u8').exists():
                             raise
+                        task.fallback_reason = 'ACCELERATOR_EXECUTION_FAILED'
                         backend = 'software'
                 if before and (before.st_size, before.st_mtime_ns) != (Path(source).stat().st_size, Path(source).stat().st_mtime_ns):
                     raise ComputeError(409, 'Source changed during execution')

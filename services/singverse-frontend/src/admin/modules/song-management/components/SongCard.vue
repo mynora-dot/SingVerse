@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ElButton, ElIcon } from 'element-plus'
-import { Headset, VideoPlay, EditPen } from '@element-plus/icons-vue'
+import { ElButton } from 'element-plus'
+import { VideoPlay, EditPen } from '@element-plus/icons-vue'
+import SongCover from './SongCover.vue'
 import { needsSongReview, songReviewLabel } from '../presentation'
 import { songTitle, songArtists } from '../../metadata/utils'
 import type { Tag } from '../../classification/types'
@@ -13,7 +14,7 @@ const emit = defineEmits<{ click: []; play: []; edit: []; select: [song: MediaSo
   <article class="song-card" :class="{ selected }" @click="emit('click')">
     <div class="song-identity">
       <label v-if="selectionMode" class="selection-checkbox" @click.stop><input type="checkbox" :checked="selected" :aria-label="`选择 ${songTitle(song)}`" @change="emit('select', song, ($event.target as HTMLInputElement).checked)"></label>
-      <span class="song-art" aria-hidden="true"><ElIcon><Headset /></ElIcon></span>
+      <SongCover :song="song" />
       <button class="song-card-title" @click.stop="emit('click')"><strong>{{ songTitle(song) }}</strong><span>{{ songArtists(song).join('、') || '未知歌手' }}</span></button>
     </div>
     <div class="mobile-song-details"><span>{{ fileFormat(song) }} · {{ fileSize(song.fileSize) }}</span><span v-if="confirmedField(song, 'album')">{{ confirmedField(song, 'album') }}</span><div v-if="songTags(song, tags).length" class="mobile-tags"><span v-for="tag in songTags(song, tags)" :key="tag.id">{{ tag.name }}</span></div><span v-else>尚未分类</span></div>

@@ -138,7 +138,7 @@ def main():
         try:
             with urlopen('http://127.0.0.1:18090/health', timeout=1) as response:
                 if response.status == 200:
-                    print('Mac compute ready on loopback port 18090 (VideoToolbox; audio requires model qualification)')
+                    print('Mac compute ready on loopback port 18090 (VideoToolbox; installed audio models are qualified automatically in background)')
                     return
         except OSError:
             time.sleep(.25)

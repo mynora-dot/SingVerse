@@ -1,16 +1,17 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElAlert, ElButton } from 'element-plus'
 import { authRequest } from '../../core/auth/api'
-interface Settings { backend: string; effectiveBackend: string; deploymentBackend: string; revision: number; writable: boolean }
+interface Settings { backend: string; effectiveBackend: string; deploymentBackend: string; revision: number; writable: boolean; cpuFallback?: boolean; detectedBackends?: string[] }
 interface Result { passed: boolean; backend: string; hardware: boolean; elapsedMs: number }
 interface Capability { decodeAcceleration?: boolean; toneMappingAcceleration?: boolean; zeroCopy?: boolean; backend: string; installed: boolean; samplePassed: boolean; codecs: Record<string, { samplePassed: boolean }> }
+const cpuFallback = ref(true)
 const settings = ref<Settings | null>(null), backend = ref('deployment'), busy = ref(false), error = ref(''), saved = ref(false)
 const result = ref<Result | null>(null), capabilities = ref<Capability[]>([])
 const choices = [{ value: 'deployment', label: '遵循部署配置' }, { value: 'auto', label: '自动选择可用硬件' }, { value: 'software', label: '关闭硬件加速（仅 CPU）' }, { value: 'qsv', label: 'Intel Quick Sync（QSV）' }, { value: 'vaapi', label: 'Linux Intel / AMD（VA-API）' }, { value: 'nvenc', label: 'NVIDIA（NVENC）' }, { value: 'amf', label: 'Windows AMD（AMF）' }, { value: 'videotoolbox', label: 'Apple（VideoToolbox）' }, { value: 'rkmpp', label: 'Rockchip（RKMPP）' }]
 const label = (value: string) => choices.find(c => c.value === value)?.label ?? value
-const available = computed(() => capabilities.value.filter(item => item.installed || Object.values(item.codecs).some(codec => codec.samplePassed)).sort((a, b) => Number(b.backend === settings.value?.effectiveBackend) - Number(a.backend === settings.value?.effectiveBackend)))
-const unavailable = computed(() => capabilities.value.filter(item => !item.installed && !Object.values(item.codecs).some(codec => codec.samplePassed)))
+const visibleChoices = computed(() => choices.filter(item => ['deployment', 'auto'].includes(item.value) || (item.value === 'software' ? !settings.value?.detectedBackends?.length : settings.value?.detectedBackends?.includes(item.value))))
+const available = computed(() => capabilities.value.filter(item => item.backend === 'software' ? !settings.value?.detectedBackends?.length : settings.value?.detectedBackends?.includes(item.backend)).sort((a, b) => Number(b.backend === settings.value?.effectiveBackend) - Number(a.backend === settings.value?.effectiveBackend)))
 const codecs = (item: Capability) => Object.entries(item.codecs).filter(([, codec]) => codec.samplePassed).map(([codec]) => codec.toUpperCase())
 const stages = (item: Capability) => [
   { label: '硬解', verified: item.decodeAcceleration },
@@ -20,7 +21,7 @@ const stages = (item: Capability) => [
 let active = true
 async function load() {
   busy.value = true; error.value = ''; saved.value = false; result.value = null
-  try { const value = await authRequest<Settings>('/api/v1/transcoding/hardware-settings'); if (active) { settings.value = value; backend.value = value.backend } }
+  try { const value = await authRequest<Settings>('/api/v1/transcoding/hardware-settings'); if (active) { settings.value = value; backend.value = value.backend === 'software' && value.detectedBackends?.length ? 'auto' : value.backend; cpuFallback.value = value.cpuFallback !== false } }
   catch (e) { if (active) error.value = e instanceof Error ? e.message : '读取失败' }
   finally { if (active) busy.value = false }
 }
@@ -36,7 +37,7 @@ async function save() {
   if (!settings.value) return
   busy.value = true; error.value = ''; saved.value = false
   try {
-    const value = await authRequest<Settings>('/api/v1/transcoding/hardware-settings', 'POST', { backend: backend.value, revision: settings.value.revision }, 45000)
+    const value = await authRequest<Settings>('/api/v1/transcoding/hardware-settings', 'POST', { backend: backend.value, revision: settings.value.revision, cpuFallback: cpuFallback.value }, 45000)
     if (active) { settings.value = value; saved.value = true }
   } catch (e) { if (active) error.value = e instanceof Error ? e.message : '保存失败' }
   finally { if (active) busy.value = false }
@@ -47,6 +48,7 @@ async function inspect() {
   catch (e) { if (active) error.value = e instanceof Error ? e.message : '探测失败' }
   finally { if (active) busy.value = false }
 }
+onMounted(load)
 onBeforeUnmount(() => { active = false })
 </script>
 <template>
@@ -58,24 +60,24 @@ onBeforeUnmount(() => { active = false })
     <div v-if="!settings" class="hardware-empty"><p>读取当前节点的加速设置，查看可用的编码方式。</p><ElButton :loading="busy" @click="load">读取硬件加速设置</ElButton></div>
     <template v-else>
       <div class="hardware-config">
-        <div class="backend-field"><label for="hardware-backend">硬件加速方式</label><select id="hardware-backend" v-model="backend" aria-label="硬件加速方式" :disabled="busy" @change="result = null; saved = false"><option v-for="choice in choices" :key="choice.value" :value="choice.value">{{ choice.label }}</option></select><p>保存后对新任务生效，正在播放的歌曲继续使用原设置。</p></div>
-        <aside class="current-backend"><span class="current-caption"><span class="status-dot" aria-hidden="true"></span>当前生效：</span><strong>{{ label(settings.effectiveBackend) }}</strong><small>部署默认：{{ label(settings.deploymentBackend) }}</small></aside>
+        <div class="backend-field"><label for="hardware-backend">硬件加速方式</label><select id="hardware-backend" v-model="backend" aria-label="硬件加速方式" :disabled="busy" @change="result = null; saved = false"><option v-for="choice in visibleChoices" :key="choice.value" :value="choice.value">{{ choice.label }}</option></select><p>保存后对新任务生效，正在播放的歌曲继续使用原设置。</p></div>
+        <aside class="current-backend"><span class="current-caption"><span class="status-dot" aria-hidden="true"></span>当前生效：</span><strong>{{ label(settings.effectiveBackend) }}</strong><small>{{ settings.detectedBackends?.length ? `检测到：${settings.detectedBackends.map(label).join('、')}` : '未检测到加速硬件，使用 CPU' }}</small></aside>
       </div>
-      <div class="hardware-actions"><div><ElButton type="primary" :disabled="busy || !settings.writable" @click="save">保存硬件加速设置</ElButton><ElButton :disabled="busy" @click="test">测试所选方式</ElButton></div><span>选择“遵循部署配置”可恢复默认方式</span></div>
+      <div class="fallback-policy"><label><input v-model="cpuFallback" type="checkbox" :disabled="busy || !settings.writable" @change="saved = false"> 加速不可用时自动降级到 CPU</label><p>同时用于视频转码与伴奏生成，保存后对新任务生效。</p></div><div class="hardware-actions"><div><ElButton type="primary" :disabled="busy || !settings.writable" @click="save">保存硬件加速设置</ElButton><ElButton :disabled="busy" @click="test">测试所选方式</ElButton></div><span>选择“遵循部署配置”可恢复默认方式</span></div>
       <ElAlert v-if="!settings.writable" title="计算服务尚未配置转码缓存目录，请先完成部署配置。" type="warning" :closable="false" />
       <p v-if="result" role="status" class="feedback" :class="{ 'feedback-error': !result.passed }">{{ result.passed ? `测试通过：${label(result.backend)}` : '测试未通过，请检查驱动、系统支持及设备权限' }}{{ result.passed && !result.hardware ? ' · 当前使用 CPU 软件编码' : '' }} · {{ result.elapsedMs }} ms</p>
       <p v-if="saved" role="status" class="feedback">硬件加速设置已保存；选择“遵循部署配置”可恢复环境变量指定的方式。</p>
       <section class="encoder-section" aria-label="节点编码能力">
-        <div class="encoder-heading"><div><h3>节点编码能力</h3><p>{{ capabilities.length ? '编码测试与素材验证分别展示，实际播放以任务结果为准。' : '探测当前节点支持的编码方式。' }}</p></div><ElButton :disabled="busy" @click="inspect">探测所有编码器</ElButton></div>
+        <div class="encoder-heading"><div><h3>节点编码能力</h3><p>{{ capabilities.length ? '编码测试与素材验证分别展示，实际播放以任务结果为准。' : '探测当前节点支持的编码方式。' }}</p></div><ElButton :disabled="busy" @click="inspect">检测当前硬件</ElButton></div>
         <div v-if="capabilities.length" class="encoder-results">
           <div v-if="available.length" class="encoder-table-wrap"><table class="encoder-table"><thead><tr><th scope="col">加速方式</th><th scope="col">编码测试通过</th><th scope="col">素材验证</th></tr></thead><tbody><tr v-for="item in available" :key="item.backend"><th scope="row"><div class="encoder-name">{{ label(item.backend) }}<span v-if="item.backend === settings.effectiveBackend" class="current-tag">当前使用</span></div><small>{{ codecs(item).length ? '可用' : '已安装 · 测试未通过' }}</small></th><td><div class="codec-tags"><span v-for="codec in codecs(item)" :key="codec" class="codec-tag">{{ codec }}</span><span v-if="!codecs(item).length" class="muted">暂无通过的编码</span></div></td><td><span v-if="item.backend === 'software'" class="muted">CPU 软件处理</span><div v-else class="stage-tags"><span v-for="stage in stages(item)" :key="stage.label" class="stage-tag" :class="{ verified: stage.verified }">{{ stage.label }}<span>{{ stage.verified ? '已验证' : '待验证' }}</span></span></div></td></tr></tbody></table></div>
           <p v-else class="no-encoders">当前节点没有通过安装检查的编码方式，请检查媒体工具与驱动。</p>
-          <details v-if="unavailable.length" class="unavailable-details"><summary>其他平台的加速方式 <span>{{ unavailable.length }} 项不可用</span></summary><ul><li v-for="item in unavailable" :key="item.backend"><span>{{ label(item.backend) }}</span><small>未安装或系统不支持</small></li></ul></details>
+
         </div>
       </section>
     </template>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-    <details class="deployment-note"><summary>部署与验证说明</summary><p>Docker 需要预先透传 GPU 设备并配置权限，页面不能自动安装驱动或修改容器。Mac 原生节点使用 VideoToolbox，无需将 GPU 透传给 Docker。</p><p>硬解、零拷贝和 GPU 色调映射会按每份素材先行试跑；未验证不代表不支持，未通过的阶段会回退兼容路径。编码短样本通过不等于完整播放流程已验证。</p></details>
+
   </section>
 </template>
 <style scoped>
@@ -91,4 +93,5 @@ h2,h3,p{margin:0}h2{font-size:19px;line-height:1.5;letter-spacing:-.3px}.hardwar
 .deployment-note{padding:15px 28px;background:var(--sv-surface-3);border-top:1px solid var(--sv-border-subtle);font-size:12px}.deployment-note p{color:var(--sv-text-secondary);line-height:1.8;margin-top:10px;max-width:900px}.hardware-empty{padding:24px 28px;display:flex;align-items:center;flex-wrap:wrap;gap:16px}.hardware-empty p{font-size:13px;color:var(--sv-text-secondary)}.feedback{margin:0 28px 20px;border-radius:10px;padding:12px 16px;font-size:13px;line-height:1.7;color:var(--sv-semantic-ok);background:var(--sv-semantic-ok-soft)}.feedback-error{color:var(--sv-semantic-warn);background:var(--sv-semantic-warn-soft)}.hardware-settings>:deep(.el-alert){width:auto;margin:0 28px 20px}
 @media(max-width:960px){.hardware-config{gap:20px;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.encoder-table th,.encoder-table td{min-width:140px}.stage-tags{min-width:160px}}
 @media(max-width:640px){.hardware-heading,.hardware-config,.hardware-actions,.encoder-section{padding-left:18px;padding-right:18px}.hardware-heading{align-items:flex-start;flex-wrap:wrap;gap:12px}.hardware-heading>.el-button{margin-left:58px}.hardware-config{grid-template-columns:minmax(0,1fr);gap:16px}.encoder-heading{align-items:flex-start;flex-direction:column;gap:12px}.unavailable-details ul{grid-template-columns:minmax(0,1fr)}.deployment-note{padding-left:18px;padding-right:18px}.hardware-empty{padding:20px 18px}.feedback{margin-left:18px;margin-right:18px}}
+.fallback-policy{padding:0 28px 20px;font-size:13px}.fallback-policy p{margin-top:6px;font-size:12px;color:var(--sv-text-secondary)}
 </style>
