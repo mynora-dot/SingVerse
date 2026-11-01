@@ -3,21 +3,29 @@
 name: singverse-compute-node
 services:
   singverse-compute:
-    image: singverse-compute:local
+    image: '${COMPUTE_IMAGE:-singverse-compute:local}'
     build:
       context: .
       dockerfile: services/singverse-compute/Dockerfile
+      target: '${COMPUTE_AUDIO_RUNTIME:-base}'
+      args:
+        SINGVERSE_VERSION: '${SINGVERSE_VERSION:-0.1.0-SNAPSHOT}'
+        SOURCE_REVISION: '${SINGVERSE_SOURCE_REVISION:-local}'
     environment:
       COMPUTE_AUTH_TOKEN_FILE: /run/singverse-compute/token
       COMPUTE_MEDIA_ROOTS: /media
       COMPUTE_JAVA_ORIGIN: '${COMPUTE_JAVA_ORIGIN:-}'
       COMPUTE_PROCESS_MEMORY_BYTES: '${COMPUTE_PROCESS_MEMORY_BYTES:-1073741824}'
       COMPUTE_TRANSCODE_CONCURRENCY: '${COMPUTE_TRANSCODE_CONCURRENCY:-1}'
+      COMPUTE_AUDIO_MODEL_REPO: '${COMPUTE_AUDIO_MODEL_REPO:-/var/lib/singverse-models/htdemucs}'
+      COMPUTE_AUDIO_MEMORY_BYTES: '${COMPUTE_AUDIO_MEMORY_BYTES:-4294967296}'
+      COMPUTE_AUDIO_THREADS: '${COMPUTE_AUDIO_THREADS:-2}'
     ports:
       - '${COMPUTE_HTTP_BIND:-127.0.0.1}:${COMPUTE_HTTP_PORT:-18090}:8090'
     volumes:
       - singverse-compute-auth:/run/singverse-compute
       - singverse-transcode-cache:/var/cache/singverse-transcode
+      - singverse-audio-models:/var/lib/singverse-models
       - type: bind
         source: '${COMPUTE_MEDIA_PATH:?Set COMPUTE_MEDIA_PATH to an existing media directory}'
         target: /media
@@ -31,3 +39,4 @@ services:
 volumes:
   singverse-compute-auth:
   singverse-transcode-cache:
+  singverse-audio-models:

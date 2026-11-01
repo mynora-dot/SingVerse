@@ -192,6 +192,33 @@ class PlaylistHttpTest {
     @org.springframework.test.context.bean.override.mockito.MockitoBean
     com.mynora.singverse.ai.AiModelClient models;
 
+    @Autowired com.mynora.singverse.media.audio.AudioJobService audioJobs;
+    @Autowired com.mynora.singverse.media.audio.AudioRoleService audioRoles;
+
+    @Test
+    void joinedFriendCorrectsSharedRolesWithRevisionAndSourceValidation() throws Exception {
+        String deviceToken=device(), songId=song("音轨测试",List.of("歌手"));
+        audioJobs.observe(songId,json.readTree("{\"duration\":180,\"streams\":[{\"kind\":\"audio\",\"id\":\"stream:1\"},{\"kind\":\"audio\",\"id\":\"stream:2\"}]}"));
+        var session=ok(guest,"/api/v1/tv/sessions","POST",null,deviceToken,false);
+        String sessionBase="/api/v1/tv/sessions/"+session.path("id").asText();
+        var invitation=ok(guest,sessionBase+"/invitations","POST",null,deviceToken,false);
+        var joined=ok(guest,"/api/v1/party/join","POST",Map.of("invitation",invitation.path("invitation").asText(),"name","纠正音轨的亲友"),null,false);
+        String participant=joined.path("token").asText(),path="/api/v1/party/audio-roles/songs/"+songId;
+        assertThat(req(guest,path,"GET",null,null,false).statusCode()).isEqualTo(401);
+        var correction=Map.of("originalId","stream:2","backingId","stream:1","revision",0);
+        var saved=ok(guest,path,"PUT",correction,participant,false);
+        assertThat(saved.path("origin").asText()).isEqualTo("MANUAL");
+        assertThat(ok(admin,"/api/v1/media-songs/"+songId+"/audio-roles","GET",null,null,false).path("originalId").asText()).isEqualTo("stream:2");
+        assertThat(req(guest,path,"PUT",correction,participant,false).statusCode()).isEqualTo(409);
+        assertThat(req(guest,path,"PUT",Map.of("originalId","stream:99","backingId","stream:1","revision",1),participant,false).statusCode()).isEqualTo(409);
+        String fp=com.mynora.singverse.media.repository.MediaSongRepository.fingerprint(songRepository.get(songId));
+        audioRoles.applySuggestion(songId,fp,json.readTree("{\"state\":\"CONFIDENT\",\"original\":\"stream:1\",\"backing\":\"stream:2\"}"));
+        assertThat(audioRoles.role(songId).path("originalId").asText()).isEqualTo("stream:2");
+        var portable=audioRoles.portable(songId);
+        assertThat(portable.has("jobs")).isFalse();assertThat(portable.has("fingerprint")).isFalse();assertThat(portable.path("separationPolicy").asText()).isEqualTo("GENERATE_LOCALLY");
+        assertThat(req(guest,"/api/v1/media-songs/"+songId+"/audio-jobs","POST",Map.of("kind","SEPARATE"),participant,false).statusCode()).isIn(401,403);
+    }
+
     Map<String, Object> playlist(String id, String name, List<String> songs, long revision) {
         return Map.of(
                 "requestId",

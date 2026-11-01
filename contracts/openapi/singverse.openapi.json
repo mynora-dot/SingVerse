@@ -4431,19 +4431,100 @@
       "post": {
         "operationId": "applyBatchSongReview",
         "summary": "Apply the shared song review draft and mark the batch item as manually applied",
-        "security": [{ "sessionCookie": [] }],
-        "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "itemId", "in": "path", "required": true, "schema": { "type": "string" } }
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReviewApply" } } } },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewApply"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "Applied", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReviewResult" } } } },
-          "400": { "description": "Invalid review", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
-          "401": { "description": "Session required", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
-          "403": { "description": "Origin or CSRF rejected", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
-          "404": { "description": "Batch item or song missing", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
-          "409": { "description": "Batch state, file or metadata changed", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } }
+          "200": {
+            "description": "Applied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid review",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin or CSRF rejected",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Batch item or song missing",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Batch state, file or metadata changed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -11426,13 +11507,26 @@
             "name": "type",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "enum": ["", "MALE", "FEMALE", "GROUP", "UNKNOWN"] }
+            "schema": {
+              "type": "string",
+              "enum": [
+                "",
+                "MALE",
+                "FEMALE",
+                "GROUP",
+                "UNKNOWN"
+              ]
+            }
           },
           {
             "name": "countLessThan",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "minimum": 1, "maximum": 1000000 }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            }
           },
           {
             "name": "page",
@@ -11646,19 +11740,81 @@
       "put": {
         "operationId": "setArtistCategory",
         "summary": "Manually label an artist as male, female, group or unclassified",
-        "security": [{ "sessionCookie": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": {
-          "type": "object", "required": ["type", "revision"],
-          "properties": {
-            "type": { "type": "string", "enum": ["MALE", "FEMALE", "GROUP", "UNKNOWN"] },
-            "revision": { "type": "integer", "minimum": 0 }
+        "security": [
+          {
+            "sessionCookie": []
           }
-        } } } },
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "revision"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "MALE",
+                      "FEMALE",
+                      "GROUP",
+                      "UNKNOWN"
+                    ]
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "Updated artist", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArtistProfile" } } } },
-          "400": { "description": "Invalid category", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
-          "409": { "description": "Artist revision changed", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } }
+          "200": {
+            "description": "Updated artist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtistProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid category",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Artist revision changed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -12568,7 +12724,11 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["UPDATED_DESC", "NAME_ASC", "SONGS_DESC"],
+              "enum": [
+                "UPDATED_DESC",
+                "NAME_ASC",
+                "SONGS_DESC"
+              ],
               "default": "UPDATED_DESC"
             }
           },
@@ -15085,6 +15245,1477 @@
             "description": "Export is not complete"
           }
         }
+      }
+    },
+    "/api/v1/media-songs/{song}/audio-roles": {
+      "get": {
+        "summary": "Read shared audio roles and current media tasks",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "song",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioRoles"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Revision conflict or obsolete media"
+          }
+        },
+        "operationId": "audioRoles163Get"
+      },
+      "put": {
+        "summary": "Correct shared source tracks; applies on next selection",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "song",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioRoles"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Revision conflict or obsolete media"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AudioRoleCorrection"
+              }
+            }
+          }
+        },
+        "operationId": "audioRoles163Put"
+      }
+    },
+    "/api/v1/party/audio-roles/songs/{song}": {
+      "get": {
+        "summary": "Read shared audio roles and current media tasks",
+        "security": [
+          {
+            "TvBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "song",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioRoles"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Revision conflict or obsolete media"
+          }
+        },
+        "operationId": "audioRoles164Get"
+      },
+      "put": {
+        "summary": "Correct shared source tracks; applies on next selection",
+        "security": [
+          {
+            "TvBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "song",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioRoles"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Revision conflict or obsolete media"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AudioRoleCorrection"
+              }
+            }
+          }
+        },
+        "operationId": "audioRoles164Put"
+      }
+    },
+    "/api/v1/tv/audio-roles/songs/{song}": {
+      "get": {
+        "summary": "Read shared audio roles and current media tasks",
+        "security": [
+          {
+            "TvBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "song",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioRoles"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Revision conflict or obsolete media"
+          }
+        },
+        "operationId": "audioRoles165Get"
+      },
+      "put": {
+        "summary": "Correct shared source tracks; applies on next selection",
+        "security": [
+          {
+            "TvBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "song",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioRoles"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Revision conflict or obsolete media"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AudioRoleCorrection"
+              }
+            }
+          }
+        },
+        "operationId": "audioRoles165Put"
+      }
+    },
+    "/api/v1/media-songs/{song}/audio-jobs": {
+      "post": {
+        "summary": "Administrator submits an offline audio task",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "song",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioRoleJob"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Revision conflict or obsolete media"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "PROBE",
+                      "ANALYZE",
+                      "SEPARATE"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            }
+          }
+        },
+        "operationId": "audioRoles166Post"
+      }
+    },
+    "/api/v1/media-songs/{song}/audio-jobs/{id}/cancel": {
+      "post": {
+        "summary": "Cancel an offline audio task",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "song",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Revision conflict or obsolete media"
+          }
+        },
+        "operationId": "audioRoles167Post"
+      }
+    },
+    "/api/v1/media-songs/{song}/accompaniment/{id}": {
+      "get": {
+        "summary": "Read current accompaniment with HTTP Range support",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "song",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "audio/mp4"
+          },
+          "206": {
+            "description": "Partial accompaniment"
+          },
+          "404": {
+            "description": "Missing or obsolete accompaniment"
+          }
+        },
+        "operationId": "audioRoles168Get"
+      },
+      "head": {
+        "summary": "Read current accompaniment with HTTP Range support",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "song",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "audio/mp4"
+          },
+          "206": {
+            "description": "Partial accompaniment"
+          },
+          "404": {
+            "description": "Missing or obsolete accompaniment"
+          }
+        },
+        "operationId": "audioRoles168Head"
+      }
+    },
+    "/api/v1/tv/audio-roles/songs/{song}/accompaniment/{id}": {
+      "get": {
+        "summary": "Read current accompaniment with HTTP Range support",
+        "security": [
+          {
+            "TvBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "song",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "audio/mp4"
+          },
+          "206": {
+            "description": "Partial accompaniment"
+          },
+          "404": {
+            "description": "Missing or obsolete accompaniment"
+          }
+        },
+        "operationId": "audioRoles169Get"
+      },
+      "head": {
+        "summary": "Read current accompaniment with HTTP Range support",
+        "security": [
+          {
+            "TvBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "song",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "audio/mp4"
+          },
+          "206": {
+            "description": "Partial accompaniment"
+          },
+          "404": {
+            "description": "Missing or obsolete accompaniment"
+          }
+        },
+        "operationId": "audioRoles169Head"
+      }
+    },
+    "/api/v1/internal/audio-input/{id}": {
+      "get": {
+        "summary": "Read scoped source media for an active offline audio task",
+        "operationId": "audioInputGet",
+        "security": [
+          {
+            "ComputeBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Source media"
+          },
+          "206": {
+            "description": "Partial source media"
+          },
+          "401": {
+            "description": "Internal authentication required"
+          },
+          "404": {
+            "description": "Missing active task"
+          }
+        }
+      },
+      "head": {
+        "summary": "Read scoped source media for an active offline audio task",
+        "operationId": "audioInputHead",
+        "security": [
+          {
+            "ComputeBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Source media"
+          },
+          "206": {
+            "description": "Partial source media"
+          },
+          "401": {
+            "description": "Internal authentication required"
+          },
+          "404": {
+            "description": "Missing active task"
+          }
+        }
+      }
+    },
+    "/api/v1/audio-processing/songs": {
+      "get": {
+        "summary": "Filter songs with current audio roles and separation eligibility",
+        "operationId": "audioProcessingGetSongs",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AudioProcessingSong"
+                      }
+                    },
+                    "totalElements": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid selection or pagination"
+          },
+          "401": {
+            "description": "Administrator session required"
+          },
+          "403": {
+            "description": "CSRF validation required for mutations"
+          },
+          "409": {
+            "description": "Node, model or execution state changed"
+          },
+          "422": {
+            "description": "Runtime or model not qualified"
+          },
+          "503": {
+            "description": "Compute node unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "title",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "artist",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sourceId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "songId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "streams",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/audio-processing/batches": {
+      "get": {
+        "summary": "List persistent batch snapshots",
+        "operationId": "audioProcessingGetBatches",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AudioProcessingBatch"
+                      }
+                    },
+                    "totalElements": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid selection or pagination"
+          },
+          "401": {
+            "description": "Administrator session required"
+          },
+          "403": {
+            "description": "CSRF validation required for mutations"
+          },
+          "409": {
+            "description": "Node, model or execution state changed"
+          },
+          "422": {
+            "description": "Runtime or model not qualified"
+          },
+          "503": {
+            "description": "Compute node unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/audio-processing/batches/preview": {
+      "post": {
+        "summary": "Create immutable selection snapshot; previews expire after one day",
+        "operationId": "audioProcessingPostBatchesPreview",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioProcessingBatch"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid selection or pagination"
+          },
+          "401": {
+            "description": "Administrator session required"
+          },
+          "403": {
+            "description": "CSRF validation required for mutations"
+          },
+          "409": {
+            "description": "Node, model or execution state changed"
+          },
+          "422": {
+            "description": "Runtime or model not qualified"
+          },
+          "503": {
+            "description": "Compute node unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AudioProcessingSelection"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audio-processing/batches/{id}": {
+      "get": {
+        "summary": "Read batch counts and paginated items",
+        "operationId": "audioProcessingGetBatchesId",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioProcessingBatch"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid selection or pagination"
+          },
+          "401": {
+            "description": "Administrator session required"
+          },
+          "403": {
+            "description": "CSRF validation required for mutations"
+          },
+          "409": {
+            "description": "Node, model or execution state changed"
+          },
+          "422": {
+            "description": "Runtime or model not qualified"
+          },
+          "503": {
+            "description": "Compute node unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/audio-processing/batches/{id}/submit": {
+      "post": {
+        "summary": "Idempotently submit a qualified batch",
+        "operationId": "audioProcessingPostBatchesIdSubmit",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioProcessingBatch"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid selection or pagination"
+          },
+          "401": {
+            "description": "Administrator session required"
+          },
+          "403": {
+            "description": "CSRF validation required for mutations"
+          },
+          "409": {
+            "description": "Node, model or execution state changed"
+          },
+          "422": {
+            "description": "Runtime or model not qualified"
+          },
+          "503": {
+            "description": "Compute node unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/audio-processing/batches/{id}/cancel": {
+      "post": {
+        "summary": "Cancel remaining work while preserving completed artifacts",
+        "operationId": "audioProcessingPostBatchesIdCancel",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioProcessingBatch"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid selection or pagination"
+          },
+          "401": {
+            "description": "Administrator session required"
+          },
+          "403": {
+            "description": "CSRF validation required for mutations"
+          },
+          "409": {
+            "description": "Node, model or execution state changed"
+          },
+          "422": {
+            "description": "Runtime or model not qualified"
+          },
+          "503": {
+            "description": "Compute node unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/audio-processing/batches/{id}/retry": {
+      "post": {
+        "summary": "Create a new preview of failed items",
+        "operationId": "audioProcessingPostBatchesIdRetry",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioProcessingBatch"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid selection or pagination"
+          },
+          "401": {
+            "description": "Administrator session required"
+          },
+          "403": {
+            "description": "CSRF validation required for mutations"
+          },
+          "409": {
+            "description": "Node, model or execution state changed"
+          },
+          "422": {
+            "description": "Runtime or model not qualified"
+          },
+          "503": {
+            "description": "Compute node unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "backend": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audio-processing/batches/{id}/items/{song}/cancel": {
+      "post": {
+        "summary": "Cancel one batch member",
+        "operationId": "audioProcessingPostBatchesIdItemsSongCancel",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid selection or pagination"
+          },
+          "401": {
+            "description": "Administrator session required"
+          },
+          "403": {
+            "description": "CSRF validation required for mutations"
+          },
+          "409": {
+            "description": "Node, model or execution state changed"
+          },
+          "422": {
+            "description": "Runtime or model not qualified"
+          },
+          "503": {
+            "description": "Compute node unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "song",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/audio-processing/node": {
+      "get": {
+        "summary": "Inspect the single current node, model and qualified backends",
+        "operationId": "audioProcessingGetNode",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioProcessingNode"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid selection or pagination"
+          },
+          "401": {
+            "description": "Administrator session required"
+          },
+          "403": {
+            "description": "CSRF validation required for mutations"
+          },
+          "409": {
+            "description": "Node, model or execution state changed"
+          },
+          "422": {
+            "description": "Runtime or model not qualified"
+          },
+          "503": {
+            "description": "Compute node unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "refresh",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/audio-processing/model/download": {
+      "post": {
+        "summary": "Explicit model download",
+        "operationId": "audioProcessingPostModelDownload",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid selection or pagination"
+          },
+          "401": {
+            "description": "Administrator session required"
+          },
+          "403": {
+            "description": "CSRF validation required for mutations"
+          },
+          "409": {
+            "description": "Node, model or execution state changed"
+          },
+          "422": {
+            "description": "Runtime or model not qualified"
+          },
+          "503": {
+            "description": "Compute node unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "htdemucs",
+                "htdemucs-openvino"
+              ],
+              "default": "htdemucs"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/audio-processing/model/cancel": {
+      "post": {
+        "summary": "Explicit model cancel",
+        "operationId": "audioProcessingPostModelCancel",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid selection or pagination"
+          },
+          "401": {
+            "description": "Administrator session required"
+          },
+          "403": {
+            "description": "CSRF validation required for mutations"
+          },
+          "409": {
+            "description": "Node, model or execution state changed"
+          },
+          "422": {
+            "description": "Runtime or model not qualified"
+          },
+          "503": {
+            "description": "Compute node unavailable"
+          }
+        }
+      }
+    },
+    "/api/v1/audio-processing/model/test": {
+      "post": {
+        "summary": "Explicit model test",
+        "operationId": "audioProcessingPostModelTest",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid selection or pagination"
+          },
+          "401": {
+            "description": "Administrator session required"
+          },
+          "403": {
+            "description": "CSRF validation required for mutations"
+          },
+          "409": {
+            "description": "Node, model or execution state changed"
+          },
+          "422": {
+            "description": "Runtime or model not qualified"
+          },
+          "503": {
+            "description": "Compute node unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "backend": {
+                    "enum": [
+                      "auto",
+                      "cpu",
+                      "cuda",
+                      "rocm",
+                      "mps",
+                      "xpu",
+                      "rknn",
+                      "openvino"
+                    ]
+                  }
+                },
+                "required": [
+                  "backend"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audio-processing/model/select": {
+      "post": {
+        "summary": "Explicit model select",
+        "operationId": "audioProcessingPostModelSelect",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid selection or pagination"
+          },
+          "401": {
+            "description": "Administrator session required"
+          },
+          "403": {
+            "description": "CSRF validation required for mutations"
+          },
+          "409": {
+            "description": "Node, model or execution state changed"
+          },
+          "422": {
+            "description": "Runtime or model not qualified"
+          },
+          "503": {
+            "description": "Compute node unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "backend": {
+                    "enum": [
+                      "auto",
+                      "cpu",
+                      "cuda",
+                      "rocm",
+                      "mps",
+                      "xpu",
+                      "rknn",
+                      "openvino"
+                    ]
+                  }
+                },
+                "required": [
+                  "backend"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audio-processing/model/import": {
+      "post": {
+        "summary": "Stream fixed raw htdemucs weights (100 MiB) or exact OpenVINO XML/BIN ZIP bundle (128 MiB)",
+        "operationId": "audioProcessingPostModelImport",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid selection or pagination"
+          },
+          "401": {
+            "description": "Administrator session required"
+          },
+          "403": {
+            "description": "CSRF validation required for mutations"
+          },
+          "409": {
+            "description": "Node, model or execution state changed"
+          },
+          "422": {
+            "description": "Runtime or model not qualified"
+          },
+          "503": {
+            "description": "Compute node unavailable"
+          },
+          "413": {
+            "description": "Model-specific manifest upload limit exceeded"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "htdemucs",
+                "htdemucs-openvino"
+              ],
+              "default": "htdemucs"
+            }
+          }
+        ]
       }
     }
   },
@@ -19083,12 +20714,26 @@
               "DORMANT"
             ]
           },
-          "portraitFetchState": {"type":"string","description":"Independent portrait fetch state"},
-          "backgroundFetchState": {"type":"string","description":"Independent background fetch state"},
-          "portraitSource": {"type":"string"},
-          "backgroundSource": {"type":"string"},
-          "portraitAttribution": {"type":"string"},
-          "backgroundAttribution": {"type":"string"},
+          "portraitFetchState": {
+            "type": "string",
+            "description": "Independent portrait fetch state"
+          },
+          "backgroundFetchState": {
+            "type": "string",
+            "description": "Independent background fetch state"
+          },
+          "portraitSource": {
+            "type": "string"
+          },
+          "backgroundSource": {
+            "type": "string"
+          },
+          "portraitAttribution": {
+            "type": "string"
+          },
+          "backgroundAttribution": {
+            "type": "string"
+          },
           "portraitOrigin": {
             "enum": [
               "AUTO",
@@ -19606,6 +21251,15 @@
             ],
             "default": "h264",
             "description": "HEVC/AV1 require matching client capabilities and a sample-verified encoder"
+          },
+          "audioRole": {
+            "type": "string",
+            "enum": [
+              "",
+              "original",
+              "backing"
+            ],
+            "description": "Resolve shared role at negotiation time; generated accompaniment uses backingUrl with the original timeline."
           }
         }
       },
@@ -19660,6 +21314,13 @@
           },
           "media": {
             "type": "object"
+          },
+          "audioRoles": {
+            "$ref": "#/components/schemas/AudioRoles"
+          },
+          "backingUrl": {
+            "type": "string",
+            "description": "Authenticated independent accompaniment; retain initial negotiation value during HLS polling."
           }
         },
         "required": [
@@ -20085,6 +21746,369 @@
               "null"
             ],
             "description": "Persisted tags, technical streams, field coverage, cover hash and embedded lyrics. Never contains WebDAV credentials or download URLs."
+          }
+        }
+      },
+      "AudioRoleJob": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "enum": [
+              "PROBE",
+              "ANALYZE",
+              "SEPARATE"
+            ]
+          },
+          "state": {
+            "enum": [
+              "QUEUED",
+              "RUNNING",
+              "SUCCEEDED",
+              "FAILED",
+              "CANCELLED"
+            ]
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "state"
+        ]
+      },
+      "AudioRoles": {
+        "type": "object",
+        "properties": {
+          "songId": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "UNKNOWN",
+              "CONFIRMED"
+            ]
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "origin": {
+            "enum": [
+              "MANUAL",
+              "AUTO",
+              "SHARED",
+              "SOURCE"
+            ]
+          },
+          "originalId": {
+            "type": "string"
+          },
+          "backingId": {
+            "type": "string"
+          },
+          "streams": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "backingResource": {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "mediaType": {
+                "const": "audio/mp4"
+              },
+              "duration": {
+                "type": "number"
+              }
+            }
+          },
+          "jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AudioRoleJob"
+            }
+          }
+        },
+        "required": [
+          "songId",
+          "state",
+          "revision"
+        ]
+      },
+      "AudioRoleCorrection": {
+        "type": "object",
+        "properties": {
+          "originalId": {
+            "type": "string",
+            "pattern": "^stream:[0-9]{1,3}$"
+          },
+          "backingId": {
+            "type": "string",
+            "pattern": "^stream:[0-9]{1,3}$"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "originalId",
+          "backingId",
+          "revision"
+        ]
+      },
+      "AudioProcessingFilter": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "artist": {
+            "type": "string"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "songId": {
+            "type": "string"
+          },
+          "streams": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          }
+        }
+      },
+      "AudioProcessingSelection": {
+        "type": "object",
+        "properties": {
+          "filter": {
+            "$ref": "#/components/schemas/AudioProcessingFilter"
+          },
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "all": {
+            "type": "boolean"
+          },
+          "backend": {
+            "enum": [
+              "",
+              "cpu",
+              "cuda",
+              "rocm",
+              "mps",
+              "openvino"
+            ]
+          }
+        }
+      },
+      "AudioProcessingBatch": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "PREVIEW",
+              "QUEUED",
+              "COMPLETED",
+              "CANCELLED"
+            ]
+          },
+          "backend": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "counts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "categories": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "batch_id": {
+                  "type": "string"
+                },
+                "song_id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "fingerprint": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "job_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "error": {
+                  "type": "string"
+                },
+                "job_state": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "execution": {
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                }
+              }
+            }
+          },
+          "page": {
+            "type": "integer"
+          },
+          "size": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "total",
+          "counts",
+          "categories"
+        ]
+      },
+      "AudioProcessingSong": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "artists": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "sourceName": {
+            "type": "string"
+          },
+          "relativePath": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "audio": {
+            "$ref": "#/components/schemas/AudioRoles"
+          }
+        }
+      },
+      "AudioProcessingNode": {
+        "type": "object",
+        "properties": {
+          "environment": {
+            "type": "object"
+          },
+          "model": {
+            "type": "object"
+          },
+          "backends": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "selection": {
+            "type": "string"
+          },
+          "selected": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "memoryAvailableBytes": {
+            "type": "integer"
+          },
+          "diskFreeBytes": {
+            "type": "integer"
+          },
+          "operation": {
+            "type": "object"
+          },
+          "instructions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "resourceReady": {
+            "type": "boolean"
+          },
+          "limits": {
+            "type": "object",
+            "properties": {
+              "audioProcessBudgetBytes": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "minimumFreeBytes": {
+                "type": "integer",
+                "format": "int64"
+              }
+            }
           }
         }
       }

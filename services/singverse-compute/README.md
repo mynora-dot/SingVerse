@@ -1,6 +1,6 @@
 # SingVerse Python 计算服务
 
-Python 3.12+ / FastAPI。所有 FFmpeg/ffprobe 执行都由本工程处理，Java 通过内部 HTTP 编排、校验和入库，前端不直连计算服务；Python不访问业务库、不管理业务队列。当前支持本地音视频标签读取，以及实时 HLS/离线兼容版本、六类硬件编码适配。已增加按素材试跑的硬解、零拷贝、GPU 色调映射与 DV P5/P8 转 SDR；模型任务尚未实现；详见[转码说明](../../docs/transcoding.md)。
+Python 3.12+ / FastAPI。所有 FFmpeg/ffprobe 执行都由本工程处理，Java 通过内部 HTTP 编排、校验和入库，前端不直连计算服务；Python不访问业务库、不管理业务队列。当前支持本地音视频标签读取，以及实时 HLS/离线兼容版本、六类硬件编码适配。已增加按素材试跑的硬解、零拷贝、GPU 色调映射与 DV P5/P8 转 SDR；已支持可选本地 htdemucs 原唱识别与离线伴奏分离；详见[转码说明](../../docs/transcoding.md)。
 
 ## 运行与验证
 
@@ -116,3 +116,151 @@ docker compose -f compose.compute.yaml exec -T singverse-compute cat /run/singve
 结果包含 tags、technical、cover（仅内部传输的有界 Base64）、lyrics、字段覆盖状态、提取器版本及统计。封面最大 2 MB、歌词最大 256 KiB，Java 校验和保存本地衍生文件，Python 不写业务库。普通歌词与同步歌词保留原格式；SYLT 帧时间不误标为毫秒。MP3/FLAC/M4A/MP4/OGG/Opus/MKV 的常见结构纳入测试，未知结构允许部分完成。远程读取需要 Range 支持，忽略范围的来源不会降级完整下载。
 
 保留 `/internal/v1/media/tags` 的本地兼容行为；旧文档中“WebDAV 不读取内容”适用于未启用远程提取的来源。运行 `make compute-setup` 安装锁定的 Mutagen 1.47.0，再运行 `make compute-check`；新增测试使用本机随机端口、临时音视频、尾部 MP4 索引和 MKV 附件，不连接真实网盘。
+
+## 原唱识别与伴奏分离
+
+可选模型运行时固定为 Demucs 4.0.1、torch/torchaudio 2.5.1；CPU依赖见 `requirements-audio.lock`，Linux x86_64 CUDA 12.4 / ROCm 6.2 分别见 `requirements-audio-cuda.lock` / `requirements-audio-rocm.lock`。原生节点先执行 `make compute-setup`，CPU/Mac可用 `make compute-audio-setup`（同时显式下载模型到 `.tools/demucs-htdemucs`）；CUDA/ROCm分别执行 `make compute-audio-cuda-setup` / `make compute-audio-rocm-setup`（仅安装环境）。节点不能在HTTP请求中安装Python依赖或驱动。
+
+管理端“曲库 → 原唱与伴奏 → 节点与模型”可显式下载官方权重到当前节点，也可导入官方原始 `.th` 文件（不是压缩包或任意PyTorch模型），上限100MiB。固定文件大小84,141,911字节及完整SHA-256校验通过后，自动写入 `htdemucs.yaml` 并原子安装；没有推理任务会隐式下载权重。断网、取消、摘要错误或节点重启均保留已有模型；目录内容冲突时须管理员先保留或移动旧目录。
+
+原生节点设置 `COMPUTE_AUDIO_MODEL_REPO` 为模型目录绝对路径，且父目录预先存在并可写；安装到已有只读目录时可正常使用预置模型，但不能通过网页下载/导入。下载完成还需“重新检测环境 → 对所需后端执行模型试跑 → 自动选择或指定后端”。试跑使用8秒合成音，只验证执行、声道、时间线及数值有效性，不能代替真实歌曲音质和长曲验收。未通过环境与模型试跑不声明识别/分离能力，探测和人工纠正仍可用。
+
+- Java 提交 `/internal/v1/audio-roles/tasks`，`mode=PROBE|ANALYZE|SEPARATE`，沿用内部 Bearer、只读根目录及 WebDAV 授权回源。稳定 UUID 绑定输入和模式；查询、取消、读取及释放产物均在该任务路径下。
+- ANALYZE 只接受两条源音轨。全曲不足 60 秒、两个 20 秒片段证据不一致、两轨都有人声/都近似伴奏、标签冲突均保留 UNKNOWN。高置信使用两片段的人声与输入 RMS 比例及两轨差异，不能视为已校准的概率；阈值仍需真实歌曲语料验证。立体声左右声道不会被当作两条音轨。
+- SEPARATE 仅对单音轨执行，保持原始时间线的前置静音和尾部填充，输出独立 AAC M4A；校验起点、时长、体积与 SHA-256。临时工作目录、取消/失败产物清理；重启后未完成任务报告 NODE_RESTARTED，Java 展示失败并允许管理员重试。
+- 音频任务一次一个，默认 CPU 线程 2、进程 RSS 上限 4 GiB（`COMPUTE_AUDIO_THREADS`、`COMPUTE_AUDIO_MEMORY_BYTES`），共享磁盘预算及最小空余限制，超时 2 小时。实时播放先终止音频任务，再重试获取执行容量；音频任务不能进入实时预留期间。compute被抢占任务显示 CANCELLED / REALTIME_PREEMPTED，Java记录为失败，批量页面可显式重试；不会在执行中静默切换到CPU。
+- Java 校验下载的产物后保存至自己的衍生目录，确认成功后释放 compute 副本；未收到确认的 compute 音频在后续任务回收时保留最长一天。不要把衍生目录放入原始媒体目录。
+
+Compose默认不安装音频运行环境或下载权重，但已提供持久卷 `singverse-audio-models`，默认模型目录 `/var/lib/singverse-models/htdemucs`。CPU部署使用 `compose.audio-cpu.yaml`，设置 `COMPUTE_AUDIO_RUNTIME=cpu` 和 `COMPUTE_CONTAINER_MEMORY_LIMIT=6g` 后重建compute；随后从网页下载模型和试跑。原有只读模型挂载可通过override继续使用。默认2g容器不满足默认4GiB音频预算，不会因识别到CPU就启用任务。Java的 `AUDIO_DERIVED_PATH` 为持久卷 `/data/audio-roles`；原媒体卷只读。
+
+### Mac 原生伴奏节点
+
+现有 Docker 应用按根 README 的 `compose.compute.macos.yaml` 连接本机节点；音频和 VideoToolbox 共用同一个原生进程。安装及重新加载：
+
+```sh
+make compute-audio-setup
+services/singverse-compute/.venv/bin/python scripts/macos-compute.py restart
+```
+
+启动器将固定模型目录 `.tools/demucs-htdemucs` 传入节点，默认音频预算 4096MiB；内存较紧张时可显式 `restart --audio-memory-mib 2048`，后续重启保留预算。本机 M2 的 8／60 秒验收使用 2048MiB；这不是任意歌曲的内存保证。模型安装仍是显式操作，网页也可下载或导入。进入“曲库 → 原唱与伴奏 → 节点与模型”，对 CPU 和 MPS 分别试跑；自动选择优先使用通过验证的 MPS。升级代码或运行环境后重新试跑。
+
+`mps_audio.py` 仅对超长一维卷积及转置卷积进行分块，按原始 stride／padding／dilation 保留感受野，转置卷积累加重叠贡献并只加一次偏置。没有缩短模型片段、变更权重或开启 PyTorch CPU 回退。频谱处理仍由 Demucs 在 CPU 完成，任务记录 `mps+cpu-stft`。原生节点忙碌及 RAM 暂时不足返回可重试状态，Java 保留后续批量成员排队。
+
+本机复验 `make macos-audio-check`，包含卷积数值回归和实际 MPS／CPU 分离对照；要求已安装固定模型及原生 Apple GPU 访问。完整 Java 批量入库检查使用已构建的 JAR、随机端口与临时 SQLite，不触碰当前曲库：
+
+```sh
+JAVA_HOME=/absolute/path/to/jdk-21-or-newer \
+PATH="$PWD/.tools/jellyfin-ffmpeg/bin:$PWD/.tools/jellyfin-ffmpeg:$PATH" \
+SINGVERSE_TEST_MACOS_APP_JAR="$PWD/services/singverse-java-backend/target/singverse-java-backend-0.1.0-SNAPSHOT.jar" \
+SINGVERSE_TEST_MPS_MODEL_REPO="$PWD/.tools/demucs-htdemucs" \
+  services/singverse-compute/.venv/bin/python -m unittest discover \
+  -s services/singverse-compute/tests/integration -p test_macos_app.py -v
+```
+
+CI 可手动启用 `mps_model_smoke`，执行器须实际暴露 Apple GPU；普通 macOS 虚拟执行器不保证可用。本次仅本机验收通过，未运行远程 GPU CI。真实歌声音质、数分钟以上长曲及其他 Mac 仍须分别验收。
+
+### Linux GPU容器与设备验收
+
+- NVIDIA 3070/A3000：宿主安装兼容驱动和NVIDIA Container Toolkit，然后使用 `docker compose -f compose.app.yaml -f compose.audio-cuda.yaml build singverse-compute`，再用同样的两个配置文件启动。override安装固定CUDA运行环境并申请一张GPU，不安装宿主驱动。
+- 兼容ROCm的AMD GPU：先配置宿主驱动、`/dev/kfd`、`/dev/dri`和实际render/video组数字ID（`SINGVERSE_RENDER_GID` / `SINGVERSE_VIDEO_GID`），使用 `compose.audio-rocm.yaml` 代替CUDA override。8845HS/255HS按节点实际GPU标识检测，不承诺集显支持，不设置伪造GPU标识。
+- Intel 8400T/N100：提供CPU路径；QSV/VA-API是编解码功能。新增独立OpenVINO适配器与Intel官方转换模型，但这两种设备仍需分别试跑及效果验收；PyTorch XPU路径明确为 `MODEL_UNSUPPORTED`。
+- RK3566：Linux ARM64 CPU路径需实际依赖安装成功和内存充足；没有合格RKNN转换模型，NPU明确为 `MODEL_UNSUPPORTED`。不能凭板卡名称宣布NPU可用。
+- Apple M2：macOS原生CPU/MPS，Docker内不开放MPS。关闭PyTorch隐式CPU算子回退；Demucs自身的频谱变换明确在CPU执行，网络使用MPS，页面及任务标记 `mps+cpu-stft`。固定运行时的超长一维卷积通过保留重叠边界的 GPU 分块处理；其他算子不支持时仍明确失败，可选择通过试跑的CPU。
+
+CPU/CUDA/ROCm/MPS的执行选择及试跑门禁已接入；M2 原先的“Output channels > 65536”限制已通过数学等价的卷积分块解决，本机 2GiB 预算下资格试跑及 8／60 秒分离通过。Intel GPU和RKNN转换/音质验收尚未完成，不把硬件识别或待适配状态算作加速实现。各型号的长曲、音质、内存和速度仍须逐台验证。运行环境、内核/驱动、设备或模型版本改变后旧试跑凭据失效；可用后端才进入自动选择，默认顺序CUDA → ROCm → OpenVINO → MPS → CPU。每个任务保存实际后端与模型版本；检查RAM、磁盘及CUDA/ROCm可用显存（至少2GiB），仍可能因模型/歌曲峰值资源不足失败。
+
+实际模型冒烟测试（只验证执行链路，合成音不是音质基准）：
+
+```sh
+SINGVERSE_TEST_AUDIO_MODEL_REPO="$PWD/.tools/demucs-htdemucs" \
+  services/singverse-compute/.venv/bin/python -m unittest discover \
+  -s services/singverse-compute/tests/integration -p test_audio_model.py -v
+```
+
+原生 CI 默认不下载模型；手动触发 `singverse-compute-native` 并启用 `audio_model_smoke` 才执行真实模型测试。其他架构与 NAS 内存/耗时仍需分别验收。
+
+## 分设备计算镜像（CPU／CUDA／ROCm／OpenVINO）
+
+镜像按推理后端划分，不按处理器型号命名。统一 Java 和 compute 发行版本：
+
+| 标签后缀 | 架构 | 环境 | 设备验收状态 |
+|---|---|---|---|
+| `-cpu` | linux/amd64、linux/arm64 | Torch 2.5.1 CPU、Demucs 4.0.1 | ARM64 镜像本次构建通过；各设备音乐效果与长曲分别记录 |
+| `-cuda` | linux/amd64 | Torch 2.5.1+cu124 | 3070／A3000 待真机验证 |
+| `-rocm` | linux/amd64 | Torch 2.5.1+rocm6.2 | AMD APU 按实际 GPU 标识与运行时验证，不能由型号推定兼容 |
+| `-openvino` | linux/amd64 | OpenVINO 2025.4.0、CPU Torch 2.5.1、固定 Intel OpenCL 用户态库 | N100／8400T 分别待真机验证 |
+
+CPU 镜像由 Docker 清单选择 amd64／arm64，GPU 后端需要显式选择。RKNN 没有合格转换模型，因此不发布可用的 `-rknn` 镜像；RK3566 可验证 ARM64 CPU，资源不足时阻止任务。M2 使用 macOS 原生环境及下述 MPS 分块适配器。视频转码后端与 AI 推理后端独立检测，QSV 可用不等于 OpenVINO 可用。
+
+### 本地构建与预构建镜像
+
+从源码在实际节点构建，例如 Intel GPU 独立节点：
+
+```sh
+COMPUTE_MEDIA_PATH=/absolute/path/to/media COMPUTE_RENDER_GID=109 \
+  docker compose -f compose.compute.yaml -f compose.audio-openvino.yaml up -d --build
+```
+
+`109` 只是示例，使用宿主 `/dev/dri/renderD128` 的实际组 ID。应用内节点把 `compose.compute.yaml` 换成 `compose.app.yaml`；CPU 使用 `compose.audio-cpu.yaml`，NVIDIA 使用 `compose.audio-cuda.yaml`，AMD 使用 `compose.audio-rocm.yaml`。AMD 配置实际 `SINGVERSE_RENDER_GID` 与 `SINGVERSE_VIDEO_GID`。这些 override 默认容器预算 6g；音频进程默认预算 4GiB，不能把默认轻量节点的 2g 限制用于分离任务。媒体只读，模型持久卷 `singverse-audio-models` 与任务／编译缓存卷 `singverse-transcode-cache` 独立。
+
+公开正式 release 工作流 `.github/workflows/singverse-compute-images.yml` 构建并发布 `ghcr.io/<仓库所有者>/singverse-compute:<版本>-<后端>`。版本必须与 Java POM 对应；PR 和手动工作流只构建检查，发布需正式 release。仓库中有工作流不代表镜像已经在注册表发布，也不代表 GPU 已验收。
+
+使用已经发布的镜像时，设置完整固定标签并禁止本地构建：
+
+```sh
+COMPUTE_IMAGE=ghcr.io/<仓库所有者>/singverse-compute:<版本>-openvino \
+COMPUTE_MEDIA_PATH=/absolute/path/to/media COMPUTE_RENDER_GID=109 \
+  docker compose -f compose.compute.yaml -f compose.audio-openvino.yaml pull singverse-compute
+COMPUTE_IMAGE=ghcr.io/<仓库所有者>/singverse-compute:<版本>-openvino \
+COMPUTE_MEDIA_PATH=/absolute/path/to/media COMPUTE_RENDER_GID=109 \
+  docker compose -f compose.compute.yaml -f compose.audio-openvino.yaml up -d --no-build
+```
+
+尖括号参数必须先替换；也可把相同配置写入部署目录的 `.env`，不要把凭据写进公开文件。`docker-bake.hcl` 提供矩阵，`make compute-images` 构建全部变体。单后端本机示例：
+
+```sh
+VERSION=0.1.0-SNAPSHOT docker buildx bake -f docker-bake.hcl cpu --set cpu.platforms=linux/arm64 --load
+```
+
+NVIDIA 需要宿主驱动和 NVIDIA Container Toolkit；ROCm 需要兼容内核驱动、设备和对应运行库。OpenVINO 镜像固定用户态 OpenCL 包，不修改宿主驱动；N100 与老核显的运行库、算子和资源需求须分别试跑。镜像没有 Docker socket，不会从网页变更容器配置。
+
+仅支持单个 Compose 文件的部署工具，可以把 override 中 `singverse-compute` 的 `image`、`build.target`、`mem_limit`、`devices`、`group_add` 或 NVIDIA `deploy.resources` 合并到基础服务。例如 OpenVINO：
+
+```yaml
+services:
+  singverse-compute:
+    image: ghcr.io/<仓库所有者>/singverse-compute:<版本>-openvino
+    mem_limit: 6g
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128
+    group_add:
+      - '109' # 替换为实际 render 组 ID
+    # 其余环境、认证、只读媒体与持久卷照基础 Compose 保留。
+```
+
+离线镜像交付：联网设备先拉取目标架构的固定镜像，`docker save -o compute-image.tar <完整镜像标签>`，复制到目标设备后 `docker load -i compute-image.tar`，再按同一设备配置 `up -d --no-build --pull never`。导出的镜像仅适用于已拉取的架构；模型仍需单独导入。
+
+### Intel 官方转换模型和离线包
+
+`htdemucs` 保持基准模型。`htdemucs-openvino` 使用 Intel 官方仓库固定修订 `efb3d2bc54f93899b13b72b12c57001e19f09ae2` 下 `htdemucs_v4/htdemucs_fwd.xml` 与 `.bin`；文件大小、SHA-256、采样率和输出源顺序显式记录在 `application/audio_catalog.py`。神经网络在指定 `GPU.*` 执行，STFT／逆变换／重叠拼接复用 Demucs 4.0.1 的 CPU 流程；不使用 `AUTO`／`HETERO` 隐式回退。编译缓存按模型摘要、环境指纹及构建身份隔离，不与权重混用。
+
+管理员可在「原唱与伴奏 → 节点与模型」选择模型后下载，或在有网络的源码设备执行：
+
+```sh
+services/singverse-compute/.venv/bin/python scripts/setup-audio-model.py \
+  --model htdemucs-openvino --bundle /absolute/path/to/htdemucs-openvino.zip
+```
+
+ZIP 根目录必须恰好包含上述 XML／BIN 两个文件。基准模型继续接受原始 `.th`。Java 和 compute 均按固定模型设置上传上限（基准 100MiB，OpenVINO 128MiB），拒绝多余成员、路径、符号链接、错误大小和摘要；临时目录验证后原子启用，旧的有效模型保留。只读预置目录继续可用，网页不执行 pip、安装驱动或隐式下载。
+
+更换镜像、模型、运行库或设备会使旧试跑资格失效。仅通过当前环境试跑的后端进入自动选择，历史任务保存构建、模型摘要、运行库、环境指纹及实际设备。CPU 重试必须有独立校验过的基准模型与足够资源。
+
+显式本机 OpenVINO 流程检查（`CPU` 只验证转换流程，不授予 Intel GPU 资格）：
+
+```sh
+SINGVERSE_TEST_OPENVINO_MODEL_REPO=/absolute/path/to/.tools/htdemucs-openvino \
+  services/singverse-compute/.venv/bin/python -m unittest discover \
+  -s services/singverse-compute/tests/integration -p test_openvino_audio.py -v
+```
+
+官方参考：Immich 的硬件镜像与远程 ML 文档、Intel `demucs-openvino` 模型库。镜像构建、合成音试跑不替代真实歌曲质量、长曲、NAS 和对应 GPU 真机验收。

@@ -16,6 +16,7 @@ services:
       WEBDAV_METADATA_PATH: /data/metadata/webdav
       METADATA_CACHE_PATH: /data/metadata/covers
       TRANSCODE_VERSION_PATH: /data/transcoding
+      AUDIO_DERIVED_PATH: /data/audio-roles
       SINGVERSE_AUTH_KEY_FILE: /secrets/master.key
       SINGVERSE_PUBLIC_ORIGIN: '${SINGVERSE_PUBLIC_ORIGIN:-}'
       SINGVERSE_TV_RELEASE_DIRECTORY: '${SINGVERSE_TV_RELEASE_DIRECTORY:-}'
@@ -29,19 +30,27 @@ services:
     stop_grace_period: 20s
 
   singverse-compute:
-    image: singverse-compute:local
+    image: '${COMPUTE_IMAGE:-singverse-compute:local}'
     build:
       context: .
       dockerfile: services/singverse-compute/Dockerfile
+      target: '${COMPUTE_AUDIO_RUNTIME:-base}'
+      args:
+        SINGVERSE_VERSION: '${SINGVERSE_VERSION:-0.1.0-SNAPSHOT}'
+        SOURCE_REVISION: '${SINGVERSE_SOURCE_REVISION:-local}'
     environment:
       COMPUTE_AUTH_TOKEN_FILE: /run/singverse-compute/token
       COMPUTE_MEDIA_ROOTS: /media
       COMPUTE_JAVA_ORIGIN: http://singverse-java-backend:8080
       COMPUTE_PROCESS_MEMORY_BYTES: '${COMPUTE_PROCESS_MEMORY_BYTES:-1073741824}'
       COMPUTE_TRANSCODE_CONCURRENCY: '${COMPUTE_TRANSCODE_CONCURRENCY:-1}'
+      COMPUTE_AUDIO_MODEL_REPO: '${COMPUTE_AUDIO_MODEL_REPO:-/var/lib/singverse-models/htdemucs}'
+      COMPUTE_AUDIO_MEMORY_BYTES: '${COMPUTE_AUDIO_MEMORY_BYTES:-4294967296}'
+      COMPUTE_AUDIO_THREADS: '${COMPUTE_AUDIO_THREADS:-2}'
     volumes:
       - singverse-compute-auth:/run/singverse-compute
       - singverse-transcode-cache:/var/cache/singverse-transcode
+      - singverse-audio-models:/var/lib/singverse-models
       - singverse-media:/media:ro
     restart: unless-stopped
     mem_limit: '${COMPUTE_CONTAINER_MEMORY_LIMIT:-2g}'
@@ -68,3 +77,4 @@ volumes:
   singverse-compute-auth:
   singverse-media:
   singverse-transcode-cache:
+  singverse-audio-models:

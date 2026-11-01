@@ -161,7 +161,7 @@ public class WebDavShareJobs {
                     for(var row:page){String song=text(row,"song_id");
                         var item=json.createObjectNode();String path=text(row,"relative_path");WebDavShareService.validatePath(path);item.put("path",path);if(row.get("file_size") instanceof Number n)item.put("size",n.longValue());
                         JsonNode result=row.get("result_json")==null?json.createObjectNode():json.readTree(text(row,"result_json"));var data=item.putObject("metadata");
-                        for(String key:List.of("tags","technical","lyrics","fields","extractorVersion","evidence","origins","aliases"))if(result.has(key))data.set(key,result.get(key));
+                        for(String key:List.of("tags","technical","lyrics","fields","extractorVersion","evidence","origins","aliases","audioRoles"))if(result.has(key))data.set(key,result.get(key));
                         if(!data.has("tags")){var parsed=json.readTree(text(row,"filename_json"));var tags=data.putObject("tags");tags.put("title",parsed.path("title").asText(""));tags.set("artists",parsed.path("artists").isArray()?parsed.path("artists"):json.createArrayNode());data.put("evidence","FILENAME");}
                         String hash=result.path("cover").asText("");String asset=null;
                         if(hash.matches("[a-f0-9]{64}")){data.put("coverRef",hash);if(!assets.has(hash)&&mapper.asset(args("id",id,"hash",hash)).isEmpty())asset=Base64.getEncoder().encodeToString(metadata.sharedCover(hash));}

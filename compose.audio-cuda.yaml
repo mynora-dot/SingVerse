@@ -1,0 +1,14 @@
+# Linux x86_64 with a compatible NVIDIA driver and NVIDIA Container Toolkit.
+services:
+  singverse-compute:
+    image: '${COMPUTE_IMAGE:-singverse-compute:local-cuda}'
+    build:
+      target: cuda
+    mem_limit: '${COMPUTE_CONTAINER_MEMORY_LIMIT:-6g}'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

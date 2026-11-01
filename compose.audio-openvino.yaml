@@ -1,0 +1,11 @@
+# Intel GPU inference is independent of QSV video decoding.
+services:
+  singverse-compute:
+    image: '${COMPUTE_IMAGE:-singverse-compute:local-openvino}'
+    build:
+      target: openvino
+    mem_limit: '${COMPUTE_CONTAINER_MEMORY_LIMIT:-6g}'
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128
+    group_add:
+      - '${COMPUTE_RENDER_GID:?Set COMPUTE_RENDER_GID to the host render device group ID}'

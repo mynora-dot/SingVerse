@@ -34,6 +34,7 @@ class SQLiteConnectionTest {
     @Autowired org.apache.ibatis.session.SqlSessionFactory sessions;
     @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     @Autowired com.mynora.singverse.auth.repository.AuthMapper authMapper;
+    @Autowired com.mynora.singverse.media.audio.AudioProcessingMapper audio;
 
     @Test
     void defaultProfileConnectsAndMigratesAccountMediaSourceAndFilenameConfigurationTables() throws Exception {
@@ -49,7 +50,7 @@ class SQLiteConnectionTest {
                                     + " LIKE 'sqlite_%'",
                                 String.class))
                 .containsExactlyInAnyOrder(
-                        "schema_migrations", "media_metadata_file", "webdav_share_lock", "webdav_share_job", "webdav_share_entry", "webdav_share_asset", "webdav_share_receipt", "webdav_metadata_source", "webdav_resource", "webdav_metadata_task", "webdav_access_budget",
+                        "audio_batch", "audio_batch_item", "media_audio_role", "media_audio_job", "media_audio_import", "schema_migrations", "media_metadata_file", "webdav_share_lock", "webdav_share_job", "webdav_share_entry", "webdav_share_asset", "webdav_share_receipt", "webdav_metadata_source", "webdav_resource", "webdav_metadata_task", "webdav_access_budget",
                         "auth_account",
                         "auth_token",
                         "auth_recovery",
@@ -107,6 +108,26 @@ class SQLiteConnectionTest {
         });
         assertThat(authMapper.account()).isEqualTo(before);
         assertThat(authMapper.countRecovery()).isEqualTo(codesBefore);
+    }
+
+    @Test
+    void audioBatchSnapshotAndCancellationSurviveMapperReloadAndRespectTerminalStates(){
+        var transaction=new org.springframework.transaction.support.TransactionTemplate(transactions);
+        transaction.executeWithoutResult(status->{
+            audio.insertBatch("audio-test","cpu",1);
+            audio.insertItem(java.util.Map.of("batch","audio-test","song","fixture","fingerprint","current","title","测试歌曲","category","UNPROBED","state","PENDING","now",1));
+            assertThat(audio.start("audio-test",2)).isEqualTo(1);assertThat(audio.start("audio-test",3)).isZero();
+            assertThat(audio.items("audio-test",10,0)).hasSize(1);
+            assertThat(audio.pending()).anyMatch(item->"audio-test".equals(item.get("batch_id")));
+            audio.updateItem("audio-test","fixture","SUCCEEDED","job","",4);
+            assertThat(audio.updateItem("audio-test","fixture","CANCELLED","job","",5)).isZero();
+            audio.cancel("audio-test",6);audio.skipCancelled("audio-test",6);
+            assertThat(audio.item("audio-test","fixture")).containsEntry("state","SUCCEEDED");
+            assertThat(audio.batch("audio-test")).containsEntry("state","CANCELLED");
+            assertThat(audio.counts("audio-test")).hasSize(1);
+            status.setRollbackOnly();
+        });
+        assertThat(audio.batch("audio-test")).isNull();
     }
 
 }

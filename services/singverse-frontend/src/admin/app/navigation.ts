@@ -7,6 +7,7 @@ export const navigationGroups = [
     id: 'library', label: '曲库',
     children: [
       { path: '/library/songs', label: '全部歌曲', icon: Headset },
+      { path: '/library/audio-processing', label: '原唱与伴奏', icon: Headset },
       { path: '/library/artists', label: '歌手库', icon: Microphone },
       { path: '/library/playlists', label: '歌单管理', icon: Collection },
       { path: '/library/classification', label: '歌曲分类', icon: CollectionTag },

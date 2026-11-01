@@ -6,6 +6,9 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 @Configuration
 public class TranscodeScheduling {
     @Bean
+    ThreadPoolTaskScheduler audioScheduler() { var scheduler=new ThreadPoolTaskScheduler();scheduler.setPoolSize(1);scheduler.setThreadNamePrefix("audio-");return scheduler; }
+
+    @Bean
     ThreadPoolTaskScheduler transcodeScheduler() {
         var scheduler = new ThreadPoolTaskScheduler();
         scheduler.setPoolSize(1);

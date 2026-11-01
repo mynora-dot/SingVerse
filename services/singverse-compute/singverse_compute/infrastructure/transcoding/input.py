@@ -15,7 +15,7 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 @contextmanager
-def remote_input(origin, reference, token):
+def remote_input(origin, reference, token, resource='transcode-input'):
     parsed = urlsplit(origin)
     try:
         addresses = socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == 'https' else 80), type=socket.SOCK_STREAM)
@@ -41,7 +41,7 @@ def remote_input(origin, reference, token):
             if self.headers.get('Range'):
                 headers['Range'] = self.headers['Range']
             try:
-                request = Request(origin + '/api/v1/internal/transcode-input/' + reference,
+                request = Request(origin + '/api/v1/internal/' + resource + '/' + reference,
                                   headers=headers, method='HEAD' if head else 'GET')
                 with build_opener(NoRedirect()).open(request, timeout=15) as response:
                     self.send_response(response.status)

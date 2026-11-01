@@ -93,6 +93,7 @@ class AuthHttpTest {
 
     @Test
     void csrfAndSessionAreEnforcedAndLogoutRevokes() throws Exception {
+        assertThat(request("/api/v1/audio-processing/batches","GET",null,false).statusCode()).isEqualTo(401);
         assertThat(request("/api/v1/system/parameters", "GET", null, false).statusCode())
                 .isEqualTo(401);
         assertThat(
@@ -105,6 +106,7 @@ class AuthHttpTest {
                 .isEqualTo(403);
         var logged = login();
         assertThat(logged.statusCode()).isEqualTo(200);
+        assertThat(request("/api/v1/audio-processing/batches/preview","POST",Map.of("ids",List.of("fixture")),false).statusCode()).isEqualTo(403);
         assertThat(body(logged).get("state").asText()).isEqualTo("authenticated");
         assertThat(logged.headers().allValues("Set-Cookie"))
                 .anyMatch(
@@ -434,6 +436,8 @@ class AuthHttpTest {
         for (var controller :
                 List.of(
                         AuthController.class,
+                        com.mynora.singverse.media.audio.AudioRoleController.class,
+                        com.mynora.singverse.media.audio.AudioProcessingController.class,
                         com.mynora.singverse.ai.AiController.class,
                         com.mynora.singverse.compute.ComputeNodeController.class,
                         com.mynora.singverse.media.classification.ClassificationController.class,

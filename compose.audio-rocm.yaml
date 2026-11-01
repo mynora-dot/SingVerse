@@ -1,0 +1,13 @@
+# Linux x86_64 with a ROCm-compatible GPU/kernel. Do not force unsupported GPU identifiers.
+services:
+  singverse-compute:
+    image: '${COMPUTE_IMAGE:-singverse-compute:local-rocm}'
+    build:
+      target: rocm
+    mem_limit: '${COMPUTE_CONTAINER_MEMORY_LIMIT:-6g}'
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - '${SINGVERSE_RENDER_GID:?Set the host render group numeric ID}'
+      - '${SINGVERSE_VIDEO_GID:?Set the host video group numeric ID}'

@@ -66,6 +66,11 @@ class PlaybackOptions(private val context: Context, private val player: ExoPlaye
             PlayerTrack(groupIndex,index,group.type,listOfNotNull(f.label, f.language?.takeUnless { it=="und" },f.sampleMimeType, f.channelCount.takeIf { it>0 }?.let { "$it 声道" }).joinToString(" · ").ifBlank { "轨道 ${index+1}" },group.isTrackSelected(index),f.channelCount,sourceId)
         } }
     }
+    fun selectSource(sourceId: String): Boolean {
+        val target=tracks.firstOrNull { it.type==C.TRACK_TYPE_AUDIO && it.sourceId==sourceId } ?: return false
+        if(!target.selected)selectTrack(target)
+        return true
+    }
     fun selectTrack(track: PlayerTrack) {
         val group=player.currentTracks.groups.getOrNull(track.group) ?: return
         player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(track.type,false).setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup,track.index)).build()
@@ -102,6 +107,18 @@ class PlaybackOptions(private val context: Context, private val player: ExoPlaye
         val selected=tracks.firstOrNull { it.type==C.TRACK_TYPE_AUDIO && it.selected } ?: return ""
         return if(selected.sourceId.isNotBlank()) "${selected.sourceId}|$channel" else "${selected.group}:${selected.index}:$channel"
     }
+    fun applyShared(value: JSONObject) {
+        roleOriginal=value.optString("originalId").takeIf { it.isNotBlank() }?.let { "$it|STEREO" } ?: ""
+        if(roleOriginal.isBlank() && value.optJSONArray("streams")?.length()==1)roleOriginal="${value.getJSONArray("streams").getJSONObject(0).optString("id")}|STEREO"
+        roleBacking=value.optString("backingId").takeIf { it.isNotBlank() }?.let { "$it|STEREO" } ?: ""
+        if(value.has("backingResource"))roleBacking="generated"
+        if(value.optJSONArray("streams")?.length()==1){
+            val localOriginal=prefs.getString("original:$songKey","").orEmpty();val localBacking=prefs.getString("backing:$songKey","").orEmpty()
+            if(isChannelRole(localOriginal))roleOriginal=localOriginal
+            if(isChannelRole(localBacking))roleBacking=localBacking
+        }
+    }
+    fun isChannelRole(role: String)=listOf("|LEFT","|RIGHT",":LEFT",":RIGHT").any { role.endsWith(it) }
     fun markRole(original: Boolean){val value=currentSelection();if(value.isBlank())return;if(original)roleOriginal=value else roleBacking=value;prefs.edit().putString("${if(original) "original" else "backing"}:$songKey",value).apply()}
     fun useRole(original: Boolean): Boolean {
         val role=if(original)roleOriginal else roleBacking

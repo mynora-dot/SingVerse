@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 /** Portable snapshots contain relative identities, never source credentials or signed URLs. */
 @Service
 public class WebDavShareService {
+    @org.springframework.beans.factory.annotation.Autowired private com.mynora.singverse.media.audio.AudioRoleService audioRoles;
     public static final int LIMIT=32*1024*1024;
     private final WebDavMetadataMapper mapper;
     private final WebDavMetadataService metadata;
@@ -72,7 +73,7 @@ public class WebDavShareService {
             var parsed=new KtvFilenameParser().preview(path.substring(path.lastIndexOf('/')+1),profile.rules());
             Long size=item.has("size")?item.path("size").longValue():null;if(item.has("size")&&(!item.path("size").isIntegralNumber()||!item.path("size").canConvertToLong())||size!=null&&size<0)throw failure(400,"文件大小无效");
             songs.insert(new MediaSongRepository.Stored(id,sourceId,path,com.mynora.singverse.auth.crypto.AuthCrypto.hash(path),size,null,Instant.now().toString(),profile.id(),profile.revision(),parsed.selectedRule()==null?null:parsed.selectedRule().id(),json.writeValueAsString(parsed.result()),parsed.result().needsReview()));
-            metadata.installShared(id,snapshot);added++;
+            metadata.installShared(id,snapshot);if(snapshot.has("audioRoles"))audioRoles.importClaim(id,snapshot.get("audioRoles"));added++;
         }
         return Map.of("imported",added,"skipped",skipped);
     }

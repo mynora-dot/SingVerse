@@ -1,0 +1,5 @@
+# Linux amd64 GPU runtime; the CPU Torch pipeline supplies STFT and explicit CPU retry.
+-r requirements-audio.lock
+openvino==2025.4.0
+openvino-telemetry==2025.2.0
+packaging==25.0

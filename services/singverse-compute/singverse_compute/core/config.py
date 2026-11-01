@@ -22,6 +22,9 @@ class Settings:
     minimum_free_bytes: int = 2 * 1024**3
     lease_seconds: int = 120
     retention_seconds: int = 600
+    audio_model_repo: Path | None = None
+    audio_memory_bytes: int = 4 * 1024**3
+    audio_threads: int = 2
 
     @classmethod
     def from_env(cls):
@@ -32,6 +35,9 @@ class Settings:
         cache = os.environ.get('COMPUTE_TRANSCODE_ROOT', '')
         if cache and not Path(cache).is_absolute():
             raise ValueError('Transcode directory must be absolute')
+        audio_repo = os.environ.get('COMPUTE_AUDIO_MODEL_REPO', '')
+        if audio_repo and not Path(audio_repo).is_absolute():
+            raise ValueError('Audio model repository must be absolute')
         origin = os.environ.get('COMPUTE_JAVA_ORIGIN', '').rstrip('/')
         from urllib.parse import urlsplit
         parsed = urlsplit(origin)
@@ -43,10 +49,16 @@ class Settings:
         free_bytes = int(os.environ.get('COMPUTE_MINIMUM_FREE_BYTES', str(2 * 1024**3)))
         if not 1 <= concurrency <= 16 or cache_bytes <= 0 or free_bytes < 0 or memory_bytes < 64*1024**2:
             raise ValueError('Invalid transcode resource budget')
+        audio_memory = int(os.environ.get('COMPUTE_AUDIO_MEMORY_BYTES', str(4 * 1024**3)))
+        audio_threads = int(os.environ.get('COMPUTE_AUDIO_THREADS', '2'))
+        if audio_memory < 512*1024**2 or not 1 <= audio_threads <= 8:
+            raise ValueError('Invalid audio resource budget')
         return cls(tuple(root.resolve() for root in roots), Path(token) if token else None,
                    transcode_root=Path(cache).resolve() if cache else None,
                    ffmpeg=os.environ.get('COMPUTE_FFMPEG', 'ffmpeg'), ffprobe=os.environ.get('COMPUTE_FFPROBE', 'ffprobe'),
                    hardware_backend=os.environ.get('COMPUTE_HARDWARE_BACKEND', 'auto'),
                    hardware_device=os.environ.get('COMPUTE_HARDWARE_DEVICE', '/dev/dri/renderD128'),
                    java_origin=origin, transcode_concurrency=concurrency, process_memory_bytes=memory_bytes, cache_bytes=cache_bytes,
-                   minimum_free_bytes=free_bytes)
+                   minimum_free_bytes=free_bytes,
+                   audio_model_repo=Path(audio_repo).resolve() if audio_repo else None,
+                   audio_memory_bytes=audio_memory, audio_threads=audio_threads)

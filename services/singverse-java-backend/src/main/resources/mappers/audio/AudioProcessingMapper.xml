@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mynora.singverse.media.audio.AudioProcessingMapper">
+ <select id="songIds" resultType="string">SELECT id FROM media_song WHERE id &gt; #{cursor} <if test="source != null and source != ''">AND source_id=#{source}</if> ORDER BY id LIMIT 200</select>
+ <insert id="insertBatch">INSERT INTO audio_batch(id,state,backend,created_at,updated_at) VALUES(#{id},'PREVIEW',#{backend},#{now},#{now})</insert>
+ <insert id="insertItem">INSERT INTO audio_batch_item(batch_id,song_id,fingerprint,title,category,state,job_id,error,updated_at) VALUES(#{row.batch},#{row.song},#{row.fingerprint},#{row.title},#{row.category},#{row.state},NULL,'',#{row.now})</insert>
+ <select id="batch" resultType="map">SELECT * FROM audio_batch WHERE id=#{id}</select>
+ <select id="item" resultType="map">SELECT * FROM audio_batch_item WHERE batch_id=#{id} AND song_id=#{song}</select>
+ <select id="batches" resultType="map">SELECT * FROM audio_batch ORDER BY created_at DESC,id LIMIT #{limit} OFFSET #{offset}</select>
+ <select id="batchCount" resultType="long">SELECT COUNT(*) FROM audio_batch</select>
+ <select id="counts" resultType="map">SELECT state,category,COUNT(*) AS amount FROM audio_batch_item WHERE batch_id=#{id} GROUP BY state,category</select>
+ <select id="items" resultType="map">SELECT item.*,job.result_json AS execution,job.state AS job_state FROM audio_batch_item item LEFT JOIN media_audio_job job ON job.id=item.job_id WHERE item.batch_id=#{id} ORDER BY item.song_id LIMIT #{limit} OFFSET #{offset}</select>
+ <select id="failedSongs" resultType="string">SELECT song_id FROM audio_batch_item WHERE batch_id=#{id} AND state='FAILED' ORDER BY song_id</select>
+ <select id="pending" resultType="map">SELECT item.*,batch.state AS batch_state,batch.backend FROM audio_batch_item item JOIN audio_batch batch ON batch.id=item.batch_id WHERE batch.state IN ('QUEUED','CANCELLED') AND item.state IN ('PENDING','PROBING','PROCESSING') ORDER BY item.updated_at,item.batch_id,item.song_id LIMIT 50</select>
+ <update id="start">UPDATE audio_batch SET state='QUEUED',updated_at=#{now} WHERE id=#{id} AND state='PREVIEW'</update>
+ <update id="cancel">UPDATE audio_batch SET state='CANCELLED',updated_at=#{now} WHERE id=#{id} AND state IN ('PREVIEW','QUEUED')</update>
+ <update id="finish">UPDATE audio_batch SET state='COMPLETED',updated_at=#{now} WHERE id=#{id} AND state='QUEUED' AND NOT EXISTS(SELECT 1 FROM audio_batch_item WHERE batch_id=#{id} AND state IN ('PENDING','PROBING','PROCESSING'))</update>
+ <update id="updateItem">UPDATE audio_batch_item SET state=#{state},job_id=#{job},error=#{error},updated_at=#{now} WHERE batch_id=#{batch} AND song_id=#{song} AND state IN ('PENDING','PROBING','PROCESSING')</update>
+ <update id="skipCancelled">UPDATE audio_batch_item SET state='CANCELLED',updated_at=#{now} WHERE batch_id=#{id} AND state='PENDING' AND job_id IS NULL</update>
+ <delete id="collectPreviewItems">DELETE FROM audio_batch_item WHERE batch_id IN (SELECT id FROM audio_batch WHERE state='PREVIEW' AND created_at &lt; #{before})</delete>
+ <delete id="collectPreviews">DELETE FROM audio_batch WHERE state='PREVIEW' AND created_at &lt; #{before}</delete>
+</mapper>

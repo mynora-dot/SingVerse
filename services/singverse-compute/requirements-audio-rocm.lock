@@ -1,0 +1,5 @@
+# Linux x86_64 only; install into the project venv/container explicitly.
+--extra-index-url https://download.pytorch.org/whl/rocm6.2
+-r requirements-audio-common.lock
+torch==2.5.1+rocm6.2
+torchaudio==2.5.1+rocm6.2

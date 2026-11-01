@@ -21,6 +21,7 @@ public class MetadataFileService {
     private final WebDavMetadataService metadata;
     private final MetadataCoverService covers;
     private final WebDavShareService sharing;
+    @org.springframework.beans.factory.annotation.Autowired private com.mynora.singverse.media.audio.AudioRoleService audioRoles;
     private final ObjectMapper json;
     private final Path root;
     private final boolean enabled;
@@ -61,6 +62,7 @@ public class MetadataFileService {
         String songId=row.get("song_id").toString(); var song=songs.get(songId); var source=sources.get(song.sourceId());
         args.put("error",null);
         ObjectNode snapshot=json.createObjectNode();
+        var audio=audioRoles.portable(songId);snapshot.set("audioRoles",audio);
         var cached=remote.resource(Map.of("songId",songId));
         if(!cached.isEmpty() && cached.getFirst().get("result_json")!=null) {
             var prior=json.readTree(cached.getFirst().get("result_json").toString());

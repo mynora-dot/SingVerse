@@ -451,8 +451,8 @@ private fun time(ms: Long): String = "${ms.coerceAtLeast(0) / 60000}:${(ms.coerc
             audio.forEach { track -> Action("${if(track.selected) "✓ " else ""}${track.label}",Modifier.fillMaxWidth()) { options.selectTrack(track) } }
             if(audio.any { it.selected && it.channels==2 }) LazyRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) { items(listOf("STEREO" to "立体声","LEFT" to "左声道","RIGHT" to "右声道","MONO" to "混合单声道")) { (mode,label) -> Action(label,selected=options.channel==mode) { options.selectChannel(mode) } } }
             if(audio.isNotEmpty()) {
-                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) { Action("当前标记为原唱") { options.markRole(true) }; Action("当前标记为伴奏") { options.markRole(false) } }
-                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) { if(options.roleOriginal.isNotBlank())Action("使用原唱") { if(!options.useRole(true))app.error="原唱轨道在此设备不可用，请重新标记" };if(options.roleBacking.isNotBlank())Action("使用伴奏") { if(!options.useRole(false))app.error="伴奏轨道在此设备不可用，请重新标记" } }
+                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) { Action("当前标记为原唱") { app.saveAudioRole(true) }; Action("当前标记为伴奏") { app.saveAudioRole(false) } }
+                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) { if(options.roleOriginal.isNotBlank())Action("使用原唱") { app.useAudioRole(true) };if(options.roleBacking.isNotBlank())Action("使用伴奏") { app.useAudioRole(false) } }
             }
         }
         "歌词字幕" -> {

@@ -89,7 +89,7 @@ it('日常设备与服务独立成组，子路由仍高亮父级入口', async (
   const wrapper = mount(App, { global: { plugins: [router] } })
   await flushPromises()
   const groups = wrapper.findAll('.nav-group')
-  expect(groups[0]!.findAll('.nav-item').map(item => item.text())).toEqual(['全部歌曲', '歌手库', '歌单管理', '歌曲分类', '元数据整理'])
+  expect(groups[0]!.findAll('.nav-item').map(item => item.text())).toEqual(['全部歌曲', '原唱与伴奏', '歌手库', '歌单管理', '歌曲分类', '元数据整理'])
   expect(groups[2]!.findAll('.nav-item').map(item => item.text())).toEqual(['电视设备', '服务状态', '性能节点配置'])
   expect(groups[3]!.findAll('.nav-item').map(item => item.text())).toEqual(['AI 设置', '账号与安全'])
   expect(wrapper.get('#admin-navigation [aria-current="page"]').text()).toBe('AI 设置')

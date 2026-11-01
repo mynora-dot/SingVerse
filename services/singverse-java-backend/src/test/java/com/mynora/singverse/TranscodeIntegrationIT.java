@@ -111,6 +111,8 @@ class TranscodeIntegrationIT {
         builder.environment()
                 .put("COMPUTE_AUTH_TOKEN_FILE", temp.resolve("compute-token").toString());
         builder.environment().put("COMPUTE_TRANSCODE_ROOT", temp.resolve("cache").toString());
+        Files.createDirectories(temp.resolve("models"));
+        builder.environment().put("COMPUTE_AUDIO_MODEL_REPO",temp.resolve("models/htdemucs").toString());
         builder.environment().put("COMPUTE_HARDWARE_BACKEND", "software");
         builder.environment().put("COMPUTE_MINIMUM_FREE_BYTES", "0");
         builder.environment().put("COMPUTE_JAVA_ORIGIN", "http://127.0.0.1:" + port);
@@ -133,6 +135,22 @@ class TranscodeIntegrationIT {
                     "POST",
                     Map.of("username", "admin", "password", "admin"),
                     true);
+            var audioNode=ok("/api/v1/audio-processing/node?refresh=true","GET",null,false);
+            assertThat(audioNode.path("model").path("installed").asBoolean()).isFalse();
+            assertThat(audioNode.path("model").path("writable").asBoolean()).isTrue();
+            assertThat(audioNode.path("selected").isNull()).isTrue();
+            assertThat(audioNode.path("backends")).hasSize(7);
+            assertThat(audioNode.path("models")).hasSize(2);
+            assertThat(audioNode.path("build").path("variant").asText()).isEqualTo("native");
+            assertThat(req("/api/v1/audio-processing/model/select","POST",Map.of("backend","cpu"),true).statusCode()).isEqualTo(422);
+            String csrf=ok("/api/v1/auth/csrf","GET",null,false).path("token").asText();
+            var upload=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v1/audio-processing/model/import")).header("Content-Type","application/octet-stream").header("X-CSRF-Token",csrf).POST(HttpRequest.BodyPublishers.ofByteArray(new byte[]{1,2,3})).build();
+            assertThat(client.send(upload,HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(422);
+            assertThat(ok("/api/v1/audio-processing/node","GET",null,false).path("operation").path("state").asText()).isEqualTo("FAILED");
+            var invalidBundle=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v1/audio-processing/model/import?model=htdemucs-openvino")).header("Content-Type","application/octet-stream").header("X-CSRF-Token",csrf).POST(HttpRequest.BodyPublishers.ofByteArray(new byte[]{1,2,3})).build();
+            assertThat(client.send(invalidBundle,HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(422);
+            assertThat(Files.exists(temp.resolve("models/htdemucs-openvino"))).isFalse();
+            assertThat(Files.exists(temp.resolve("models/htdemucs"))).isFalse();
             assertThat(
                             req(
                                             "/api/v1/transcoding/hardware-settings",

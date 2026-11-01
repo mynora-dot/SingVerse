@@ -70,3 +70,9 @@ python3 scripts/check-mobile-karaoke.py --suite visual --voice-sample /tmp/singv
 以上命令从仓库根目录运行。隔离 Java 监听 `127.0.0.1:18181`，指定单独 `--singverse.sqlite.path`、`--singverse.auth.key-file`、`--singverse.transcoding.directory`，compute 监听 `127.0.0.1:18191`，`COMPUTE_MEDIA_ROOTS` 只授权该样本的 `media` 子目录，两个服务共用本次临时 token 文件。Java 使用 `--singverse.compute.base-url=http://127.0.0.1:18191`、`--singverse.compute.token-file` 指向它。样本生成器的 `--seed` 仅允许 loopback 18181、隔离数据库的工厂管理员，不保存密码；每次使用新的临时目录与数据库。
 
 UI 脚本安装独立测试包，通过真实界面选歌、准备、试音、练唱、录唱、锁屏、回听、保存、系统导出、离线回放及作品管理。完整屏幕截图、操作视频及实际混音位于 `build/reports/karaoke-emulator/`，均为本机忽略产物。宿主需要实际可用麦克风；脚本打开 hostmicon 并播放自制声源供麦克风拾取，不把它直接注入产品。宿主电平为零时，末尾断言仍失败，不能以原生控制输入测试代替通过。麦克风音质、声学对齐、蓝牙延迟仍需要真实手机验收。
+
+### 共享音轨与独立伴奏
+
+原唱/伴奏标记经 Java 全曲库保存，以已探测的源 stream ID 和 revision 校验；自动结果或其他设备纠正会在下次选用时读取。伴奏生成仍由 NAS 管理员启动。本机播放器选择生成伴奏时保留原视频和字幕，以 Media3 MergingMediaSource 合并独立音频，并用 HLS offset 裁切和换算拖动位置。现有音高、声道、监听和录音链继续在设备端工作；真实手机音画同步与蓝牙输出需单独验收。
+
+单轨左右声道的既有标记继续保存在本机并按素材版本隔离；全曲库纠正仅保存两条源音轨角色，立体声不会被自动当作双音轨。

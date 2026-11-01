@@ -46,7 +46,12 @@ public class TranscodeClient {
         } catch (java.net.UnknownHostException e) {
             throw fail(503, "计算节点地址无法解析");
         }
-        if (!path.matches("/internal/v1/transcoding/[a-zA-Z0-9/_.-]+")) throw fail(400, "无效的计算资源");
+        if (!path.equals("/internal/v1/status")
+                && !path.matches("/internal/v1/(?:transcoding|audio-roles)/[a-zA-Z0-9/_.-]+")
+                && !path.equals("/internal/v1/audio-roles/models?refresh=true")
+                && !path.matches("/internal/v1/audio-roles/models/(?:download|import)\\?model=(?:htdemucs|htdemucs-openvino)")) {
+            throw fail(400, "无效的计算资源");
+        }
         return HttpRequest.newBuilder(c.origin().resolve(path))
                 .timeout(Duration.ofSeconds(path.endsWith("/capabilities") ? 60 : 30))
                 .header("Authorization", "Bearer " + c.token())
@@ -83,6 +88,27 @@ public class TranscodeClient {
         } catch (IOException e) {
             throw fail(503, "计算节点暂时无法连接");
         }
+    }
+
+    public JsonNode uploadAudioModel(InputStream source,long length) { return uploadAudioModel(source,length,"htdemucs"); }
+    public JsonNode uploadAudioModel(InputStream source,long length,String model) {
+        long maximum=com.mynora.singverse.media.audio.AudioModelManifest.maxBytes(model);
+        if(length>maximum)throw fail(413,"模型文件超过该模型清单的大小限制");
+        var c=connection();var uri=request(c,"/internal/v1/audio-roles/models/import?model="+model,"POST",null).uri();
+        var bounded=new FilterInputStream(source){
+            long count;
+            private void check(int read)throws IOException{if(read>0&&(count+=read)>maximum)throw new IOException("Model size limit exceeded");}
+            @Override public int read()throws IOException{int value=in.read();check(value<0?0:1);return value;}
+            @Override public int read(byte[] bytes,int offset,int count)throws IOException{int read=in.read(bytes,offset,count);check(read);return read;}
+        };
+        var body=HttpRequest.BodyPublishers.ofInputStream(()->bounded);
+        var request=HttpRequest.newBuilder(uri).timeout(Duration.ofMinutes(15)).header("Authorization","Bearer "+c.token()).header("Content-Type","application/octet-stream").POST(body).build();
+        try{
+            var response=http.send(request,info->new BoundedResponse(1048576));
+            if(response.statusCode()<200||response.statusCode()>=300)throw fail(response.statusCode()==413?413:response.statusCode()==422?422:502,"模型导入失败，请检查摘要、模型目录及节点状态");
+            return json.readTree(response.body());
+        }catch(InterruptedException error){Thread.currentThread().interrupt();throw fail(503,"模型上传已中断");}
+        catch(IOException error){throw fail(503,"模型上传失败，请检查节点连接或文件大小");}
     }
 
     public HttpResponse<InputStream> artifact(Connection c, String path, String range) {

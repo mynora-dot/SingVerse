@@ -1,6 +1,6 @@
 # SingVerse
 
-家庭KTV多端基础工程：Flutter Android手机端、Android TV、独立NAS管理前端、Java业务主服务、Python计算节点，以及亲友H5点歌页。亲友入口已调整为**微信扫一扫打开NAS网页**，不再使用小程序。当前已具备曲库管理及多端点唱基础，已增加单管理员登录与可选TOTP二次验证；已支持管理端本地/WebDAV 原始音视频在线播放；已增加电视设备授权、原始媒体直放、聚会队列与亲友 H5 扫码点歌；不含转码，真实电视/微信/NAS 验收见验证记录。
+家庭KTV多端基础工程：Flutter Android手机端、Android TV、独立NAS管理前端、Java业务主服务、Python计算节点，以及亲友H5点歌页。亲友入口已调整为**微信扫一扫打开NAS网页**，不再使用小程序。当前已具备曲库管理及多端点唱基础，已增加单管理员登录与可选TOTP二次验证；已支持管理端本地/WebDAV 原始音视频在线播放；已增加电视设备授权、原始媒体直放、聚会队列与亲友 H5 扫码点歌；已支持计算节点转码、全曲库音轨角色及可选离线伴奏分离，真实电视/微信/NAS 验收见验证记录。
 
 ## 技术栈与目录
 
@@ -9,7 +9,7 @@
 | 手机App | Flutter 3.47.5 / Dart 3.13.4，Android优先 | `services/singverse-mobile` |
 | 电视 | Kotlin 2.1.20 / Compose / TV Material 1.0.0 / Gradle 8.11.1 | `services/singverse-tv` |
 | 业务主服务 | Java21 / Spring Boot 3.5.16 / MyBatis XML / Maven Wrapper 3.9.16 | `services/singverse-java-backend` |
-| 计算节点 | Python 3.12+ / FastAPI 0.121.3 / Uvicorn 0.38.0；健康与能力探测骨架 | `services/singverse-compute` |
+| 计算节点 | Python 3.12+ / FastAPI 0.121.3 / Uvicorn 0.38.0；媒体探测、转码及可选音轨分析/伴奏分离 | `services/singverse-compute` |
 | 网页前端 | Vue 3 / TypeScript / Vite / Element Plus 管理端 + Vue 亲友点歌页，同一工程构建 | `services/singverse-frontend` |
 | 数据库 | 默认SQLite，MySQL保留可选连接验证 | `compose.yaml`仅开发MySQL |
 
@@ -19,7 +19,7 @@ services/
   singverse-mobile/        Flutter手机端及Android宿主
   singverse-tv/            独立Android TV工程
   singverse-java-backend/  Java业务主服务
-  singverse-compute/       内部计算服务，当前Python健康/能力探测
+  singverse-compute/       内部媒体探测、转码与音频计算服务
 contracts/openapi/        业务API约定与计算节点内部探测契约
 database/                 数据库约定
 infra/docker/             应用容器与开发MySQL说明
@@ -117,7 +117,7 @@ Spring Boot不会自动读取`.env`；Compose会读取，主机Java必须导出�
 
 ## 当前边界与文档
 
-已实现欢迎页、NAS管理基础界面与健康查询、构建/静态分析/基础测试、两个网页入口托管、健康检查、两种数据库真实连接验证、Python节点健康/能力探测、Java内部探测客户端、根命令和六个CI工作流（含Docker交付检查）。后续服务端转解码、AI伴奏分析等重计算统一由Python节点执行；Java保留授权、曲库、会话、队列与业务数据库职责。已实现管理员登录、改密与MFA、媒体来源配置管理、文件名共享规则库与解析方案管理页及SQL迁移。已继续实现扫码配对、曲库扫描、歌曲与歌手管理、共享歌单、聚会队列、原件及转码播放、离线兼容版本；各模块的实际验收范围见验证记录。手机端现已增加管理员登录、NAS 选歌、本机练唱/录唱、混音回听、本机作品与导出、后台媒体/录音服务、收藏历史及扫码承载同一 H5。K 歌改版仍有宿主真实麦克风输入未通过，不能视为已完成设备验收，详见手机端 README 与验证记录。Go 等后续能力不在本轮范围。
+已实现欢迎页、NAS管理基础界面与健康查询、构建/静态分析/基础测试、两个网页入口托管、健康检查、两种数据库真实连接验证、Python节点健康/能力探测、Java内部探测客户端、根命令和六个CI工作流（含Docker交付检查）。服务端转解码、可选本地模型的双轨识别与单轨伴奏分离统一由 Python 节点执行；Java保留授权、曲库、会话、队列与业务数据库职责。已实现管理员登录、改密与MFA、媒体来源配置管理、文件名共享规则库与解析方案管理页及SQL迁移。已继续实现扫码配对、曲库扫描、歌曲与歌手管理、共享歌单、聚会队列、原件及转码播放、离线兼容版本；各模块的实际验收范围见验证记录。手机端现已增加管理员登录、NAS 选歌、本机练唱/录唱、混音回听、本机作品与导出、后台媒体/录音服务、收藏历史及扫码承载同一 H5。K 歌改版仍有宿主真实麦克风输入未通过，不能视为已完成设备验收，详见手机端 README 与验证记录。Go 等后续能力不在本轮范围。
 
 Taro工程、锁文件、相关Make目标和工作流已移除。Flutter/TV包名仍为`com.mynora.singverse.mobile`与`.tv`，未来iOS扩展见手机端README。
 
@@ -185,4 +185,16 @@ SINGVERSE_MACOS_COMPUTE=1 make docker-check
 
 后台性能节点连接方式使用“自动识别”。Java 经 `host.docker.internal:18090` 连接仅监听回环的 Mac 节点，复用现有内部凭据，使用 VideoToolbox；WebDAV 仍通过 Java 读取。可选本地媒体目录 `data/macos-compute/media` 按相同绝对路径只读映射到 Java，新建本地来源时填写该绝对路径。节点缓存与凭据也保存在被忽略的 `data/macos-compute`，均不放入媒体目录。启动器使用当前用户的 launchd 保持节点运行，并在 `~/Library/LaunchAgents` 注册指向本地运行配置的登录启动项；保留本仓库及虚拟环境路径。`scripts/macos-compute.py status` 查询、`stop` 停止节点并移除本启动器自己的登录启动项。Java HTTP 入口需为本机默认 18080；其他端口部署请调整启动器的内部来源地址。重启应用继续带上 macOS 覆盖文件，以保留此连接配置。
 
+Mac 原唱／伴奏使用原生 CPU 或 MPS：显式执行 `make compute-audio-setup` 安装固定依赖及权重后，用 `scripts/macos-compute.py restart` 加载音频配置，再到“曲库 → 原唱与伴奏 → 节点与模型”对 CPU／MPS 试跑。启动器默认 4GiB 音频预算，可显式指定 `--audio-memory-mib 2048`，后续重启保留该预算。本机 M2 已通过 MPS 分块卷积、CPU 数值对照及 8／60 秒批量分离验证；不启用隐式 CPU 算子回退。复验可执行 `make macos-audio-check`，完整说明见 compute README。
+
 可选真机验证：`make transcode-fixtures` 下载校验固定的 Jellyfin 官方 Dolby Vision 测试素材（不进入生产镜像）；设置仓库媒体工具 PATH 后，可在目标设备运行 `services/singverse-compute/.venv/bin/python services/singverse-compute/tests/smoke/verify_hardware.py --backend videotoolbox --fixtures .tools/transcode-fixtures`。其他设备替换 backend；输出会区分实际硬解、CPU 回传、零拷贝和 GPU 色调映射。
+
+## 原唱与伴奏
+
+双轨扫描后后台探测与保守识别；不确定结果保持待确认，手机、TV 与已加入聚会的亲友 H5 可纠正同一份全曲库音轨角色。单轨由管理员在歌曲详情按需生成独立伴奏，原件只读，视频时间线保持不变。WebDAV v2 分享只携带角色元数据，分离音频由接收方自行生成。
+
+模型默认关闭；需要时先 `make compute-setup`、`make compute-audio-setup`，设置本地模型路径并重启 compute。固定版本、Compose 可选部署、资源预算和真实模型冒烟命令见 [计算节点 README](services/singverse-compute/README.md#原唱识别与伴奏分离)。真实歌曲效果与手机/TV/NAS 同步尚需验收，不能以合成音冒烟替代。
+
+伴奏管理入口：**曲库 → 原唱与伴奏**。支持跨页/全部筛选结果批量生成、持久任务及取消/重试；“节点与模型”可下载/离线导入固定模型并执行后端试跑。部署CPU、NVIDIA CUDA、AMD ROCm及Mac MPS的方式和当前Intel GPU/RKNN限制见计算节点README；实际只有一个计算节点，不做多节点分配。
+
+计算节点现提供 CPU（amd64/arm64）、CUDA、ROCm、OpenVINO 镜像构建目标及正式 release 发布工作流；模型独立下载／离线导入。部署选择见 [compute 说明](services/singverse-compute/README.md)。GPU 和设备效果必须单独验收，RKNN 尚无合格模型。

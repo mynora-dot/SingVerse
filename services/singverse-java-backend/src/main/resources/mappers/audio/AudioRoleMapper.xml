@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mynora.singverse.media.audio.AudioRoleMapper">
+ <select id="candidates" resultType="string">SELECT id FROM media_song WHERE id &gt; #{cursor} ORDER BY id LIMIT 50</select>
+ <insert id="insertClaim">INSERT INTO media_audio_import(song_id,claim_json) VALUES(#{song},#{claim})</insert>
+ <select id="claim" resultType="string">SELECT claim_json FROM media_audio_import WHERE song_id=#{song}</select>
+ <select id="role" resultType="map">SELECT * FROM media_audio_role WHERE song_id=#{song}</select>
+ <insert id="insertRole">INSERT INTO media_audio_role(song_id,fingerprint,original_id,backing_id,origin,revision,updated_at) VALUES(#{row.song_id},#{row.fingerprint},#{row.original_id},#{row.backing_id},#{row.origin},#{row.revision},#{row.updated_at})</insert>
+ <update id="updateRole">UPDATE media_audio_role SET fingerprint=#{row.fingerprint},original_id=#{row.original_id},backing_id=#{row.backing_id},origin=#{row.origin},revision=#{row.revision},updated_at=#{row.updated_at} WHERE song_id=#{row.song_id} AND revision=#{row.previous_revision}</update>
+ <select id="forSong" resultType="map">SELECT * FROM media_audio_job WHERE song_id=#{song} AND fingerprint=#{fingerprint} ORDER BY created_at DESC LIMIT 20</select>
+ <select id="job" resultType="map">SELECT * FROM media_audio_job WHERE id=#{id}</select>
+ <select id="pending" resultType="map">SELECT * FROM media_audio_job WHERE state IN ('QUEUED','RUNNING') ORDER BY CASE WHEN state='RUNNING' THEN 0 ELSE 1 END,updated_at,created_at,id LIMIT 20</select>
+ <select id="queuedAnalyze" resultType="map">SELECT * FROM media_audio_job WHERE kind='ANALYZE' AND state IN ('QUEUED','RUNNING') ORDER BY created_at LIMIT 1</select>
+ <insert id="insertJob">INSERT INTO media_audio_job(id,song_id,kind,state,fingerprint,node_origin,result_json,error,created_at,updated_at,backend) VALUES(#{row.id},#{row.song_id},#{row.kind},#{row.state},#{row.fingerprint},#{row.node_origin},'{}','',#{row.created_at},#{row.updated_at},COALESCE(#{row.backend},''))</insert>
+ <update id="updateJob">UPDATE media_audio_job SET state=#{state},result_json=#{result},error=#{error},updated_at=#{now} WHERE id=#{id} AND state NOT IN ('CANCELLED','SUCCEEDED')</update>
+</mapper>

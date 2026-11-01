@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /** Business authorization, durable offline intent and compatibility version ownership. */
 @Service
 public class TranscodeService {
+    @org.springframework.beans.factory.annotation.Autowired private com.mynora.singverse.media.audio.AudioJobService audioJobs;
     private final TranscodeMapper mapper;
     private final TranscodeClient compute;
     private final MediaSongRepository songs;
@@ -193,7 +194,24 @@ public class TranscodeService {
         return id;
     }
 
-    public ObjectNode negotiate(
+    public ObjectNode negotiate(String songId,String owner,JsonNode body,String directUrl,String prefix){
+        var audio=audioJobs.status(songId);
+        var request=body.deepCopy();
+        String requested=body.path("audioRole").asText();
+        if(request instanceof ObjectNode object && Set.of("original","backing").contains(requested)){
+            String selected=audio.path(requested.equals("original")?"originalId":"backingId").asText();
+            if(!selected.isBlank())object.put("audio_id",selected);
+            object.remove("audioRole");
+        }
+        var result=negotiateMedia(songId,owner,request,directUrl,prefix);
+        result.set("audioRoles",audioJobs.status(songId));
+        if(requested.equals("backing") && audio.has("backingResource")){
+            String base=owner.equals("admin")?"/api/v1/media-songs/":"/api/v1/tv/audio-roles/songs/";
+            result.put("backingUrl",base+songId+"/accompaniment/"+audio.path("backingResource").path("jobId").asText());
+        }
+        return result;
+    }
+    public ObjectNode negotiateMedia(
             String songId, String owner, JsonNode body, String directUrl, String prefix) {
         var song = songs.get(songId);
         var client = body.path("client");
@@ -247,6 +265,7 @@ public class TranscodeService {
             request.put("burn_subtitle", body.path("burn_subtitle").asBoolean(false));
             var plan =
                     compute.call(connection, "/internal/v1/transcoding/negotiate", "POST", request);
+            audioJobs.observe(songId,plan.path("media"));
             if (plan.path("mode").asText().equals("DIRECT")
                     && !body.path("force").asBoolean(false)
                     && !body.path("burn_subtitle").asBoolean(false)

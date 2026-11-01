@@ -324,3 +324,19 @@ API：管理员 GET/PUT `/api/v1/media-sources/{id}/embedded-metadata`；POST �
 选中上次成功快照可增量导出。新快照仍保存完整索引，仅将新增或改变条目写入分包；缺失路径输出独立 advisoryOnly 删除提示，接收方不会自动下架歌曲。无变化时分包数为零。尚未提取内嵌信息的歌曲使用文件名解析信息作为共享回退，明确标记 evidence=FILENAME，避免为分享触发整库网盘读取。导入结果仍标为 SHARED、未经本地媒体验证。
 
 迁移 202610310002_webdav_share_jobs.sql 同时支持 SQLite/MySQL；API 为 /api/v1/media-sources/{id}/embedded-metadata/share-jobs（创建）、/latest、/{jobId}、/{jobId}/resume、/{jobId}/download、/{jobId}/index、/{jobId}/parts/{part}、/{jobId}/deletions/{part}。导入支持持久检查点，不保留旧版单包导出接口。
+
+## 全曲库共享音轨角色
+
+迁移 `202611010002_audio_roles.sql` 保存角色、修订号、素材指纹、离线任务及待核对的分享声明。扫描产生的歌曲由后台游标异步探测，双音轨且节点具备模型能力时自动识别。单音轨只由管理员在歌曲详情按需生成伴奏。原件不改写；Java 用 MyBatis XML 保存业务结果、校验下载的 SHA-256/体积并原子保存独立衍生文件。配置 `AUDIO_DERIVED_PATH`（默认 `./data/audio-roles`），必须独立于原媒体，Compose 已指向持久卷。
+
+`GET/PUT /api/v1/media-songs/{song}/audio-roles` 查询/纠正；提交修订号及两条不同且已探测的源 stream ID。MANUAL 优先于 AUTO；旧素材结果失效，修订号竞争返回 409。`POST .../audio-jobs` 提交任务，`POST .../audio-jobs/{id}/cancel` 取消。亲友及 TV 对应路径为 `/api/v1/{party|tv}/audio-roles/songs/{song}`，使用已加入聚会的 Bearer；亲友可纠正但不能提交分离任务。管理员写入继承 Cookie/CSRF 规则。
+
+播放协商接受 `audioRole=original|backing`，返回 `audioRoles` 和可用的 `backingUrl`。手机/TV 通过同一播放器合并原视频与独立伴奏，按照协商 offset 对齐原时间轴；纠正仅影响下一次选用。状态轮询不重复返回角色快照，客户端保留首次协商结果。节点离线仍可播放 Java 已保存的伴奏。
+
+WebDAV version 2 分享索引的 `audioRoles` 仅含源轨映射、轨道描述、时长、来源及 `separationPolicy=GENERATE_LOCALLY`，不携带任务、主机路径、节点地址或分离音频。接收方以原索引相对路径定位媒体，重新探测并核对轨道/时长后应用为 SHARED；本地 MANUAL 不被覆盖。旧 v2 包缺省该字段可继续导入；生成伴奏仍由接收方管理员提交。
+
+### 原唱与伴奏管理中心
+
+管理员 `/api/v1/audio-processing` 提供歌曲筛选、批次快照/提交/详情/取消/失败项重试，以及当前节点和模型操作代理。迁移 `202611010003_audio_processing.sql` 新增批次/成员及任务后端字段，全部业务SQL保留MyBatis XML。预览快照保存24小时；提交幂等、媒体变化失效、未知音轨先探测后分流，取消不删除已完成音频。批次成员分页，整体取消同步停止所拥有的分离任务，复用的公共探测不因取消批次被终止。生成环境未就绪时不能提交批次。
+
+离线模型通过 `/model/import?model=htdemucs|htdemucs-openvino` 的 `application/octet-stream` 流式转发；省略参数兼容基准模型。Java 和 compute 按固定清单限制基准权重 100MiB、OpenVINO 双文件 ZIP 128MiB，Nginx 只为该路径放宽至 128MiB 及相应超时。未知模型拒绝，下载代理同样仅接受固定模型 ID。任务结果保存实际后端、模型摘要、构建与环境身份，OpenVINO 不会隐式回退 CPU。管理员会话及CSRF继续生效，客户端不能直连compute。模型管理以实际当前节点为准；旧任务保留原节点绑定，切换连接不会把旧任务重复发给新节点。节点离线保持待核对，配置变化明确失败供重试。列表和全部筛选快照目前使用分段遍历核对有效歌曲信息/素材指纹，超大曲库需专门压测，不宣称已实现数据库索引化全文筛选。

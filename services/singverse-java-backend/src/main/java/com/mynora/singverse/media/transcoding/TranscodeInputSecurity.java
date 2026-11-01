@@ -16,7 +16,7 @@ public class TranscodeInputSecurity {
     @Order(0)
     SecurityFilterChain computeInputChain(HttpSecurity http) throws Exception {
         // GET/HEAD only; controller validates node bearer AND task-scoped media authorization.
-        return http.securityMatcher("/api/v1/internal/transcode-input/**", "/api/v1/internal/metadata-input/**")
+        return http.securityMatcher("/api/v1/internal/transcode-input/**", "/api/v1/internal/metadata-input/**", "/api/v1/internal/audio-input/**")
                 .csrf(c -> c.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .requestCache(c -> c.disable())

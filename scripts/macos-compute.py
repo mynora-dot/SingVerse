@@ -15,6 +15,27 @@ RUNTIME = ROOT / 'data/macos-compute'
 LABEL = 'com.mynora.singverse.compute.macos'
 
 
+def audio_environment(model_repo, memory_mib):
+    if not model_repo.is_absolute() or memory_mib < 512:
+        raise ValueError('Use an absolute model directory and at least 512 MiB audio budget')
+    return {'COMPUTE_AUDIO_MODEL_REPO': str(model_repo),
+            'COMPUTE_AUDIO_MEMORY_BYTES': str(memory_mib * 1024**2),
+            'COMPUTE_AUDIO_THREADS': '2', 'PYTORCH_ENABLE_MPS_FALLBACK': '0'}
+
+
+def bootstrap(domain, target):
+    # bootout returns before launchd finishes removing its registration. A
+    # restart can briefly receive EIO even though print already says not found.
+    for _ in range(20):
+        result = subprocess.run(['launchctl', 'bootstrap', domain, str(target)], capture_output=True)
+        if result.returncode == 0:
+            return
+        if result.returncode != 5:
+            break
+        time.sleep(.25)
+    raise SystemExit('Mac node could not be loaded; inspect launchd and the private runtime logs')
+
+
 def login_agent(enable):
     agent = Path.home() / 'Library/LaunchAgents' / (LABEL + '.plist')
     target = RUNTIME / 'compute.plist'
@@ -30,7 +51,10 @@ def login_agent(enable):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('start', 'stop', 'status'))
+    parser.add_argument('action', choices=('start', 'restart', 'stop', 'status'))
+    parser.add_argument('--audio-model-repo', type=Path, default=ROOT / '.tools/demucs-htdemucs')
+    parser.add_argument('--audio-memory-mib', type=int, default=None,
+                        help='Explicit audio process budget; restart preserves the saved budget, otherwise 4096 MiB')
     args = parser.parse_args()
     if platform.system() != 'Darwin':
         parser.error('This launcher requires macOS; use the platform deployment instructions elsewhere')
@@ -40,6 +64,16 @@ def main():
     if args.action == 'status':
         print('loaded' if active.returncode == 0 else 'stopped')
         return
+    model_repo = args.audio_model_repo.expanduser().resolve()
+    memory_mib = args.audio_memory_mib
+    if memory_mib is None:
+        previous = RUNTIME / 'compute.plist'
+        memory_mib = int(plistlib.loads(previous.read_bytes()).get('EnvironmentVariables', {}).get(
+            'COMPUTE_AUDIO_MEMORY_BYTES', str(4096*1024**2))) // 1024**2 if previous.exists() else 4096
+    try:
+        audio = audio_environment(model_repo, memory_mib)
+    except ValueError as error:
+        parser.error(str(error))
     if active.returncode == 0:
         # Do not unload another checkout's node under the same label.
         if str(ROOT).encode() not in active.stdout:
@@ -50,7 +84,8 @@ def main():
             login_agent(True)
             print('Mac compute already running')
             return
-        subprocess.run(['launchctl', 'bootout', service], check=True)
+        if args.action == 'stop':
+            subprocess.run(['launchctl', 'bootout', service], check=True)
     if args.action == 'stop':
         login_agent(False)
         return
@@ -87,6 +122,7 @@ def main():
             'COMPUTE_HARDWARE_BACKEND': 'videotoolbox',
             'COMPUTE_JAVA_ORIGIN': 'http://127.0.0.1:18080',
             'COMPUTE_PROCESS_MEMORY_BYTES': '1073741824',
+            **audio,
         },
         'RunAtLoad': True, 'KeepAlive': True, 'ThrottleInterval': 10,
         'StandardOutPath': str(RUNTIME / 'node.log'),
@@ -95,12 +131,14 @@ def main():
     target = RUNTIME / 'compute.plist'
     target.write_bytes(plistlib.dumps(manifest))
     login_agent(True)
-    subprocess.run(['launchctl', 'bootstrap', domain, str(target)], check=True)
+    if active.returncode == 0:
+        subprocess.run(['launchctl', 'bootout', service], check=True)
+    bootstrap(domain, target)
     for _ in range(120):
         try:
             with urlopen('http://127.0.0.1:18090/health', timeout=1) as response:
                 if response.status == 200:
-                    print('Mac compute ready on loopback port 18090 (VideoToolbox)')
+                    print('Mac compute ready on loopback port 18090 (VideoToolbox; audio requires model qualification)')
                     return
         except OSError:
             time.sleep(.25)

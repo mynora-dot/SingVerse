@@ -1,0 +1,6 @@
+services:
+  singverse-compute:
+    image: '${COMPUTE_IMAGE:-singverse-compute:local-cpu}'
+    build:
+      target: cpu
+    mem_limit: '${COMPUTE_CONTAINER_MEMORY_LIMIT:-6g}'

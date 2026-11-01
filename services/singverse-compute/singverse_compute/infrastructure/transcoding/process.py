@@ -22,11 +22,11 @@ def stop(process):
     process.wait(timeout=5)
 
 
-def run(command, *, timeout=15, limit=1048576, cancel=None, line=None, cwd=None, memory_limit=1024**3, metrics=None):
+def run(command, *, timeout=15, limit=1048576, cancel=None, line=None, cwd=None, memory_limit=1024**3, metrics=None, env=None, error_line=None):
     flags = {'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == 'nt' else {'start_new_session': True}
     try:
         process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE, cwd=cwd, **flags)
+                                   stderr=subprocess.PIPE, cwd=cwd, env=env, **flags)
     except OSError as error:
         raise ComputeError(503, 'Media tool unavailable') from error
     output, errors = bytearray(), bytearray()
@@ -43,7 +43,7 @@ def run(command, *, timeout=15, limit=1048576, cancel=None, line=None, cwd=None,
         finally:
             pipe.close()
     readers = [threading.Thread(target=drain, args=(process.stdout, output, line), daemon=True),
-               threading.Thread(target=drain, args=(process.stderr, errors, None), daemon=True)]
+               threading.Thread(target=drain, args=(process.stderr, errors, error_line), daemon=True)]
     for thread in readers:
         thread.start()
     started = time.monotonic()

@@ -18,6 +18,8 @@ async def capabilities(request: Request) -> Capabilities:
         values += ['media-remote-tags']
     if request.app.state.transcoding.available:
         values += ['media-probe', 'transcode-hls', 'transcode-offline']
+    if request.app.state.audio_roles.available:
+        values += ['audio-role-analysis', 'audio-separation']
     return Capabilities(capabilities=values)
 
 

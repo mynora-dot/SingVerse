@@ -37,6 +37,10 @@ class MediaScanHttpTest {
                 try (var output = exchange.getResponseBody()) { output.write(response); }
             });
             computeStub.start();
+            computeStub.createContext("/internal/v1/audio-roles/models", exchange -> {
+                byte[] response="{\"selected\":\"cpu\",\"backends\":[{\"id\":\"cpu\",\"state\":\"AVAILABLE\"}]}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200,response.length);try(var out=exchange.getResponseBody()){out.write(response);}
+            });
         } catch (Exception error) { throw new IllegalStateException(error); }
     }
     @AfterAll static void stopComputeStub() { if (computeStub != null) computeStub.stop(0); }
@@ -53,6 +57,7 @@ class MediaScanHttpTest {
     @LocalServerPort int port;
     @Autowired JdbcTemplate db;
     @Autowired ObjectMapper json;
+    @Autowired com.mynora.singverse.media.audio.AudioJobService audioJobs;
     HttpClient client;
     String profileId, selectedRuleId;
     static final String PARSER = "/api/v1/filename-parser";
@@ -104,6 +109,22 @@ class MediaScanHttpTest {
         String source = local(directory);
         assertThat(request(source + "/scan", "POST", null, true).statusCode()).isEqualTo(200);
         return body(request(source + "/songs", "GET", null, false)).at("/items/0/id").asText();
+    }
+    @Test void audioProcessingFiltersSnapshotSubmissionAndCancellationUseTheSameLibrary()throws Exception{
+        login();createProfile();var directory=Files.createTempDirectory(temp,"audio-processing-");
+        Files.writeString(directory.resolve("单轨-歌手.wav"),"fixture");Files.writeString(directory.resolve("双轨-歌手.wav"),"fixture");
+        String source=local(directory);assertThat(request(source+"/scan","POST",null,true).statusCode()).isEqualTo(200);
+        var songs=body(request(source+"/songs","GET",null,false)).path("items");
+        for(var song:songs){boolean dual=song.path("relativePath").asText().startsWith("双轨");var probe=json.createObjectNode().put("duration",90);var streams=probe.putArray("streams");streams.addObject().put("kind","audio").put("id","stream:0");if(dual)streams.addObject().put("kind","audio").put("id","stream:1");audioJobs.observe(song.path("id").asText(),probe);}
+        String sourceId=source.substring(source.lastIndexOf('/')+1),base="/api/v1/audio-processing";
+        var filtered=body(request(base+"/songs?streams=1&sourceId="+sourceId,"GET",null,false));assertThat(filtered.path("totalElements").asLong()).isEqualTo(1);
+        var previewResponse=request(base+"/batches/preview","POST",Map.of("all",true,"filter",Map.of("sourceId",sourceId)),true);assertThat(previewResponse.statusCode()).withFailMessage(previewResponse.body()).isEqualTo(200);
+        var preview=body(previewResponse);String id=preview.path("id").asText();assertThat(preview.path("total").asLong()).isEqualTo(2);assertThat(preview.at("/categories/ELIGIBLE").asInt()).isEqualTo(1);assertThat(preview.at("/categories/INAPPLICABLE").asInt()).isEqualTo(1);
+        Files.writeString(directory.resolve("新增-歌手.wav"),"fixture");assertThat(request(source+"/scan","POST",null,true).statusCode()).isEqualTo(200);
+        assertThat(body(request(base+"/batches/"+id,"GET",null,false)).path("total").asLong()).isEqualTo(2);
+        for(int attempt=0;attempt<2;attempt++)assertThat(request(base+"/batches/"+id+"/submit","POST",null,true).statusCode()).isEqualTo(200);
+        var cancelled=body(request(base+"/batches/"+id+"/cancel","POST",null,true));assertThat(cancelled.path("state").asText()).isEqualTo("CANCELLED");assertThat(cancelled.at("/counts/CANCELLED").asInt()).isEqualTo(1);
+        assertThat(body(request(base+"/batches/"+id+"?size=1","GET",null,false)).path("items")).hasSize(1);
     }
     @Test void localAudioAndVideoTagsOverrideFilenameAndRefreshWithoutWritingOriginals() throws Exception {
         login(); createProfile();

@@ -1,9 +1,9 @@
 name: singverse-docker
 on:
   push:
-    paths: ['services/singverse-compute/**', 'services/singverse-frontend/**', 'services/singverse-java-backend/**', 'compose.app.yaml', 'compose.compute.yaml', 'compose.https.yaml', '.dockerignore', 'scripts/check-docker-app.py', 'scripts/check-auth-docker.py', '.github/workflows/singverse-docker.yml', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh']
+    paths: ['services/singverse-compute/**', 'services/singverse-frontend/**', 'services/singverse-java-backend/**', 'compose.app.yaml', 'compose.audio-cpu.yaml', 'compose.audio-cuda.yaml', 'compose.audio-rocm.yaml', 'compose.audio-openvino.yaml', 'docker-bake.hcl', 'compose.compute.yaml', 'compose.https.yaml', '.dockerignore', 'scripts/check-docker-app.py', 'scripts/check-auth-docker.py', '.github/workflows/singverse-docker.yml', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh']
   pull_request:
-    paths: ['services/singverse-compute/**', 'services/singverse-frontend/**', 'services/singverse-java-backend/**', 'compose.app.yaml', 'compose.compute.yaml', 'compose.https.yaml', '.dockerignore', 'scripts/check-docker-app.py', 'scripts/check-auth-docker.py', '.github/workflows/singverse-docker.yml', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh']
+    paths: ['services/singverse-compute/**', 'services/singverse-frontend/**', 'services/singverse-java-backend/**', 'compose.app.yaml', 'compose.audio-cpu.yaml', 'compose.audio-cuda.yaml', 'compose.audio-rocm.yaml', 'compose.audio-openvino.yaml', 'docker-bake.hcl', 'compose.compute.yaml', 'compose.https.yaml', '.dockerignore', 'scripts/check-docker-app.py', 'scripts/check-auth-docker.py', '.github/workflows/singverse-docker.yml', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh']
   workflow_dispatch:
 permissions:
   contents: read
@@ -25,6 +25,12 @@ jobs:
           python -m openapi_spec_validator contracts/openapi/singverse.openapi.json
       - name: Validate standalone compute Compose
         run: COMPUTE_MEDIA_PATH=/tmp docker compose -f compose.compute.yaml config --quiet
+      - name: Validate optional audio runtime Compose profiles
+        run: |
+          docker compose -f compose.app.yaml -f compose.audio-cpu.yaml config --quiet
+          COMPUTE_RENDER_GID=1000 docker compose -f compose.app.yaml -f compose.audio-openvino.yaml config --quiet
+          docker compose -f compose.app.yaml -f compose.audio-cuda.yaml config --quiet
+          SINGVERSE_RENDER_GID=1000 SINGVERSE_VIDEO_GID=1001 docker compose -f compose.app.yaml -f compose.audio-rocm.yaml config --quiet
       - name: Build and start application
         run: make docker-up
       - name: Verify public HTTP routes

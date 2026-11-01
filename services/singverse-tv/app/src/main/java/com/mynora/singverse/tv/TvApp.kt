@@ -134,7 +134,7 @@ class TvApp(context: android.content.Context) {
         player.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
         player.setHandleAudioBecomingNoisy(true)
         player.addListener(object : Player.Listener {
-            override fun onTracksChanged(tracks: Tracks) { playbackOptions.refreshTracks() }
+            override fun onTracksChanged(tracks: Tracks) { playbackOptions.refreshTracks(); if(selectedSourceId.isNotBlank() && playbackOptions.selectSource(selectedSourceId))selectedSourceId="" }
             override fun onPlaybackStateChanged(state: Int) {
                 playerState = if(player.playerError!=null) "ERROR" else when (state) { Player.STATE_BUFFERING -> "BUFFERING"; Player.STATE_ENDED -> "ENDED"; Player.STATE_READY -> if (player.isPlaying) "PLAYING" else "PAUSED"; else -> "IDLE" }
                 if (state == Player.STATE_ENDED) controlVisible = true
@@ -148,6 +148,9 @@ class TvApp(context: android.content.Context) {
         scope.launch { while (isActive) { delay(10000); val id=transcodeId;if(connected && id.isNotBlank()) runCatching { json("/api/v1/tv/transcoding/$id") } } }
         scope.launch { var ticks=0; while (isActive) { delay(200); position = player.currentPosition.coerceAtLeast(0) + timelineOffset; duration = if (sourceDuration > 0) sourceDuration else player.duration.coerceAtLeast(0); playbackOptions.tick(position); if (++ticks % 25 == 0 && connected && loadedAttempt.isNotEmpty()) report() } }
     }
+    private var selectedSourceId = ""
+    private var requestedAudioRole=""
+    private var backingResource=""
     private fun mediaItem(resource: JSONObject): MediaItem {
         val builder=MediaItem.Builder().setUri(client.base+resource.getString("url"))
         if(resource.has("subtitleUrl")) builder.setSubtitleConfigurations(listOf(MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(client.base+resource.getString("subtitleUrl"))).setMimeType(MimeTypes.TEXT_VTT).setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()))
@@ -159,8 +162,10 @@ class TvApp(context: android.content.Context) {
         transcodeId = ""
         if (old.isNotBlank()) runCatching { json("/api/v1/tv/transcoding/$old/cancel", "POST") }
         val body = JSONObject().put("songId",song).put("client",PlaybackCapabilities.report()).put("quality",playbackQuality)
-            .put("start",startMs/1000.0).put("force",force)
+            .put("start",startMs/1000.0).put("force",force).put("audioRole",requestedAudioRole)
         var resource = json("/api/v1/tv/playback-resources", "POST", body)
+        val initialAudio=resource.optJSONObject("audioRoles")
+        backingResource=resource.optString("backingUrl")
         val executionId = resource.optString("id")
         val revision = resource.optString("revision")
         if (turn != resourceGeneration) {
@@ -181,14 +186,42 @@ class TvApp(context: android.content.Context) {
         timelineOffset = (resource.optDouble("offset",0.0)*1000).toLong()
         sourceDuration = ((resource.optJSONObject("execution")?.optJSONObject("media")?.optDouble("duration",0.0) ?: 0.0)*1000).toLong()
         resource.put("revision",revision)
+        if(initialAudio!=null)resource.put("audioRoles",initialAudio)
         return resource
+    }
+    private fun setAudioResource(resource: JSONObject) {
+        selectedSourceId=if(resource.optString("mode")=="DIRECT" && backingResource.isBlank())resource.optJSONObject("audioRoles")?.optString(if(requestedAudioRole=="original")"originalId" else if(requestedAudioRole=="backing")"backingId" else "").orEmpty() else ""
+        val factory=DefaultMediaSourceFactory(dataSource)
+        if(requestedAudioRole=="backing" && backingResource.isNotBlank()){
+            val original=androidx.media3.exoplayer.source.FilteringMediaSource(factory.createMediaSource(mediaItem(resource)),setOf(androidx.media3.common.C.TRACK_TYPE_VIDEO,androidx.media3.common.C.TRACK_TYPE_TEXT))
+            val backing=factory.createMediaSource(MediaItem.Builder().setUri(client.base+backingResource).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(timelineOffset).build()).build())
+            player.setMediaSource(androidx.media3.exoplayer.source.MergingMediaSource(true,original,backing))
+        }else player.setMediaItem(mediaItem(resource))
+        resource.optJSONObject("audioRoles")?.let { playbackOptions.applyShared(it) }
+    }
+    fun saveAudioRole(original: Boolean)=run {
+        val song=snapshot.optJSONObject("playback")?.optString("songId") ?: return@run
+        val tracks=playbackOptions.tracks.filter { it.type==androidx.media3.common.C.TRACK_TYPE_AUDIO }
+        val selected=tracks.firstOrNull { it.selected } ?: error("尚未识别音轨")
+        if(tracks.size==1 && selected.channels==2 && playbackOptions.channel in listOf("LEFT","RIGHT")){playbackOptions.markRole(original);return@run}
+        val other=tracks.firstOrNull { it.sourceId.isNotBlank() && it.sourceId!=selected.sourceId } ?: error("需要两条已识别源音轨")
+        require(selected.sourceId.isNotBlank()) { "请先完成媒体探测" }
+        val path="/api/v1/tv/audio-roles/songs/$song"
+        val current=json(path)
+        val saved=json(path,"PUT",JSONObject().put("revision",current.getLong("revision")).put("originalId",if(original)selected.sourceId else other.sourceId).put("backingId",if(original)other.sourceId else selected.sourceId))
+        playbackOptions.applyShared(saved)
+    }
+    fun useAudioRole(original: Boolean)=run {
+        val role=if(original)playbackOptions.roleOriginal else playbackOptions.roleBacking
+        if(playbackOptions.isChannelRole(role)){require(playbackOptions.useRole(original)){"此版本的本机声道标记已失效"};return@run}
+        requestedAudioRole=if(original)"original" else "backing";rebuildPlayback()
     }
     private suspend fun rebuildPlayback(force: Boolean = false, startMs: Long = position) {
         val song = snapshot.optJSONObject("playback")?.optString("songId")?.takeIf { it.isNotBlank() } ?: return
         val resource = loadResource(song,startMs,force)
         dataSource.setDefaultRequestProperties(mapOf("Authorization" to "Bearer ${client.token}"))
-        player.setMediaItem(mediaItem(resource))
-        playbackOptions.configureSource(resource.optJSONObject("execution")?.optJSONObject("media")?.optJSONArray("streams"),resource.optJSONObject("execution")?.optJSONArray("trackMapping"), resource.optString("mode")=="DIRECT")
+        setAudioResource(resource)
+        playbackOptions.configureSource(resource.optJSONObject("execution")?.optJSONObject("media")?.optJSONArray("streams") ?: resource.optJSONObject("media")?.optJSONArray("streams") ?: resource.optJSONObject("audioRoles")?.optJSONArray("streams"),resource.optJSONObject("execution")?.optJSONArray("trackMapping"), resource.optString("mode")=="DIRECT")
         if (resource.optString("mode") != "HLS") player.seekTo(startMs)
         player.prepare(); player.play()
     }
@@ -319,12 +352,13 @@ class TvApp(context: android.content.Context) {
             val p = c.optJSONObject("playback")
             if (action == "LOAD" || action == "RESTART") {
                 if (p != null && loadedAttempt != p.getString("attemptId")) {
-                    val resource = loadResource(p.getString("songId")); fallbackAttempted = false
+                    requestedAudioRole=""; val resource = loadResource(p.getString("songId")); fallbackAttempted = false
                     player.stop(); loadedAttempt = p.getString("attemptId"); seq = 0
                     dataSource.setDefaultRequestProperties(mapOf("Authorization" to "Bearer ${client.token}"))
-                    player.setMediaItem(mediaItem(resource))
+                    setAudioResource(resource)
                     playbackOptions.beginSong(p.getString("songId"), resource.getString("revision"))
-                    playbackOptions.configureSource(resource.optJSONObject("execution")?.optJSONObject("media")?.optJSONArray("streams") ?: resource.optJSONObject("media")?.optJSONArray("streams"),resource.optJSONObject("execution")?.optJSONArray("trackMapping"), resource.optString("mode")=="DIRECT")
+                    playbackOptions.configureSource(resource.optJSONObject("execution")?.optJSONObject("media")?.optJSONArray("streams") ?: resource.optJSONObject("media")?.optJSONArray("streams") ?: resource.optJSONObject("audioRoles")?.optJSONArray("streams"),resource.optJSONObject("execution")?.optJSONArray("trackMapping"), resource.optString("mode")=="DIRECT")
+                    resource.optJSONObject("audioRoles")?.let { playbackOptions.applyShared(it) }
                     player.prepare(); player.play(); page = "演唱"; controlVisible = false
                     scope.launch { loadText(p.getString("songId")) }
                 }

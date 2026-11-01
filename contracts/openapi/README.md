@@ -133,3 +133,15 @@ TV 非转码增强新增设备专用 text-tracks 与 releases/current、releases
 流水线 v2：播放执行携带 `pipeline`（实际硬解/零拷贝/GPU 色调映射、DV 和回退原因）及 `sampledPeakRssBytes`（0 表示未知）。客户端能力增加 `hdr_formats`、`dovi_profiles`、`dovi_compatibility`，默认不支持 DV；HDR 与 DV 能力分别协商。
 
 手机原生只读曲库：GET `/api/v1/mobile/library/songs`、`/{id}` 和 `/{id}/text-tracks`，使用管理员 Cookie，不接受 TV/party Bearer 替代登录。列表复用既有搜索及分类，返回 MobileSongPage；条目保留独立媒体 ID，补充格式/媒体类型，封面指向管理员资源。播放继续使用 `/api/v1/transcoding`；手机本机收藏和历史不属于服务端业务表。
+
+## 全曲库音轨角色与离线分离
+
+新增管理员 `/media-songs/{song}/audio-roles` GET/PUT、`/audio-jobs` POST、`/audio-jobs/{id}/cancel` POST 和独立伴奏 GET/HEAD。角色包含 state、origin、revision、originalId、backingId；纠正只接受两条本地探测存在的源音轨，旧 revision 返回 409，素材指纹变化使旧角色/伴奏失效。亲友及 TV 的 `/api/v1/{party|tv}/audio-roles/songs/{song}` GET/PUT 使用活跃聚会 Bearer，全员可纠正，分离仍限管理员。管理员 POST/PUT 沿用 CSRF。
+
+播放 `PlaybackOptions.audioRole` 按共享角色选用；`PlaybackResource.audioRoles` 为首次协商快照，`backingUrl` 为 Java 授权的独立伴奏，客户端合并时保留视频原时间轴并处理 offset。`/api/v1/internal/audio-input/{id}` 只允许关联计算节点凭据读取 RUNNING 任务的当前素材。
+
+compute 内部 `/internal/v1/audio-roles/tasks` 接收固定 UUID、mode=PROBE|ANALYZE|SEPARATE 和已授权输入，支持查询、cancel、artifact、release。PROBE 无需模型，ANALYZE/SEPARATE 仅在依赖与本地模型摘要均符合固定版本时声明能力。Java 持久化队列，compute 只执行、保存有限生命周期的执行记录和临时文件；节点重启的未完成执行标为 FAILED，不冒充完成。详见 compute README 的资源预算、模型安装及验证边界。
+
+`/api/v1/audio-processing` 为管理员伴奏中心：歌曲分页筛选、持久批次预览/提交/详情/取消/重试、单项取消、当前节点及模型下载/导入/试跑/选择。变更请求继续使用管理员会话和CSRF；上传按固定 `model` 参数接受有界原始权重或多文件模型 ZIP，省略参数兼容 htdemucs。基准上限 100MiB，htdemucs-openvino 上限 128MiB，未知模型及超限拒绝。compute内部 `/internal/v1/audio-roles/models` 使用Bearer鉴权，模型下载仅使用固定清单；原有单曲音轨接口保留。
+
+节点响应保留原 `model` 字段，并增加 `models`、`build` 和 `deployment`；后端支持 `openvino`，当前镜像未包含时返回 `IMAGE_MISSING`。可用资格绑定构建、运行库、设备与模型摘要；变更后须重新试跑。镜像构建及模型安装不等于硬件通过验收。

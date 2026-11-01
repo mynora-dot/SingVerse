@@ -42,6 +42,11 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
 # WeChat developer local settings
 project.private.config.json
 # SQLite runtime files
@@ -61,6 +66,26 @@ project.private.config.json
 
 .tools/
 *.auth.lock
+
+# Downloaded inference weights and converted models (manifests stay in Git)
+*.th
+*.pth
+*.pt
+*.safetensors
+*.onnx
+*.rknn
+htdemucs_fwd.xml
+htdemucs_fwd.bin
+
+# Offline model bundles and Docker image exports
+htdemucs*.zip
+compute-image*.tar
+compute-image*.tar.gz
+singverse-compute*.tar
+singverse-compute*.tar.gz
+
+# Generated container identity; source is core/build_info.py
+/services/singverse-compute/singverse_compute/core/build.json
 
 # Derived cover cache (default Java working directory)
 /services/singverse-java-backend/data/metadata/
