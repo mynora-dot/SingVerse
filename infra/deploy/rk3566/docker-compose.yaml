@@ -1,0 +1,31 @@
+# Run from the root of the extracted deployment archive.
+name: singverse-rk3566
+services:
+  singverse-compute:
+    image: singverse-compute:rk3566-uvr
+    platform: linux/arm64
+    build:
+      context: .
+      dockerfile: services/singverse-compute/Dockerfile
+      target: uvr
+    environment:
+      COMPUTE_AUTH_TOKEN_FILE: /run/singverse-compute/token
+      COMPUTE_AUDIO_MODEL_REPO: /var/lib/singverse-models/htdemucs
+      COMPUTE_AUDIO_MEMORY_BYTES: '4294967296'
+      COMPUTE_AUDIO_THREADS: '2'
+    ports:
+      - '${NAS_BIND_IP:-10.100.1.115}:18090:8090'
+    volumes:
+      - auth:/run/singverse-compute
+      - cache:/var/cache/singverse-transcode
+      - models:/var/lib/singverse-models
+      - ./models/uvr-mdxnet-9482:/opt/uvr-model:ro
+      - ./test-output:/test-output
+    mem_limit: '${COMPUTE_CONTAINER_MEMORY_LIMIT:-6g}'
+    cpus: 2.0
+    restart: unless-stopped
+    stop_grace_period: 10s
+volumes:
+  auth:
+  cache:
+  models:

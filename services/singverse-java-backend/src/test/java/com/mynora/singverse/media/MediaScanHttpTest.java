@@ -25,13 +25,17 @@ class MediaScanHttpTest {
         if (computeStub != null) return;
         try {
             computeStub = com.sun.net.httpserver.HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-            computeStub.createContext("/internal/v1/media/tags", exchange -> {
+            computeStub.createContext("/internal/v1/media/remote-tags", exchange -> {
                 var mapper = new ObjectMapper();
                 boolean authorized = "Bearer isolated-compute-token-01234567890123456789".equals(exchange.getRequestHeaders().getFirst("Authorization"));
                 byte[] response = "{}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
                 if (authorized) {
-                    String file = mapper.readTree(exchange.getRequestBody()).path("path").asText();
-                    if (Files.readString(Path.of(file)).startsWith("tagged")) response = mapper.writeValueAsBytes(Map.of("title", "内嵌歌名", "artists", List.of("内嵌歌手"), "album", "内嵌专辑", "releaseDate", "2021-02-03"));
+                    var value=mapper.readTree(exchange.getRequestBody());
+                    if(value.has("path"))throw new AssertionError("Compute must not receive local paths");
+                    var req=java.net.http.HttpRequest.newBuilder(java.net.URI.create(value.path("callbackOrigin").asText()+"/api/v1/internal/metadata-input/"+value.path("reference").asText())).header("Authorization",exchange.getRequestHeaders().getFirst("Authorization")).header("Range","bytes=0-1023").build();
+                    String content;
+                    try {content=java.net.http.HttpClient.newHttpClient().send(req,java.net.http.HttpResponse.BodyHandlers.ofString()).body();}catch(InterruptedException e){Thread.currentThread().interrupt();throw new java.io.IOException(e);}
+                    if(content.startsWith("tagged"))response=mapper.writeValueAsBytes(Map.of("tags",Map.of("title", "内嵌歌名", "artists", List.of("内嵌歌手"), "album", "内嵌专辑", "releaseDate", "2021-02-03")));
                 }
                 exchange.sendResponseHeaders(authorized ? 200 : 401, response.length);
                 try (var output = exchange.getResponseBody()) { output.write(response); }

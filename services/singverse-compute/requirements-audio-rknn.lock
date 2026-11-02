@@ -1,0 +1,3 @@
+# Linux aarch64, host BSP must supply a compatible librknnrt.so and RKNPU driver.
+-r requirements-audio.lock
+rknn-toolkit-lite2==2.3.2

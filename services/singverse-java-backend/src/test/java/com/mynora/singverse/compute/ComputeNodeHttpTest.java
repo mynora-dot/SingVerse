@@ -25,6 +25,7 @@ class ComputeNodeHttpTest {
     static volatile int status=200;
     static volatile String payload="{\"service\":\"singverse-compute\",\"apiVersion\":\"1\",\"capabilities\":[\"media-tags\"]}";
     static volatile String requestedPath;
+    static volatile boolean callbackAllowed=true;
     @DynamicPropertySource static void properties(DynamicPropertyRegistry p) throws Exception {
         Files.writeString(temp.resolve("compute.token"),TOKEN);
         fixture=com.sun.net.httpserver.HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
@@ -32,7 +33,19 @@ class ComputeNodeHttpTest {
             if(!("Bearer "+TOKEN).equals(e.getRequestHeaders().getFirst("Authorization"))){e.sendResponseHeaders(401,-1);e.close();return;}
             var body=e.getRequestBody().readAllBytes();
             String result=payload;
-            if(e.getRequestURI().getPath().endsWith("/tags")){requestedPath=new ObjectMapper().readTree(body).path("path").asText();result="{\"title\":\"文件标题\",\"artists\":[\"文件歌手\"],\"album\":null,\"releaseDate\":null}";}
+            if(e.getRequestURI().getPath().equals("/internal/v1/callback/check")) {
+                var value=new ObjectMapper().readTree(body);
+                var req=HttpRequest.newBuilder(URI.create(value.path("callbackOrigin").asText()+"/api/v1/internal/compute-callback/"+value.path("reference").asText())).header("Authorization","Bearer "+TOKEN).build();
+                try { var back=HttpClient.newHttpClient().send(req,HttpResponse.BodyHandlers.ofString()); result="{\"available\":"+(callbackAllowed && back.statusCode()==200 && back.body().equals(value.path("reference").asText()))+"}"; }
+                catch(Exception failure){ result="{\"available\":false}"; }
+            }
+            if(e.getRequestURI().getPath().endsWith("/remote-tags")) {
+                var value=new ObjectMapper().readTree(body);assertThat(value.has("path")).isFalse();requestedPath=value.path("reference").asText();
+                var req=HttpRequest.newBuilder(URI.create(value.path("callbackOrigin").asText()+"/api/v1/internal/metadata-input/"+requestedPath)).header("Authorization","Bearer "+TOKEN).header("Range","bytes=0-1023").build();
+                try { assertThat(HttpClient.newHttpClient().send(req,HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(206); }
+                catch(Exception failure){throw new IllegalStateException(failure);}
+                result="{\"tags\":{\"title\":\"文件标题\",\"artists\":[\"文件歌手\"],\"album\":null,\"releaseDate\":null}}";
+            }
             byte[] bytes=result.getBytes(java.nio.charset.StandardCharsets.UTF_8);e.sendResponseHeaders(status,bytes.length);e.getResponseBody().write(bytes);e.close();
         });fixture.start();
         p.add("singverse.sqlite.path",()->temp.resolve("compute.db").toString());p.add("singverse.auth.key-file",()->temp.resolve("auth.key").toString());p.add("singverse.classification.worker-enabled",()->false);
@@ -47,7 +60,7 @@ class ComputeNodeHttpTest {
     @Autowired com.mynora.singverse.ai.AiMapper ai;
     @Autowired ComputeNodeMapper compute;
     HttpClient client;
-    @BeforeEach void reset(){status=200;payload="{\"service\":\"singverse-compute\",\"apiVersion\":\"1\",\"capabilities\":[\"media-tags\"]}";requestedPath=null;db.update("UPDATE compute_node_settings SET mode='AUTO',endpoint='',secret_encrypted=NULL,mappings_json='[]',revision=0 WHERE id=1");client=HttpClient.newBuilder().cookieHandler(new CookieManager(null,CookiePolicy.ACCEPT_ALL)).build();}
+    @BeforeEach void reset(){callbackAllowed=true;status=200;payload="{\"service\":\"singverse-compute\",\"apiVersion\":\"1\",\"capabilities\":[\"media-tags\"]}";requestedPath=null;db.update("UPDATE compute_node_settings SET mode='AUTO',endpoint='',secret_encrypted=NULL,mappings_json='[]',revision=0 WHERE id=1");client=HttpClient.newBuilder().cookieHandler(new CookieManager(null,CookiePolicy.ACCEPT_ALL)).build();}
     HttpResponse<String> req(String path,String method,Object input,boolean csrf)throws Exception{
         var r=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+path));
         if(csrf)r.header("X-CSRF-Token",json.readTree(req("/api/v1/auth/csrf","GET",null,false).body()).path("token").asText());
@@ -64,6 +77,13 @@ class ComputeNodeHttpTest {
         var result=ok("/api/v1/compute-node/test","POST",input("AUTO",0));assertThat(result.path("status").asText()).isEqualTo("AVAILABLE");assertThat(result.path("capabilities").get(0).asText()).isEqualTo("media-tags");assertThat(result.toString()).doesNotContain(TOKEN);
         assertThat(ok("/api/v1/compute-node","GET",null).path("revision").asLong()).isZero();
     }
+    @Test void failedReverseConnectionDoesNotClaimMediaReadyOrChangeSettings() throws Exception {
+        login();callbackAllowed=false;
+        var check=ok("/api/v1/compute-node/test","POST",input("AUTO",0));
+        assertThat(check.path("status").asText()).isEqualTo("CALLBACK_FAILED");
+        assertThat(check.path("message").asText()).contains("业务回源不可用");
+        assertThat(ok("/api/v1/compute-node","GET",null).path("revision").asLong()).isZero();
+    }
     @Test void encryptedCredentialRetentionRevisionAndChangedAddressProtection()throws Exception{
         login();var saved=ok("/api/v1/compute-node","PUT",input("MANUAL",0));assertThat(saved.path("hasToken").asBoolean()).isTrue();assertThat(saved.toString()).doesNotContain(TOKEN,"secret_encrypted");
         assertThat(db.queryForObject("SELECT secret_encrypted FROM compute_node_settings",String.class)).isNotEqualTo(TOKEN).doesNotContain(TOKEN);
@@ -74,11 +94,13 @@ class ComputeNodeHttpTest {
         edit.put("revision",2);edit.put("endpoint","http://127.0.0.1:1");assertThat(req("/api/v1/compute-node/test","POST",edit,true).statusCode()).isEqualTo(400);assertThat(req("/api/v1/compute-node","PUT",edit,true).statusCode()).isEqualTo(400);
         edit.put("clearToken",true);assertThat(ok("/api/v1/compute-node","PUT",edit).path("hasToken").asBoolean()).isFalse();assertThat(tags.read(Path.of("/local/a.mp3"))).isNull();
     }
-    @Test void pathMappingAndScanSnapshotStayOnTheirOriginalConnection()throws Exception{
+    @Test void legacyMappingsAreIgnoredAndScanSnapshotKeepsItsConnection()throws Exception{
         login();ok("/api/v1/compute-node","PUT",input("MANUAL",0));var session=tags.session();
-        assertThat(session.apply(Path.of("/local/special/中文.mp4"))).contains("文件标题");assertThat(requestedPath).isEqualTo("/special/中文.mp4");
-        assertThat(session.apply(Path.of("/local/other.mp3"))).isNotNull();assertThat(requestedPath).isEqualTo("/media/other.mp3");
-        ok("/api/v1/compute-node","PUT",input("DISABLED",1));assertThat(tags.read(Path.of("/local/new.mp3"))).isNull();assertThat(session.apply(Path.of("/local/old.mp3"))).isNotNull();assertThat(requestedPath).isEqualTo("/media/old.mp3");
+        Path song=temp.resolve("中文.mp4");Files.writeString(song,"media-fixture");
+        assertThat(session.apply(song)).contains("文件标题");assertThat(requestedPath).matches("[a-f0-9-]{36}");
+        String previous=requestedPath;
+        ok("/api/v1/compute-node","PUT",input("DISABLED",1));assertThat(tags.read(song)).isNull();
+        assertThat(session.apply(song)).contains("文件标题");assertThat(requestedPath).isNotEqualTo(previous);
     }
     @Test void errorsAreSafeAndDisabledModeMakesNoCall()throws Exception{
         login();status=403;assertThat(ok("/api/v1/compute-node/test","POST",input("AUTO",0)).path("status").asText()).isEqualTo("AUTH_FAILED");

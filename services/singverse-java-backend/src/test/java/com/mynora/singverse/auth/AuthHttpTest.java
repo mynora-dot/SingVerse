@@ -483,6 +483,7 @@ class AuthHttpTest {
                         com.mynora.singverse.media.audio.AudioProcessingController.class,
                         com.mynora.singverse.ai.AiController.class,
                         com.mynora.singverse.compute.ComputeNodeController.class,
+                        com.mynora.singverse.compute.ComputeCallbackController.class,
                         com.mynora.singverse.media.classification.ClassificationController.class,
                         com.mynora.singverse.media.controller.MediaSourceController.class,
                         com.mynora.singverse.media.webdav.ScanTaskController.class,

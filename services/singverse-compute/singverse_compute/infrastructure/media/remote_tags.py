@@ -29,13 +29,8 @@ class RangeFile(RawIOBase):
     """Read-only seekable object; every consumer shares a bounded block cache."""
     def __init__(self, origin, reference, token, name, size, deep=False):
         super().__init__()
-        parsed = urlsplit(origin)
-        if parsed.scheme not in ('http', 'https') or not parsed.hostname or parsed.username or parsed.password or parsed.path or parsed.query or parsed.fragment:
-            raise ComputeError(503, 'Java input origin is not configured')
-        for item in socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == 'https' else 80), type=socket.SOCK_STREAM):
-            ip = ipaddress.ip_address(item[4][0])
-            if ip.is_link_local or ip.is_multicast or ip.is_unspecified or parsed.scheme == 'http' and not (ip.is_private or ip.is_loopback):
-                raise ComputeError(403, 'Java input origin requires TLS or restricted network')
+        from ..transcoding.input import validate_origin
+        validate_origin(origin)
         self.url = origin + '/api/v1/internal/metadata-input/' + reference
         self.token, self.name = token, name
         self.size, self.position = size, 0

@@ -14958,6 +14958,78 @@
             "computeBearer": []
           }
         ]
+      },
+      "head": {
+        "operationId": "readMetadataInput",
+        "summary": "读取任务授权媒体范围头部",
+        "responses": {
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Administrator session or CSRF required"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "409": {
+            "description": "State conflict"
+          },
+          "206": {
+            "description": "At most 1 MiB verified byte range",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Grant ended"
+          },
+          "413": {
+            "description": "Read budget exhausted"
+          },
+          "422": {
+            "description": "Upstream ignores Range"
+          },
+          "429": {
+            "description": "Access group cooling down"
+          },
+          "502": {
+            "description": "Upstream failure"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^bytes=[0-9]+-[0-9]+$"
+            }
+          }
+        ],
+        "security": [
+          {
+            "computeBearer": []
+          }
+        ]
       }
     },
     "/api/v1/media-sources/{id}/embedded-metadata/share": {
@@ -16867,6 +16939,42 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/compute-callback/{id}": {
+      "get": {
+        "summary": "短期授权的业务回源连通性与认证检查",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "security": [
+          {
+            "computeBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "返回检查 UUID",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据无效或授权失效"
           }
         }
       }
@@ -20381,7 +20489,8 @@
             "maxItems": 16,
             "items": {
               "$ref": "#/components/schemas/ComputePathMapping"
-            }
+            },
+            "description": "仅兼容读取旧配置；新媒体任务不使用目录映射"
           },
           "revision": {
             "type": "integer",
@@ -20461,7 +20570,8 @@
               "MISSING_TOKEN",
               "AUTH_FAILED",
               "UNAVAILABLE",
-              "INCOMPATIBLE"
+              "INCOMPATIBLE",
+              "CALLBACK_FAILED"
             ]
           },
           "message": {

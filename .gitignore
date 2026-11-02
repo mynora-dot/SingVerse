@@ -90,3 +90,29 @@ singverse-compute*.tar.gz
 # Derived cover cache (default Java working directory)
 /services/singverse-java-backend/data/metadata/
 /docs
+
+# Local credentials and task/runtime state (keep placeholder .env.example files)
+*.p12
+*.pfx
+*.token
+*-token
+token
+credentials.json
+secrets/
+.run/
+
+# Temporary work, generated deployment bundles and local media/model outputs
+.tmp/
+/tmp/
+/temp/
+*.tmp
+*.temp
+*.part
+*.pid
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+/media/
+/models/
+test-output/

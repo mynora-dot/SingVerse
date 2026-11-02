@@ -91,12 +91,7 @@ public class AudioJobService {
         var song=songs.get(text(row,"song_id"));var source=sources.get(song.sourceId());
         var body=json.createObjectNode().put("id",text(row,"id")).put("mode",text(row,"kind"));
         if(!text(row,"backend").isEmpty())body.put("backend",text(row,"backend"));
-        if(source.type().equals("WEBDAV"))body.put("reference",text(row,"id"));
-        else try{
-            Path base=Path.of(source.location()).toRealPath(), file=base.resolve(song.relativePath()).toRealPath();
-            if(!file.startsWith(base)||!Files.isRegularFile(file))throw fail(403,"媒体不在来源目录内");
-            body.put("path",connection.mediaPath(file));
-        }catch(IOException e){throw fail(404,"媒体文件不可读取");}
+        body.put("reference",text(row,"id"));
         return body;
     }
     @Scheduled(fixedDelay=3000,initialDelay=6000,scheduler="audioScheduler")
@@ -128,7 +123,7 @@ public class AudioJobService {
                     update(id,"SUCCEEDED",result.toString(),"");
                     if(text(row,"kind").equals("SEPARATE"))try{compute.call(connection,"/internal/v1/audio-roles/tasks/"+id+"/release","POST",null);}catch(Exception ignored){}
 
-                }else if(Set.of("FAILED","CANCELLED").contains(phase))update(id,state.path("error").asText().equals("REALTIME_PREEMPTED")?"FAILED":phase,state.path("result").isObject()?state.path("result").toString():"{}",state.path("error").asText("计算失败"));
+                }else if(Set.of("FAILED","CANCELLED").contains(phase))update(id,state.path("error").asText().equals("REALTIME_PREEMPTED")?"FAILED":phase,state.path("result").isObject()?state.path("result").toString():"{}",state.path("error").asText("计算失败")+(state.path("result").path("diagnostic").asText().isBlank()?"":"："+state.path("result").path("diagnostic").asText()));
                 else if(phase.equals("RUNNING"))update(id,"RUNNING",state.path("result").isObject()?state.path("result").toString():"{}","");
             }catch(ResponseStatusException e){
                 if(e.getStatusCode().value()==404)update(id,text(row,"state").equals("RUNNING")?"QUEUED":"FAILED","{}",text(row,"state").equals("RUNNING")?"节点重启后重新排队":"媒体文件不可读取");
@@ -214,11 +209,15 @@ public class AudioJobService {
         var row=mapper.job(id);if(row==null||!text(row,"song_id").equals(song))throw fail(404,"任务不存在");return row;
     }
     public void source(String id,String token,String range,boolean head,HttpServletResponse response)throws IOException{
+        var row=sourceRow(id,token);
+        playback.play(text(row,"song_id"),range,head,response,()->sourceRow(id,token));
+    }
+    private Map<String,Object> sourceRow(String id,String token){
         var row=mapper.job(id);if(row==null||!text(row,"state").equals("RUNNING"))throw fail(404,"媒体授权不存在");
         var connection=compute.connection(text(row,"node_origin"));
         if(token==null||!java.security.MessageDigest.isEqual(token.getBytes(java.nio.charset.StandardCharsets.UTF_8),("Bearer "+connection.token()).getBytes(java.nio.charset.StandardCharsets.UTF_8)))throw fail(401,"内部认证失败");
         if(!fingerprint(text(row,"song_id")).equals(text(row,"fingerprint")))throw fail(409,"源媒体已变化");
-        playback.play(text(row,"song_id"),range,head,response);
+        return row;
     }
     public void accompaniment(String song,String id,String range,boolean head,HttpServletResponse response)throws IOException{
         var row=require(song,id);

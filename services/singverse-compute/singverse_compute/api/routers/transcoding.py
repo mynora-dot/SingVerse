@@ -12,12 +12,14 @@ ID = r'^[a-f0-9-]{36}$'
 
 class Input(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    path: str | None = Field(default=None, min_length=1, max_length=4096)
+    callbackOrigin: str = Field(min_length=1, max_length=512)
     reference: str | None = Field(default=None, pattern=ID)
     @model_validator(mode='after')
-    def one_source(self):
-        if bool(self.path) == bool(self.reference):
-            raise ValueError('Exactly one media input is required')
+    def valid_source(self):
+        if not self.reference:
+            raise ValueError('Task reference is required')
+        from ...infrastructure.transcoding.input import validate_origin
+        validate_origin(self.callbackOrigin)
         return self
 
 class ClientInput(BaseModel):
@@ -95,17 +97,17 @@ def capabilities(request: Request):
 
 @router.post('/probe')
 def probe(request: Request, body: Input):
-    return asdict(request.app.state.transcoding.inspect(body.path, body.reference))
+    return asdict(request.app.state.transcoding.inspect(None, body.reference, body.callbackOrigin))
 
 @router.post('/negotiate')
 def negotiate(request: Request, body: Negotiate):
-    media = request.app.state.transcoding.inspect(body.path, body.reference)
+    media = request.app.state.transcoding.inspect(None, body.reference, body.callbackOrigin)
     plan = decide(media, Client(**body.client.model_dump()), body.burn_subtitle)
     return {**asdict(plan), 'media':asdict(media)}
 
 @router.post('/executions', status_code=202)
 def create(request: Request, body: Create):
-    return request.app.state.transcoding.create(body.id, body.path, body.reference, body.fingerprint, Target(**body.target.model_dump()))
+    return request.app.state.transcoding.create(body.id, None, body.reference, body.fingerprint, Target(**body.target.model_dump()), body.callbackOrigin)
 
 @router.get('/executions/{identifier}')
 def status(request: Request, identifier: str):

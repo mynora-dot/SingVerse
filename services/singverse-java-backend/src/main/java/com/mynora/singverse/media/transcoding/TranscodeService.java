@@ -91,17 +91,7 @@ public class TranscodeService {
         var song = songs.get(songId);
         var source = sources.get(song.sourceId());
         var node = json.createObjectNode();
-        if (source.type().equals("LOCAL")) {
-            try {
-                Path root = Path.of(source.location()).toRealPath(),
-                        file = root.resolve(song.relativePath()).toRealPath();
-                if (!file.startsWith(root) || !Files.isRegularFile(file))
-                    throw fail(403, "媒体不在允许目录内");
-                node.put("path", c.mediaPath(file));
-            } catch (IOException e) {
-                throw fail(404, "媒体文件不可读取");
-            }
-        } else node.put("reference", id);
+        node.put("reference", id);
         return node;
     }
 
@@ -561,6 +551,11 @@ public class TranscodeService {
     public void source(
             String id, String token, String range, boolean head, HttpServletResponse response)
             throws IOException {
+        var row = sourceRow(id, token);
+        playback.play(str(row, "song_id"), range, head, response, () -> sourceRow(id, token));
+    }
+
+    private Map<String, Object> sourceRow(String id, String token) {
         var connection = compute.connection();
         if (token == null
                 || !java.security.MessageDigest.isEqual(
@@ -574,7 +569,7 @@ public class TranscodeService {
             throw fail(410, "媒体读取授权已结束");
         if (!str(row, "fingerprint").equals(fingerprint(songs.get(str(row, "song_id")))))
             throw fail(409, "媒体已变化");
-        playback.play(str(row, "song_id"), range, head, response);
+        return row;
     }
 
     @Scheduled(fixedDelay = 2000, initialDelay = 3000, scheduler = "transcodeScheduler")

@@ -67,7 +67,25 @@ def run(command, *, timeout=15, limit=1048576, cancel=None, line=None, cwd=None,
         for thread in readers:
             thread.join(timeout=2)
         if overflow.is_set() or process.returncode:
-            raise ComputeError(422, 'Media execution failed')
+            detail = errors.decode('utf-8', 'replace').lower()
+            message = 'Media execution failed'
+            for marker, reason in (
+                ('out of memory', 'Model execution exceeded device memory'),
+                ('no such file or directory', 'Media input or model file is missing'),
+                ('permission denied', 'Media input or working directory permission denied'),
+                ('connection refused', 'Media callback connection refused'),
+                ('server returned 401', 'Media callback authentication failed'),
+                ('server returned 403', 'Media callback access denied'),
+                ('server returned 404', 'Media callback resource unavailable'),
+                ('invalid data found', 'Invalid or unsupported media input'),
+                ('frame dimension less', 'Encoder probe dimensions unsupported'),
+                ('cannot load libcuda', 'CUDA driver library unavailable'),
+                ('cuda error', 'CUDA model execution failed'),
+            ):
+                if marker in detail:
+                    message = reason
+                    break
+            raise ComputeError(422, message)
         return bytes(output)
     finally:
         stop(process)

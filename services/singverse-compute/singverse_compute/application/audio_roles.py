@@ -93,7 +93,7 @@ class AudioRoles:
         manager = getattr(self, 'models', None)
         if manager is None:
             return self.runtime_available
-        if not self.runtime_available and not manager.model_valid('htdemucs-openvino'):
+        if not self.runtime_available and not any(manager.model_valid(model) for model in ('htdemucs-openvino', 'uvr-mdxnet-9482-rknn')):
             return False
         return manager.selected() is not None
 
@@ -105,6 +105,11 @@ class AudioRoles:
             return False
 
     def backend_runtime_available(self, backend):
+        if backend == 'rknn':
+            try:
+                return self.dependencies_available and version('rknn-toolkit-lite2') == '2.3.2' and self.models.model_valid('uvr-mdxnet-9482-rknn')
+            except PackageNotFoundError:
+                return False
         if backend != 'openvino':
             return self.runtime_available
         try:
@@ -176,7 +181,11 @@ class AudioRoles:
 
     def _separate_once(self, wav: Path, output: Path, task: AudioTask):
         backend = getattr(task, 'backend', 'cpu')
-        if backend == 'openvino':
+        if backend == 'rknn':
+            self._run([sys.executable, '-m', 'singverse_compute.infrastructure.rknn_audio',
+                       '--model-dir', str(self.models.model_path('uvr-mdxnet-9482-rknn')),
+                       '--output', str(output), str(wav)], task)
+        elif backend == 'openvino':
             from .audio_catalog import OPENVINO, model_digest
             from ..core.build_info import build_info
             environment = self.models.probe()
@@ -190,7 +199,7 @@ class AudioRoles:
             if not all((folder/name).is_file() for name in ('vocals.wav', 'no_vocals.wav')):
                 raise ComputeError(422, 'Model did not produce both stems')
             return folder/'vocals.wav', folder/'no_vocals.wav'
-        if backend == 'mps':
+        elif backend == 'mps':
             self._run([sys.executable, '-m', 'singverse_compute.infrastructure.mps_audio',
                        '--model-dir', str(self.repo), '--output', str(output), str(wav)], task)
         else:
@@ -256,12 +265,12 @@ class AudioRoles:
         result.update(backend='cpu', model=FAST, modelVersion=manifest(FAST)['version'], modelDigest=file['sha256'])
         return result
 
-    def submit(self, identifier, path, reference, mode, backend=None):
+    def submit(self, identifier, path, reference, mode, backend=None, callback_origin=None):
         if str(uuid.UUID(identifier)) != identifier or mode not in ('PROBE', 'FAST', 'ANALYZE', 'SEPARATE'):
             raise ComputeError(400, 'Invalid audio task')
         if mode in ('ANALYZE', 'SEPARATE') and backend == 'cpu' and hasattr(self, 'models') and any(item.get('detected') for item in self.models.entries()):
             raise ComputeError(422, '检测到加速硬件，CPU 仅用于自动降级')
-        signature = hashlib.sha256(json.dumps([path, reference, mode, backend]).encode()).hexdigest()
+        signature = hashlib.sha256(json.dumps([path, reference, callback_origin, mode, backend]).encode()).hexdigest()
         with self.lock:
             if identifier in self.tasks:
                 if getattr(self.tasks[identifier], 'signature', signature) != signature:
@@ -333,7 +342,7 @@ class AudioRoles:
                 self.save(task)
                 from ..infrastructure.transcoding.input import remote_input
                 context = self.transcoding.input(path, None) if path else remote_input(
-                    self.settings.java_origin, reference, self.transcoding.auth._token(), 'audio-input')
+                    callback_origin, reference, self.transcoding.auth._token(), 'audio-input')
                 with context as value:
                     source, network = value if path else (value, True)
                     media = self.transcoding.probe.read(source, network)
@@ -415,6 +424,7 @@ class AudioRoles:
                                            'sha256': self.digest(target), 'size': target.stat().st_size, 'artifact': f'{identifier}.m4a', 'streams': [asdict(s) for s in audio]}
                 task.state = 'CANCELLED' if task.cancel.is_set() else 'SUCCEEDED'
             except Exception as error:
+                task.result['diagnostic'] = error.message if isinstance(error, ComputeError) else 'Audio worker failed unexpectedly'
                 task.error = task.error or ('AUDIO_MEMORY_LIMIT' if isinstance(error, ComputeError) and 'memory budget' in error.message else 'AUDIO_EXECUTION_FAILED')
                 task.state = 'CANCELLED' if task.cancel.is_set() else 'FAILED'
                 for suffix in ('.part', '.m4a'):
@@ -445,7 +455,7 @@ class AudioRoles:
                  'modelDigest': model_digest(model_id), 'build': build_info()}
         if hasattr(self, 'models'):
             environment = self.models.probe()
-            value.update(environmentFingerprint=environment['fingerprint'], device=environment.get('devices', {}).get(backend, {}), runtimes=environment.get('versions', {}))
+            value.update(modelDigest=self.models.inference_digest(model_id), environmentFingerprint=environment['fingerprint'], device=environment.get('devices', {}).get(backend, {}), runtimes=environment.get('versions', {}))
         if backend == 'openvino':
             value['pipeline'] = 'openvino-gpu+cpu-stft'
         return value

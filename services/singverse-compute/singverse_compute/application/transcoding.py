@@ -72,25 +72,25 @@ class Transcoding:
     def available(self):
         return bool(self.root and self.auth.available and shutil.which(self.settings.ffmpeg) and shutil.which(self.settings.ffprobe))
 
-    def input(self, path, reference):
+    def input(self, path, reference, callback_origin=None):
         if path:
             return nullcontext((str(self.paths.resolve(path)), False))
-        if not reference or not self.settings.java_origin:
+        if not reference or not callback_origin:
             raise ComputeError(503, 'Remote media input is not configured')
         from contextlib import contextmanager
         @contextmanager
         def gateway():
-            with self.remote(self.settings.java_origin, reference, self.auth._token()) as url:
+            with self.remote(callback_origin, reference, self.auth._token()) as url:
                 yield url, True
         return gateway()
 
-    def inspect(self, path, reference):
+    def inspect(self, path, reference, callback_origin=None):
         if not self.available:
             raise ComputeError(503, 'Transcoding unavailable')
         if not self.probe_slots.acquire(blocking=False):
             raise ComputeError(429, 'Media probe busy')
         try:
-            with self.input(path, reference) as (source, network):
+            with self.input(path, reference, callback_origin) as (source, network):
                 return self.probe.read(source, network)
         finally:
             self.probe_slots.release()
@@ -105,14 +105,14 @@ class Transcoding:
     def usage(self):
         return sum(p.stat().st_size for p in self.root.glob('*/*') if p.is_file() and not p.is_symlink())
 
-    def create(self, identifier, path, reference, fingerprint, target):
+    def create(self, identifier, path, reference, fingerprint, target, callback_origin=None):
         if not self.available:
             raise ComputeError(503, 'Transcoding unavailable')
         # Input seeking plus stream-copy may expose frames preceding the requested time.
         # Decode nonzero starts accurately so returned original-timeline offsets remain valid for lyrics.
         if target.start > 0 and target.mode != 'TRANSCODE':
             target = replace(target, mode='TRANSCODE')
-        signature = hashlib.sha256(json.dumps(['2', path, reference, fingerprint, asdict(target)], sort_keys=True).encode()).hexdigest()
+        signature = hashlib.sha256(json.dumps(['2', path, reference, callback_origin, fingerprint, asdict(target)], sort_keys=True).encode()).hexdigest()
         with self.lock:
             prior = self.tasks.get(identifier)
             if prior:
@@ -145,17 +145,17 @@ class Transcoding:
             directory.mkdir(exist_ok=False)
             self.tasks[identifier] = task
             self.save(task)
-            thread = threading.Thread(target=self.execute, args=(task,path,reference), daemon=True)
+            thread = threading.Thread(target=self.execute, args=(task,path,reference,callback_origin), daemon=True)
             self.threads = [t for t in self.threads if t.is_alive()]
             self.threads.append(thread)
             thread.start()
             return task.view()
 
-    def execute(self, task, path, reference):
+    def execute(self, task, path, reference, callback_origin=None):
         directory = self.root / task.id
         try:
             task.state = 'RUNNING'
-            with self.input(path, reference) as (source, network):
+            with self.input(path, reference, callback_origin) as (source, network):
                 before = Path(source).stat() if not network else None
                 media = self.probe.read(source, network)
                 if media.duration and task.target.start >= media.duration:
@@ -172,7 +172,8 @@ class Transcoding:
                     elif key == 'memory':
                         task.peak_memory_bytes = value
                     elif key == 'out_time_us':
-                        task.position = max(0, int(value)/1000000)
+                        if value.lstrip("-").isdigit():
+                            task.position = max(0, int(value)/1000000)
                     elif key == 'speed':
                         try:
                             task.speed = float(value.rstrip('x'))

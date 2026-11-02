@@ -4,10 +4,17 @@ import json
 
 BASELINE = 'htdemucs'
 OPENVINO = 'htdemucs-openvino'
+RKNN = 'uvr-mdxnet-9482-rknn'
 FAST = 'panns-cnn6'
 REVISION = 'efb3d2bc54f93899b13b72b12c57001e19f09ae2'
 OV_SOURCE = f'https://huggingface.co/Intel/demucs-openvino/resolve/{REVISION}/htdemucs_v4/'
 MODELS = {
+    RKNN: {
+        'id': RKNN, 'version': '9482-local-v1', 'format': 'rknn', 'license': 'See upstream UVR model terms',
+        'backends': ['rknn'], 'sampleRate': 44100,
+        'sources': ['vocals', 'no_vocals'],
+        'maxBytes': 512 * 1024**2, 'files': [], 'localOnly': True,
+    },
     FAST: {
         'id': FAST, 'version': 'audioset-0.343', 'format': 'pytorch', 'license': 'CC-BY-4.0',
         'purpose': 'fast-audio-roles', 'backends': ['cpu'], 'sampleRate': 32000,
@@ -50,7 +57,7 @@ def manifest(model_id):
 
 
 def model_for_backend(backend):
-    return OPENVINO if backend == 'openvino' else BASELINE
+    return RKNN if backend == 'rknn' else OPENVINO if backend == 'openvino' else BASELINE
 
 
 def model_digest(model_id):

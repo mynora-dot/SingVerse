@@ -11,6 +11,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Component
 public class ComputeNodeProbe {
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private ComputeCallback callback;
     private final ObjectMapper json;
     private final HttpClient http=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).followRedirects(HttpClient.Redirect.NEVER).build();
     public ComputeNodeProbe(ObjectMapper json) {this.json=json;}
@@ -34,7 +36,22 @@ public class ComputeNodeProbe {
                     return result("INCOMPATIBLE","节点能力响应无效",List.of(),start);
                 capabilities.add(capability.asText());
             }
-            return result("AVAILABLE",(capabilities.contains("media-tags")||capabilities.contains("media-remote-tags"))?"连接与认证成功，音视频标签读取可用":"连接与认证成功，节点暂未开放媒体能力",List.copyOf(capabilities),start);
+            if (callback != null) {
+                String reference = callback.authorize(connection.token());
+                try {
+                    var payload = json.createObjectNode().put("reference", reference).put("callbackOrigin", callback.origin());
+                    var check = HttpRequest.newBuilder(connection.origin().resolve("/internal/v1/callback/check"))
+                            .timeout(Duration.ofSeconds(7)).header("Authorization", "Bearer " + connection.token())
+                            .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(payload.toString())).build();
+                    var back = http.send(check, info -> new BoundedResponse(4096));
+                    if (back.statusCode() != 200 || !json.readTree(back.body()).path("available").asBoolean())
+                        return result("CALLBACK_FAILED", "节点连接与认证成功，但业务回源不可用；请使用节点可达的业务地址打开管理页，并检查反向代理与网络", capabilities, start);
+                } catch (Exception error) {
+                    if (error instanceof InterruptedException) Thread.currentThread().interrupt();
+                    return result("CALLBACK_FAILED", "节点连接与认证成功，但无法确定或访问业务回源地址", capabilities, start);
+                } finally { callback.revoke(reference); }
+            }
+            return result("AVAILABLE",(capabilities.contains("media-tags")||capabilities.contains("media-remote-tags"))?"节点连接、认证与业务回源成功，媒体读取可用":"连接与认证成功，节点暂未开放媒体能力",List.copyOf(capabilities),start);
         } catch(ResponseStatusException error) {throw error;}
         catch(InterruptedException error) {Thread.currentThread().interrupt();return result("UNAVAILABLE","连接已中断，请重试",List.of(),start);}
         catch(Exception error) {return result("UNAVAILABLE","节点连接失败或超时，请检查地址、服务及网络",List.of(),start);}

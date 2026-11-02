@@ -22,6 +22,8 @@ public class MediaTagsClient {
             return fields;
         }
     }
+    @Autowired(required=false) private com.mynora.singverse.compute.ComputeCallback callback;
+    @Autowired(required=false) private com.mynora.singverse.compute.LocalMetadataInput input;
     private final ObjectMapper json;
     private final java.util.function.Supplier<Connection> connections;
     private final java.net.http.HttpClient http = java.net.http.HttpClient.newBuilder()
@@ -50,16 +52,20 @@ public class MediaTagsClient {
     public String read(Path file) {return read(connections.get(),file);}
     private String read(Connection connection,Path file) {
         if (connection==null || connection.token().isBlank()) return null;
+        String reference = null;
         try {
+            if (callback == null || input == null) return null;
             ComputeNodeSettings.checkNetwork(connection.origin());
             String token=connection.token();
             if(token.length()<32 || token.length()>256) return null;
-            var request = java.net.http.HttpRequest.newBuilder(connection.origin().resolve("/internal/v1/media/tags")).timeout(java.time.Duration.ofSeconds(5))
+            reference = input.authorize(file, token);
+            var payload = Map.of("reference", reference, "callbackOrigin", callback.origin(), "filename", file.getFileName().toString(), "size", java.nio.file.Files.size(file));
+            var request = java.net.http.HttpRequest.newBuilder(connection.origin().resolve("/internal/v1/media/remote-tags")).timeout(java.time.Duration.ofSeconds(70))
                 .header("Authorization", "Bearer " + token).header("Content-Type", "application/json")
-                .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(Map.of("path", connection.mediaPath(file))))).build();
-            var response = http.send(request, info -> new com.mynora.singverse.media.metadata.BoundedResponse(65536));
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(payload))).build();
+            var response = http.send(request, info -> new com.mynora.singverse.media.metadata.BoundedResponse(4*1024*1024));
             if (response.statusCode() != 200) return null;
-            var tags = json.readValue(response.body(), Tags.class);
+            var tags = json.treeToValue(json.readTree(response.body()).path("tags"), Tags.class);
             if (tags.fields().isEmpty()) return null;
             if (tags.title() != null && tags.title().length() > 500 || tags.album() != null && tags.album().length() > 500
                     || tags.artists().size() > 32 || tags.artists().stream().anyMatch(a -> a == null || a.isBlank() || a.length() > 200)
@@ -67,5 +73,6 @@ public class MediaTagsClient {
             return json.writeValueAsString(tags);
         } catch (InterruptedException error) { Thread.currentThread().interrupt(); return null; }
         catch (Exception error) { return null; }
+        finally { if (reference != null) input.revoke(reference); }
     }
 }

@@ -3,7 +3,7 @@ import PageHeader from '../../../shared/ui/PageHeader.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElAlert, ElButton, ElInput, ElMessageBox, ElSkeleton, ElTag, ElTabs, ElTabPane, ElDialog, ElSwitch, ElDrawer } from 'element-plus'
-import { RefreshRight, Plus, Delete, Check, ArrowRight } from '@element-plus/icons-vue'
+import { RefreshRight, Check, ArrowRight } from '@element-plus/icons-vue'
 import AudioModelSettings from '../AudioModelSettings.vue'
 import HardwareSettings from '../HardwareSettings.vue'
 import { computeNode } from '../api'
@@ -110,7 +110,6 @@ function validate() {
   if (usesDeployment.value) return true
   if (!draft.endpoint.trim()) { formError.value = '请填写计算服务地址。'; return false }
   if (!draft.clearToken && !draft.token.trim() && !canKeepToken.value) { formError.value = '请填写连接密钥，可从计算服务的 token 文件获取。'; return false }
-  if (draft.mappings.some(mapping => !mapping.localRoot.startsWith('/') || !mapping.remoteRoot.startsWith('/'))) { formError.value = '请为每条映射填写两端的完整目录路径，例如 /media。'; return false }
   return true
 }
 async function testDraft(): Promise<NodeCheck | null> {
@@ -180,7 +179,8 @@ onBeforeUnmount(() => { active = false; currentGeneration++; draftGeneration++; 
             <label class="node-field"><span>计算服务地址</span><ElInput v-model="draft.endpoint" aria-label="计算服务地址" placeholder="例如 http://192.168.1.20:18090" maxlength="512" :disabled="busy" /></label>
             <label class="node-field"><span>连接密钥 <ElTag v-if="canKeepToken || hasDeploymentToken" size="small" effect="plain">已配置</ElTag></span><ElInput v-model="draft.token" aria-label="计算节点认证凭据" type="password" autocomplete="new-password" :placeholder="hasDeploymentToken ? '已使用部署密钥，留空保留' : canKeepToken ? '留空保留已保存密钥' : '填写计算服务的连接密钥'" maxlength="256" show-password :disabled="busy || draft.clearToken" /><small v-if="!hasDeploymentToken && !canKeepToken && endpointChanged && effectiveEndpoint" class="credential-warning">服务地址已改变，需重新填写密钥。</small></label>
             <ElButton class="credential-help" link type="primary" @click="helpVisible = true">如何获取连接信息？</ElButton>
-            <details class="node-paths"><summary>目录映射与密钥管理 <span>{{ draft.mappings.length ? `${draft.mappings.length} 条映射` : '可选' }}</span></summary><p>仅在两端媒体路径不同时添加映射。</p><div v-for="(mapping, index) in draft.mappings" :key="index" class="node-mapping"><label>主服务目录<ElInput v-model="mapping.localRoot" :aria-label="`本机媒体路径 ${index + 1}`" placeholder="/mnt/music" :disabled="busy" /></label><span aria-hidden="true">→</span><label>计算设备目录<ElInput v-model="mapping.remoteRoot" :aria-label="`节点媒体路径 ${index + 1}`" placeholder="/media" :disabled="busy" /></label><ElButton :icon="Delete" :aria-label="`移除路径映射 ${index + 1}`" :disabled="busy" @click="draft.mappings.splice(index, 1)" /></div><ElButton :icon="Plus" :disabled="busy || draft.mappings.length >= 16" @click="draft.mappings.push({ localRoot: '', remoteRoot: '' })">添加目录映射</ElButton><label v-if="canKeepToken && !usesDeployment" class="node-clear-token"><input v-model="draft.clearToken" type="checkbox" :disabled="busy" @change="draft.token = ''">清除已保存密钥，暂停使用此连接</label></details>
+            <p class="setup-help">原始曲库由业务服务管理，计算节点通过任务授权读取，无需挂载歌曲目录或配置路径映射。回源地址由业务服务随任务提供。</p>
+            <label v-if="canKeepToken && !usesDeployment" class="node-clear-token"><input v-model="draft.clearToken" type="checkbox" :disabled="busy" @change="draft.token = ''">清除已保存密钥，暂停使用此连接</label>
           </div>
           <p v-else class="disabled-note">保存后停用计算服务，已有歌曲和生成成果保留。</p>
           <ElAlert v-if="formError" class="editor-feedback" :title="formError" type="error" :closable="false" show-icon><ElButton v-if="formError.includes('配置已被修改')" text :disabled="busy" @click="load">放弃草稿，读取最新配置</ElButton></ElAlert>

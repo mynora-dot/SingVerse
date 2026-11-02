@@ -24,6 +24,11 @@ public class MediaPlaybackService {
     }
 
     public void play(String id, String range, boolean head, HttpServletResponse response) throws IOException {
+        play(id, range, head, response, null);
+    }
+
+    /** Internal tasks revalidate their grant while an existing response is streaming. */
+    public void play(String id, String range, boolean head, HttpServletResponse response, Runnable validate) throws IOException {
         var song = songs.get(id);
         var source = sources.get(song.sourceId());
         String relative = song.relativePath();
@@ -37,9 +42,23 @@ public class MediaPlaybackService {
         response.setHeader("X-Content-Type-Options", "nosniff");
         response.setHeader("Content-Disposition", "inline");
         response.setContentType(com.mynora.singverse.media.filename.MediaFileTypes.contentType(relative));
+        Runnable guard = validate == null ? () -> {} : () -> {
+            validate.run();
+            if (source.type().equals("LOCAL")) {
+                try {
+                    Path root = Path.of(source.location()).toRealPath(), file = root.resolve(relative).toRealPath();
+                    var attrs = Files.readAttributes(file, java.nio.file.attribute.BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                    if (!file.startsWith(root) || !attrs.isRegularFile()) throw failure(HttpStatus.FORBIDDEN, "媒体不在来源目录内");
+                    if (song.fileSize() != null && attrs.size() != song.fileSize()
+                            || song.modifiedAt() != null && !attrs.lastModifiedTime().toInstant().toString().equals(song.modifiedAt()))
+                        throw failure(HttpStatus.CONFLICT, "源媒体已变化，请重新扫描来源");
+                } catch (IOException error) { throw failure(HttpStatus.CONFLICT, "源媒体已变化或不可读取"); }
+            }
+        };
         try {
-            if (source.type().equals("LOCAL")) local(source.location(), relative, range, head, response);
-            else remote(source, relative, range, head, response);
+            guard.run();
+            if (source.type().equals("LOCAL")) local(source.location(), relative, range, head, response, guard);
+            else remote(source, relative, range, head, response, guard);
         } catch (ResponseStatusException error) {
             if (!response.isCommitted()) { response.reset(); response.setHeader("Cache-Control", "no-store"); }
             throw error;
@@ -56,10 +75,10 @@ public class MediaPlaybackService {
         response.setContentType(name.endsWith(".m4a") ? "audio/mp4" : "video/mp4");
         response.setHeader("Cache-Control", "private, no-store");
         response.setHeader("X-Content-Type-Options", "nosniff");
-        local(root.toString(), name, range, head, response);
+        local(root.toString(), name, range, head, response, () -> {});
     }
 
-    private void local(String location, String relative, String range, boolean head, HttpServletResponse response) throws IOException {
+    private void local(String location, String relative, String range, boolean head, HttpServletResponse response, Runnable validate) throws IOException {
         Path root, file;
         try {
             root = Path.of(location).toRealPath();
@@ -84,12 +103,12 @@ public class MediaPlaybackService {
             response.setHeader("Accept-Ranges", "bytes");
             long length = Math.max(0, end - start + 1);
             response.setContentLengthLong(length);
-            if (!head) { channel.position(start); copy(Channels.newInputStream(channel), response.getOutputStream(), length); }
+            if (!head) { channel.position(start); copy(Channels.newInputStream(channel), response.getOutputStream(), length, validate); }
         } catch (AccessDeniedException error) { throw failure(HttpStatus.NOT_FOUND, "媒体文件无法读取"); }
     }
 
     private void remote(com.mynora.singverse.media.dto.MediaSourceDtos.Source source, String relative,
-            String range, boolean head, HttpServletResponse response) throws IOException {
+            String range, boolean head, HttpServletResponse response, Runnable validate) throws IOException {
         HttpURLConnection connection = null;
         try {
             URI root = URI.create(source.location());
@@ -125,7 +144,7 @@ public class MediaPlaybackService {
             if (status == 206) response.setHeader("Content-Range", contentRange);
             if ("bytes".equalsIgnoreCase(connection.getHeaderField("Accept-Ranges")) || status == 206) response.setHeader("Accept-Ranges", "bytes");
             if (length >= 0) response.setContentLengthLong(length);
-            if (!head) try (InputStream input = connection.getInputStream()) { copy(input, response.getOutputStream(), length); }
+            if (!head) try (InputStream input = connection.getInputStream()) { copy(input, response.getOutputStream(), length, validate); }
         } catch (URISyntaxException | IllegalArgumentException error) {
             throw failure(HttpStatus.BAD_GATEWAY, "WebDAV 媒体地址无效");
         } catch (IOException error) {
@@ -134,11 +153,14 @@ public class MediaPlaybackService {
         } finally { if (connection != null) connection.disconnect(); }
     }
 
-    private static void copy(InputStream input, OutputStream output, long remaining) throws IOException {
+    private static void copy(InputStream input, OutputStream output, long remaining, Runnable validate) throws IOException {
         byte[] buffer = new byte[64 * 1024];
+        long nextCheck = 0;
         while (remaining != 0) {
+            if (System.nanoTime() >= nextCheck) { validate.run(); nextCheck = System.nanoTime() + 250_000_000L; }
             int count = input.read(buffer, 0, remaining < 0 ? buffer.length : (int) Math.min(buffer.length, remaining));
             if (count < 0) { if (remaining > 0) throw new EOFException("Incomplete media response"); break; }
+            if (System.nanoTime() >= nextCheck) { validate.run(); nextCheck = System.nanoTime() + 250_000_000L; }
             output.write(buffer, 0, count); if (remaining > 0) remaining -= count;
         }
     }

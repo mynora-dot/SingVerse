@@ -14,7 +14,7 @@ import uuid
 import wave
 import zipfile
 from copy import deepcopy
-from .audio_catalog import BASELINE, OPENVINO, FAST, MODELS, manifest, model_for_backend, model_digest
+from .audio_catalog import BASELINE, OPENVINO, RKNN, FAST, MODELS, manifest, model_for_backend, model_digest
 from ..core.build_info import build_info, includes_backend
 import math
 from array import array
@@ -56,6 +56,14 @@ try:
     except Exception: pass
    out['devices']['openvino']=details
    break
+except Exception: pass
+try:
+ from rknnlite.api import RKNNLite
+ out['versions']['rknn-toolkit-lite2']=version('rknn-toolkit-lite2')
+ from pathlib import Path
+ compatible=Path('/proc/device-tree/compatible').read_bytes().decode(errors='replace').lower()
+ if platform.system() == 'Linux' and platform.machine() == 'aarch64' and any(x in compatible for x in ('rk3588','rk3566','rk3568')):
+  out['devices']['rknn']={'name':'Rockchip NPU', 'runtime':out['versions']['rknn-toolkit-lite2']}
 except Exception: pass
 print(json.dumps(out))'''
 
@@ -189,10 +197,19 @@ class AudioModels:
                         item['device'] = {'name': f"PCI {vendor}:{hardware.get('device', '')}"}
                     if backend == 'rknn' and 'rk3566' in hardware.get('board', '').lower():
                         item['device'] = {'name': hardware['board']}
-            if backend in ('rknn', 'xpu'):
+            if backend == 'xpu':
                 item.update(state='MODEL_UNSUPPORTED', reason='当前htdemucs尚无通过验收的此后端模型；QSV和硬件检测不代表AI推理可用')
             elif not includes_backend(backend):
                 item.update(state='IMAGE_MISSING', reason='当前镜像未包含此推理后端，请更换对应镜像并重新部署')
+            elif backend == 'rknn':
+                present = self.model_valid(RKNN)
+                runtime = environment.get('versions', {}).get('rknn-toolkit-lite2') == '2.3.2' and getattr(self.audio, 'dependencies_available', False)
+                if device and runtime:
+                    item.update(state='UNVERIFIED' if present else 'MODEL_MISSING', reason='请运行NPU模型试跑' if present else '请离线部署UVR MDXNET 9482转换模型及manifest.json')
+                    record = self.qualified.get(backend, {})
+                    if present and record.get('environment') == environment['fingerprint'] and record.get('digest') == self.inference_digest(RKNN):
+                        item.update(state=record['state'], reason=record.get('reason', ''), elapsedMs=record.get('elapsedMs'))
+                item.update(modelId=RKNN, pipeline='rknn-npu+cpu-stft')
             elif backend == 'openvino':
                 present = self.model_valid(OPENVINO)
                 runtime = environment.get('versions', {}).get('openvino') == '2025.4.0' and getattr(self.audio, 'dependencies_available', False)
@@ -222,7 +239,7 @@ class AudioModels:
         hardware = any(item.get('detected') for item in self.entries())
         selection = 'auto' if self.selection == 'cpu' and hardware else self.selection
         fallback = getattr(self.audio.transcoding.backends, 'cpu_fallback', True)
-        choices = ('cuda', 'rocm', 'openvino', 'mps') if selection == 'auto' else (selection,)
+        choices = ('cuda', 'rocm', 'openvino', 'rknn', 'mps') if selection == 'auto' else (selection,)
         if not hardware or fallback:
             choices += ('cpu',)
         return next((item for item in choices if item in available), None)
@@ -248,7 +265,19 @@ class AudioModels:
         manifest(model_id)
         return self.repo if model_id == BASELINE else self.repo.parent / model_id if self.repo else None
 
+    def inference_digest(self, model_id):
+        if model_id == RKNN:
+            from ..infrastructure.rknn_audio import local_manifest
+            return local_manifest(self.model_path(RKNN))[1]
+        return model_digest(model_id)
+
     def model_valid(self, model_id):
+        if model_id == RKNN:
+            try:
+                self.inference_digest(RKNN)
+                return True
+            except (OSError, ValueError, TypeError, KeyError):
+                return False
         if model_id == BASELINE:
             return self.weights_valid()
         path = self.model_path(model_id)
@@ -403,6 +432,8 @@ class AudioModels:
             self.persist()
 
     def import_bundle(self, archive, stage, model_id):
+        if manifest(model_id).get('localOnly'):
+            raise ComputeError(422, 'RKNN模型仅支持节点本地部署')
         files = manifest(model_id)['files']
         try:
             with zipfile.ZipFile(archive) as bundle:
@@ -421,6 +452,8 @@ class AudioModels:
 
     def download(self, model_id=BASELINE):
         specification = manifest(model_id)
+        if specification.get('localOnly'):
+            raise ComputeError(422, 'RKNN模型仅支持管理员在节点本地部署，见RKNN部署说明')
         if not (self.writable() if model_id == BASELINE else self.model_writable(model_id)):
             raise ComputeError(409, 'Model directory is missing or read only')
         self.begin('DOWNLOADING', model_id)
@@ -488,11 +521,12 @@ class AudioModels:
 
     def test(self, backend):
         environment = self.probe(True)
-        if backend not in ('cpu', 'cuda', 'rocm', 'mps', 'openvino') or backend not in environment.get('devices', {}):
+        if backend not in ('cpu', 'cuda', 'rocm', 'mps', 'openvino', 'rknn') or backend not in environment.get('devices', {}):
             raise ComputeError(422, 'No qualified runtime for this backend/model')
         model_id = model_for_backend(backend)
         if not includes_backend(backend) or not self.audio.backend_runtime_available(backend):
             raise ComputeError(422, 'Install the pinned runtime and model first')
+        qualification_digest = self.inference_digest(model_id)
         self.begin('TESTING', model_id)
         def worker():
             task = AudioTask(str(uuid.uuid4()))
@@ -526,11 +560,13 @@ class AudioModels:
                         raise ComputeError(422, 'Qualification produced silent stems')
                 if self.cancel.is_set():
                     raise ComputeError(409, 'Qualification cancelled')
-                self.qualified[backend] = {'state': 'AVAILABLE', 'environment': environment['fingerprint'], 'digest': model_digest(model_id), 'elapsedMs': round((time.monotonic()-started)*1000)}
+                if self.inference_digest(model_id) != qualification_digest:
+                    raise ComputeError(422, 'Model changed during qualification')
+                self.qualified[backend] = {'state': 'AVAILABLE', 'environment': environment['fingerprint'], 'digest': qualification_digest, 'elapsedMs': round((time.monotonic()-started)*1000)}
                 self.operation.update(state='SUCCEEDED', backend=backend)
             except Exception as error:
                 if not self.cancel.is_set() and not (isinstance(error, ComputeError) and error.status == 429):
-                    self.qualified[backend] = {'state': 'FAILED', 'environment': environment['fingerprint'], 'digest': model_digest(model_id), 'reason': error.message if isinstance(error, ComputeError) else '模型试跑失败'}
+                    self.qualified[backend] = {'state': 'FAILED', 'environment': environment['fingerprint'], 'digest': qualification_digest, 'reason': error.message if isinstance(error, ComputeError) else '模型试跑失败'}
                 self.failed(error)
             finally:
                 task.state = 'CANCELLED' if self.cancel.is_set() else 'SUCCEEDED'

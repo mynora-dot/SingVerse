@@ -41,18 +41,15 @@ it('默认显示已就绪状态和用途，已自动连接的用户无需再填�
   expect(wrapper.find('form').exists()).toBe(false); expect(wrapper.find('input[type="password"]').exists()).toBe(false)
   expect(computeNode.save).not.toHaveBeenCalled()
 })
-it('更换连接才展示表单，密钥帮助和高级映射默认折叠，支持添加删除映射', async () => {
+it('更换连接无需配置媒体挂载和目录映射', async () => {
   await page(); await manual()
   expect(wrapper.get('.connection-drawer').element.contains(document.activeElement)).toBe(true)
-  expect(document.querySelector('.el-dialog')).toBeNull(); expect(wrapper.get('.node-paths').attributes('open')).toBeUndefined()
-  await button('添加目录映射').trigger('click')
-  await wrapper.get('input[aria-label="本机媒体路径 1"]').setValue('/media')
-  await wrapper.get('input[aria-label="节点媒体路径 1"]').setValue('/mnt/music')
+  expect(wrapper.text()).toContain('无需挂载歌曲目录或配置路径映射')
+  expect(wrapper.find('.node-mapping').exists()).toBe(false)
+  expect(wrapper.text()).not.toContain('添加目录映射')
   await wrapper.get('form').trigger('submit'); await flushPromises()
-  expect(computeNode.save).toHaveBeenCalledWith(expect.objectContaining({ mode: 'MANUAL', endpoint: 'http://192.168.1.20:18090', mappings: [{ localRoot: '/media', remoteRoot: '/mnt/music' }] }))
-  expect(wrapper.find('form').exists()).toBe(false); expect(wrapper.text()).toContain('配置已保存')
-  await edit(); expect((wrapper.get('input[type="password"]').element as HTMLInputElement).value).toBe('')
-  await wrapper.get('button[aria-label="移除路径映射 1"]').trigger('click'); expect(wrapper.find('.node-mapping').exists()).toBe(false)
+  expect(computeNode.save).toHaveBeenCalledWith(expect.objectContaining({ mode: 'MANUAL', endpoint: 'http://192.168.1.20:18090', mappings: [] }))
+  expect(wrapper.text()).toContain('配置已保存')
 })
 it('已保存密钥不回填，留空保留；改变地址时提示重新填写', async () => {
   vi.mocked(computeNode.get).mockResolvedValue({ ...settings, mode: 'MANUAL', endpoint: 'http://192.168.1.20:18090', hasToken: true })
@@ -192,4 +189,12 @@ it.each([
   await page('/system/compute?tab=audio')
   expect(wrapper.find('[data-test="audio-model-settings"]').exists()).toBe(true)
   expect(wrapper.text()).not.toContain('此服务暂未提供伴奏处理')
+})
+
+it('节点认证成功但回源失败时保留当前配置并解释原因', async () => {
+  await page(); await manual()
+  vi.mocked(computeNode.test).mockResolvedValue({ status: 'CALLBACK_FAILED', message: '节点连接与认证成功，但业务回源不可用', capabilities: ['media-probe'], elapsedMs: 10 })
+  await wrapper.get('form').trigger('submit'); await flushPromises()
+  expect(computeNode.save).not.toHaveBeenCalled()
+  expect(wrapper.text()).toContain('业务回源不可用')
 })

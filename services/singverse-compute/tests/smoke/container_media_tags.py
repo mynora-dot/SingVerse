@@ -1,4 +1,4 @@
-"""Run inside the compute image with --network none and no mounted business volumes."""
+"""Image smoke: prepend tests/callback_source.py; no mounted business volumes."""
 import hashlib
 import json
 import os
@@ -15,10 +15,10 @@ from singverse_compute.bootstrap import create_app
 with tempfile.TemporaryDirectory() as folder:
     root = Path(folder)
     (root/'media').mkdir()
-    os.environ['COMPUTE_MEDIA_ROOTS'] = str(root/'media')
     os.environ['COMPUTE_TRANSCODE_ROOT'] = str(root/'cache')
     os.environ['COMPUTE_AUTH_TOKEN_FILE'] = str(root/'token')
     app = create_app()
+    callback = CallbackSource(root/'media', (root/'token').read_text().strip())
     listener = socket.socket(); listener.bind(('127.0.0.1',0))
     base = 'http://127.0.0.1:' + str(listener.getsockname()[1])
     server = uvicorn.Server(uvicorn.Config(app,log_level='error'))
@@ -36,17 +36,17 @@ with tempfile.TemporaryDirectory() as folder:
             command += ['-metadata','title=容器内测试歌名','-metadata','artist=容器内测试歌手','-metadata','album=测试专辑',str(media)]
             subprocess.run(command,check=True,timeout=10)
             original = hashlib.sha256(media.read_bytes()).digest()
-            request=Request(base+'/internal/v1/media/tags',data=json.dumps({'path':str(media)}).encode(),
+            request=Request(base+'/internal/v1/media/remote-tags',data=json.dumps({**callback.grant(media),'filename':media.name,'size':media.stat().st_size}).encode(),
                             headers={'Content-Type':'application/json','Authorization':'Bearer '+(root/'token').read_text().strip()})
             with urlopen(request,timeout=5) as response:
-                result=json.load(response)
+                result=json.load(response)['tags']
                 assert result['title']=='容器内测试歌名' and result['artists']==['容器内测试歌手']
                 assert response.headers.get('X-Request-ID')
             assert hashlib.sha256(media.read_bytes()).digest()==original
         import uuid
         identifier=str(uuid.uuid4())
         headers={'Content-Type':'application/json','Authorization':'Bearer '+(root/'token').read_text().strip()}
-        payload={'id':identifier,'path':str(media),'fingerprint':'container-fixture','target':{'purpose':'OFFLINE'}}
+        payload={'id':identifier,**callback.grant(media),'fingerprint':'container-fixture','target':{'purpose':'OFFLINE'}}
         with urlopen(Request(base+'/internal/v1/transcoding/executions',data=json.dumps(payload).encode(),headers=headers),timeout=30) as response:
             assert response.status==202
         for _ in range(200):
@@ -61,4 +61,4 @@ with tempfile.TemporaryDirectory() as folder:
         assert hashlib.sha256(media.read_bytes()).digest()==original
         print('通过：独立计算镜像内真实HTTP标签读取、离线转码、产物SHA-256与文件只读验证')
     finally:
-        server.should_exit=True; thread.join(5); listener.close()
+        server.should_exit=True; thread.join(5); listener.close(); callback.close()

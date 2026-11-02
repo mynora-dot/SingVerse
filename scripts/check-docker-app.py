@@ -41,9 +41,9 @@ import json, sys, urllib.request, urllib.error
 from pathlib import Path
 origin, token_file = sys.argv[1:]
 with urllib.request.urlopen(origin+'/internal/v1/capabilities',timeout=3) as response:
-    assert 'media-tags' in json.load(response)['capabilities']
-url=origin+'/internal/v1/media/tags'
-for authorized, expected in [(False,401),(True,403)]:
+    assert 'media-remote-tags' in json.load(response)['capabilities']
+url=origin+'/internal/v1/transcoding/probe'
+for authorized, expected in [(False,401),(True,422)]:
     headers={'Content-Type':'application/json'}
     if authorized: headers['Authorization']='Bearer '+Path(token_file).read_text().strip()
     try:
@@ -58,8 +58,8 @@ for authorized, expected in [(False,401),(True,403)]:
     command = compose + ["exec", "-T", "singverse-compute", "python", "-c", compute_check, "http://127.0.0.1:8090", "/run/singverse-compute/token"]
   subprocess.run(command, check=True)
   subprocess.run(compose + ["exec", "-T", "singverse-java-backend", "sh", "-c", "! command -v ffmpeg && ! command -v ffprobe"], check=True)
-  print("通过：独立计算服务标签能力、内部鉴权和目录限制；Java镜像无FFmpeg")
-  smoke = (root / "services/singverse-compute/tests/smoke/container_media_tags.py").read_text()
+  print("通过：独立计算服务标签能力、内部鉴权和拒绝本地路径；Java镜像无FFmpeg")
+  smoke = (root / "services/singverse-compute/tests/callback_source.py").read_text() + "\n" + (root / "services/singverse-compute/tests/smoke/container_media_tags.py").read_text()
   subprocess.run(["docker", "run", "--rm", "--network", "none", "-i", "singverse-compute:local", "python", "-"], input=smoke, text=True, check=True)
 
 

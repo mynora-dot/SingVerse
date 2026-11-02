@@ -42,6 +42,8 @@ public class WebDavMetadataService {
     private final boolean enabled;
     private final ExecutorService worker=Executors.newSingleThreadExecutor(r->{var t=new Thread(r,"webdav-metadata");t.setDaemon(true);return t;});
     private final AtomicBoolean working=new AtomicBoolean();
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.mynora.singverse.compute.ComputeCallback callback;
     private final HttpClient http=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).followRedirects(HttpClient.Redirect.NEVER).build();
     public WebDavMetadataService(WebDavMetadataMapper mapper,WebDavAccess access,MediaSourceRepository sources,MediaSongRepository songs,
             MetadataMapper metadata,ComputeNodeSettings compute,com.mynora.singverse.compute.ComputeNodeProbe probe,ObjectMapper json,PlatformTransactionManager manager,WebDavMetadataInput input,
@@ -164,7 +166,7 @@ public class WebDavMetadataService {
         if(!nodeKey.equals(checkedNode)||System.nanoTime()>=checkAfter) {
             nodeCheck=probe.check(connection);checkedNode=nodeKey;checkAfter=System.nanoTime()+TimeUnit.SECONDS.toNanos(60);
         }
-        if(nodeCheck==null||!nodeCheck.capabilities().contains("media-remote-tags"))return;
+        if(nodeCheck==null||!nodeCheck.status().equals("AVAILABLE")||!nodeCheck.capabilities().contains("media-remote-tags"))return;
         for(var task:pending) {
             String group=text(task,"access_group");var budget=access.budget(group);Instant now=Instant.now();
             String block=text(budget,"blocked_until");if(!block.isEmpty()&&Instant.parse(block).isAfter(now))continue;
@@ -180,6 +182,7 @@ public class WebDavMetadataService {
                 input.authorize(task,connection.token(),deep);
                 var payload=args("reference",task.get("id"),"filename",task.get("relative_path"),"size",task.get("file_size"),"deep",deep);
                 ComputeNodeSettings.checkNetwork(connection.origin());
+                payload.put("callbackOrigin",callback.origin());
                 var request=HttpRequest.newBuilder(connection.origin().resolve("/internal/v1/media/remote-tags")).timeout(Duration.ofSeconds(deep?190:70))
                     .header("Authorization","Bearer "+connection.token()).header("Content-Type","application/json")
                     .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(payload))).build();

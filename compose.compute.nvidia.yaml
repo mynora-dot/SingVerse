@@ -15,9 +15,6 @@ services:
         SOURCE_REVISION: local
     environment:
       COMPUTE_AUTH_TOKEN_FILE: /run/singverse-compute/token
-      COMPUTE_MEDIA_ROOTS: /media
-      # For WebDAV, replace with the Java URL reachable from this container.
-      COMPUTE_JAVA_ORIGIN: "http://10.100.1.12"
       COMPUTE_HARDWARE_BACKEND: nvenc
       NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
       COMPUTE_PROCESS_MEMORY_BYTES: "1073741824"
@@ -32,13 +29,6 @@ services:
       - singverse-compute-auth:/run/singverse-compute
       - singverse-transcode-cache:/var/cache/singverse-transcode
       - singverse-audio-models:/var/lib/singverse-models
-      - type: bind
-        # Media directory beside this Compose file; create it before starting.
-        source: ./media
-        target: /media
-        read_only: true
-        bind:
-          create_host_path: false
     deploy:
       resources:
         reservations:

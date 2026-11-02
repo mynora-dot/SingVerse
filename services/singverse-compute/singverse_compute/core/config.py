@@ -38,11 +38,6 @@ class Settings:
         audio_repo = os.environ.get('COMPUTE_AUDIO_MODEL_REPO', '')
         if audio_repo and not Path(audio_repo).is_absolute():
             raise ValueError('Audio model repository must be absolute')
-        origin = os.environ.get('COMPUTE_JAVA_ORIGIN', '').rstrip('/')
-        from urllib.parse import urlsplit
-        parsed = urlsplit(origin)
-        if origin and (parsed.scheme not in ('http','https') or not parsed.hostname or parsed.username or parsed.password or parsed.path or parsed.query or parsed.fragment):
-            raise ValueError('Java origin must be an HTTP origin without credentials')
         concurrency = int(os.environ.get('COMPUTE_TRANSCODE_CONCURRENCY', '1'))
         memory_bytes = int(os.environ.get('COMPUTE_PROCESS_MEMORY_BYTES', str(1024**3)))
         cache_bytes = int(os.environ.get('COMPUTE_CACHE_BYTES', str(10 * 1024**3)))
@@ -58,7 +53,7 @@ class Settings:
                    ffmpeg=os.environ.get('COMPUTE_FFMPEG', 'ffmpeg'), ffprobe=os.environ.get('COMPUTE_FFPROBE', 'ffprobe'),
                    hardware_backend=os.environ.get('COMPUTE_HARDWARE_BACKEND', 'auto'),
                    hardware_device=os.environ.get('COMPUTE_HARDWARE_DEVICE', '/dev/dri/renderD128'),
-                   java_origin=origin, transcode_concurrency=concurrency, process_memory_bytes=memory_bytes, cache_bytes=cache_bytes,
+                   transcode_concurrency=concurrency, process_memory_bytes=memory_bytes, cache_bytes=cache_bytes,
                    minimum_free_bytes=free_bytes,
                    audio_model_repo=Path(audio_repo).resolve() if audio_repo else None,
                    audio_memory_bytes=audio_memory, audio_threads=audio_threads)

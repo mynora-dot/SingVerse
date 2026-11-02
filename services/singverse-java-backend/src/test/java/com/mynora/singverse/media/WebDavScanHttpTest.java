@@ -426,10 +426,22 @@ class WebDavScanHttpTest {
         var coverBytes=new java.io.ByteArrayOutputStream();javax.imageio.ImageIO.write(new java.awt.image.BufferedImage(2,2,java.awt.image.BufferedImage.TYPE_INT_RGB),"png",coverBytes);
         String validCover=Base64.getEncoder().encodeToString(coverBytes.toByteArray());
         compute.createContext("/internal/v1/status",exchange->{byte[] bytes="{\"service\":\"singverse-compute\",\"apiVersion\":\"1\",\"capabilities\":[\"media-remote-tags\"]}".getBytes(java.nio.charset.StandardCharsets.UTF_8);exchange.sendResponseHeaders(200,bytes.length);exchange.getResponseBody().write(bytes);exchange.close();});
+        compute.createContext("/internal/v1/callback/check",exchange->{
+            try {
+                var payload=json.readTree(exchange.getRequestBody());
+                var request=HttpRequest.newBuilder(URI.create(payload.path("callbackOrigin").asText()+"/api/v1/internal/compute-callback/"+payload.path("reference").asText()))
+                    .header("Authorization",exchange.getRequestHeaders().getFirst("Authorization")).GET().build();
+                var response=HttpClient.newHttpClient().send(request,HttpResponse.BodyHandlers.ofString());
+                assertThat(response.statusCode()).isEqualTo(200);
+                assertThat(response.body()).isEqualTo(payload.path("reference").asText());
+                byte[] bytes="{\"available\":true}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200,bytes.length);exchange.getResponseBody().write(bytes);
+            } catch(Exception error){throw new RuntimeException(error);}finally{exchange.close();}
+        });
         compute.createContext("/internal/v1/media/remote-tags",exchange->{
             try{calls.incrementAndGet();var payload=json.readTree(exchange.getRequestBody());
                 assertThat(payload.has("url")).isFalse();assertThat(payload.has("password")).isFalse();
-                var request=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v1/internal/metadata-input/"+payload.path("reference").asText()))
+                var request=HttpRequest.newBuilder(URI.create(payload.path("callbackOrigin").asText()+"/api/v1/internal/metadata-input/"+payload.path("reference").asText()))
                     .header("Authorization",exchange.getRequestHeaders().getFirst("Authorization")).header("Range","bytes=0-3").GET().build();
                 assertThat(HttpClient.newHttpClient().send(request,HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(206);
                 if(rebind.get())sourceService.update(sid,new com.mynora.singverse.media.dto.MediaSourceDtos.Input("重新绑定的来源","WEBDAV",address()+"replacement/","reader","example-test-password",profileId,false,null));

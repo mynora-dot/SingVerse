@@ -24,7 +24,9 @@ jobs:
           python -m pip install openapi-spec-validator==0.7.2
           python -m openapi_spec_validator contracts/openapi/singverse.openapi.json
       - name: Validate standalone compute Compose
-        run: COMPUTE_MEDIA_PATH=/tmp docker compose -f compose.compute.yaml config --quiet
+        run: |
+          docker compose -f compose.compute.yaml config --quiet
+          docker compose -f compose.compute.nvidia.yaml config --quiet
       - name: Validate optional audio runtime Compose profiles
         run: |
           docker compose -f compose.app.yaml -f compose.audio-cpu.yaml config --quiet

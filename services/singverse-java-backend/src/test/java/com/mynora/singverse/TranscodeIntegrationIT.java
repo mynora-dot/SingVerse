@@ -107,7 +107,7 @@ class TranscodeIntegrationIT {
                         "--port",
                         Integer.toString(COMPUTE_PORT));
         builder.directory(Path.of("../singverse-compute").toFile());
-        builder.environment().put("COMPUTE_MEDIA_ROOTS", media.toString());
+        builder.environment().remove("COMPUTE_MEDIA_ROOTS");
         builder.environment()
                 .put("COMPUTE_AUTH_TOKEN_FILE", temp.resolve("compute-token").toString());
         builder.environment().put("COMPUTE_TRANSCODE_ROOT", temp.resolve("cache").toString());
@@ -115,7 +115,7 @@ class TranscodeIntegrationIT {
         builder.environment().put("COMPUTE_AUDIO_MODEL_REPO",temp.resolve("models/htdemucs").toString());
         builder.environment().put("COMPUTE_HARDWARE_BACKEND", "software");
         builder.environment().put("COMPUTE_MINIMUM_FREE_BYTES", "0");
-        builder.environment().put("COMPUTE_JAVA_ORIGIN", "http://127.0.0.1:" + port);
+        builder.environment().remove("COMPUTE_JAVA_ORIGIN");
         builder.redirectErrorStream(true).redirectOutput(temp.resolve("compute.log").toFile());
         Process worker = builder.start();
         try {
@@ -140,7 +140,9 @@ class TranscodeIntegrationIT {
             assertThat(audioNode.path("model").path("writable").asBoolean()).isTrue();
             assertThat(audioNode.path("selected").isNull()).isTrue();
             assertThat(audioNode.path("backends")).hasSize(7);
-            assertThat(audioNode.path("models")).hasSize(2);
+            var modelIds = new java.util.ArrayList<String>();
+            audioNode.path("models").forEach(model -> modelIds.add(model.path("id").asText()));
+            assertThat(modelIds).containsExactlyInAnyOrder("htdemucs", "htdemucs-openvino", "uvr-mdxnet-9482-rknn");
             assertThat(audioNode.path("build").path("variant").asText()).isEqualTo("native");
             assertThat(req("/api/v1/audio-processing/model/select","POST",Map.of("backend","cpu"),true).statusCode()).isEqualTo(422);
             String csrf=ok("/api/v1/auth/csrf","GET",null,false).path("token").asText();
@@ -167,17 +169,18 @@ class TranscodeIntegrationIT {
                             Map.of("backend", "software"),
                             true);
             assertThat(sample.path("passed").asBoolean()).isTrue();
+            String hardwareChoice=hardware.path("detectedBackends").isEmpty()?"software":"auto";
             var savedHardware =
                     ok(
                             "/api/v1/transcoding/hardware-settings",
                             "POST",
                             Map.of(
                                     "backend",
-                                    "software",
+                                    hardwareChoice,
                                     "revision",
                                     hardware.path("revision").asLong()),
                             true);
-            assertThat(savedHardware.path("effectiveBackend").asText()).isEqualTo("software");
+            assertThat(savedHardware.path("effectiveBackend").asText()).isEqualTo(hardwareChoice);
             assertThat(
                             req(
                                             "/api/v1/transcoding/hardware-settings",

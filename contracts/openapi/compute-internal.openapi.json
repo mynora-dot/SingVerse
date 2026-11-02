@@ -99,15 +99,15 @@
         ]
       }
     },
-    "/internal/v1/media/tags": {
+    "/internal/v1/callback/check": {
       "post": {
-        "summary": "只读读取允许目录内的音视频标签",
-        "operationId": "read_tags_internal_v1_media_tags_post",
+        "summary": "Callback Check",
+        "operationId": "callback_check_internal_v1_callback_check_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/TagInput"
+                "$ref": "#/components/schemas/CallbackCheck"
               }
             }
           },
@@ -118,218 +118,16 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Tags"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "title": "Type",
-                      "default": "about:blank"
-                    },
-                    "title": {
-                      "type": "string",
-                      "title": "Title"
-                    },
-                    "status": {
-                      "type": "integer",
-                      "title": "Status"
-                    },
-                    "instance": {
-                      "type": "string",
-                      "title": "Instance"
-                    }
-                  },
-                  "type": "object",
-                  "required": [
-                    "title",
-                    "status",
-                    "instance"
-                  ],
-                  "title": "Problem"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Path forbidden",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "title": "Type",
-                      "default": "about:blank"
-                    },
-                    "title": {
-                      "type": "string",
-                      "title": "Title"
-                    },
-                    "status": {
-                      "type": "integer",
-                      "title": "Status"
-                    },
-                    "instance": {
-                      "type": "string",
-                      "title": "Instance"
-                    }
-                  },
-                  "type": "object",
-                  "required": [
-                    "title",
-                    "status",
-                    "instance"
-                  ],
-                  "title": "Problem"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Request too large",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "title": "Type",
-                      "default": "about:blank"
-                    },
-                    "title": {
-                      "type": "string",
-                      "title": "Title"
-                    },
-                    "status": {
-                      "type": "integer",
-                      "title": "Status"
-                    },
-                    "instance": {
-                      "type": "string",
-                      "title": "Instance"
-                    }
-                  },
-                  "type": "object",
-                  "required": [
-                    "title",
-                    "status",
-                    "instance"
-                  ],
-                  "title": "Problem"
-                }
+                "schema": {}
               }
             }
           },
           "422": {
-            "description": "Invalid request",
+            "description": "Validation Error",
             "content": {
-              "application/problem+json": {
+              "application/json": {
                 "schema": {
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "title": "Type",
-                      "default": "about:blank"
-                    },
-                    "title": {
-                      "type": "string",
-                      "title": "Title"
-                    },
-                    "status": {
-                      "type": "integer",
-                      "title": "Status"
-                    },
-                    "instance": {
-                      "type": "string",
-                      "title": "Instance"
-                    }
-                  },
-                  "type": "object",
-                  "required": [
-                    "title",
-                    "status",
-                    "instance"
-                  ],
-                  "title": "Problem"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Reader busy",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "title": "Type",
-                      "default": "about:blank"
-                    },
-                    "title": {
-                      "type": "string",
-                      "title": "Title"
-                    },
-                    "status": {
-                      "type": "integer",
-                      "title": "Status"
-                    },
-                    "instance": {
-                      "type": "string",
-                      "title": "Instance"
-                    }
-                  },
-                  "type": "object",
-                  "required": [
-                    "title",
-                    "status",
-                    "instance"
-                  ],
-                  "title": "Problem"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Reader unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "title": "Type",
-                      "default": "about:blank"
-                    },
-                    "title": {
-                      "type": "string",
-                      "title": "Title"
-                    },
-                    "status": {
-                      "type": "integer",
-                      "title": "Status"
-                    },
-                    "instance": {
-                      "type": "string",
-                      "title": "Instance"
-                    }
-                  },
-                  "type": "object",
-                  "required": [
-                    "title",
-                    "status",
-                    "instance"
-                  ],
-                  "title": "Problem"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -1351,6 +1149,28 @@
         ],
         "title": "Backend"
       },
+      "CallbackCheck": {
+        "properties": {
+          "callbackOrigin": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Callbackorigin"
+          },
+          "reference": {
+            "type": "string",
+            "pattern": "^[a-f0-9-]{36}$",
+            "title": "Reference"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "callbackOrigin",
+          "reference"
+        ],
+        "title": "CallbackCheck"
+      },
       "Capabilities": {
         "properties": {
           "service": {
@@ -1557,18 +1377,11 @@
       },
       "Create": {
         "properties": {
-          "path": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 4096,
-                "minLength": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Path"
+          "callbackOrigin": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Callbackorigin"
           },
           "reference": {
             "anyOf": [
@@ -1600,6 +1413,7 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
+          "callbackOrigin",
           "id",
           "fingerprint"
         ],
@@ -1699,18 +1513,11 @@
       },
       "Negotiate": {
         "properties": {
-          "path": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 4096,
-                "minLength": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Path"
+          "callbackOrigin": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Callbackorigin"
           },
           "reference": {
             "anyOf": [
@@ -1735,22 +1542,18 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "required": [
+          "callbackOrigin"
+        ],
         "title": "Negotiate"
       },
       "Submit": {
         "properties": {
-          "path": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 4096,
-                "minLength": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Path"
+          "callbackOrigin": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Callbackorigin"
           },
           "reference": {
             "anyOf": [
@@ -1801,71 +1604,11 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
+          "callbackOrigin",
           "id",
           "mode"
         ],
         "title": "Submit"
-      },
-      "TagInput": {
-        "properties": {
-          "path": {
-            "type": "string",
-            "maxLength": 4096,
-            "minLength": 1,
-            "title": "Path"
-          }
-        },
-        "type": "object",
-        "required": [
-          "path"
-        ],
-        "title": "TagInput"
-      },
-      "Tags": {
-        "properties": {
-          "title": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title"
-          },
-          "artists": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Artists"
-          },
-          "album": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Album"
-          },
-          "releaseDate": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Releasedate"
-          }
-        },
-        "type": "object",
-        "title": "Tags"
       },
       "TargetInput": {
         "properties": {
@@ -2021,6 +1764,12 @@
       },
       "singverse_compute__api__routers__remote_tags__Input": {
         "properties": {
+          "callbackOrigin": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Callbackorigin"
+          },
           "reference": {
             "type": "string",
             "pattern": "^[a-f0-9-]{36}$",
@@ -2053,6 +1802,7 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
+          "callbackOrigin",
           "reference",
           "filename"
         ],
@@ -2060,18 +1810,11 @@
       },
       "singverse_compute__api__routers__transcoding__Input": {
         "properties": {
-          "path": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 4096,
-                "minLength": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Path"
+          "callbackOrigin": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Callbackorigin"
           },
           "reference": {
             "anyOf": [
@@ -2088,6 +1831,9 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "required": [
+          "callbackOrigin"
+        ],
         "title": "Input"
       }
     },

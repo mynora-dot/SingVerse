@@ -5,6 +5,8 @@ import org.springframework.http.*;
 import jakarta.servlet.http.HttpServletResponse;
 @RestController
 public class WebDavMetadataController {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.mynora.singverse.compute.LocalMetadataInput localInput;
     private final WebDavMetadataService service;
     private final WebDavMetadataInput input;
     private final WebDavShareJobs jobs;
@@ -29,5 +31,5 @@ public class WebDavMetadataController {
     @GetMapping("/api/v1/media-songs/{id}/embedded-metadata")public Map<String,Object> detail(@PathVariable String id){return service.detail(id);}
     @GetMapping("/api/v1/media-songs/{id}/embedded-metadata/cover")public ResponseEntity<byte[]> cover(@PathVariable String id){return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).cacheControl(CacheControl.noStore()).body(service.cover(id));}
     @PostMapping("/api/v1/media-songs/embedded-metadata/refresh")@ResponseStatus(HttpStatus.ACCEPTED)public Map<String,Object> refresh(@RequestBody Refresh value){return service.refresh(value.songIds(),value.deep());}
-    @GetMapping("/api/v1/internal/metadata-input/{id}")public void read(@PathVariable String id,@RequestHeader(value="Authorization",required=false)String authorization,@RequestHeader(value="Range",required=false)String range,HttpServletResponse response)throws java.io.IOException{input.read(id,authorization,range,response);}
+    @RequestMapping(value="/api/v1/internal/metadata-input/{id}",method={RequestMethod.GET,RequestMethod.HEAD})public void read(@PathVariable String id,@RequestHeader(value="Authorization",required=false)String authorization,@RequestHeader(value="Range",required=false)String range,HttpServletResponse response,jakarta.servlet.http.HttpServletRequest request)throws java.io.IOException{if(localInput.contains(id))localInput.read(id,authorization,range,"HEAD".equals(request.getMethod()),response);else input.read(id,authorization,range,response);}
 }

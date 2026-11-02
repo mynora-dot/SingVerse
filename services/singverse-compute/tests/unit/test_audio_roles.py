@@ -113,7 +113,7 @@ class AudioRoleWorkerTest(unittest.TestCase):
         identifier = str(uuid.uuid4())
         task = AudioTask(identifier)
         task.state = 'RUNNING'
-        task.signature = hashlib.sha256(json.dumps(['/media/song.wav', None, 'SEPARATE', 'mps']).encode()).hexdigest()
+        task.signature = hashlib.sha256(json.dumps(['/media/song.wav', None, None, 'SEPARATE', 'mps']).encode()).hexdigest()
         worker = SimpleNamespace(lock=threading.RLock(), tasks={identifier: task}, active=True)
         self.assertEqual(AudioRoles.submit(worker, identifier, '/media/song.wav', None, 'SEPARATE', 'mps')['state'], 'RUNNING')
         with self.assertRaises(ComputeError) as caught:

@@ -7,6 +7,9 @@ from ...core.errors import ComputeError
 ENCODERS = {'software': 'libx264', 'qsv': 'h264_qsv', 'nvenc': 'h264_nvenc',
             'vaapi': 'h264_vaapi', 'amf': 'h264_amf', 'videotoolbox': 'h264_videotoolbox', 'rkmpp': 'h264_rkmpp'}
 
+# Use a conventional video size: some NVENC devices reject 128x128.
+PROBE_SOURCE = 'color=s=1280x720:r=25:d=0.2'
+
 VIDEO_ENCODERS = {
     'h264': ENCODERS,
     'hevc': {'software':'libx265','qsv':'hevc_qsv','nvenc':'hevc_nvenc','vaapi':'hevc_vaapi',
@@ -43,7 +46,7 @@ class Backends:
                 continue
             try:
                 run([self.executable, '-v','error','-nostdin', *self.prefix(name), '-f','lavfi',
-                     '-i','color=s=128x128:r=25:d=0.2', '-vf','format=nv12'+self.upload(name),
+                     '-i',PROBE_SOURCE, '-vf','format=nv12'+self.upload(name),
                      '-threads:v','2','-c:v',ENCODERS[name],'-frames:v','3','-f','null','-'],timeout=3, memory_limit=self.memory_limit)
                 return {'passed':True, 'backend':name, 'hardware':name!='software',
                         'elapsedMs':round((time.monotonic()-started)*1000)}
@@ -78,7 +81,7 @@ class Backends:
                         try:
                             extra = ['-preset','8'] if implementation == 'libsvtav1' else []
                             run([self.executable, '-v','error', '-nostdin', *self.prefix(name), '-f','lavfi',
-                                 '-i','color=s=128x128:r=25:d=0.2', '-vf','format=nv12' + self.upload(name),
+                                 '-i',PROBE_SOURCE, '-vf','format=nv12' + self.upload(name),
                                  '-threads:v','2','-c:v',implementation, *extra, '-frames:v','3', '-f','null','-'], timeout=3, memory_limit=self.memory_limit)
                             passed = True
                         except ComputeError:

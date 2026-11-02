@@ -1,0 +1,8 @@
+# Optional standalone ONNX CPU baseline; not an automatic task fallback.
+-r requirements-audio.lock
+onnxruntime==1.20.1
+coloredlogs==15.0.1
+humanfriendly==10.0
+flatbuffers==25.12.19
+packaging==26.3
+protobuf==7.36.2

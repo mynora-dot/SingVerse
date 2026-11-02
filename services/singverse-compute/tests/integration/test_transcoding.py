@@ -13,6 +13,9 @@ import uuid
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 import uvicorn
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from callback_source import CallbackSource
 from singverse_compute.bootstrap import create_app
 from singverse_compute.core.config import Settings
 
@@ -24,13 +27,14 @@ class TranscodingHttpTest(unittest.TestCase):
         (cls.root/'media').mkdir()
         token = cls.root/'token'
         token.write_text('t'*64)
-        cls.settings = Settings((cls.root/'media',), token, transcode_root=cls.root/'cache', minimum_free_bytes=0,
+        cls.settings = Settings((), token, transcode_root=cls.root/'cache', minimum_free_bytes=0,
                                 hardware_backend='software')
         cls.source = cls.root/'media'/'测试.mkv'
         subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','testsrc2=s=160x90:r=25:d=2',
                         '-f','lavfi','-i','sine=frequency=400:duration=2', '-f','lavfi','-i','sine=frequency=800:duration=2',
                         '-map','0:v','-map','1:a','-map','2:a','-c:v','mpeg4','-c:a','pcm_s16le',
                         '-metadata:s:a:0','title=原唱','-metadata:s:a:1','title=伴奏',str(cls.source)],check=True)
+        cls.callback = CallbackSource(cls.root/'media', 't'*64)
         cls.digest = hashlib.sha256(cls.source.read_bytes()).digest()
         cls.socket = socket.socket(); cls.socket.bind(('127.0.0.1',0))
         cls.base = f'http://127.0.0.1:{cls.socket.getsockname()[1]}/internal/v1/transcoding'
@@ -43,8 +47,11 @@ class TranscodingHttpTest(unittest.TestCase):
         raise RuntimeError('HTTP server failed to start')
     @classmethod
     def tearDownClass(cls):
-        cls.server.should_exit=True;cls.thread.join(10);cls.socket.close();cls.temp.cleanup()
+        cls.server.should_exit=True;cls.thread.join(10);cls.socket.close();cls.callback.close();cls.temp.cleanup()
     def request(self,path='',body=None,method=None,auth=True):
+        if body and 'path' in body and Path(body['path']).is_relative_to(self.root/'media'):
+            body = {**body, **self.callback.grant(body['path'])}
+            del body['path']
         headers={'Content-Type':'application/json'}
         if auth:headers['Authorization']='Bearer '+'t'*64
         with urlopen(Request(self.base+path,data=json.dumps(body).encode() if body is not None else None,
@@ -63,7 +70,7 @@ class TranscodingHttpTest(unittest.TestCase):
         return identifier,body
     def test_auth_bounds_and_probe(self):
         for path,body,code,auth in [('/probe',{'path':str(self.source)},401,False),
-                                    ('/probe',{'path':str(self.root/'token')},403,True),
+                                    ('/probe',{'path':str(self.root/'token')},422,True),
                                     ('/probe',{'path':str(self.source),'command':'arbitrary'},422,True)]:
             with self.subTest(code=code), self.assertRaises(HTTPError) as caught:self.request(path,body,auth=auth)
             self.assertEqual(caught.exception.code,code);caught.exception.close()
@@ -71,6 +78,27 @@ class TranscodingHttpTest(unittest.TestCase):
         self.assertEqual([s['id'] for s in result['streams']],['stream:0','stream:1','stream:2'])
         negotiated=json.loads(self.request('/negotiate',{'path':str(self.source)})[1])
         self.assertEqual(negotiated['mode'],'TRANSCODE')
+    def test_audio_probe_and_fast_read_business_media_without_mounts(self):
+        self.assertEqual(self.app.state.settings.media_roots, ())
+        for thread in self.app.state.transcoding.threads:
+            thread.join(timeout=10)
+        base=self.base.removesuffix('/transcoding')+'/audio-roles/tasks'
+        for mode in ('PROBE','FAST'):
+            identifier=str(uuid.uuid4())
+            payload={'id':identifier,'mode':mode,**self.callback.grant(self.source)}
+            headers={'Content-Type':'application/json','Authorization':'Bearer '+'t'*64}
+            with urlopen(Request(base,data=json.dumps(payload).encode(),headers=headers),timeout=10) as response:
+                self.assertEqual(response.status,202)
+            for _ in range(200):
+                with urlopen(Request(base+'/'+identifier,headers=headers),timeout=5) as response:
+                    result=json.load(response)
+                if result['state'] not in ('QUEUED','RUNNING'): break
+                time.sleep(.05)
+            self.assertEqual(result['state'],'SUCCEEDED',result)
+            if mode=='FAST': self.assertEqual(result['result']['state'],'CONFIDENT')
+            self.app.state.audio_roles.thread.join(timeout=10)
+        self.assertEqual(hashlib.sha256(self.source.read_bytes()).digest(),self.digest)
+
     def test_android_mobile_client_negotiation(self):
         client = {'family':'android', 'containers':['mp4','mkv','webm','ts','mp3','flac','ogg','wav'],
                   'video':['h264'], 'audio':['aac','mp3','flac','opus'], 'hls':True, 'fmp4':True,
@@ -105,6 +133,8 @@ class TranscodingHttpTest(unittest.TestCase):
                 output=self.app.state.transcoding.probe.read(self.root/'cache'/identifier/'output.mp4')
                 self.assertEqual(sum(s.kind=='audio' for s in output.streams),2)
                 self.assertTrue(all(s.codec=='aac' for s in output.streams if s.kind=='audio'))
+                for thread in self.app.state.transcoding.threads:
+                    thread.join(timeout=5)
                 restarted=create_app(self.settings)
                 self.assertEqual(restarted.state.transcoding.view(identifier)['state'],'SUCCEEDED')
                 restarted.state.transcoding.close()

@@ -50,10 +50,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.hardware_settings = hardware_settings
     register_errors(app)
     app.include_router(health.router)
-    app.include_router(media.router)
     app.include_router(remote_tags.router)
     app.include_router(transcoding.router)
     app.include_router(audio_roles.router)
-    app.add_middleware(InternalTaskBoundary, auth=auth, paths=frozenset({media.TAG_PATH, remote_tags.PATH, '/internal/v1/transcoding/probe', '/internal/v1/transcoding/negotiate', '/internal/v1/transcoding/executions', '/internal/v1/transcoding/hardware-settings', '/internal/v1/transcoding/hardware-settings/test', '/internal/v1/audio-roles/tasks', '/internal/v1/audio-roles/models/download', '/internal/v1/audio-roles/models/cancel', '/internal/v1/audio-roles/models/test', '/internal/v1/audio-roles/models/select'}), limit=config.request_limit)
+    app.add_middleware(InternalTaskBoundary, auth=auth, paths=frozenset({media.TAG_PATH, remote_tags.PATH, '/internal/v1/callback/check', '/internal/v1/transcoding/probe', '/internal/v1/transcoding/negotiate', '/internal/v1/transcoding/executions', '/internal/v1/transcoding/hardware-settings', '/internal/v1/transcoding/hardware-settings/test', '/internal/v1/audio-roles/tasks', '/internal/v1/audio-roles/models/download', '/internal/v1/audio-roles/models/cancel', '/internal/v1/audio-roles/models/test', '/internal/v1/audio-roles/models/select'}), limit=config.request_limit)
     app.add_middleware(RequestContext)
     return app

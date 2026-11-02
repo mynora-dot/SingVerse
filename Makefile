@@ -7,7 +7,7 @@ help:
 	@printf '%s\n' 'dbmate-setup      Install checksum-pinned language-neutral migration tool'
 	@printf '%s\n' 'macos-audio-check  Real native Apple MPS qualification, CPU comparison and convolution regression tests (model required)'
 	@printf '%s\n' 'mobile-check       Flutter format, analysis, tests and Android network policy tests' 'mobile-build       Flutter Android debug APK' 'mobile-audio-test  Native karaoke instrumentation on a running emulator (isolated app ID)' 'web-check          NAS H5 and admin page/assets HTTP tests' 'tv-build           Android TV unit tests, debug APK and lint' 'tv-release         Signed release APK (requires signing environment)' 'java-backend-test  SingVerse Java backend tests and package' 'db-sqlite-check    SQLite connection and health tests' 'db-mysql-up        Start MySQL and wait for health' 'db-mysql-check     MySQL connection and health tests (requires running database)' 'verify             Run all checks, including MySQL'
-	@printf '%s\n' 'compute-setup      Create Python 3.12+ venv and install locked dependencies' 'compute-check      Python compute HTTP and internal contract tests' 'compute-run        Start compute node on 127.0.0.1:8090' 'compute-fast-audio-setup Install pinned fast classifier runtime and model for scans' 'compute-audio-setup Install optional pinned CPU Demucs runtime and local model (explicit download)' 'compute-audio-cuda-setup Install pinned Linux x86_64 CUDA audio runtime (model downloaded in admin)' 'compute-audio-rocm-setup Install pinned Linux x86_64 ROCm audio runtime (compatible GPUs only)' 'compute-audio-openvino-setup Install pinned Linux x86_64 OpenVINO audio runtime' 'compute-images     Build backend image matrix using docker-bake.hcl' 'transcode-tools    Download checksum-pinned Jellyfin media tools into .tools (no global installation)' 'transcode-fixtures Download optional checksum-pinned official Dolby Vision verification samples'
+	@printf '%s\n' 'compute-setup      Create Python 3.12+ venv and install locked dependencies' 'compute-check      Python compute HTTP and internal contract tests' 'compute-run        Start compute node on 127.0.0.1:8090' 'compute-fast-audio-setup Install pinned fast classifier runtime and model for scans' 'compute-audio-setup Install optional pinned CPU Demucs runtime and local model (explicit download)' 'compute-audio-cuda-setup Install pinned Linux x86_64 CUDA audio runtime (model downloaded in admin)' 'compute-audio-rocm-setup Install pinned Linux x86_64 ROCm audio runtime (compatible GPUs only)' 'compute-audio-openvino-setup Install pinned Linux x86_64 OpenVINO audio runtime' 'compute-audio-uvr-setup Install ONNX CPU baseline runtime and pinned UVR 9482 model' 'compute-audio-rknn-setup Install native Linux ARM64 RKNN Lite2 runtime (no model download)' 'compute-images     Build backend image matrix using docker-bake.hcl' 'compute-package-nvidia Package CUDA source deployment without media mounts or .env' 'transcode-tools    Download checksum-pinned Jellyfin media tools into .tools (no global installation)' 'transcode-fixtures Download optional checksum-pinned official Dolby Vision verification samples'
 	@printf '%s\n' 'backend-check      Java + Python tests, package and real process integration (run compute-setup first)'
 	@printf '%s\n' 'frontend-setup    Install locked frontend dependencies (Node.js 22.19+)' 'frontend-dev      Start unified frontend development server on 127.0.0.1:5173/admin/' 'frontend-check    Frontend typecheck and two-page build (run npm test separately)' 'frontend-build    Build portable assets in services/singverse-frontend/dist'
 	@printf '%s\n' 'docker-build      Build frontend and Java backend images with tests' 'docker-up         Build and start Docker app at 127.0.0.1:18080' 'docker-down       Stop Docker app; preserve SQLite named volume' 'docker-status     Show Docker app status' 'docker-logs       Follow Docker app logs'
@@ -145,3 +145,19 @@ dbmate-setup:
 # Creates and removes only its own random isolated Compose project/volumes.
 auth-docker-check:
 	$(PYTHON) scripts/check-auth-docker.py
+
+.PHONY: compute-audio-rknn-setup
+compute-audio-rknn-setup:
+	services/singverse-compute/.venv/bin/python -c "import platform; assert platform.system() == 'Linux' and platform.machine() == 'aarch64', 'RKNN requires native Linux aarch64'"
+	cd services/singverse-compute && .venv/bin/python -m pip install -r requirements-audio-rknn.lock
+
+.PHONY: compute-audio-uvr-setup
+compute-audio-uvr-setup:
+	cd services/singverse-compute && .venv/bin/python -m pip install -r requirements-audio-uvr.lock
+	services/singverse-compute/.venv/bin/python scripts/setup-uvr-model.py
+
+.PHONY: compute-package-nvidia
+# Override NVIDIA_PACKAGE_OUTPUT only when another artifact destination is required.
+NVIDIA_PACKAGE_OUTPUT ?= /tmp/singverse-nvidia-upload/SingVerse-NVIDIA-callback.zip
+compute-package-nvidia:
+	python3 scripts/package-nvidia.py --output "$(NVIDIA_PACKAGE_OUTPUT)"

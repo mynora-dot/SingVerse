@@ -67,7 +67,7 @@ python3 scripts/check-mobile-karaoke.py --nas http://10.0.2.2:18181 --voice-samp
 python3 scripts/check-mobile-karaoke.py --suite visual --voice-sample /tmp/singverse-karaoke-fixtures/voice-test.wav
 ```
 
-以上命令从仓库根目录运行。隔离 Java 监听 `127.0.0.1:18181`，指定单独 `--singverse.sqlite.path`、`--singverse.auth.key-file`、`--singverse.transcoding.directory`，compute 监听 `127.0.0.1:18191`，`COMPUTE_MEDIA_ROOTS` 只授权该样本的 `media` 子目录，两个服务共用本次临时 token 文件。Java 使用 `--singverse.compute.base-url=http://127.0.0.1:18191`、`--singverse.compute.token-file` 指向它。样本生成器的 `--seed` 仅允许 loopback 18181、隔离数据库的工厂管理员，不保存密码；每次使用新的临时目录与数据库。
+以上命令从仓库根目录运行。隔离 Java 监听 `127.0.0.1:18181`，指定单独 `--singverse.sqlite.path`、`--singverse.auth.key-file`、`--singverse.transcoding.directory`，compute 监听 `127.0.0.1:18191`，compute 不设置媒体根目录；Java 随任务发送样本的授权回源引用，两个服务共用本次临时 token 文件。Java 使用 `--singverse.compute.base-url=http://127.0.0.1:18191`、`--singverse.compute.token-file` 指向它。样本生成器的 `--seed` 仅允许 loopback 18181、隔离数据库的工厂管理员，不保存密码；每次使用新的临时目录与数据库。
 
 UI 脚本安装独立测试包，通过真实界面选歌、准备、试音、练唱、录唱、锁屏、回听、保存、系统导出、离线回放及作品管理。完整屏幕截图、操作视频及实际混音位于 `build/reports/karaoke-emulator/`，均为本机忽略产物。宿主需要实际可用麦克风；脚本打开 hostmicon 并播放自制声源供麦克风拾取，不把它直接注入产品。宿主电平为零时，末尾断言仍失败，不能以原生控制输入测试代替通过。麦克风音质、声学对齐、蓝牙延迟仍需要真实手机验收。
 

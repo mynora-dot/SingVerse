@@ -17,19 +17,26 @@ WORKDIR /opt/singverse-compute
 COPY services/singverse-compute/requirements*.lock ./
 RUN --mount=type=cache,target=/root/.cache/pip python -m pip install -r requirements.lock
 COPY services/singverse-compute/singverse_compute/ ./singverse_compute/
-RUN mkdir -p /run/singverse-compute /media /var/cache/singverse-transcode /var/lib/singverse-models && chown 10001:10001 /run/singverse-compute /media /var/cache/singverse-transcode /var/lib/singverse-models
+RUN chmod 755 /opt/singverse-compute && \
+    find /opt/singverse-compute/singverse_compute -type d -exec chmod 755 {} + && \
+    find /opt/singverse-compute/singverse_compute -type f -exec chmod 644 {} +
+RUN mkdir -p /run/singverse-compute /var/cache/singverse-transcode /var/lib/singverse-models && chown 10001:10001 /run/singverse-compute /var/cache/singverse-transcode /var/lib/singverse-models
 ENV PATH="/usr/lib/jellyfin-ffmpeg:${PATH}"
-ENV COMPUTE_AUTH_TOKEN_FILE=/run/singverse-compute/token COMPUTE_MEDIA_ROOTS=/media \
+ENV COMPUTE_AUTH_TOKEN_FILE=/run/singverse-compute/token \
     COMPUTE_TRANSCODE_ROOT=/var/cache/singverse-transcode \
     COMPUTE_FFMPEG=/usr/lib/jellyfin-ffmpeg/ffmpeg COMPUTE_FFPROBE=/usr/lib/jellyfin-ffmpeg/ffprobe
 ARG SINGVERSE_VERSION=0.1.0-SNAPSHOT
 ARG SOURCE_REVISION=local
 RUN python -c "import json,os,hashlib,pathlib; p=pathlib.Path('singverse_compute/core/build.json'); p.write_text(json.dumps(dict(version=os.environ['SINGVERSE_VERSION'],revision=os.environ['SOURCE_REVISION'],variant='base',runtimeLock=hashlib.sha256(b''.join(f.read_bytes() for f in sorted(pathlib.Path('.').glob('requirements*.lock')))).hexdigest(),sourceDigest=hashlib.sha256(b''.join(str(f).encode()+f.read_bytes() for f in sorted(pathlib.Path('singverse_compute').rglob('*.py')))).hexdigest())))"
+# Generated metadata comes after COPY normalization; normalize it and every lock
+# explicitly even when the builder/extractor uses umask 077.
+RUN chmod 644 /opt/singverse-compute/requirements*.lock /opt/singverse-compute/singverse_compute/core/build.json
 ENV SINGVERSE_COMPUTE_VARIANT=base
 LABEL org.opencontainers.image.title="SingVerse Compute" \
       org.opencontainers.image.version="${SINGVERSE_VERSION}" \
       org.opencontainers.image.revision="${SOURCE_REVISION}"
 USER 10001:10001
+RUN python -c "from pathlib import Path; from singverse_compute.core.build_info import build_info; assert build_info()['variant'] == 'base'; [p.read_bytes() for p in Path('.').glob('requirements*.lock')]"
 HEALTHCHECK --interval=5s --timeout=3s --start-period=20s --retries=6 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health',timeout=2)"
 CMD ["python", "-m", "singverse_compute", "--host", "0.0.0.0", "--port", "8090"]
@@ -65,6 +72,20 @@ COPY services/singverse-compute/docker/install-opencl.sh /tmp/install-opencl.sh
 RUN sh /tmp/install-opencl.sh && rm /tmp/install-opencl.sh
 RUN --mount=type=cache,target=/root/.cache/pip python -m pip install -r requirements-audio-openvino.lock
 ENV SINGVERSE_COMPUTE_VARIANT=openvino
+USER 10001:10001
+
+# UVR baseline keeps the same pinned CPU DSP dependencies.
+FROM cpu AS uvr
+USER root
+RUN --mount=type=cache,target=/root/.cache/pip python -m pip install -r requirements-audio-uvr.lock
+USER 10001:10001
+
+FROM uvr AS rknn
+USER root
+ARG TARGETARCH
+RUN test "$TARGETARCH" = arm64
+RUN --mount=type=cache,target=/root/.cache/pip python -m pip install -r requirements-audio-rknn.lock
+ENV SINGVERSE_COMPUTE_VARIANT=rknn
 USER 10001:10001
 
 FROM cpu AS production

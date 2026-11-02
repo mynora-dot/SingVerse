@@ -116,11 +116,9 @@ def main():
         'WorkingDirectory': str(ROOT / 'services/singverse-compute'),
         'EnvironmentVariables': {
             'COMPUTE_AUTH_TOKEN_FILE': str(RUNTIME / 'token'),
-            'COMPUTE_MEDIA_ROOTS': str(RUNTIME / 'media'),
             'COMPUTE_TRANSCODE_ROOT': str(RUNTIME / 'cache'),
             'COMPUTE_FFMPEG': str(ffmpeg), 'COMPUTE_FFPROBE': str(ffprobe),
             'COMPUTE_HARDWARE_BACKEND': 'videotoolbox',
-            'COMPUTE_JAVA_ORIGIN': 'http://127.0.0.1:18080',
             'COMPUTE_PROCESS_MEMORY_BYTES': '1073741824',
             **audio,
         },

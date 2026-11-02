@@ -1,0 +1,12 @@
+# Enable only after obtaining a verified converted model and matching host driver.
+services:
+  singverse-compute:
+    image: singverse-compute:rk3566-rknn
+    build:
+      target: rknn
+    devices:
+      - '${RKNPU_DEVICE:-/dev/dri/renderD129}:/dev/dri/renderD129'
+    group_add:
+      - '${RKNPU_GID:?Set RKNPU_GID to the NPU device group ID}'
+    volumes:
+      - ./models/uvr-mdxnet-9482-rknn:/var/lib/singverse-models/uvr-mdxnet-9482-rknn:ro

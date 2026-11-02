@@ -12,6 +12,7 @@ services:
       SQLITE_PATH: /data/singverse.db
       SERVER_PORT: '8080'
       COMPUTE_NODE_URL: http://singverse-compute:8090
+      SINGVERSE_CALLBACK_ORIGIN: http://singverse-java-backend:8080
       COMPUTE_AUTH_TOKEN_FILE: /run/singverse-compute/token
       WEBDAV_METADATA_PATH: /data/metadata/webdav
       METADATA_CACHE_PATH: /data/metadata/covers
@@ -40,8 +41,6 @@ services:
         SOURCE_REVISION: '${SINGVERSE_SOURCE_REVISION:-local}'
     environment:
       COMPUTE_AUTH_TOKEN_FILE: /run/singverse-compute/token
-      COMPUTE_MEDIA_ROOTS: /media
-      COMPUTE_JAVA_ORIGIN: http://singverse-java-backend:8080
       COMPUTE_PROCESS_MEMORY_BYTES: '${COMPUTE_PROCESS_MEMORY_BYTES:-1073741824}'
       COMPUTE_TRANSCODE_CONCURRENCY: '${COMPUTE_TRANSCODE_CONCURRENCY:-1}'
       COMPUTE_AUDIO_MODEL_REPO: '${COMPUTE_AUDIO_MODEL_REPO:-/var/lib/singverse-models/htdemucs}'
@@ -51,7 +50,6 @@ services:
       - singverse-compute-auth:/run/singverse-compute
       - singverse-transcode-cache:/var/cache/singverse-transcode
       - singverse-audio-models:/var/lib/singverse-models
-      - singverse-media:/media:ro
     restart: unless-stopped
     mem_limit: '${COMPUTE_CONTAINER_MEMORY_LIMIT:-2g}'
     cpus: '${COMPUTE_CPU_LIMIT:-2.0}'

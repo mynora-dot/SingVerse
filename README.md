@@ -82,7 +82,7 @@ cd services/singverse-java-backend
 java -jar target/singverse-java-backend-0.1.0-SNAPSHOT.jar
 ```
 
-在“系统设置 → 性能节点配置”管理计算服务。应用 Compose 自动提供同套 `singverse-compute` 地址与共享凭据；独立部署可配置地址、加密凭据和媒体路径映射，或选择暂不使用。连接检查验证身份、认证及实际能力，不发起媒体任务。节点离线不影响 Java/管理端健康，扫描保留文件名回退；音视频标签读取由 Python 执行。独立部署见[计算节点说明](services/singverse-compute/README.md)。
+在“系统设置 → 性能节点配置”管理计算服务。应用 Compose 自动提供同套 `singverse-compute` 地址与共享凭据；独立部署仅配置节点地址和加密凭据，无需给性能节点挂载曲库，或选择暂不使用。连接检查验证节点身份、认证、实际能力及业务回源，不发起媒体任务。节点离线不影响 Java/管理端健康，扫描保留文件名回退；音视频标签读取由 Python 执行。独立部署见[计算节点说明](services/singverse-compute/README.md)。
 
 管理中心访问 `http://localhost:8080/admin/`，亲友欢迎页 `http://localhost:8080/party/`，健康检查 `http://localhost:8080/api/health`。直接执行Maven也需先构建前端；缺少产物会明确失败。后续在NAS实际部署后，手机必须使用其可达地址，例如 `http://<NAS局域网IP>:8080/`；二维码不能写localhost或容器内部IP。
 
@@ -183,7 +183,7 @@ docker compose -f compose.app.yaml stop singverse-compute
 SINGVERSE_MACOS_COMPUTE=1 make docker-check
 ```
 
-后台性能节点连接方式使用“自动识别”。Java 经 `host.docker.internal:18090` 连接仅监听回环的 Mac 节点，复用现有内部凭据，使用 VideoToolbox；WebDAV 仍通过 Java 读取。可选本地媒体目录 `data/macos-compute/media` 按相同绝对路径只读映射到 Java，新建本地来源时填写该绝对路径。节点缓存与凭据也保存在被忽略的 `data/macos-compute`，均不放入媒体目录。启动器使用当前用户的 launchd 保持节点运行，并在 `~/Library/LaunchAgents` 注册指向本地运行配置的登录启动项；保留本仓库及虚拟环境路径。`scripts/macos-compute.py status` 查询、`stop` 停止节点并移除本启动器自己的登录启动项。Java HTTP 入口需为本机默认 18080；其他端口部署请调整启动器的内部来源地址。重启应用继续带上 macOS 覆盖文件，以保留此连接配置。
+后台性能节点连接方式使用“自动识别”。Java 经 `host.docker.internal:18090` 连接仅监听回环的 Mac 节点，复用现有内部凭据，使用 VideoToolbox；WebDAV 仍通过 Java 读取。本地曲库只需挂载到 Java，Mac 节点通过任务授权回源读取，无需相同路径。节点缓存与凭据也保存在被忽略的 `data/macos-compute`，均不放入媒体目录。启动器使用当前用户的 launchd 保持节点运行，并在 `~/Library/LaunchAgents` 注册指向本地运行配置的登录启动项；保留本仓库及虚拟环境路径。`scripts/macos-compute.py status` 查询、`stop` 停止节点并移除本启动器自己的登录启动项。Java HTTP 入口需为本机默认 18080；其他端口部署请调整 macOS Compose 覆盖文件中 Java 的业务回源地址。重启应用继续带上 macOS 覆盖文件，以保留此连接配置。
 
 Mac 原唱／伴奏使用原生 CPU 或 MPS：显式执行 `make compute-audio-setup` 安装固定依赖及权重后，用 `scripts/macos-compute.py restart` 加载音频配置，再到“设备与服务 → 性能节点配置”对 CPU／MPS 试跑。启动器默认 4GiB 音频预算，可显式指定 `--audio-memory-mib 2048`，后续重启保留该预算。本机 M2 已通过 MPS 分块卷积、CPU 数值对照及 8／60 秒批量分离验证；不启用隐式 CPU 算子回退。复验可执行 `make macos-audio-check`，完整说明见 compute README。
 

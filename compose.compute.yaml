@@ -1,4 +1,4 @@
-# Standalone compute service. Set COMPUTE_MEDIA_PATH to an existing media directory.
+# Standalone execution node; Java supplies task-scoped media callbacks.
 # For another host to connect, explicitly select a private interface or place behind TLS.
 name: singverse-compute-node
 services:
@@ -13,8 +13,6 @@ services:
         SOURCE_REVISION: '${SINGVERSE_SOURCE_REVISION:-local}'
     environment:
       COMPUTE_AUTH_TOKEN_FILE: /run/singverse-compute/token
-      COMPUTE_MEDIA_ROOTS: /media
-      COMPUTE_JAVA_ORIGIN: '${COMPUTE_JAVA_ORIGIN:-}'
       COMPUTE_PROCESS_MEMORY_BYTES: '${COMPUTE_PROCESS_MEMORY_BYTES:-1073741824}'
       COMPUTE_TRANSCODE_CONCURRENCY: '${COMPUTE_TRANSCODE_CONCURRENCY:-1}'
       COMPUTE_AUDIO_MODEL_REPO: '${COMPUTE_AUDIO_MODEL_REPO:-/var/lib/singverse-models/htdemucs}'
@@ -26,12 +24,6 @@ services:
       - singverse-compute-auth:/run/singverse-compute
       - singverse-transcode-cache:/var/cache/singverse-transcode
       - singverse-audio-models:/var/lib/singverse-models
-      - type: bind
-        source: '${COMPUTE_MEDIA_PATH:?Set COMPUTE_MEDIA_PATH to an existing media directory}'
-        target: /media
-        read_only: true
-        bind:
-          create_host_path: false
     restart: unless-stopped
     mem_limit: '${COMPUTE_CONTAINER_MEMORY_LIMIT:-2g}'
     cpus: '${COMPUTE_CPU_LIMIT:-2.0}'

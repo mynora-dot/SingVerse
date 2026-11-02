@@ -56,4 +56,5 @@ def accelerator_failure(message):
         'not currently implemented for the mps', 'output channels > 65536', 'failed to initialise vaapi',
         'cannot load libcuda', 'no capable devices found', 'error initializing an internal mfx',
         'device creation failed', 'failed to create device', 'openvino device', 'gpu device was lost',
+        'rknn npu initialization failed', 'rknn inference returned',
         'hardware accelerator execution failed'))

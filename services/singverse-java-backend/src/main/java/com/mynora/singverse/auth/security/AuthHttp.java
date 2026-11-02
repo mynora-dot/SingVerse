@@ -72,6 +72,14 @@ public class AuthHttp {
         return request.getRemoteAddr();
     }
 
+    public String callbackOrigin(HttpServletRequest request) {
+        if (!publicOrigin.isBlank()) return publicOrigin;
+        boolean trusted = proxies.stream().anyMatch(p -> p.matches(request.getRemoteAddr()));
+        String scheme = trusted ? Optional.ofNullable(request.getHeader("X-Forwarded-Proto")).orElse(request.getScheme()) : request.getScheme();
+        String host = trusted ? Optional.ofNullable(request.getHeader("X-Forwarded-Host")).orElse(request.getHeader("Host")) : request.getHeader("Host");
+        return scheme + "://" + host;
+    }
+
     public void origin(HttpServletRequest request) {
         if (!request.getRequestURI().startsWith("/api/v1/")) return;
         boolean trusted = proxies.stream().anyMatch(p -> p.matches(request.getRemoteAddr()));

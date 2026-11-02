@@ -44,9 +44,9 @@ class MacosAppSmokeTest(unittest.TestCase):
             compute_port, java_port = free_port(), free_port()
             origin = f'http://127.0.0.1:{java_port}'
             environment = {**os.environ, 'COMPUTE_AUTH_TOKEN_FILE': str(token),
-                           'COMPUTE_MEDIA_ROOTS': str(media), 'COMPUTE_AUDIO_MODEL_REPO': str(model),
+                           'COMPUTE_AUDIO_MODEL_REPO': str(model),
                            'COMPUTE_AUDIO_MEMORY_BYTES': str(2*1024**3), 'COMPUTE_TRANSCODE_ROOT': str(work/'cache'),
-                           'COMPUTE_JAVA_ORIGIN': origin, 'COMPUTE_MINIMUM_FREE_BYTES': '0',
+                           'COMPUTE_MINIMUM_FREE_BYTES': '0',
                            'COMPUTE_NODE_URL': f'http://127.0.0.1:{compute_port}', 'SERVER_PORT': str(java_port),
                            'SPRING_PROFILES_ACTIVE': 'sqlite', 'SQLITE_PATH': str(work/'app.db'),
                            'SINGVERSE_AUTH_KEY_FILE': str(work/'master.key'), 'AUDIO_DERIVED_PATH': str(work/'derived'),

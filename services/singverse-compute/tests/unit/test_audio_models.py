@@ -34,8 +34,27 @@ class AudioModelManagementTest(unittest.TestCase):
         self.assertIsNone(manager.selected())
         with self.assertRaises(ComputeError): manager.choose('cuda')
         entries = {item['id']: item for item in manager.entries()}
-        self.assertEqual(entries['rknn']['state'], 'MODEL_UNSUPPORTED')
+        self.assertEqual(entries['rknn']['state'], 'RUNTIME_MISSING')
         self.assertEqual(entries['xpu']['state'], 'MODEL_UNSUPPORTED')
+
+    def test_rknn_requires_local_model_runtime_and_matching_qualification(self):
+        manager = self.manager
+        manager.audio.dependencies_available = True
+        manager.environment['devices']['rknn'] = {'name': 'NPU'}
+        manager.environment['versions']['rknn-toolkit-lite2'] = '2.3.2'
+        with patch.object(manager, 'model_valid', return_value=False):
+            entry = next(x for x in manager.entries() if x['id'] == 'rknn')
+            self.assertEqual(entry['state'], 'MODEL_MISSING')
+        with patch.object(manager, 'model_valid', return_value=True), patch.object(manager, 'inference_digest', return_value='local-digest'):
+            entry = next(x for x in manager.entries() if x['id'] == 'rknn')
+            self.assertEqual(entry['state'], 'UNVERIFIED')
+            manager.qualified['rknn'] = {'state': 'AVAILABLE', 'environment': 'env1', 'digest': 'local-digest'}
+            self.assertEqual(manager.selected(), 'rknn')
+            manager.qualified['rknn']['digest'] = 'old-model'
+            self.assertIsNone(manager.selected())
+            manager.qualified['rknn']['digest'] = 'local-digest'
+            manager.environment['versions']['rknn-toolkit-lite2'] = 'wrong-version'
+            self.assertIsNone(manager.selected())
 
     def test_bad_import_preserves_existing_files_and_is_never_enabled(self):
         manager = self.manager

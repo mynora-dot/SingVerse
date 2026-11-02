@@ -93,7 +93,7 @@ WebDAV 使用保存的地址和加密凭据在服务端发起 GET/HEAD，转发 
 
 本地扫描沿用歌曲API元数据结构，字段来源kind新增FILE，表示本地音视频内嵌标签优先值；不扩展WebDAV读取或增加远程探测API。
 
-计算服务新增POST /internal/v1/media/tags（认证、根目录限制、有限并发）及Tags类型，见compute-internal.openapi.json。Java仅内部调用，前端不访问计算节点。
+计算服务使用 POST /internal/v1/media/remote-tags，所有本地／WebDAV 标签请求均携带 reference、callbackOrigin、filename、size；Java 提供短期授权 Range 回源。转码、音轨任务同样使用引用和回调地址，禁止传本地路径；原 /internal/v1/media/tags 已移除。连接测试增加 /internal/v1/callback/check 及 Java 的短期 /api/v1/internal/compute-callback/{id}。详见 compute-internal.openapi.json；前端不访问计算节点。
 
 - 管理员性能节点：`GET/PUT /api/v1/compute-node` 和 `POST /api/v1/compute-node/test`；写入和测试要求 CSRF，凭据仅写，AUTO 解析部署变量、MANUAL 使用加密配置、DISABLED 停用。测试失败使用 Check.status 表达，不返回上游原始错误或触发管理员登出。
 - 计算内部 `GET /internal/v1/status` 验证 Bearer 凭据后返回身份和实际能力；与公开进程健康及兼容能力探测分离。

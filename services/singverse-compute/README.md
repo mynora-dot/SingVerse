@@ -8,11 +8,11 @@ Python 3.12+ / FastAPI。所有 FFmpeg/ffprobe 执行都由本工程处理，Jav
 
 `python -m singverse_compute --host 127.0.0.1 --port 8090`启动。配置：
 
-- `COMPUTE_MEDIA_ROOTS`：允许读取的绝对根目录，多个目录用系统路径分隔符（Linux/macOS为冒号）。默认空，不允许读取媒体。Java与计算服务必须挂载同一份媒体，路径不同可在管理员页面配置根目录映射。
-- `COMPUTE_AUTH_TOKEN_FILE`：内部Bearer凭据文件。CLI首次启动以0600生成随机凭据；Java仅只读挂载该文件，禁止提交或输出内容。没有有效凭据、根目录或ffprobe时不声明标签能力。
+- 原始曲库仅挂载到 Java。性能节点不配置媒体目录或业务地址；每项媒体任务携带 `reference` 和 `callbackOrigin`，凭任务授权通过 HTTP Range 读取业务节点。
+- `COMPUTE_AUTH_TOKEN_FILE`：内部Bearer凭据文件。CLI首次启动以0600生成随机凭据；Java仅只读挂载该文件，禁止提交或输出内容。没有有效凭据或ffprobe时不声明标签能力。
 - Java用 `COMPUTE_NODE_URL` 与 `COMPUTE_AUTH_TOKEN_FILE` 连接。Java不启动Python或FFmpeg子进程，节点离线/失败回退文件名，不影响主服务健康。
 
-应用Compose默认启动独立 `singverse-compute` 容器，不发布端口；媒体卷 `/media` 只读，内部凭据使用独立命名卷。Java镜像不含Python/FFmpeg。自定义NAS挂载应同时给Java和compute添加同一份媒体的只读挂载，并在compute根目录白名单中列入。跨主机部署需要额外TLS与受限网络，不能直接暴露计算端口。
+应用 Compose 仅给 Java 挂载媒体卷；compute 只挂载内部凭据、模型和缓存卷，不发布端口。跨主机计算节点同样无需共享文件系统；保留认证、TLS／受限网络。Java 镜像不含 Python／FFmpeg。
 
 ## 工程结构与依赖
 
@@ -86,7 +86,7 @@ cd services/singverse-compute
 独立部署示例（在目标设备的仓库根执行，媒体原件只读）：
 
 ```sh
-COMPUTE_MEDIA_PATH=/absolute/path/to/media docker compose -f compose.compute.yaml up -d --build
+docker compose -f compose.compute.yaml up -d --build
 ```
 
 默认仅发布 `127.0.0.1:18090`。跨主机部署时显式设置 `COMPUTE_HTTP_BIND` 为该设备受限内网地址，限制入站访问；公网使用可信 TLS 反向代理，保留认证与证书验证。主应用 Compose 的计算端口保持不公开。`compose.compute.yaml` 使用独立项目与凭据卷，不启动业务数据库。
@@ -97,9 +97,17 @@ COMPUTE_MEDIA_PATH=/absolute/path/to/media docker compose -f compose.compute.yam
 docker compose -f compose.compute.yaml exec -T singverse-compute cat /run/singverse-compute/token
 ```
 
-在管理页面选择独立部署，填写 **Java 能访问到的** 地址（例如受限内网 `http://192.168.1.20:18090`）。两端挂载必须是同一份媒体；本机 `/media`、计算端 `/media` 相同则无需映射；若 Java 使用 `/mnt/music`，添加 `/mnt/music → /media`。映射按最长本机路径前缀匹配；未匹配路径保持原样，计算端仍执行真实路径白名单检查。配置不会上传媒体，不能令计算节点读取未挂载文件。
+在管理页面选择独立部署，填写 Java 可达的计算节点地址及凭据。曲库仍由 Java 的本地来源或 WebDAV 来源管理；不需要把歌曲复制或挂载到计算机器。旧目录映射兼容读取，但不参与新任务。
 
-测试连接只检查身份、认证和能力，不试读媒体；保存后新扫描才使用配置，进行中的扫描固定原连接。节点不可用时保留文件名回退。可用能力包括 `media-tags`；转码目录、工具与认证就绪时另声明 `media-probe`、`transcode-hls`、`transcode-offline`。没有多节点调度或负载均衡。停止用 `docker compose -f compose.compute.yaml down`，保留命名卷。
+测试连接先检查节点身份、认证和能力，再由节点反向验证业务回源身份。`CALLBACK_FAILED` 表示节点可连接但业务回源不可用。配置变更只影响新任务；扫描固定连接快照，节点不可用时保留文件名回退。
+
+## 业务回源地址及升级
+
+Java 随任务发送回调地址，计算节点不保存部署级业务地址，也不接受任意文件路径。业务侧 `SINGVERSE_CALLBACK_ORIGIN` 为可选可信部署地址；未设置时优先使用已有 `SINGVERSE_PUBLIC_ORIGIN`，否则从已认证管理员请求的入口推导并供本次进程内后台任务复用。`X-Forwarded-Host/Proto` 只信任 `SINGVERSE_TRUSTED_PROXIES` 列出的代理。后台任务在 Java 重启后，需先通过节点可达的地址访问管理页，或由业务部署提供稳定的回源地址。同套 Compose 已在 Java 配置内部服务地址。
+
+接口仅允许任务 UUID、节点 Bearer、固定内部 GET／HEAD／Range 回源路径；授权结束、源文件变化、取消或节点重启不能复用旧媒体授权。连接测试有独立的 15 秒短期认证检查，不读取歌曲。回源需双向网络可达；只测通 Java → compute 不代表媒体读取可用。
+
+升级前停止提交新任务，等待或取消在途任务，再共同更新 Java、前端和 compute。不执行 `down -v`，保留认证、模型和缓存卷。旧路径式任务不能继续执行，失败后管理员可重试；更新 compute 后重新执行模型资格试跑。部署包是源码构建包，首次构建及模型下载仍需网络。
 
 ## 后台硬件加速配置
 
@@ -109,13 +117,13 @@ docker compose -f compose.compute.yaml exec -T singverse-compute cat /run/singve
 
 ## WebDAV 远程内嵌元数据
 
-新增 `media-remote-tags` 能力，需要内部凭据、FFmpeg/ffprobe 和部署参数 `COMPUTE_JAVA_ORIGIN`，不依赖本地媒体目录白名单。Java 通过 Bearer 鉴权 POST `/internal/v1/media/remote-tags`，请求 `{reference, filename, size, deep}`；仅接收任务 UUID，禁止传任意 URL、路径或 WebDAV 凭据。`reference` 对应 Java 临时授权的 `/api/v1/internal/metadata-input/{id}`，不是可公开分享的播放链接。
+`media-remote-tags` 统一处理本地与 WebDAV 媒体标签。Java POST `/internal/v1/media/remote-tags`，请求 `{reference, callbackOrigin, filename, size, deep}`；固定回源 `/api/v1/internal/metadata-input/{id}`，不接受任意媒体 URL、路径或 WebDAV 凭据。原路径式 `/internal/v1/media/tags` 已移除。
 
 工作器用有界、可 seek 的 Range 文件对象读取，Mutagen 读取标签、封面、USLT/SYLT、MP4/Vorbis 歌词；ffprobe 读取容器和流信息，FFmpeg 仅提取附图或明确的封面附件，不截图。Mutagen、ffprobe 和 FFmpeg 共享任务内字节块缓存，不拼接头尾伪造文件。普通预算 16 MiB/16 请求/60 秒，深度预算 128 MiB/64 请求/180 秒；Python 与 Java 分别约束，Java 另计入重定向请求和实际流量，保留访问组限速与冷却，不设每日累计提取额度。超限保留已有信息，字段状态区分 PRESENT/ABSENT/UNKNOWN。
 
 结果包含 tags、technical、cover（仅内部传输的有界 Base64）、lyrics、字段覆盖状态、提取器版本及统计。封面最大 2 MB、歌词最大 256 KiB，Java 校验和保存本地衍生文件，Python 不写业务库。普通歌词与同步歌词保留原格式；SYLT 帧时间不误标为毫秒。MP3/FLAC/M4A/MP4/OGG/Opus/MKV 的常见结构纳入测试，未知结构允许部分完成。远程读取需要 Range 支持，忽略范围的来源不会降级完整下载。
 
-保留 `/internal/v1/media/tags` 的本地兼容行为；旧文档中“WebDAV 不读取内容”适用于未启用远程提取的来源。运行 `make compute-setup` 安装锁定的 Mutagen 1.47.0，再运行 `make compute-check`；新增测试使用本机随机端口、临时音视频、尾部 MP4 索引和 MKV 附件，不连接真实网盘。
+本地媒体同样使用任务回源，不保留路径式标签接口；旧文档中“WebDAV 不读取内容”适用于未启用远程提取的来源。运行 `make compute-setup` 安装锁定的 Mutagen 1.47.0，再运行 `make compute-check`；新增测试使用本机随机端口、临时音视频、尾部 MP4 索引和 MKV 附件，不连接真实网盘。
 
 ## 原唱识别与伴奏分离
 
@@ -192,10 +200,10 @@ CI 可手动启用 `mps_model_smoke`，执行器须实际暴露 Apple GPU；普�
 - NVIDIA 3070/A3000：宿主安装兼容驱动和NVIDIA Container Toolkit，然后使用 `docker compose -f compose.app.yaml -f compose.audio-cuda.yaml build singverse-compute`，再用同样的两个配置文件启动。override安装固定CUDA运行环境并申请一张GPU，不安装宿主驱动。
 - 兼容ROCm的AMD GPU：先配置宿主驱动、`/dev/kfd`、`/dev/dri`和实际render/video组数字ID（`SINGVERSE_RENDER_GID` / `SINGVERSE_VIDEO_GID`），使用 `compose.audio-rocm.yaml` 代替CUDA override。8845HS/255HS按节点实际GPU标识检测，不承诺集显支持，不设置伪造GPU标识。
 - Intel 8400T/N100：提供CPU路径；QSV/VA-API是编解码功能。新增独立OpenVINO适配器与Intel官方转换模型，但这两种设备仍需分别试跑及效果验收；PyTorch XPU路径明确为 `MODEL_UNSUPPORTED`。
-- RK3566：Linux ARM64 CPU路径需实际依赖安装成功和内存充足；没有合格RKNN转换模型，NPU明确为 `MODEL_UNSUPPORTED`。不能凭板卡名称宣布NPU可用。
+- RK3566：Linux ARM64 CPU路径需实际依赖安装成功和内存充足；RKNN实验适配支持本地转换模型，须安装专用运行时并完成板端试跑；见下方部署说明。不能凭板卡名称宣布NPU可用。
 - Apple M2：macOS原生CPU/MPS，Docker内不开放MPS。关闭PyTorch隐式CPU算子回退；Demucs自身的频谱变换明确在CPU执行，网络使用MPS，页面及任务标记 `mps+cpu-stft`。固定运行时的超长一维卷积通过保留重叠边界的 GPU 分块处理；其他算子不支持时仍明确失败，可选择通过试跑的CPU。
 
-CPU/CUDA/ROCm/MPS的执行选择及试跑门禁已接入；M2 原先的“Output channels > 65536”限制已通过数学等价的卷积分块解决，本机 2GiB 预算下资格试跑及 8／60 秒分离通过。Intel GPU和RKNN转换/音质验收尚未完成，不把硬件识别或待适配状态算作加速实现。各型号的长曲、音质、内存和速度仍须逐台验证。运行环境、内核/驱动、设备或模型版本改变后旧试跑凭据失效；可用后端才进入自动选择，默认顺序CUDA → ROCm → OpenVINO → MPS → CPU。每个任务保存实际后端与模型版本；检查RAM、磁盘及CUDA/ROCm可用显存（至少2GiB），仍可能因模型/歌曲峰值资源不足失败。
+CPU/CUDA/ROCm/MPS的执行选择及试跑门禁已接入；M2 原先的“Output channels > 65536”限制已通过数学等价的卷积分块解决，本机 2GiB 预算下资格试跑及 8／60 秒分离通过。Intel GPU和RKNN转换/音质验收尚未完成，不把硬件识别或待适配状态算作加速实现。各型号的长曲、音质、内存和速度仍须逐台验证。运行环境、内核/驱动、设备或模型版本改变后旧试跑凭据失效；可用后端才进入自动选择，默认顺序CUDA → ROCm → OpenVINO → RKNN → MPS → CPU。每个任务保存实际后端与模型版本；检查RAM、磁盘及CUDA/ROCm可用显存（至少2GiB），仍可能因模型/歌曲峰值资源不足失败。
 
 实际模型冒烟测试（只验证执行链路，合成音不是音质基准）：
 
@@ -218,23 +226,23 @@ SINGVERSE_TEST_AUDIO_MODEL_REPO="$PWD/.tools/demucs-htdemucs" \
 | `-rocm` | linux/amd64 | Torch 2.5.1+rocm6.2 | AMD APU 按实际 GPU 标识与运行时验证，不能由型号推定兼容 |
 | `-openvino` | linux/amd64 | OpenVINO 2025.4.0、CPU Torch 2.5.1、固定 Intel OpenCL 用户态库 | N100／8400T 分别待真机验证 |
 
-CPU 镜像由 Docker 清单选择 amd64／arm64，GPU 后端需要显式选择。RKNN 没有合格转换模型，因此不发布可用的 `-rknn` 镜像；RK3566 可验证 ARM64 CPU，资源不足时阻止任务。M2 使用 macOS 原生环境及下述 MPS 分块适配器。视频转码后端与 AI 推理后端独立检测，QSV 可用不等于 OpenVINO 可用。
+CPU 镜像由 Docker 清单选择 amd64／arm64，GPU 后端需要显式选择。RKNN 采用实验性原生部署，尚无已验收转换模型，因此不发布 `-rknn` 镜像；RK3566 可验证 ARM64 CPU，资源不足时阻止任务。M2 使用 macOS 原生环境及下述 MPS 分块适配器。视频转码后端与 AI 推理后端独立检测，QSV 可用不等于 OpenVINO 可用。
 
 ### 本地构建与预构建镜像
 
-RTX 3070／A3000 独立节点可直接使用根目录 `compose.compute.nvidia.yaml`，所有部署参数均直接写在 YAML，不依赖 `.env` 或 shell 导出变量。默认媒体挂载为 Compose 文件旁的 `./media`（启动前创建），Java 地址为 `http://10.100.1.12`，节点绑定 `10.100.1.12:18090`；按实际部署修改 YAML，并限制 Java 主机以外的入站访问。宿主须安装兼容 NVIDIA 驱动与 NVIDIA Container Toolkit。
+RTX 3070／A3000 独立节点使用根目录 `compose.compute.nvidia.yaml`，参数直接写在 YAML，无需 `.env`。节点默认绑定 `10.100.1.12:18090`；按实际设备修改绑定地址并限制入站。宿主安装兼容 NVIDIA 驱动与 NVIDIA Container Toolkit；无需媒体目录或 Java 地址配置。
 
 ```sh
 docker compose -f compose.compute.nvidia.yaml up -d --build
 docker compose -f compose.compute.nvidia.yaml ps
 ```
 
-此命令需在完整仓库根目录执行，构建 CUDA 镜像，不自动下载模型。首次启动自动生成并持久保存认证凭据；在管理端配置独立节点地址及凭据、按实际 Java 媒体路径映射到 `/media`，再下载／导入模型并进行 CUDA 试跑。视频 NVENC 与音频 CUDA 分别验证；3070／A3000 仍待真机验收。停止使用 `docker compose -f compose.compute.nvidia.yaml down`，保留命名卷。该文件与原 `compose.compute.yaml` 使用相同项目名及卷，作为替代入口使用，不同时启动两份独立节点。
+此命令需在完整仓库根目录执行，构建 CUDA 镜像，不自动下载模型。首次启动自动生成并持久保存认证凭据；在管理端配置独立节点地址及凭据，再下载／导入模型并进行 CUDA 试跑。视频 NVENC 与音频 CUDA 分别验证；3070／A3000 仍待真机验收。停止使用 `docker compose -f compose.compute.nvidia.yaml down`，保留命名卷。该文件与原 `compose.compute.yaml` 使用相同项目名及卷，作为替代入口使用，不同时启动两份独立节点。
 
 从源码在实际节点构建，例如 Intel GPU 独立节点：
 
 ```sh
-COMPUTE_MEDIA_PATH=/absolute/path/to/media COMPUTE_RENDER_GID=109 \
+COMPUTE_RENDER_GID=109 \
   docker compose -f compose.compute.yaml -f compose.audio-openvino.yaml up -d --build
 ```
 
@@ -246,10 +254,10 @@ COMPUTE_MEDIA_PATH=/absolute/path/to/media COMPUTE_RENDER_GID=109 \
 
 ```sh
 COMPUTE_IMAGE=ghcr.io/<仓库所有者>/singverse-compute:<版本>-openvino \
-COMPUTE_MEDIA_PATH=/absolute/path/to/media COMPUTE_RENDER_GID=109 \
+COMPUTE_RENDER_GID=109 \
   docker compose -f compose.compute.yaml -f compose.audio-openvino.yaml pull singverse-compute
 COMPUTE_IMAGE=ghcr.io/<仓库所有者>/singverse-compute:<版本>-openvino \
-COMPUTE_MEDIA_PATH=/absolute/path/to/media COMPUTE_RENDER_GID=109 \
+COMPUTE_RENDER_GID=109 \
   docker compose -f compose.compute.yaml -f compose.audio-openvino.yaml up -d --no-build
 ```
 
@@ -272,7 +280,7 @@ services:
       - /dev/dri/renderD128:/dev/dri/renderD128
     group_add:
       - '109' # 替换为实际 render 组 ID
-    # 其余环境、认证、只读媒体与持久卷照基础 Compose 保留。
+    # 其余环境、认证与持久卷照基础 Compose 保留；媒体使用任务回源。
 ```
 
 离线镜像交付：联网设备先拉取目标架构的固定镜像，`docker save -o compute-image.tar <完整镜像标签>`，复制到目标设备后 `docker load -i compute-image.tar`，再按同一设备配置 `up -d --no-build --pull never`。导出的镜像仅适用于已拉取的架构；模型仍需单独导入。
@@ -305,3 +313,58 @@ SINGVERSE_TEST_OPENVINO_MODEL_REPO=/absolute/path/to/.tools/htdemucs-openvino \
 视频转码与伴奏推理共用节点 `hardware-settings.json` 的 `cpuFallback`，旧配置默认开启；通过现有硬件设置 API 保存并校验 revision，只对新任务生效。返回 `detectedBackends`，音频后端返回 `detected` 区分物理存在与运行就绪；仅安装编码器不算硬件存在。有加速硬件时拒绝手选 CPU，旧固定 CPU 配置按硬件优先解析。降级须满足 CPU 运行条件，推理还需独立试跑；任务结果记录 `fallbackReason`。HLS 已发布播放清单后不切换后端。
 
 节点启动后在后台检测推理环境，自动为已安装模型的未验证设备执行一次真实分离试跑，优先加速设备；允许 CPU 自动降级时同时验证 CPU。复用当前环境与权重仍匹配的资格，不自动下载模型，也不循环重试已失败的设备；缺失依赖或模型继续给出配置原因。实时播放或模型操作占用时等待，取消试跑或停止节点会中止后续自动检查。模型状态返回 `startupCheck`（检测、等待、试跑、完成、失败或取消）；启动健康检查不等待模型推理完成。
+
+
+### RK3566 / fnOS：UVR ONNX 基准与 RKNN 实验部署
+
+RKNN 路径现在使用 **UVR_MDXNET_9482**，不再使用 HTDemucs forward 模型。固定上游发布文件为 29,704,738 字节，SHA-256 为 `9d78f8566fa8198065214ab628be1de966a500c57786695aa4b13e2b27a7727d`。下载入口为 sherpa-onnx 的 `source-separation-models` release；模型使用条件以 UVR 上游说明为准。任务不隐式联网下载模型。
+
+先在可运行 Python 3.12 的机器上建立 CPU 基准：
+
+```sh
+make compute-setup compute-audio-uvr-setup
+cd services/singverse-compute
+.venv/bin/python -m singverse_compute.infrastructure.uvr_audio \
+  --model ../../.tools/uvr-mdxnet-9482/UVR_MDXNET_9482.onnx \
+  --output /absolute/path/to/test-output /absolute/path/to/stereo-44100.wav
+```
+
+输入须为双声道 44.1kHz WAV，输出为 `test-output/htdemucs/<文件名>/vocals.wav` 与 `no_vocals.wav`（目录名沿用现有任务约定）。独立 CLI 的 ONNX CPU 基准不参与管理端后端自动选择，也不替换既有 Demucs CPU 降级。DSP 使用模型内置参数：4096 点 Hann FFT、1024 hop、2048 频率 bin、256 帧；保留双声道，分块重建，伴奏由源信号减去预测人声生成。
+
+RKNN 转换必须在独立的、RKNN Toolkit2 支持的转换环境执行，不在飞牛网页请求中安装工具：
+
+```sh
+# 转换环境安装 rknn-toolkit2==2.3.2 后，从仓库根目录执行
+python scripts/convert-rknn-audio.py \
+  .tools/uvr-mdxnet-9482/UVR_MDXNET_9482.onnx \
+  --target rk3566 --output /absolute/path/to/uvr-mdxnet-9482-rknn
+```
+
+脚本先校验固定 ONNX 摘要，再将动态 batch 固定为 1，按 `[1,4,2048,256]` 转换；不量化。不支持的算子或构建失败会明确失败，不生成可部署 manifest。输出目录须不存在；成功输出 `uvr.rknn` 和 `manifest.json`。目前没有实际 RKNN 转换成功或板端执行结果，不能把脚本存在视作 NPU 已可用。
+
+板端原生部署步骤：
+
+1. fnOS 所用内核必须提供与 RKNN Lite2 2.3.2 匹配的 RKNPU 驱动及 `librknnrt.so`；服务用户应有 NPU 设备权限。没有驱动时仅复制 Python 包不能启用 NPU。未远程检测你的设备，因此具体 fnOS 镜像的驱动条件尚未确认。
+2. 执行 `make compute-setup compute-audio-rknn-setup`，将上述转换目录放到 `COMPUTE_AUDIO_MODEL_REPO` 同级的 `uvr-mdxnet-9482-rknn/`，避免运行时替换。旧 `htdemucs-rknn/` 不再读取，旧试跑资格自动失效。
+3. 沿用现有 compute 认证与缓存配置启动节点，媒体使用任务回源；默认音频预算 4GiB，内存不足会阻止任务。可选 Dockerfile `rknn` 构建阶段及设备映射配置见部署包说明，不使用特权容器。
+4. 刷新管理端节点，RKNN 模型应显示 `UNVERIFIED`，执行试跑后才能选择。试跑校验约 8 秒输出的时间轴与非静音，不能替代真实歌曲音质验收。网络下载和网页导入 RKNN 模型仍不支持。
+5. 首次真机测试关闭 CPU 自动降级，确认结果实际后端为 `rknn`、模型为 `uvr-mdxnet-9482-rknn`；对比 ONNX 基准的人声残留、乐器损失、声道及起止对齐，记录全曲耗时、内存峰值与模型摘要。随后测试取消、重启、实时播放抢占和 CPU 降级；降级仍需安装 Demucs 基准模型并完成 CPU 试跑。
+
+本机真实 ONNX 合成音推理只能验证接口与处理流程；RKNN 编译兼容性、RK3566/fnOS 驱动、NPU 性能及自备歌曲音质仍需真机验证。
+
+
+### RK3566 Compose 源码部署包
+
+模板位于 `infra/deploy/rk3566/`，用于打包后的根目录。默认构建 `uvr` ARM64 阶段，手动执行 ONNX CPU 基准；可选 `compose.rknn.yaml` 构建 `rknn` 阶段并映射单个 NPU 设备，仍须另行转换模型与真机验证。部署包仅包含计算节点，不包含 Java/管理端，不是离线镜像。
+
+先通过 `scripts/setup-uvr-model.py` 准备固定模型，再用项目 Python 打包：
+
+```sh
+services/singverse-compute/.venv/bin/python scripts/package-rk3566.py \
+  --model .tools/uvr-mdxnet-9482/UVR_MDXNET_9482.onnx \
+  --output /absolute/path/to/singverse-rk3566.zip
+```
+
+打包使用文件白名单，内含 Compose、配置示例、源码、锁文件、固定 ONNX、操作说明及 `SHA256SUMS`，不收集本地 `.env`、凭据、数据库或 Python 缓存。解压后按包内 README 填写 NAS 局域网 IP，执行 `docker compose up -d --build`；首次构建需要网络。
+
+NVIDIA 源码上传包可用 `make compute-package-nvidia` 生成，或执行 `python3 scripts/package-nvidia.py --output /tmp/SingVerse-NVIDIA.zip`。包内 `docker-compose.yaml` 固定配置、无曲库目录、无 `.env`，包含构建依赖源码和部署说明，并统一目录 755／文件 644。输出文件已存在时失败，避免覆盖正在使用的包；重新打包请指定新输出路径。

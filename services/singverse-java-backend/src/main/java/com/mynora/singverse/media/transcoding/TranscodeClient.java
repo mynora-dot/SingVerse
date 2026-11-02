@@ -15,6 +15,8 @@ import java.time.Duration;
 
 @Component
 public class TranscodeClient {
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private ComputeCallback callback;
     private final ComputeNodeSettings settings;
     private final ObjectMapper json;
     private final HttpClient http =
@@ -52,6 +54,10 @@ public class TranscodeClient {
                 && !path.matches("/internal/v1/audio-roles/models/(?:download|import)\\?model=(?:panns-cnn6|htdemucs|htdemucs-openvino)")) {
             throw fail(400, "无效的计算资源");
         }
+        if (body instanceof com.fasterxml.jackson.databind.node.ObjectNode object && object.has("reference")) {
+            if (callback == null) throw fail(503, "业务回源地址不可用");
+            body = object.deepCopy().put("callbackOrigin", callback.origin());
+        }
         return HttpRequest.newBuilder(c.origin().resolve(path))
                 .timeout(Duration.ofSeconds(path.endsWith("/capabilities") ? 60 : 30))
                 .header("Authorization", "Bearer " + c.token())
@@ -79,6 +85,10 @@ public class TranscodeClient {
                                 : status == 422
                                         ? "所选加速方式或媒体任务测试未通过，请检查驱动和设备权限"
                                         : "计算任务请求失败（" + r.statusCode() + "）";
+                if (status == 422) {
+                    String detail = json.readTree(r.body()).path("title").asText();
+                    if (!detail.isBlank() && detail.length() <= 256 && !detail.contains("://")) message = detail;
+                }
                 throw fail(status, message);
             }
             return r.body().length == 0 ? json.createObjectNode() : json.readTree(r.body());
