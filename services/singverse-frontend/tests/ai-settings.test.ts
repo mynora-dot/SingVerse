@@ -3,6 +3,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
+import { assistantPets } from '../src/admin/modules/ai-settings/pets'
 import AiSettingsView from '../src/admin/modules/ai-settings/views/AiSettingsView.vue'
 import { ai } from '../src/admin/modules/ai-settings/api/ai'
 import type { AiService, Feature } from '../src/admin/modules/ai-settings/types'
@@ -91,4 +92,19 @@ it('助手独立配置形态并保护未保存草稿，保存不调用模型', a
   await router.push('/system/ai/features'); await flushPromises()
   expect(router.currentRoute.value.path).toBe('/system/ai/features')
   expect(wrapper.find('a[href="/system/ai/features/assistant"]').exists()).toBe(true)
+})
+
+it('内置形象可从选择列表保存并重新进入读取', async () => {
+  const router = await page('features/assistant')
+  expect(wrapper.findAll('.assistant-pet-options input[type="radio"]')).toHaveLength(14)
+  for (const pet of assistantPets.filter(p => p.src)) {
+    await wrapper.get(`input[value="${pet.id}"]`).setValue(); await flushPromises()
+    await button('保存助手配置').trigger('click'); await flushPromises()
+    expect(ai.bind).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'assistant', petId: pet.id }))
+  }
+  vi.mocked(ai.features).mockResolvedValue(features.map(f => f.id === 'assistant' ? { ...f, petId: 'alien-traveler' } : f))
+  await router.push('/system/ai/features'); await flushPromises()
+  await router.push('/system/ai/features/assistant'); await flushPromises()
+  expect((wrapper.get('input[value="alien-traveler"]').element as HTMLInputElement).checked).toBe(true)
+  expect(ai.test).not.toHaveBeenCalled()
 })

@@ -106,4 +106,16 @@ class AiSettingsHttpTest {
         assertThat(disabled.path("enabled").asBoolean()).isFalse();
     }
 
+    @Test void allBuiltInAssistantPetsCanBeSavedAndReadBack()throws Exception {
+        login();
+        for(String pet:List.of("panda-note","virtual-singer","cyber-dj","star-mage","fantasy-knight","android-singer","vampire-violinist","service-robot","industrial-mecha","cyber-navigator","ai-core","space-pilot","alien-traveler","music-sprite")) {
+            var current=settings.feature("assistant");
+            var saved=ok("/api/v1/ai/features/assistant","PUT",new AiDtos.Feature("assistant",null,null,false,3,current.revision(),"PET",pet));
+            assertThat(saved.path("petId").asText()).isEqualTo(pet);
+            var reloaded=java.util.stream.StreamSupport.stream(ok("/api/v1/ai/features","GET",null).spliterator(),false)
+                    .filter(f->f.path("id").asText().equals("assistant")).findFirst().orElseThrow();
+            assertThat(reloaded.path("petId").asText()).isEqualTo(pet);
+        }
+    }
+
 }

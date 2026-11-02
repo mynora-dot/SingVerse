@@ -5,6 +5,7 @@ import { ElButton, ElInput, ElAlert, ElForm, ElFormItem, ElIcon } from 'element-
 import { ArrowRight, Headset } from '@element-plus/icons-vue'
 import { authRequest, refreshAccount } from '../../../core/auth/api'
 const route = useRoute(), router = useRouter()
+const username = ref('admin')
 const password = ref(''), code = ref(''), stage = ref(false), busy = ref(false), error = ref('')
 const bars = [16, 30, 48, 25, 62, 38, 72, 30, 54, 22, 43, 66, 27, 49, 19]
 async function submit() {
@@ -12,7 +13,7 @@ async function submit() {
   try {
     const result = stage.value
       ? await authRequest<{ state: string }>('/api/v1/auth/mfa/verify', 'POST', { code: code.value })
-      : await authRequest<{ state: string }>('/api/v1/auth/login', 'POST', { username: 'admin', password: password.value })
+      : await authRequest<{ state: string }>('/api/v1/auth/login', 'POST', { username: username.value, password: password.value })
     password.value = ''; code.value = ''
     if (result.state === 'mfaRequired') { stage.value = true; return }
     await refreshAccount()
@@ -46,7 +47,7 @@ function restart() { stage.value = false; code.value = ''; password.value = ''; 
         <p class="muted">{{ stage ? '输入认证器动态码，或使用一枚恢复码。' : '使用你的管理员账号，打理家的音乐。' }}</p>
         <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon />
         <ElForm label-position="top" @submit.prevent="submit">
-          <ElFormItem v-if="!stage" label="账号"><ElInput model-value="admin" readonly autocomplete="username" size="large" /></ElFormItem>
+          <ElFormItem v-if="!stage" label="账号"><ElInput v-model="username" maxlength="32" autocomplete="username" size="large" /></ElFormItem>
           <ElFormItem v-if="!stage" label="密码"><ElInput v-model="password" type="password" show-password autocomplete="current-password" maxlength="256" size="large" autofocus /></ElFormItem>
           <ElFormItem v-else label="动态码 / 恢复码"><ElInput v-model="code" autocomplete="one-time-code" maxlength="128" size="large" autofocus /></ElFormItem>
           <ElButton native-type="submit" type="primary" size="large" :loading="busy" :disabled="stage ? !code : !password" class="full-width">

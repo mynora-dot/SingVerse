@@ -17,7 +17,7 @@ async function submit() {
   if (operation.value === 'password' && next.value !== confirmPassword.value) { error.value = '两次输入的新密码不一致'; return }
   busy.value = true; error.value = ''
   try {
-    const credentials = { password: password.value, code: code.value, newPassword: next.value }
+    const credentials = { password: password.value, code: code.value, newPassword: next.value, newUsername: next.value }
     if (operation.value === 'setup') {
       setup.value = await authRequest('/api/v1/system/parameters/mfa/setup', 'POST', credentials)
       operation.value = ''; password.value = ''; code.value = ''; return
@@ -26,7 +26,7 @@ async function submit() {
       const result = await authRequest<{ recoveryCodes: string[] }>('/api/v1/system/parameters/mfa/recovery-codes', 'POST', credentials)
       recovery.value = result.recoveryCodes; auth.account = null
     } else {
-      await authRequest(operation.value === 'password' ? '/api/v1/auth/password' : '/api/v1/system/parameters/mfa/disable', 'POST', credentials)
+      await authRequest(operation.value === 'username' ? '/api/v1/auth/username' : operation.value === 'password' ? '/api/v1/auth/password' : '/api/v1/system/parameters/mfa/disable', 'POST', credentials)
     }
     operation.value = ''; password.value = ''; code.value = ''; next.value = ''; confirmPassword.value = ''
     if (!recovery.value.length) await signedOut()
@@ -55,16 +55,16 @@ async function closeRecovery() {
 </script>
 <template>
   <div class="parameters-page">
-    <PageHeader title="账号与安全" description="修改管理员密码，开启或管理二次验证。修改密码后所有设备都需要重新登录。" />
+    <PageHeader title="账号与安全" description="修改登录账号、密码，开启或管理二次验证。修改账号或密码后所有设备都需要重新登录。" />
     <ElAlert v-if="auth.account?.defaultPassword" title="当前仍在使用默认密码，请及时修改并开启二次验证。" type="warning" :closable="false" show-icon />
     <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon />
-    <div class="account-banner"><span class="settings-icon"><ElIcon><User /></ElIcon></span><div><h2>admin</h2><p>管理员 · 管理当前 NAS 的全部设置</p></div><ElTag effect="plain" round>单管理员账号</ElTag></div>
+    <div class="account-banner"><span class="settings-icon"><ElIcon><User /></ElIcon></span><div><h2>{{ auth.account?.username }}</h2><p>管理员 · 管理当前 NAS 的全部设置</p></div><ElTag effect="plain" round>单管理员账号</ElTag></div>
     <div class="security-grid">
       <ElCard class="security-card" shadow="never">
         <div class="security-heading"><span class="settings-icon"><ElIcon><Key /></ElIcon></span><ElTag :type="auth.account?.defaultPassword ? 'warning' : 'success'" effect="light" round>{{ auth.account?.defaultPassword ? '待修改' : '已设置' }}</ElTag></div>
         <h2>登录密码</h2><p class="settings-description">使用独立的强密码，保护管理员访问权限。</p>
-        <div class="settings-detail"><span>当前账号</span><strong>admin</strong></div><div class="settings-detail"><span>密码要求</span><strong>15～128 个字符</strong></div>
-        <div class="security-actions"><ElButton @click="start('password')">修改密码</ElButton><p>修改后，所有设备都需要重新登录。</p></div>
+        <div class="settings-detail"><span>当前账号</span><strong>{{ auth.account?.username }}</strong></div><div class="settings-detail"><span>密码要求</span><strong>15～128 个字符</strong></div>
+        <div class="security-actions"><ElButton @click="start('username')">修改登录账号</ElButton><ElButton @click="start('password')">修改密码</ElButton><p>修改后，所有设备都需要重新登录。</p></div>
       </ElCard>
       <ElCard class="security-card" shadow="never">
         <div class="security-heading"><span class="settings-icon"><ElIcon><Lock /></ElIcon></span><ElTag :type="auth.account?.mfaEnabled ? 'success' : 'info'" effect="light" round>{{ auth.account?.mfaEnabled ? '已开启' : '未开启' }}</ElTag></div>
@@ -73,10 +73,11 @@ async function closeRecovery() {
         <div class="security-actions"><div class="button-row"><ElButton type="primary" @click="start('setup')">{{ auth.account?.mfaEnabled ? '重新绑定认证器' : '开启二次验证' }}</ElButton><ElButton v-if="auth.account?.mfaEnabled" @click="start('recovery')">重新生成恢复码</ElButton><ElButton v-if="auth.account?.mfaEnabled" type="danger" plain @click="start('disable')">关闭二次验证</ElButton></div><p>绑定后，登录时需同时验证密码与动态码。</p></div>
       </ElCard>
     </div>
-    <ElDialog :model-value="!!operation" :title="operation === 'password' ? '修改密码' : '验证身份'" width="440px" @close="operation = ''; password = ''; code = ''; next = ''; confirmPassword = ''">
+    <ElDialog :model-value="!!operation" :title="operation === 'username' ? '修改登录账号' : operation === 'password' ? '修改密码' : '验证身份'" width="440px" @close="operation = ''; password = ''; code = ''; next = ''; confirmPassword = ''">
       <ElForm label-position="top" @submit.prevent="submit">
         <ElFormItem label="当前密码"><ElInput v-model="password" type="password" show-password autocomplete="current-password" /></ElFormItem>
         <ElFormItem v-if="auth.account?.mfaEnabled" label="动态码 / 恢复码"><ElInput v-model="code" autocomplete="one-time-code" maxlength="128" /></ElFormItem>
+        <template v-if="operation === 'username'"><ElFormItem label="新登录账号"><ElInput v-model="next" autocomplete="username" maxlength="32" /></ElFormItem><p class="muted dialog-hint">3～32 个字母、数字、下划线、点或短横线，以字母、数字或下划线开头，区分大小写。修改后请用新账号重新登录。</p></template>
         <template v-if="operation === 'password'"><ElFormItem label="新密码（15～128 个字符）"><ElInput v-model="next" type="password" show-password autocomplete="new-password" /></ElFormItem><ElFormItem label="确认新密码"><ElInput v-model="confirmPassword" type="password" show-password autocomplete="new-password" /></ElFormItem></template>
         <p v-if="operation === 'disable' || operation === 'recovery'" class="muted dialog-hint">此操作会使现有登录会话失效。</p>
         <ElAlert v-if="error" :title="error" type="error" :closable="false" />

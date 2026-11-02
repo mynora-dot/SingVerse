@@ -5,6 +5,8 @@ public final class AuthRequests {
 
     public record Login(String username, String password) {}
 
+    public record Username(String password, String code, String newUsername) {}
+
     public record Factor(String code) {}
 
     public record Credentials(String password, String code, String newPassword) {}

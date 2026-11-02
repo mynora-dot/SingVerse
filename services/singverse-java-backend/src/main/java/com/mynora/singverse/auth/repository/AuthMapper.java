@@ -58,6 +58,7 @@ public interface AuthMapper {
     int insertRecovery(@Param("codeHash") String codeHash);
     int disableMfa();
     int changePassword(@Param("passwordHash") String passwordHash);
+    int changeUsername(@Param("username") String username);
     int invalidateAccount();
     int deleteTokens();
     int countAccounts();

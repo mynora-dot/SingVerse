@@ -222,6 +222,15 @@ CPU 镜像由 Docker 清单选择 amd64／arm64，GPU 后端需要显式选择�
 
 ### 本地构建与预构建镜像
 
+RTX 3070／A3000 独立节点可直接使用根目录 `compose.compute.nvidia.yaml`，所有部署参数均直接写在 YAML，不依赖 `.env` 或 shell 导出变量。默认媒体挂载为 Compose 文件旁的 `./media`（启动前创建），Java 地址为 `http://10.100.1.12`，节点绑定 `10.100.1.12:18090`；按实际部署修改 YAML，并限制 Java 主机以外的入站访问。宿主须安装兼容 NVIDIA 驱动与 NVIDIA Container Toolkit。
+
+```sh
+docker compose -f compose.compute.nvidia.yaml up -d --build
+docker compose -f compose.compute.nvidia.yaml ps
+```
+
+此命令需在完整仓库根目录执行，构建 CUDA 镜像，不自动下载模型。首次启动自动生成并持久保存认证凭据；在管理端配置独立节点地址及凭据、按实际 Java 媒体路径映射到 `/media`，再下载／导入模型并进行 CUDA 试跑。视频 NVENC 与音频 CUDA 分别验证；3070／A3000 仍待真机验收。停止使用 `docker compose -f compose.compute.nvidia.yaml down`，保留命名卷。该文件与原 `compose.compute.yaml` 使用相同项目名及卷，作为替代入口使用，不同时启动两份独立节点。
+
 从源码在实际节点构建，例如 Intel GPU 独立节点：
 
 ```sh

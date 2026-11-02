@@ -81,6 +81,16 @@ public class AuthController {
         cookies.clear(response);
     }
 
+    @PostMapping("/auth/username")
+    public void username(
+            @RequestBody Username input,
+            HttpServletRequest request,
+            HttpServletResponse response) {
+        service.changeUsername(
+                input.password(), input.code(), input.newUsername(), cookies.source(request));
+        cookies.clear(response);
+    }
+
     @GetMapping("/system/parameters")
     public Map<String, Object> parameters() {
         return service.status();

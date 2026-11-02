@@ -111,6 +111,11 @@
     SET password_hash=#{passwordHash},default_password=0
     WHERE id=1
   </update>
+  <update id="changeUsername">
+    UPDATE auth_account
+    SET username=#{username}
+    WHERE id=1
+  </update>
   <update id="invalidateAccount">
     UPDATE auth_account
     SET revision=revision+1,pending_secret=NULL,pending_expires=0

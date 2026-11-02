@@ -44,7 +44,7 @@ public class AuthService {
         var account = store.account();
         return Map.of(
                 "username",
-                "admin",
+                account.get("username"),
                 "defaultPassword",
                 store.number(account, "default_password") == 1,
                 "mfaEnabled",
@@ -124,7 +124,7 @@ public class AuthService {
     public synchronized Issued login(String username, String password, String address) {
         checkLimit(address);
         boolean valid = password(password);
-        if (!"admin".equals(username) || !valid) {
+        if (!store.account().get("username").equals(username) || !valid) {
             failure(address);
             throw new AuthFailure(401, "认证失败，请检查凭据");
         }
@@ -191,7 +191,7 @@ public class AuthService {
         try {
             var data =
                     new QrData.Builder()
-                            .label("admin")
+                            .label(store.account().get("username").toString())
                             .issuer("SingVerse")
                             .secret(secret)
                             .algorithm(HashingAlgorithm.SHA1)
@@ -289,6 +289,18 @@ public class AuthService {
         store.mapper().changePassword(store.passwords().encode(next));
         invalidate();
         store.event("password_changed");
+    }
+
+    public synchronized void changeUsername(
+            String password, String code, String next, String address) {
+        if (next == null || !next.matches("[A-Za-z0-9_][A-Za-z0-9_.-]{2,31}"))
+            throw new AuthFailure(400, "登录账号需要 3～32 个字母、数字、下划线、点或短横线，且以字母、数字或下划线开头");
+        if (next.equals(store.account().get("username")))
+            throw new AuthFailure(400, "新登录账号不能与当前账号相同");
+        reauthenticate(password, code, address);
+        store.mapper().changeUsername(next);
+        invalidate();
+        store.event("username_changed");
     }
 
     public void invalidate() {

@@ -16758,6 +16758,118 @@
           }
         ]
       }
+    },
+    "/api/v1/auth/username": {
+      "post": {
+        "operationId": "changeUsername",
+        "summary": "Change login username; requires current password and MFA when enabled; revokes all sessions.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success (empty body)"
+          },
+          "400": {
+            "description": "Invalid request or deployment origin",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed or expired",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin or CSRF rejected",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Security setup state conflicts",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until retry"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Fetch /auth/csrf again after any login phase or cookie transition."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "password",
+                  "newUsername"
+                ],
+                "properties": {
+                  "password": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "newUsername": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.-]{2,31}$",
+                    "description": "Case-sensitive; must differ from the current username."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -16800,7 +16912,7 @@
         "properties": {
           "username": {
             "type": "string",
-            "const": "admin"
+            "description": "Current administrator login username; initially admin."
           },
           "defaultPassword": {
             "type": "boolean"
@@ -20129,7 +20241,20 @@
           "petId": {
             "type": "string",
             "enum": [
-              "music-sprite"
+              "music-sprite",
+              "panda-note",
+              "virtual-singer",
+              "cyber-dj",
+              "star-mage",
+              "fantasy-knight",
+              "android-singer",
+              "vampire-violinist",
+              "service-robot",
+              "industrial-mecha",
+              "cyber-navigator",
+              "ai-core",
+              "space-pilot",
+              "alien-traveler"
             ],
             "default": "music-sprite",
             "description": "稳定宠物形象 ID，可扩展目录"

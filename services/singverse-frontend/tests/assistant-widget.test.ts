@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { assistantPets } from '../src/admin/modules/ai-settings/pets'
 import AssistantWidget from '../src/admin/modules/ai-settings/components/AssistantWidget.vue'
 import { ai } from '../src/admin/modules/ai-settings/api/ai'
 import { updateAssistantSettings } from '../src/admin/modules/ai-settings/assistant-state'
@@ -67,4 +69,48 @@ it('聊天形态拖动不能移出窗口，取消后解除拖动', async () => {
   pointer(button.element, 'pointerdown', 550, 550); pointer(window, 'pointermove', -1000, -1000); pointer(window, 'pointercancel', -1000, -1000)
   await flushPromises(); expect(wrapper.get('aside').attributes('style')).toContain('left: 8px'); expect(wrapper.get('aside').attributes('style')).toContain('top: 8px')
   expect(wrapper.get('aside').classes()).not.toContain('dragging')
+})
+
+it('所选内置形象即时切换，面板与入口一致，未知形象回退原有团子', async () => {
+  await widget({ ...feature, enabled: true })
+  await wrapper.get('[aria-label="打开 AI 助手"]').trigger('click'); await flushPromises()
+  for (const pet of assistantPets.filter(p => p.src)) {
+    updateAssistantSettings({ ...feature, enabled: true, petId: pet.id }); await flushPromises()
+    expect(wrapper.get('.pet-launcher img').attributes('src')).toBe(pet.src)
+    await wrapper.get('[aria-label="打开 AI 助手"]').trigger('click'); await flushPromises()
+    expect(wrapper.get('.assistant-welcome img').attributes('src')).toBe(pet.src)
+    expect(wrapper.get('.pet-launcher img').attributes('draggable')).toBe('false')
+  }
+  updateAssistantSettings({ ...feature, enabled: true, petId: 'unknown-pet' }); await flushPromises()
+  expect(wrapper.find('.pet-launcher img').exists()).toBe(false)
+  expect(wrapper.find('.pet-launcher .assistant-pet svg').exists()).toBe(true)
+  expect(ai.test).not.toHaveBeenCalled()
+})
+
+it('内置形象 ID 与公开 API 契约一致', () => {
+  const contract = JSON.parse(readFileSync('../../contracts/openapi/singverse.openapi.json', 'utf8'))
+  const schemas = Object.values(contract.components.schemas) as { properties?: { petId?: { enum: string[] } } }[]
+  const petIds = schemas.find(s => s.properties?.petId)?.properties?.petId?.enum
+  expect(petIds).toBeDefined()
+  expect(assistantPets.map(p => p.id).sort()).toEqual([...petIds!].sort())
+})
+
+it('点按回应，拖动暂停并抑制回应，页面后台暂停待机', async () => {
+  await widget({ ...feature, enabled: true, petId: 'panda-note' })
+  const button = wrapper.get('.assistant-launcher')
+  await button.trigger('click'); await flushPromises()
+  expect(button.classes()).toContain('pet-greeting')
+  Object.defineProperty(document, 'hidden', { configurable: true, value: true })
+  document.dispatchEvent(new Event('visibilitychange')); await flushPromises()
+  expect(wrapper.get('.pet-launcher .assistant-pet').classes()).toContain('paused')
+  Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+  document.dispatchEvent(new Event('visibilitychange')); await flushPromises()
+  expect(wrapper.get('.pet-launcher .assistant-pet').classes()).not.toContain('paused')
+  await button.trigger('click'); await flushPromises()
+  vi.spyOn(button.element, 'getBoundingClientRect').mockReturnValue({ left: 500, top: 500, right: 600, bottom: 600, width: 100, height: 100 } as DOMRect)
+  pointer(button.element, 'pointerdown', 550, 550); pointer(window, 'pointermove', 350, 250); await flushPromises()
+  expect(wrapper.get('.pet-launcher .assistant-pet').classes()).toContain('paused')
+  pointer(window, 'pointerup', 350, 250)
+  button.element.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 })); await flushPromises()
+  expect(wrapper.find('[role=dialog]').exists()).toBe(false)
 })

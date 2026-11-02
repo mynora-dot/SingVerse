@@ -12,6 +12,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class AiSettingsService {
+    private static final Set<String> ASSISTANT_PETS = Set.of(
+            "music-sprite", "panda-note", "virtual-singer", "cyber-dj", "star-mage", "fantasy-knight", "android-singer", "vampire-violinist", "service-robot", "industrial-mecha", "cyber-navigator", "ai-core", "space-pilot", "alien-traveler");
     private final AiMapper mapper;
     private final AuthCrypto crypto;
     private final ClassificationMapper classification;
@@ -59,7 +61,7 @@ public class AiSettingsService {
             classification.pauseAll(now());
         } else if(id.equals("assistant")) {
             if(input.modelServiceId()!=null || input.searchServiceId()!=null)throw bad("助手模型与工具能力尚未开放配置");
-            if(!Set.of("PET","CHAT").contains(input.displayMode()) || !Set.of("music-sprite").contains(input.petId()))throw bad("未知助手形态或宠物形象");
+            if(!Set.of("PET","CHAT").contains(input.displayMode()) || !ASSISTANT_PETS.contains(input.petId()))throw bad("未知助手形态或宠物形象");
         } else {
             if(input.modelServiceId()!=null)throw bad("默认搜索不能绑定模型");
             if(input.searchServiceId()!=null && !get(input.searchServiceId(),"SEARCH").enabled())throw bad("请选择已启用搜索服务");

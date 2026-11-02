@@ -48,7 +48,7 @@ class AuthHttpTest {
     void reset() {
         jdbc.update(
                 "UPDATE auth_account SET"
-                    + " password_hash=?,default_password=1,mfa_secret=NULL,pending_secret=NULL,pending_expires=0,last_totp_step=-1"
+                    + " username='admin',password_hash=?,default_password=1,mfa_secret=NULL,pending_secret=NULL,pending_expires=0,last_totp_step=-1"
                     + " WHERE id=1",
                 store.passwords().encode("admin"));
         service.invalidate();
@@ -89,6 +89,49 @@ class AuthHttpTest {
                 "POST",
                 Map.of("username", "admin", "password", "admin"),
                 true);
+    }
+
+    @Test
+    void usernameChangeValidatesCredentialsAndRevokesAllSessions() throws Exception {
+        var payload = Map.of("password", "admin", "newUsername", "family-admin");
+        assertThat(request("/api/v1/auth/username", "POST", payload, true).statusCode()).isEqualTo(401);
+        login();
+        String otherSession = service.issue("session").token();
+        String challenge = service.issue("challenge").token();
+        assertThat(request("/api/v1/auth/username", "POST", payload, false).statusCode()).isEqualTo(403);
+        for (String invalid : List.of("", "ab", "bad name", " admin", ".admin", "x".repeat(33), "admin")) {
+            assertThat(request("/api/v1/auth/username", "POST",
+                    Map.of("password", "admin", "newUsername", invalid), true).statusCode()).isEqualTo(400);
+        }
+        assertThat(request("/api/v1/auth/username", "POST",
+                Map.of("password", "wrong", "newUsername", "family-admin"), true).statusCode()).isEqualTo(401);
+        assertThat(store.account().get("username")).isEqualTo("admin");
+        assertThat(request("/api/v1/auth/username", "POST", payload, true).statusCode()).isEqualTo(200);
+        assertThat(service.authenticated(otherSession)).isFalse();
+        assertThat(service.lookup(challenge, "challenge")).isNull();
+        assertThat(request("/api/v1/auth/session", "GET", null, false).statusCode()).isEqualTo(401);
+        assertThat(login().statusCode()).isEqualTo(401);
+        assertThat(request("/api/v1/auth/login", "POST",
+                Map.of("username", "family-admin", "password", "admin"), true).statusCode()).isEqualTo(200);
+        assertThat(body(request("/api/v1/auth/session", "GET", null, false)).path("username").asText()).isEqualTo("family-admin");
+        assertThat(store.account().get("default_password")).isEqualTo(1);
+    }
+
+    @Test
+    void usernameChangeRequiresMfaAndPreservesItsConfiguration() throws Exception {
+        login();
+        String secret = crypto.encrypt("JBSWY3DPEHPK3PXP");
+        jdbc.update("UPDATE auth_account SET mfa_secret=? WHERE id=1", secret);
+        var payload = new HashMap<String, String>(Map.of("password", "admin", "newUsername", "family"));
+        assertThat(request("/api/v1/auth/username", "POST", payload, true).statusCode()).isEqualTo(401);
+        String recovery = "0123456789abcdef0123456789abcdef";
+        jdbc.update("INSERT INTO auth_recovery (code_hash) VALUES (?)", AuthCrypto.hash(recovery));
+        payload.put("code", recovery);
+        assertThat(request("/api/v1/auth/username", "POST", payload, true).statusCode()).isEqualTo(200);
+        assertThat(store.account().get("mfa_secret")).isEqualTo(secret);
+        assertThat(store.mapper().countRecovery()).isZero();
+        assertThat(body(request("/api/v1/auth/login", "POST",
+                Map.of("username", "family", "password", "admin"), true)).path("state").asText()).isEqualTo("mfaRequired");
     }
 
     @Test

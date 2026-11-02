@@ -259,3 +259,24 @@ it('关闭会停止并移除媒体源，迟到的音轨查询不会覆盖下一�
     expect(current.paused).toBe(true)
   } finally { wrapper.unmount() }
 })
+
+
+it('视频暂停和设置展开不会固定显示浮层', async () => {
+  const wrapper = mount(SongVideoDialog, { props: { song: videoSong }, global: { stubs: { teleport: true } } })
+  try {
+    await flushPromises()
+    expect(wrapper.get('.song-player').classes()).toContain('is-video')
+    expect(wrapper.get('.song-player').classes()).not.toContain('controls-pinned')
+    await wrapper.get('video').trigger('playing')
+    expect(wrapper.get('.song-player').classes()).not.toContain('controls-pinned')
+    await wrapper.get('.settings-button').trigger('click')
+    expect(wrapper.get('.song-player').classes()).not.toContain('controls-pinned')
+    await wrapper.get('.settings-button').trigger('click')
+    expect(wrapper.get('.song-player').classes()).not.toContain('controls-pinned')
+    await wrapper.get('video').trigger('pause')
+    expect(wrapper.get('.song-player').classes()).not.toContain('controls-pinned')
+    await wrapper.setProps({ song: { ...videoSong, relativePath: 'song.flac' } })
+    await flushPromises()
+    expect(wrapper.get('.song-player').classes()).not.toContain('is-video')
+  } finally { wrapper.unmount() }
+})

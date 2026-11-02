@@ -1,9 +1,44 @@
-# Requires a configured NVIDIA Container Toolkit on the Linux host.
+# RTX 3070 / A3000 standalone node; run from the repository root on Linux amd64.
+# Requires a compatible NVIDIA driver and NVIDIA Container Toolkit on the host.
+# All deployment values are literal: no .env or shell exports are required.
+name: singverse-compute-node
 services:
   singverse-compute:
+    image: singverse-compute:local-cuda
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: services/singverse-compute/Dockerfile
+      target: cuda
+      args:
+        SINGVERSE_VERSION: 0.1.0-SNAPSHOT
+        SOURCE_REVISION: local
     environment:
+      COMPUTE_AUTH_TOKEN_FILE: /run/singverse-compute/token
+      COMPUTE_MEDIA_ROOTS: /media
+      # For WebDAV, replace with the Java URL reachable from this container.
+      COMPUTE_JAVA_ORIGIN: "http://10.100.1.12"
       COMPUTE_HARDWARE_BACKEND: nvenc
       NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
+      COMPUTE_PROCESS_MEMORY_BYTES: "1073741824"
+      COMPUTE_TRANSCODE_CONCURRENCY: "1"
+      COMPUTE_AUDIO_MODEL_REPO: /var/lib/singverse-models/htdemucs
+      COMPUTE_AUDIO_MEMORY_BYTES: "4294967296"
+      COMPUTE_AUDIO_THREADS: "2"
+    ports:
+      # Bind to the NVIDIA host LAN IP; restrict inbound access to Java.
+      - "10.100.1.12:18090:8090"
+    volumes:
+      - singverse-compute-auth:/run/singverse-compute
+      - singverse-transcode-cache:/var/cache/singverse-transcode
+      - singverse-audio-models:/var/lib/singverse-models
+      - type: bind
+        # Media directory beside this Compose file; create it before starting.
+        source: ./media
+        target: /media
+        read_only: true
+        bind:
+          create_host_path: false
     deploy:
       resources:
         reservations:
@@ -11,3 +46,11 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    mem_limit: 6g
+    cpus: 2.0
+    restart: unless-stopped
+    stop_grace_period: 10s
+volumes:
+  singverse-compute-auth:
+  singverse-transcode-cache:
+  singverse-audio-models:

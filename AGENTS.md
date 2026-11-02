@@ -33,7 +33,7 @@
 - 默认 SQLite，路径相对服务工作目录，保留父目录创建与单连接池；MySQL 为可选 Profile，两者互斥，失败不静默回退。切换不迁移数据，连接成功不代表业务兼容；账号表已使用 `database/migrations/` 的 dbmate SQL 迁移，见 [数据库策略](docs/database-strategy.md)。
 - `compose.app.yaml` 为 Nginx + Java + SQLite 卷，`compose.yaml` 独立提供开发 MySQL。Dockerfile 与 Nginx 配置归 Java 后端目录；运行及端口见 [docs/docker.md](docs/docker.md)。Spring Boot 不自动加载根 `.env`。
 
-- 单管理员 `admin`，初始密码 `admin` 仅提示修改，不做多账号；MFA 为 RFC6238 TOTP。会话、PHC 哈希、密钥格式与本机恢复见 [认证说明](docs/authentication.md)，不得引入 Java 序列化凭据或网络重置后门。
+- 单管理员，初始登录账号 `admin`（可修改），初始密码 `admin` 仅提示修改，不做多账号；MFA 为 RFC6238 TOTP。会话、PHC 哈希、密钥格式与本机恢复见 [认证说明](docs/authentication.md)，不得引入 Java 序列化凭据或网络重置后门。
 
 ## 修改与保护
 

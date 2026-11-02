@@ -23,7 +23,7 @@ SPRING_PROFILES_ACTIVE=mysql ./mvnw spring-boot:run
 
 亲友H5和NAS管理页面统一在兄弟工程`../singverse-frontend`中开发。Vite一次构建`/party/`与`/admin/`两入口，Maven将整个`dist`复制到`target/classes/static`，不混入Java源码资源目录。Spring静态资源托管JS/CSS，`AdminWebConfiguration`只处理管理目录首页与尾斜杠。运行`java -jar target/singverse-java-backend-0.1.0-SNAPSHOT.jar`后提供两个入口；运行时不需要Node，无CDN、微信JS-SDK或小程序AppID。根`make web-check`执行真实访问集成测试。
 
-管理端有概览、系统状态、登录和系统参数，初始admin/admin，支持改密及可选MFA；详情见[认证说明](../../docs/authentication.md)。不直连Python或数据库。其静态产物未来可由Go复用，详见[管理端说明](../../services/singverse-frontend/README.md)与[前端托管契约](../../contracts/frontend-hosting.md)。
+管理端有概览、系统状态、登录和系统参数，初始admin/admin，支持修改登录账号、改密及可选MFA；详情见[认证说明](../../docs/authentication.md)。不直连Python或数据库。其静态产物未来可由Go复用，详见[管理端说明](../../services/singverse-frontend/README.md)与[前端托管契约](../../contracts/frontend-hosting.md)。
 
 后续微信扫码的二维码应是手机可达的NAS URL。当前未生成二维码、未验证微信内置浏览器实机，不提供点歌/会话接口。API/WS建议与网页同源，不公开数据库给手机。
 
@@ -346,3 +346,5 @@ WebDAV version 2 分享索引的 `audioRoles` 仅含源轨映射、轨道描述�
 离线模型通过 `/model/import?model=htdemucs|htdemucs-openvino` 的 `application/octet-stream` 流式转发；省略参数兼容基准模型。Java 和 compute 按固定清单限制基准权重 100MiB、OpenVINO 双文件 ZIP 128MiB，Nginx 只为该路径放宽至 128MiB 及相应超时。未知模型拒绝，下载代理同样仅接受固定模型 ID。任务结果保存实际后端、模型摘要、构建与环境身份，OpenVINO 不会隐式回退 CPU。管理员会话及CSRF继续生效，客户端不能直连compute。模型管理以实际当前节点为准；旧任务保留原节点绑定，切换连接不会把旧任务重复发给新节点。节点离线保持待核对，配置变化明确失败供重试。列表和全部筛选快照目前使用分段遍历核对有效歌曲信息/素材指纹，超大曲库需专门压测，不宣称已实现数据库索引化全文筛选。
 
 扫描识别任务新增 `FAST`，仍由 Java 授权代理、MyBatis XML 持久化与 compute 执行；沿用既有 kind 文本字段，无新增数据库迁移。节点状态透传 `fastClassifier`，固定模型下载/ZIP 导入 ID 为 `panns-cnn6`，上限 32MiB。深度识别 `ANALYZE` 与伴奏生成 `SEPARATE` 的硬件优先/CPU 降级策略保持既有规则。
+
+账号与安全支持通过 `POST /api/v1/auth/username` 修改唯一管理员的登录账号：提交 `newUsername`、当前 `password`，开启 MFA 时还需 `code`（动态码或恢复码）。账号区分大小写，限 3～32 个 ASCII 字母、数字、下划线、点或短横线，以字母、数字或下划线开头，不能与当前账号相同。成功后所有会话失效，需用新账号和原密码重新登录；MFA 保持有效，本机密码恢复保留当前登录账号。
