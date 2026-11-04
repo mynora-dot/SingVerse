@@ -80,6 +80,7 @@ export const modelNames: Record<string, { name: string; hint: string }> = {
   'panns-cnn6': { name: '快速人声分类模型', hint: '扫描时识别双音轨，不分离人声，无需 GPU' },
   htdemucs: { name: '标准分离模型', hint: '适用于 CPU、NVIDIA、AMD 和 Apple 芯片' },
   'htdemucs-openvino': { name: 'Intel 优化模型', hint: '用于 Intel 核显的 OpenVINO 转换版本' },
+  'uvr-mdxnet-9482-rknn': { name: '瑞芯微 NPU 分离模型', hint: '仅适用于 RKNN，需在节点本地部署转换模型' },
 }
 
 /** 批次进度：已完成/跳过/失败/取消都算处理完毕。 */

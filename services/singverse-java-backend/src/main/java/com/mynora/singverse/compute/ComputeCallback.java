@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.*;
 @Component
 public class ComputeCallback implements WebMvcConfigurer, HandlerInterceptor {
     private final AuthHttp auth;
-    private final String configured;
+    private final String configured, automaticOrigin, automaticNode;
     private volatile String observed = "";
     private final Map<String, Grant> checks = new ConcurrentHashMap<>();
     private record Grant(String token, long expires) {}
@@ -26,6 +26,10 @@ public class ComputeCallback implements WebMvcConfigurer, HandlerInterceptor {
         String value = env.getProperty("singverse.compute.callback-origin", "");
         if (value.isBlank()) value = env.getProperty("singverse.auth.public-origin", "");
         configured = value.isBlank() ? "" : ComputeNodeSettings.origin(value).toString();
+        String internal = env.getProperty("singverse.compute.auto-callback-origin", "");
+        automaticOrigin = internal.isBlank() ? "" : ComputeNodeSettings.origin(internal).toString();
+        String endpoint = env.getProperty("singverse.compute.base-url", "");
+        automaticNode = endpoint.isBlank() ? "" : ComputeNodeSettings.origin(endpoint).toString();
     }
     @Override public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(this).addPathPatterns("/api/v1/**").excludePathPatterns("/api/v1/internal/**");
@@ -37,8 +41,11 @@ public class ComputeCallback implements WebMvcConfigurer, HandlerInterceptor {
         }
         return true;
     }
-    public String origin() {
-        String value = configured.isEmpty() ? observed : configured;
+    public String origin() { return origin(null); }
+    public String origin(ComputeNodeDtos.Connection connection) {
+        String value = configured;
+        if (value.isEmpty() && connection != null && connection.origin().toString().equals(automaticNode)) value = automaticOrigin;
+        if (value.isEmpty()) value = observed;
         if (value.isBlank()) throw new org.springframework.web.server.ResponseStatusException(
                 org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "无法确定业务回源地址，请通过计算节点可达的地址打开管理页后测试连接");
         return value;

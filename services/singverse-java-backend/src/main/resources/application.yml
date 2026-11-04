@@ -34,6 +34,7 @@ singverse:
     directory: ${TRANSCODE_VERSION_PATH:./data/transcoding}
   compute:
     callback-origin: ${SINGVERSE_CALLBACK_ORIGIN:}
+    auto-callback-origin: ${SINGVERSE_COMPUTE_AUTO_CALLBACK_ORIGIN:}
     base-url: ${COMPUTE_NODE_URL:}
     token-file: ${COMPUTE_AUTH_TOKEN_FILE:}
 management:

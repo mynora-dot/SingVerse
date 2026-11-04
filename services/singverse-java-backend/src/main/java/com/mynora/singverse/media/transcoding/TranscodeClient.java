@@ -56,7 +56,7 @@ public class TranscodeClient {
         }
         if (body instanceof com.fasterxml.jackson.databind.node.ObjectNode object && object.has("reference")) {
             if (callback == null) throw fail(503, "业务回源地址不可用");
-            body = object.deepCopy().put("callbackOrigin", callback.origin());
+            body = object.deepCopy().put("callbackOrigin", callback.origin(c));
         }
         return HttpRequest.newBuilder(c.origin().resolve(path))
                 .timeout(Duration.ofSeconds(path.endsWith("/capabilities") ? 60 : 30))

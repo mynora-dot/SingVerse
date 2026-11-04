@@ -157,7 +157,7 @@ it('隐藏部署信息，OpenVINO模型下载使用独立清单', async () => {
       build: { version: '0.1.0', revision: 'abc123', variant: 'cpu', runtimeLock: 'runtime-digest' },
       deployment: { note: '镜像架构由Docker选择', profiles: [{ backend: 'openvino', image: 'singverse-compute:0.1.0-openvino', command: 'docker compose example', included: false }] },
       models: [{ ...node().model, id: 'htdemucs', version: 'baseline' }, { id: 'htdemucs-openvino', version: 'fixed-revision', installed: false, writable: true, maxBytes: 128*1024**2, files: [{ name: 'htdemucs_fwd.xml', url: 'https://example.test/model.xml', sha256: 'expected', size: 1 }] }],
-      backends: [{ id: 'openvino', detected: true, state: 'IMAGE_MISSING', reason: '当前镜像未包含此推理后端' }]
+      backends: [{ id: 'cpu', state: 'AVAILABLE' }, { id: 'openvino', detected: true, state: 'IMAGE_MISSING', reason: '当前镜像未包含此推理后端' }]
     } as never
     return previous(...args)
   })
@@ -172,6 +172,39 @@ it('隐藏部署信息，OpenVINO模型下载使用独立清单', async () => {
   expect(openvino.text()).toContain('htdemucs_fwd.xml')
   await button('下载到节点', openvino).trigger('click'); await flushPromises()
   expect(authRequest).toHaveBeenCalledWith('/api/v1/audio-processing/model/download?model=htdemucs-openvino', 'POST', undefined, 60000)
+})
+
+it.each([true, false])('NVIDIA 节点仅显示适配模型，CPU 降级为 %s', async cpuFallback => {
+  const previous = vi.mocked(authRequest).getMockImplementation()!
+  vi.mocked(authRequest).mockImplementation(async (...args) => args[0].includes('/node') ? {
+    ...node(), cpuFallback,
+    models: [
+      { ...node().model, id: 'htdemucs', backends: ['cpu', 'cuda', 'rocm', 'mps'] },
+      { ...node().model, id: 'htdemucs-openvino', backends: ['openvino'], installed: false },
+      { ...node().model, id: 'uvr-mdxnet-9482-rknn', backends: ['rknn'], installed: false, localOnly: true },
+    ],
+    backends: [{ id: 'cuda', detected: true, state: 'UNVERIFIED' }, { id: 'cpu', state: 'UNVERIFIED' }, { id: 'rknn', detected: false, state: 'IMAGE_MISSING' }],
+  } as never : previous(...args))
+  wrapper = mount(AudioModelSettings, { global: { stubs } }); await flushPromises()
+  expect(wrapper!.find('[data-model="htdemucs"]').exists()).toBe(true)
+  expect(wrapper!.find('[data-model="htdemucs-openvino"]').exists()).toBe(false)
+  expect(wrapper!.find('[data-model="uvr-mdxnet-9482-rknn"]').exists()).toBe(false)
+})
+
+it('瑞芯微模型仅提示节点本地部署，不提供不支持的网页导入', async () => {
+  const previous = vi.mocked(authRequest).getMockImplementation()!
+  vi.mocked(authRequest).mockImplementation(async (...args) => args[0].includes('/node') ? {
+    ...node(), cpuFallback: false,
+    models: [{ ...node().model, id: 'uvr-mdxnet-9482-rknn', installed: false }],
+    backends: [{ id: 'rknn', detected: true, state: 'MODEL_MISSING' }],
+  } as never : previous(...args))
+  wrapper = mount(AudioModelSettings, { global: { stubs } }); await flushPromises()
+  const model = wrapper!.get('[data-model="uvr-mdxnet-9482-rknn"]')
+  expect(model.text()).toContain('瑞芯微 NPU 分离模型')
+  expect(model.text()).toContain('manifest.json 和 uvr.rknn')
+  expect(model.text()).not.toContain('XML 和 BIN')
+  expect(model.find('input[type="file"]').exists()).toBe(false)
+  expect(model.findAll('button')).toHaveLength(0)
 })
 
 it('旧 setup 链接跳转性能节点配置', async () => {

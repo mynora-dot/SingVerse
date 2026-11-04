@@ -352,3 +352,5 @@ WebDAV version 2 分享索引的 `audioRoles` 仅含源轨映射、轨道描述�
 ### 跨主机媒体计算
 
 原始曲库只挂载到 Java，所有本地／WebDAV 计算请求使用任务引用和回源地址。Java 的 `SINGVERSE_CALLBACK_ORIGIN` 可指定计算节点可达的业务根地址；未设置时采用既有公开入口或已认证管理员请求入口。仅可信代理可提供转发 Host／Proto。性能节点无需媒体目录映射或部署级业务 URL；连接测试同时检查反向认证回源。详见 compute README 的升级要求。
+
+同套／Mac 原生自动节点使用 `SINGVERSE_COMPUTE_AUTO_CALLBACK_ORIGIN`；切换到其他独立节点时不复用该内部或回环地址。通过 `localhost` 打开的管理页不能给远端节点提供可达入口，请改用业务机器的局域网地址，或在业务 Compose 显式配置 `SINGVERSE_CALLBACK_ORIGIN`。

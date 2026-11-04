@@ -103,7 +103,7 @@ docker compose -f compose.compute.yaml exec -T singverse-compute cat /run/singve
 
 ## 业务回源地址及升级
 
-Java 随任务发送回调地址，计算节点不保存部署级业务地址，也不接受任意文件路径。业务侧 `SINGVERSE_CALLBACK_ORIGIN` 为可选可信部署地址；未设置时优先使用已有 `SINGVERSE_PUBLIC_ORIGIN`，否则从已认证管理员请求的入口推导并供本次进程内后台任务复用。`X-Forwarded-Host/Proto` 只信任 `SINGVERSE_TRUSTED_PROXIES` 列出的代理。后台任务在 Java 重启后，需先通过节点可达的地址访问管理页，或由业务部署提供稳定的回源地址。同套 Compose 已在 Java 配置内部服务地址。
+Java 随任务发送回调地址，计算节点不保存部署级业务地址，也不接受任意文件路径。业务侧 `SINGVERSE_CALLBACK_ORIGIN` 为可选可信部署地址；未设置时优先使用已有 `SINGVERSE_PUBLIC_ORIGIN`，否则从已认证管理员请求的入口推导并供本次进程内后台任务复用。`X-Forwarded-Host/Proto` 只信任 `SINGVERSE_TRUSTED_PROXIES` 列出的代理。后台任务在 Java 重启后，需先通过节点可达的地址访问管理页，或由业务部署提供稳定的回源地址。同套 Compose 的 `SINGVERSE_COMPUTE_AUTO_CALLBACK_ORIGIN` 仅用于与 `COMPUTE_NODE_URL` 匹配的自动节点；切换到独立节点时使用业务公开／管理员入口，不沿用同套内部地址。独立节点无法通过 `localhost` 访问业务机，请使用业务机器的局域网入口或显式配置 `SINGVERSE_CALLBACK_ORIGIN`。
 
 接口仅允许任务 UUID、节点 Bearer、固定内部 GET／HEAD／Range 回源路径；授权结束、源文件变化、取消或节点重启不能复用旧媒体授权。连接测试有独立的 15 秒短期认证检查，不读取歌曲。回源需双向网络可达；只测通 Java → compute 不代表媒体读取可用。
 

@@ -38,23 +38,32 @@ public class ComputeNodeProbe {
             }
             if (callback != null) {
                 String reference = callback.authorize(connection.token());
+                String callbackOrigin = "";
                 try {
-                    var payload = json.createObjectNode().put("reference", reference).put("callbackOrigin", callback.origin());
+                    callbackOrigin = callback.origin(connection);
+                    var payload = json.createObjectNode().put("reference", reference).put("callbackOrigin", callbackOrigin);
                     var check = HttpRequest.newBuilder(connection.origin().resolve("/internal/v1/callback/check"))
                             .timeout(Duration.ofSeconds(7)).header("Authorization", "Bearer " + connection.token())
                             .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(payload.toString())).build();
                     var back = http.send(check, info -> new BoundedResponse(4096));
                     if (back.statusCode() != 200 || !json.readTree(back.body()).path("available").asBoolean())
-                        return result("CALLBACK_FAILED", "节点连接与认证成功，但业务回源不可用；请使用节点可达的业务地址打开管理页，并检查反向代理与网络", capabilities, start);
+                        return result("CALLBACK_FAILED", callbackFailure(callbackOrigin, back.statusCode()), capabilities, start);
                 } catch (Exception error) {
                     if (error instanceof InterruptedException) Thread.currentThread().interrupt();
-                    return result("CALLBACK_FAILED", "节点连接与认证成功，但无法确定或访问业务回源地址", capabilities, start);
+                    return result("CALLBACK_FAILED", callbackOrigin.isEmpty() ? "节点连接与认证成功，但无法确定业务回源地址，请通过节点可达的业务地址打开管理页" : callbackFailure(callbackOrigin, 0), capabilities, start);
                 } finally { callback.revoke(reference); }
             }
             return result("AVAILABLE",(capabilities.contains("media-tags")||capabilities.contains("media-remote-tags"))?"节点连接、认证与业务回源成功，媒体读取可用":"连接与认证成功，节点暂未开放媒体能力",List.copyOf(capabilities),start);
         } catch(ResponseStatusException error) {throw error;}
         catch(InterruptedException error) {Thread.currentThread().interrupt();return result("UNAVAILABLE","连接已中断，请重试",List.of(),start);}
         catch(Exception error) {return result("UNAVAILABLE","节点连接失败或超时，请检查地址、服务及网络",List.of(),start);}
+    }
+    private static String callbackFailure(String origin, int status) {
+        String reason = status == 404 ? "计算节点不支持回源检查，请同步升级计算服务" : "请检查反向代理与网络，确保计算节点可以访问该业务入口";
+        String host = java.net.URI.create(origin).getHost();
+        if (status != 404 && Set.of("localhost", "127.0.0.1", "[::1]", "::1").contains(host.toLowerCase(java.util.Locale.ROOT)))
+            reason = "localhost／回环地址指向计算节点自身；独立节点请使用业务机器的局域网地址，或在业务服务配置 SINGVERSE_CALLBACK_ORIGIN";
+        return "节点连接与认证成功，但业务回源不可用（回源地址：" + origin + "）；" + reason;
     }
     private static Check result(String status,String message,List<String> capabilities,long start) {return new Check(status,message,capabilities,(System.nanoTime()-start)/1_000_000);}
 }

@@ -172,6 +172,13 @@ COMPUTE_HARDWARE_BACKEND=videotoolbox make compute-run
 
 Docker 必须在部署时配置设备、驱动和组权限。Intel/AMD 使用 `compose.compute.dri.yaml`，NVIDIA 使用 `compose.compute.nvidia.yaml`，Rockchip 使用 `compose.compute.rockchip.yaml`；覆盖文件会向容器传入对应 `COMPUTE_HARDWARE_BACKEND`。仅把变量写入根 `.env` 不会自动传入未声明该变量的容器；使用上述覆盖文件或显式增加 Compose environment。后台不能自动透传 GPU、安装驱动或赋予设备权限。
 
+独立业务节点上传包使用 `make app-package`，包含完整前端、Java 源码和 SQLite 数据库迁移。
+所有部署参数位于包内 Compose，曲库只读挂载解压目录下的 `media/`；数据库与密钥分别持久化到命名卷。
+默认入口 `http://10.100.1.12:18080/`，在管理页连接已有性能节点；包内不携带本机业务数据或凭据。
+部署、回源地址及数据保留说明见 [业务节点上传包](infra/deploy/app/README.md)。
+无法访问镜像仓库的远端可使用包含 AMD64 运行镜像的[离线业务包](infra/deploy/app/README.offline.md)，
+导入镜像后无需在线构建或拉取；`make app-package-offline` 用于导出已构建的离线镜像。
+
 已增加按素材试跑的硬件解码、零拷贝与 GPU 色调映射；无法使用的阶段会明确回退。Dolby Vision 单层 P5/P8 使用 RPU 元数据转换至 SDR，普通 HDR 支持不自动等于 DV 支持。短样本成功不代表其他硬件或持续负载已验收；详情见[转码说明](docs/transcoding.md)和[验证记录](docs/verification.md)。
 
 macOS + Docker Desktop 使用原生 GPU 节点：先确保现有应用已启动并执行过 `make compute-setup`、`make transcode-tools`，再从仓库根目录运行：

@@ -9,9 +9,11 @@ const props = defineProps<{ node?: Node; nodeError: string; readiness: Readiness
 const busy = ref(false), error = ref('')
 const detected = computed(() => props.node?.backends.filter(item => !['cpu', 'xpu'].includes(item.id) && (item.detected || item.device)) || [])
 const visibleBackends = computed(() => props.node?.backends.filter(item => item.id === 'cpu' ? !detected.value.length || props.node?.cpuFallback !== false : detected.value.some(found => found.id === item.id)) || [])
+const modelBackends: Record<string, string[]> = { htdemucs: ['cpu', 'cuda', 'rocm', 'mps'], 'htdemucs-openvino': ['openvino'], 'uvr-mdxnet-9482-rknn': ['rknn'] }
+const localOnly = (model: Model) => model.localOnly || model.id === 'uvr-mdxnet-9482-rknn'
 const catalog = computed<Model[]>(() => [
   ...(props.node?.fastClassifier ? [props.node.fastClassifier] : []),
-  ...(props.node?.models || (props.node ? [{ ...props.node.model, id: props.node.model.id || 'htdemucs' }] : [])).filter(model => model.id === 'htdemucs-openvino' ? detected.value.some(item => item.id === 'openvino') : !detected.value.length || props.node?.cpuFallback !== false || detected.value.some(item => ['cuda', 'rocm', 'mps'].includes(item.id))),
+  ...(props.node?.models || (props.node ? [{ ...props.node.model, id: props.node.model.id || 'htdemucs' }] : [])).filter(model => (model.backends || modelBackends[model.id] || []).some(id => visibleBackends.value.some(backend => backend.id === id))),
 ])
 const modelBusy = computed(() => ['DOWNLOADING', 'IMPORTING', 'VERIFYING', 'TESTING'].includes(props.node?.operation.state || ''))
 const auto = computed(() => props.node?.selection === 'auto')
@@ -66,15 +68,16 @@ function backendTone(state: string) { return state === 'AVAILABLE' ? 'success' :
             <span v-if="!model.writable" class="muted">模型目录未配置、不可写或为只读预置目录，无法在网页下载或导入；请在节点配置独立的可写模型卷。</span>
           </div>
           <ElTag :type="model.installed ? 'success' : 'info'" effect="light" size="small">{{ model.installed ? '已安装并校验' : '未安装' }}</ElTag>
-          <div v-if="!model.installed" class="model-actions">
+          <div v-if="!model.installed && !localOnly(model)" class="model-actions">
             <ElButton size="small" type="primary" :disabled="busy || modelBusy || !model.writable" @click="download(model)">下载到节点</ElButton>
             <label class="upload el-button el-button--small" :class="{ 'is-disabled': busy || modelBusy || !model.writable }">
               <input type="file" class="file-input" :accept="model.id === 'htdemucs' ? '.th' : '.zip'" :aria-label="`离线导入${modelNames[model.id]?.name || model.id}`" :disabled="busy || modelBusy || !model.writable" @change="upload(model, $event)">
               离线导入
             </label>
           </div>
-          <details v-if="!model.installed" class="model-files"><summary>无法联网？手动下载文件</summary>
-            <p class="muted">仅接受下列官方文件{{ model.id === 'htdemucs' ? '（原始 .th 权重）' : model.id === 'panns-cnn6' ? '，将该 PTH 文件放在 ZIP 根目录后导入' : '，打包为 ZIP 后导入；ZIP 根目录必须恰好包含 XML 和 BIN 两个文件' }}。</p>
+          <details v-if="!model.installed" class="model-files"><summary>{{ localOnly(model) ? '节点本地部署要求' : '无法联网？手动下载文件' }}</summary>
+            <p v-if="model.id === 'uvr-mdxnet-9482-rknn'" class="muted">仅用于瑞芯微 NPU；需在节点模型目录下的 uvr-mdxnet-9482-rknn 子目录部署适配设备的 manifest.json 和 uvr.rknn。不支持网页下载或 ZIP 导入。</p>
+            <p v-else class="muted">仅接受下列官方文件{{ model.id === 'htdemucs' ? '（原始 .th 权重）' : model.id === 'panns-cnn6' ? '，将该 PTH 文件放在 ZIP 根目录后导入' : '，打包为 ZIP 后导入；ZIP 根目录必须恰好包含 XML 和 BIN 两个文件' }}。</p>
             <div v-for="file in offlineFiles(model)" :key="file.name"><a :href="file.url" target="_blank" rel="noreferrer">下载 {{ file.name }}</a><p class="digest">SHA-256：{{ file.sha256 }}</p></div>
           </details>
         </div>

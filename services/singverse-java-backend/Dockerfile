@@ -33,7 +33,7 @@ COPY services/singverse-java-backend/.mvn/ ./.mvn/
 COPY services/singverse-java-backend/mvnw services/singverse-java-backend/pom.xml ./
 COPY --from=frontend-build /workspace/services/singverse-frontend/dist/ ../singverse-frontend/dist/
 COPY services/singverse-java-backend/src/ ./src/
-RUN --mount=type=cache,target=/root/.m2 ./mvnw -B verify
+RUN --mount=type=cache,target=/root/.m2 chmod +x ./mvnw && ./mvnw -B verify
 
 FROM ${JRE_IMAGE} AS singverse-java-backend
 WORKDIR /opt/singverse

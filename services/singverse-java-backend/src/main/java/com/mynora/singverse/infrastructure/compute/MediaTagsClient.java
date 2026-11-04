@@ -59,7 +59,7 @@ public class MediaTagsClient {
             String token=connection.token();
             if(token.length()<32 || token.length()>256) return null;
             reference = input.authorize(file, token);
-            var payload = Map.of("reference", reference, "callbackOrigin", callback.origin(), "filename", file.getFileName().toString(), "size", java.nio.file.Files.size(file));
+            var payload = Map.of("reference", reference, "callbackOrigin", callback.origin(connection), "filename", file.getFileName().toString(), "size", java.nio.file.Files.size(file));
             var request = java.net.http.HttpRequest.newBuilder(connection.origin().resolve("/internal/v1/media/remote-tags")).timeout(java.time.Duration.ofSeconds(70))
                 .header("Authorization", "Bearer " + token).header("Content-Type", "application/json")
                 .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(payload))).build();

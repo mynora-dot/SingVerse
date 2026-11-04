@@ -81,7 +81,7 @@ class ComputeNodeHttpTest {
         login();callbackAllowed=false;
         var check=ok("/api/v1/compute-node/test","POST",input("AUTO",0));
         assertThat(check.path("status").asText()).isEqualTo("CALLBACK_FAILED");
-        assertThat(check.path("message").asText()).contains("业务回源不可用");
+        assertThat(check.path("message").asText()).contains("业务回源不可用", "http://127.0.0.1:"+port, "回环地址", "SINGVERSE_CALLBACK_ORIGIN");
         assertThat(ok("/api/v1/compute-node","GET",null).path("revision").asLong()).isZero();
     }
     @Test void encryptedCredentialRetentionRevisionAndChangedAddressProtection()throws Exception{

@@ -37,6 +37,32 @@ class ComputeCallbackTest {
         callback=new ComputeCallback(new AuthHttp(env),env);callback.preHandle(request(),new MockHttpServletResponse(),null);
         assertThat(callback.origin()).isEqualTo("http://10.0.0.3:8080");
     }
+    @Test void composeCallbackIsUsedOnlyForItsMatchingAutomaticNode() {
+        var env=new MockEnvironment().withProperty("singverse.compute.base-url","http://singverse-compute:8090")
+                .withProperty("singverse.compute.auto-callback-origin","http://singverse-java-backend:8080");
+        var callback=new ComputeCallback(new AuthHttp(env),env);
+        var automatic=new ComputeNodeDtos.Connection(java.net.URI.create("http://singverse-compute:8090"),"fixture",java.util.List.of());
+        var remote=new ComputeNodeDtos.Connection(java.net.URI.create("http://10.100.1.12:18090"),"fixture",java.util.List.of());
+        assertThat(callback.origin(automatic)).isEqualTo("http://singverse-java-backend:8080");
+        assertThatThrownBy(()->callback.origin(remote)).isInstanceOf(ResponseStatusException.class);
+        admin();callback.preHandle(request(),new MockHttpServletResponse(),null);
+        assertThat(callback.origin(remote)).isEqualTo("http://10.0.0.2:18080");
+        assertThat(callback.origin(automatic)).isEqualTo("http://singverse-java-backend:8080");
+        env.withProperty("singverse.compute.callback-origin","http://10.0.0.3:18080");
+        var configured=new ComputeCallback(new AuthHttp(env),env);
+        assertThat(configured.origin(automatic)).isEqualTo("http://10.0.0.3:18080");
+        assertThat(configured.origin(remote)).isEqualTo("http://10.0.0.3:18080");
+    }
+    @Test void macNativeCallbackDoesNotLeakToAnIndependentNode() {
+        var env=new MockEnvironment().withProperty("singverse.compute.base-url","http://host.docker.internal:18090")
+                .withProperty("singverse.compute.auto-callback-origin","http://127.0.0.1:18080");
+        var callback=new ComputeCallback(new AuthHttp(env),env);
+        admin();callback.preHandle(request(),new MockHttpServletResponse(),null);
+        assertThat(callback.origin(new ComputeNodeDtos.Connection(java.net.URI.create("http://host.docker.internal:18090"),"fixture",java.util.List.of())))
+                .isEqualTo("http://127.0.0.1:18080");
+        assertThat(callback.origin(new ComputeNodeDtos.Connection(java.net.URI.create("http://10.100.1.12:18090"),"fixture",java.util.List.of())))
+                .isEqualTo("http://10.0.0.2:18080");
+    }
     @Test void callbackProbeNeedsMatchingBearerAndActiveGrant() {
         var env=new MockEnvironment();var callback=new ComputeCallback(new AuthHttp(env),env);
         String id=callback.authorize("secret");

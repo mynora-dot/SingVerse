@@ -4,6 +4,6 @@ services:
   singverse-java-backend:
     environment:
       COMPUTE_NODE_URL: http://host.docker.internal:18090
-      SINGVERSE_CALLBACK_ORIGIN: http://127.0.0.1:18080
+      SINGVERSE_COMPUTE_AUTO_CALLBACK_ORIGIN: http://127.0.0.1:18080
   singverse-compute:
     profiles: [container-compute]

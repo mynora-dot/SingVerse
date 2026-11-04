@@ -25,7 +25,7 @@ export interface Batch {
   items?: BatchItem[]
 }
 export interface Model {
-  id: string; version: string; format?: string; installed: boolean; writable: boolean; maxBytes: number
+  id: string; version: string; format?: string; backends?: string[]; localOnly?: boolean; installed: boolean; writable: boolean; maxBytes: number
   files?: { name: string; size: number; sha256: string; url: string }[]
 }
 export interface Backend { id: string; state: string; reason: string; detected?: boolean; device?: { name: string }; elapsedMs?: number }

@@ -4,6 +4,8 @@ PYTHON ?= python3
 .PHONY: compute-audio-setup transcode-fixtures transcode-tools help mobile-check mobile-build mobile-audio-test frontend-setup frontend-dev frontend-check frontend-build web-check tv-build tv-release java-backend-test backend-check compute-setup compute-check compute-run db-sqlite-check db-mysql-up db-mysql-check docker-build docker-up docker-down docker-status docker-logs docker-check verify
 
 help:
+	@printf '%s\n' 'app-package       Package frontend, Java and persistent SQLite deployment without .env'
+	@printf '%s\n' 'app-package-offline Export prebuilt Linux AMD64 business images with no-pull Compose'
 	@printf '%s\n' 'dbmate-setup      Install checksum-pinned language-neutral migration tool'
 	@printf '%s\n' 'macos-audio-check  Real native Apple MPS qualification, CPU comparison and convolution regression tests (model required)'
 	@printf '%s\n' 'mobile-check       Flutter format, analysis, tests and Android network policy tests' 'mobile-build       Flutter Android debug APK' 'mobile-audio-test  Native karaoke instrumentation on a running emulator (isolated app ID)' 'web-check          NAS H5 and admin page/assets HTTP tests' 'tv-build           Android TV unit tests, debug APK and lint' 'tv-release         Signed release APK (requires signing environment)' 'java-backend-test  SingVerse Java backend tests and package' 'db-sqlite-check    SQLite connection and health tests' 'db-mysql-up        Start MySQL and wait for health' 'db-mysql-check     MySQL connection and health tests (requires running database)' 'verify             Run all checks, including MySQL'
@@ -161,3 +163,13 @@ compute-audio-uvr-setup:
 NVIDIA_PACKAGE_OUTPUT ?= /tmp/singverse-nvidia-upload/SingVerse-NVIDIA-callback.zip
 compute-package-nvidia:
 	python3 scripts/package-nvidia.py --output "$(NVIDIA_PACKAGE_OUTPUT)"
+
+.PHONY: app-package
+APP_PACKAGE_OUTPUT ?= /tmp/singverse-business-upload/SingVerse-Business.zip
+app-package:
+	python3 scripts/package-app.py --output "$(APP_PACKAGE_OUTPUT)"
+
+.PHONY: app-package-offline
+APP_OFFLINE_PACKAGE_OUTPUT ?= /tmp/singverse-business-upload/SingVerse-Business-offline-amd64.zip
+app-package-offline:
+	python3 scripts/package-app-offline.py --output "$(APP_OFFLINE_PACKAGE_OUTPUT)"

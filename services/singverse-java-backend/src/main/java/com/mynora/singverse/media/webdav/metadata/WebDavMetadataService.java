@@ -182,7 +182,7 @@ public class WebDavMetadataService {
                 input.authorize(task,connection.token(),deep);
                 var payload=args("reference",task.get("id"),"filename",task.get("relative_path"),"size",task.get("file_size"),"deep",deep);
                 ComputeNodeSettings.checkNetwork(connection.origin());
-                payload.put("callbackOrigin",callback.origin());
+                payload.put("callbackOrigin",callback.origin(connection));
                 var request=HttpRequest.newBuilder(connection.origin().resolve("/internal/v1/media/remote-tags")).timeout(Duration.ofSeconds(deep?190:70))
                     .header("Authorization","Bearer "+connection.token()).header("Content-Type","application/json")
                     .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(payload))).build();
