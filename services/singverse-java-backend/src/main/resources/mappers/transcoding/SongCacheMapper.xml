@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mynora.singverse.media.transcoding.SongCacheMapper">
+ <select id="settings" resultType="map">SELECT * FROM song_cache_settings WHERE id=1</select>
+ <update id="initialize">UPDATE song_cache_settings SET max_bytes=#{bytes} WHERE id=1 AND max_bytes=0</update>
+ <update id="saveSettings">UPDATE song_cache_settings SET max_bytes=#{v.maxBytes},policy=#{v.policy},ttl_hours=#{v.ttlHours},revision=revision+1 WHERE id=1 AND revision=#{v.revision}</update>
+ <select id="entries" resultType="map">SELECT * FROM song_cache_entry ORDER BY last_access_at DESC,id</select>
+ <select id="find" resultType="map">SELECT * FROM song_cache_entry WHERE id=#{id}</select>
+ <select id="byKey" resultType="map">SELECT * FROM song_cache_entry WHERE cache_key=#{key}</select>
+ <insert id="insert">INSERT INTO song_cache_entry(id,cache_key,song_id,execution_json,target_json,artifacts_json,media_type,bytes,created_at,last_access_at,hits) VALUES(#{v.id},#{v.cache_key},#{v.song_id},#{v.execution_json},#{v.target_json},#{v.artifacts_json},#{v.media_type},#{v.bytes},#{v.created_at},#{v.created_at},0)</insert>
+ <delete id="delete">DELETE FROM song_cache_entry WHERE id=#{id}</delete>
+ <update id="hit">UPDATE song_cache_entry SET hits=hits+1,last_access_at=#{now} WHERE id=#{id}</update>
+ <update id="touch">UPDATE song_cache_entry SET last_access_at=#{now} WHERE id=#{id}</update>
+ <select id="lease" resultType="map">SELECT * FROM song_cache_lease WHERE session_id=#{session}</select>
+ <select id="active" resultType="int">SELECT COUNT(*) FROM song_cache_lease WHERE cache_id=#{id} AND renewed_at&gt;#{since}</select>
+ <insert id="bind">INSERT INTO song_cache_lease(session_id,cache_id,renewed_at) VALUES(#{session},#{id},#{now})</insert>
+ <update id="renew">UPDATE song_cache_lease SET renewed_at=#{now} WHERE session_id=#{session}</update>
+ <delete id="release">DELETE FROM song_cache_lease WHERE session_id=#{session}</delete>
+ <delete id="releaseCache">DELETE FROM song_cache_lease WHERE cache_id=#{id}</delete>
+ <delete id="expire">DELETE FROM song_cache_lease WHERE renewed_at&lt;=#{since}</delete>
+</mapper>

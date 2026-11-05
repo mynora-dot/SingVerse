@@ -29,7 +29,7 @@ docker compose exec -T singverse-compute python -m singverse_compute.infrastruct
 
 ## 连接已有管理端
 
-节点地址填 `http://<NAS局域网IP>:18090`，通过节点“认证凭据”配对。部署管理员可在本机终端执行以下命令读取 token，只填入可信管理端，不发到聊天或日志：
+更新业务端与本节点后，在性能节点连接设置中点击“扫描局域网计算节点”，选择节点并点击“连接此节点”，无需手填密钥。首次配对信任受限局域网，后续只允许同一主服务身份重新配对；认证及配对身份保留在 `auth` 卷中。扫描未发现时可指定 NAS 网段和端口 18090；也可手动填写 `http://<NAS局域网IP>:18090` 和原认证凭据。手动模式下，部署管理员可在本机终端执行以下命令读取 token，只填入可信管理端，不发到聊天或日志：
 
 ```sh
 docker compose exec -T singverse-compute cat /run/singverse-compute/token

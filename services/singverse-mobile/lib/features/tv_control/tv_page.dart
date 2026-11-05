@@ -46,13 +46,15 @@ class TvPage extends StatefulWidget {
 
 class _TvPageState extends State<TvPage> {
   bool scanning = false, checking = false;
+  bool approving = false;
   String? error;
   MobileScannerController? camera;
-  Future<void> scan() async {
+  Future<void> scan({bool approve = false}) async {
     camera?.dispose();
     setState(() {
       camera = MobileScannerController(formats: [BarcodeFormat.qrCode]);
       scanning = true;
+      approving = approve;
       error = null;
     });
   }
@@ -61,6 +63,10 @@ class _TvPageState extends State<TvPage> {
     if (checking) return;
     setState(() => checking = true);
     try {
+      if (approving) {
+        await approveTv(value);
+        return;
+      }
       final invite = TvInvite.parse(value);
       await camera?.stop();
       final info = await widget.state.api.inspect(invite.origin) as Json;
@@ -138,6 +144,62 @@ class _TvPageState extends State<TvPage> {
     }
   }
 
+  Future<void> approveTv(String value) async {
+    if (!widget.state.authenticated) {
+      throw const FormatException('请先登录当前 NAS 管理账号，再授权电视登录');
+    }
+    final qr = TvAuthorizationQr.parse(value);
+    if (qr.origin != widget.state.origin) {
+      throw const FormatException('二维码来自另一台 NAS，请切换到对应 NAS 后再扫描');
+    }
+    await camera?.stop();
+    final result =
+        await widget.state.api.request('/api/v1/admin/tv-devices') as Json;
+    final pending = (result['pending'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .where((item) => item['id'] == qr.id && item['status'] == 'PENDING')
+        .firstOrNull;
+    if (pending == null) {
+      throw const FormatException('这台电视的登录申请已处理或过期，请在电视上重新申请');
+    }
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('授权电视登录'),
+        content: Text('允许「${pending['name'] ?? 'SingVerse TV'}」登录并访问本机曲库吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('确认授权'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      setState(() => scanning = false);
+      return;
+    }
+    await widget.state.api.request(
+      '/api/v1/admin/device-authorizations/${Uri.encodeComponent(qr.id)}/approve',
+      method: 'POST',
+      body: {'code': qr.code},
+    );
+    if (!mounted) return;
+    setState(() {
+      scanning = false;
+      error = null;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已授权「${pending['name'] ?? 'SingVerse TV'}」登录')),
+    );
+  }
+
   Future<void> back() async {
     final web = tvSession.controller;
     if (!scanning && web != null && await web.canGoBack()) {
@@ -170,7 +232,7 @@ class _TvPageState extends State<TvPage> {
         actions: [
           IconButton(
             tooltip: '重新扫码',
-            onPressed: checking ? null : scan,
+            onPressed: checking ? null : () => scan(approve: approving),
             icon: const Icon(Icons.qr_code_scanner),
           ),
           if (tvSession.controller != null)
@@ -215,20 +277,34 @@ class _TvPageState extends State<TvPage> {
                           ),
                           const SizedBox(height: 24),
                           Text(
-                            '让好歌，在电视上相聚。',
+                            approving ? '授权电视登录' : '让好歌，在电视上相聚。',
                             style: Theme.of(context).textTheme.headlineSmall,
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 12),
-                          const Text(
-                            '扫描电视上的 SingVerse 聚会二维码。无需先连接本机 NAS。',
+                          Text(
+                            approving
+                                ? '扫描电视登录页上的二维码，确认设备名称后即可授权。'
+                                : '扫描电视上的 SingVerse 聚会二维码。无需先连接本机 NAS。',
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 24),
                           FilledButton(
-                            onPressed: scan,
-                            child: const Text('扫描电视二维码'),
+                            onPressed: () => scan(approve: approving),
+                            child: Text(approving ? '扫描电视登录码' : '扫描电视二维码'),
                           ),
+                          if (widget.state.authenticated) ...[
+                            const SizedBox(height: 8),
+                            TextButton.icon(
+                              onPressed: () => scan(approve: !approving),
+                              icon: Icon(
+                                approving
+                                    ? Icons.queue_music_rounded
+                                    : Icons.tv_rounded,
+                              ),
+                              label: Text(approving ? '改为扫码点歌' : '授权电视登录'),
+                            ),
+                          ],
                         ],
                       ),
                     ),

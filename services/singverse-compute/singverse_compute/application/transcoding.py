@@ -4,11 +4,13 @@ from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 import hashlib
 import json
+import re
 import shutil
 import threading
 import time
 from ..core.errors import ComputeError
 from ..domain.transcoding import Target
+from .transcode_artifacts import ARTIFACT, completed_hls, export_hls
 
 @dataclass
 class Execution:
@@ -27,14 +29,16 @@ class Execution:
     mapping: list = field(default_factory=list)
     output: dict = field(default_factory=dict)
     pipeline: dict = field(default_factory=dict)
+    released: bool = False
     cancel: threading.Event = field(default_factory=threading.Event)
 
     def view(self):
         return {'id':self.id, 'state':self.state, 'backend':self.backend, 'error':self.error, 'fallbackReason':self.fallback_reason,
                 'position':self.position, 'speed':self.speed, 'sampledPeakRssBytes':self.peak_memory_bytes, 'offset':self.target.start,
                 'purpose':self.target.purpose, 'effectiveMode':self.target.mode, 'trackMapping':self.mapping,
-                'ready':self.state == 'SUCCEEDED', 'output':self.output, 'pipeline':self.pipeline,
-                'subtitle':bool(self.target.subtitle_id and not self.target.burn_subtitle)}
+                'ready':self.state == 'SUCCEEDED' and not self.released, 'output':self.output, 'pipeline':self.pipeline,
+                'subtitle':bool(self.target.subtitle_id and not self.target.burn_subtitle),
+                'released':self.released}
 
 class Transcoding:
     def __init__(self, settings, paths, auth, probe, encoder, backends, remote):
@@ -53,9 +57,11 @@ class Transcoding:
             self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
             for file in self.root.glob('*/execution.json'):
                 try:
+                    if file.is_symlink() or file.parent.is_symlink():
+                        continue
                     record = json.loads(file.read_text())
                     task = Execution(record['id'], record['signature'], Target(**record['target']))
-                    if file.parent.name != task.id or not file.parent.is_relative_to(self.root):
+                    if not re.fullmatch(r'[a-f0-9-]{36}', task.id) or file.parent.name != task.id or not file.parent.is_relative_to(self.root):
                         continue
                     task.state = record['state'] if record['state'] in ('SUCCEEDED','FAILED','CANCELLED') else 'FAILED'
                     task.error = record.get('error','') if task.state == record['state'] else 'NODE_RESTARTED'
@@ -64,6 +70,7 @@ class Transcoding:
                     task.output = record.get('output', {})
                     task.pipeline = record.get('pipeline', {})
                     task.finished = record.get('finished',0) or time.time()
+                    task.released = record.get('released', False)
                     self.tasks[task.id] = task
                 except (OSError, ValueError, KeyError, TypeError):
                     continue
@@ -103,7 +110,17 @@ class Transcoding:
         temp.replace(directory / 'execution.json')
 
     def usage(self):
-        return sum(p.stat().st_size for p in self.root.glob('*/*') if p.is_file() and not p.is_symlink())
+        total = 0
+        for directory in self.root.iterdir():
+            if not directory.is_dir() or directory.is_symlink():
+                continue
+            for path in directory.iterdir():
+                try:
+                    if path.is_file() and not path.is_symlink():
+                        total += path.stat().st_size
+                except FileNotFoundError:
+                    pass  # FFmpeg atomically replaces temporary manifests while an execution runs.
+        return total
 
     def create(self, identifier, path, reference, fingerprint, target, callback_origin=None):
         if not self.available:
@@ -119,6 +136,7 @@ class Transcoding:
                 if prior.signature != signature:
                     raise ComputeError(409, 'Execution ID already used for another input')
                 return self.view(identifier)
+            self.collect()
             if target.purpose == 'OFFLINE' and time.monotonic() < self.realtime_reserved_until:
                 raise ComputeError(429, 'Capacity reserved for realtime playback')
             active = [t for t in self.tasks.values() if t.state in ('ACCEPTED','RUNNING')]
@@ -135,7 +153,6 @@ class Transcoding:
                     self.realtime_reserved_until = time.monotonic() + 5
                     audio.preempt()
                 raise ComputeError(429, 'Offline audio worker stopping; retry playback')
-            self.collect()
             if self.usage() >= self.settings.cache_bytes or shutil.disk_usage(self.root).free < self.settings.minimum_free_bytes:
                 raise ComputeError(507, 'Transcode storage budget exhausted')
             task = Execution(identifier, signature, target)
@@ -204,14 +221,17 @@ class Transcoding:
                             digest.update(chunk)
                     task.output = {'sha256':digest.hexdigest(), 'size':output.stat().st_size,
                                    'media':asdict(self.probe.read(output))}
-                task.state = 'CANCELLED' if task.cancel.is_set() else 'SUCCEEDED'
+                outcome = 'CANCELLED' if task.cancel.is_set() else 'SUCCEEDED'
+                if outcome == 'SUCCEEDED' and task.target.purpose == 'REALTIME':
+                    completed_hls(directory)
         except ComputeError as error:
-            task.state = 'CANCELLED' if task.cancel.is_set() and not task.error else 'FAILED'
+            outcome = 'CANCELLED' if task.cancel.is_set() and not task.error else 'FAILED'
             task.error = task.error or error.message
         except Exception:
-            task.state, task.error = 'FAILED', 'EXECUTION_FAILED'
+            outcome, task.error = 'FAILED', 'EXECUTION_FAILED'
         finally:
             with self.lock:
+                task.state = 'CANCELLED' if outcome == 'SUCCEEDED' and task.cancel.is_set() else outcome
                 task.finished = time.time()
                 self.save(task)
                 if task.state in ('FAILED','CANCELLED'):
@@ -230,8 +250,9 @@ class Transcoding:
             task = self.get(identifier)
             result = task.view()
             if task.target.purpose == 'REALTIME':
-                manifest = self.root / identifier / 'master.m3u8'
-                result['ready'] = task.state not in ('FAILED', 'CANCELLED') and manifest.is_file() and any((self.root / identifier).glob('stream_*_000000.*'))
+                directory = self.root / identifier
+                manifest = directory / 'master.m3u8'
+                result['ready'] = not task.released and task.state not in ('FAILED', 'CANCELLED') and manifest.is_file() and any(directory.glob('stream_*_000000.*'))
             return result
 
     def renew(self, identifier):
@@ -250,14 +271,13 @@ class Transcoding:
             return task.view()
 
     def artifact(self, identifier, name):
-        import re
-        if not re.fullmatch(r'(master\.m3u8|stream_[a-zA-Z0-9]+\.m3u8|stream_[a-zA-Z0-9]+_[0-9]+\.(ts|m4s)|init_[a-zA-Z0-9]+\.mp4|output\.mp4|subtitle\.vtt)', name):
+        if not ARTIFACT.fullmatch(name):
             raise ComputeError(404, 'Artifact not found')
         task = self.get(identifier)
-        if task.state in ('FAILED','CANCELLED'):
+        if task.state in ('FAILED','CANCELLED') or task.released:
             raise ComputeError(410, 'Execution no longer available')
         path = self.root / identifier / name
-        if not path.is_file() or path.is_symlink():
+        if not path.is_file() or path.is_symlink() or path.parent.is_symlink():
             raise ComputeError(404, 'Artifact not ready')
         return path
 
@@ -287,25 +307,62 @@ class Transcoding:
                         task.error = 'STORAGE_BUDGET_EXHAUSTED'
                         task.cancel.set()
                 elif task.target.purpose == 'REALTIME' and now-max(task.finished, task.renewed) > self.settings.retention_seconds:
-                    shutil.rmtree(self.root / identifier, ignore_errors=True)
+                    directory = self.root / identifier
+                    if directory.is_symlink():
+                        directory.unlink()
+                    else:
+                        try:
+                            shutil.rmtree(directory)
+                        except FileNotFoundError:
+                            pass
                     del self.tasks[identifier]
+
+    def export(self, identifier):
+        with self.lock:
+            task = self.get(identifier)
+            if task.released:
+                raise ComputeError(410, 'Execution artifacts were already released')
+            if task.state != 'SUCCEEDED' or task.target.purpose != 'REALTIME':
+                raise ComputeError(409, 'Only completed realtime HLS outputs may be exported')
+            task.renewed = time.time()
+            try:
+                exported = export_hls(self.root / identifier)
+                task.renewed = time.time()
+                return exported
+            except (OSError, UnicodeError) as error:
+                raise ComputeError(409, 'Execution artifacts are incomplete or unreadable') from error
 
     def acknowledge(self, identifier):
         with self.lock:
             task = self.get(identifier)
-            if task.target.purpose != 'OFFLINE' or task.state != 'SUCCEEDED':
-                raise ComputeError(409, 'Only completed offline outputs may be acknowledged')
-            for path in (self.root / identifier).iterdir():
-                if path.name != 'execution.json' and path.is_file() and not path.is_symlink():
-                    path.unlink()
+            if task.state != 'SUCCEEDED':
+                raise ComputeError(409, 'Only completed outputs may be acknowledged')
+            directory = self.root / identifier
+            if directory.is_symlink():
+                raise ComputeError(409, 'Execution artifact directory is invalid')
+            try:
+                for path in directory.iterdir():
+                    if path.name != 'execution.json' and (path.is_file() or path.is_symlink()):
+                        path.unlink()
+            except OSError as error:
+                raise ComputeError(500, 'Execution artifacts could not be released') from error
+            task.released = True
+            self.save(task)
             return task.view()
 
     def start(self):
         def maintain():
             while not self.closed.wait(5):
-                self.collect()
+                self.maintain()
         self.maintenance = threading.Thread(target=maintain, daemon=True)
         self.maintenance.start()
+
+    def maintain(self):
+        try:
+            self.collect()
+        except (ComputeError, OSError):
+            import logging
+            logging.getLogger('singverse_compute.transcoding').warning('Temporary artifact maintenance deferred; check storage access')
 
     def close(self):
         self.closed.set()

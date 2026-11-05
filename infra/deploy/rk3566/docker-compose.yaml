@@ -10,6 +10,7 @@ services:
       target: uvr
     environment:
       COMPUTE_AUTH_TOKEN_FILE: /run/singverse-compute/token
+      COMPUTE_LAN_PAIRING_ENABLED: '${COMPUTE_LAN_PAIRING_ENABLED:-true}'
       COMPUTE_AUDIO_MODEL_REPO: /var/lib/singverse-models/htdemucs
       COMPUTE_AUDIO_MEMORY_BYTES: '4294967296'
       COMPUTE_AUDIO_THREADS: '2'

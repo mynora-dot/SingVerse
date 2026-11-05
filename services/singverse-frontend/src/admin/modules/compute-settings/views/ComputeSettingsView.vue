@@ -6,8 +6,9 @@ import { ElAlert, ElButton, ElInput, ElMessageBox, ElSkeleton, ElTag, ElTabs, El
 import { RefreshRight, Check, ArrowRight } from '@element-plus/icons-vue'
 import AudioModelSettings from '../AudioModelSettings.vue'
 import HardwareSettings from '../HardwareSettings.vue'
+import { ApiError } from '../../../core/auth/api'
 import { computeNode } from '../api'
-import type { NodeSettings, NodeInput, NodeCheck, NodeMode } from '../types'
+import type { NodeSettings, NodeInput, NodeCheck, NodeMode, DiscoveredNode, NodeDiscoveryInput } from '../types'
 
 const route = useRoute(), router = useRouter()
 const taskTab = ref(route.hash === '#audio-models' || route.query.tab === 'audio' ? 'audio' : 'video')
@@ -23,10 +24,14 @@ const editorHeading = ref<HTMLElement | null>(null)
 const currentCheck = ref<NodeCheck | null>(null), draftCheck = ref<NodeCheck | null>(null)
 const loading = ref(false), checking = ref(false), testing = ref(false), saving = ref(false), editing = ref(false)
 const error = ref(''), currentError = ref(''), formError = ref(''), saved = ref(false)
+const scanning = ref(false), pairing = ref(false), scanCompleted = ref(false), discoveryConflict = ref(false)
+const scanError = ref(''), scanMessage = ref(''), pairingError = ref(''), discovered = ref<DiscoveredNode[]>([])
+const scanRange = reactive({ network: '', port: '' as string | number })
 const draft = reactive<NodeInput>({ mode: 'AUTO', endpoint: '', token: '', clearToken: false, mappings: [], revision: 0 })
-let active = true, currentGeneration = 0, draftGeneration = 0, loadGeneration = 0
+let active = true, currentGeneration = 0, draftGeneration = 0, loadGeneration = 0, scanGeneration = 0
 watch(draft, () => { draftCheck.value = null; formError.value = ''; draftGeneration++ }, { deep: true, flush: 'sync' })
-const busy = computed(() => saving.value || testing.value)
+watch(scanRange, () => { scanError.value = '' })
+const busy = computed(() => saving.value || testing.value || pairing.value)
 const dirty = computed(() => !!settings.value && (draft.mode !== settings.value.mode || draft.endpoint !== displayedEndpoint(settings.value) || !!draft.token || draft.clearToken || JSON.stringify(draft.mappings) !== JSON.stringify(settings.value.mappings)))
 const endpointChanged = computed(() => !!settings.value && draft.endpoint.trim().replace(/\/$/, '') !== settings.value.endpoint)
 const canKeepToken = computed(() => !!settings.value?.hasToken && !endpointChanged.value)
@@ -76,7 +81,7 @@ async function load() {
   try {
     const value = await computeNode.get()
     if (!active || sequence !== loadGeneration) return
-    settings.value = value; populate(value); void checkCurrent()
+    settings.value = value; populate(value); resetDiscovery(); void checkCurrent()
   } catch (failure) { if (active && sequence === loadGeneration) error.value = message(failure, '读取配置失败，请重试。') }
   finally { if (active && sequence === loadGeneration) loading.value = false }
 }
@@ -99,12 +104,62 @@ async function checkCurrent() {
 async function openEditor(mode?: NodeMode) {
   if (!settings.value) return
   populate(settings.value); draft.mode = mode ?? (settings.value.mode === 'DISABLED' ? lastEnabledMode.value : !effectiveEndpoint.value ? 'MANUAL' : settings.value.mode)
-  helpVisible.value = false; editing.value = true; saved.value = false
+  resetDiscovery(); helpVisible.value = false; editing.value = true; saved.value = false
   await nextTick()
   if (active) { editorHeading.value?.focus({ preventScroll: true }); editorHeading.value?.scrollIntoView?.({ block: 'start' }) }
 }
 function closeEditor(done: () => void) { if (!busy.value) { cancel(); done() } }
-function cancel() { if (settings.value) populate(settings.value); editing.value = false }
+function cancel() { if (busy.value) return; resetDiscovery(); if (settings.value) populate(settings.value); editing.value = false }
+function cancelScan() { scanGeneration++; scanning.value = false; scanMessage.value = '已取消等待扫描结果，可重新扫描或手动连接。' }
+function resetDiscovery() {
+  scanGeneration++; scanning.value = false; scanCompleted.value = false; scanError.value = ''; scanMessage.value = ''
+  pairingError.value = ''; discovered.value = []; discoveryConflict.value = false
+}
+function discoveryInput(): NodeDiscoveryInput | null {
+  const network = scanRange.network.trim(), port = Number(scanRange.port)
+  if (network) {
+    const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{2})$/.exec(network)
+    const parts = match?.slice(1, 5).map(Number) ?? [], prefix = Number(match?.[5])
+    const privateAddress = parts[0] === 10 || parts[0] === 172 && parts[1]! >= 16 && parts[1]! <= 31 || parts[0] === 192 && parts[1] === 168
+    if (!match || parts.some(part => part > 255) || prefix < 24 || prefix > 32 || !privateAddress || parts[3]! % 2 ** (32 - prefix) !== 0) {
+      scanError.value = '请填写局域网 IPv4 网段（/24～/32），例如 192.168.1.0/24。'; return null
+    }
+  }
+  if (scanRange.port !== '' && (!Number.isInteger(port) || port < 1 || port > 65535)) {
+    scanError.value = '扫描端口应为 1～65535 的整数。'; return null
+  }
+  return { ...(network ? { network } : {}), ...(scanRange.port !== '' ? { port } : {}) }
+}
+async function scan() {
+  if (busy.value || scanning.value || !enabled.value) return
+  scanError.value = ''
+  const input = discoveryInput()
+  if (!input) return
+  const sequence = ++scanGeneration
+  scanning.value = true; scanCompleted.value = false; scanMessage.value = ''; discovered.value = []; pairingError.value = ''
+  try {
+    const value = await computeNode.discover(input)
+    if (!active || !editing.value || sequence !== scanGeneration) return
+    discovered.value = value.items; scanMessage.value = value.message; scanCompleted.value = true; discoveryConflict.value = false
+  } catch (failure) { if (active && editing.value && sequence === scanGeneration) scanError.value = message(failure, '扫描失败，请重试或手动填写地址。') }
+  finally { if (active && sequence === scanGeneration) scanning.value = false }
+}
+async function connectDiscovered(node: DiscoveredNode) {
+  if (busy.value || scanning.value || !node.pairingAvailable || !settings.value) return
+  if (dirty.value) {
+    try { await ElMessageBox.confirm('连接此节点会替换当前连接，并放弃尚未保存的手动设置。配对失败时保留原连接与草稿。', '连接此节点？', { confirmButtonText: '连接此节点', cancelButtonText: '继续编辑', type: 'warning', autofocus: false }) }
+    catch { return }
+  }
+  if (!active || !editing.value || busy.value || !settings.value) return
+  pairing.value = true; pairingError.value = ''; discoveryConflict.value = false
+  try {
+    const value = await computeNode.pair(node.id, settings.value.revision)
+    if (!active) return
+    settings.value = value; populate(value); resetDiscovery(); currentCheck.value = null; editing.value = false; saved.value = true; void checkCurrent()
+  } catch (failure) {
+    if (active) { pairingError.value = message(failure, '连接此节点失败，当前连接保持不变。'); discoveryConflict.value = failure instanceof ApiError && failure.status === 409 }
+  } finally { if (active) pairing.value = false }
+}
 function validate() {
   if (draft.mode === 'DISABLED') return true
   if (usesDeployment.value) return true
@@ -135,7 +190,7 @@ async function save(skipTest = false) {
   try {
     const value = await computeNode.save(snapshot())
     if (!active) return
-    settings.value = value; populate(value); currentCheck.value = null; editing.value = false; saved.value = true; void checkCurrent()
+    settings.value = value; populate(value); resetDiscovery(); currentCheck.value = null; editing.value = false; saved.value = true; void checkCurrent()
   } catch (failure) { if (active) formError.value = message(failure, '保存失败，请重试。') }
   finally { if (active) saving.value = false }
 }
@@ -149,7 +204,7 @@ onBeforeRouteLeave(async () => {
   } catch { return false }
 })
 onMounted(load)
-onBeforeUnmount(() => { active = false; currentGeneration++; draftGeneration++; loadGeneration++ })
+onBeforeUnmount(() => { active = false; currentGeneration++; draftGeneration++; loadGeneration++; scanGeneration++ })
 </script>
 
 <template>
@@ -171,10 +226,33 @@ onBeforeUnmount(() => { active = false; currentGeneration++; draftGeneration++; 
         <template #header><div class="editor-heading"><h2 ref="editorHeading" tabindex="-1">连接设置</h2><span v-if="dirty" class="draft-note">尚未保存</span></div></template>
         <section v-if="editing" class="connection-editor" aria-label="连接设置">
 
-        <form id="compute-connection-form" @submit.prevent="save()">
           <div class="connection-controls">
             <div class="enable-node"><span>启用计算服务</span><ElSwitch v-model="enabled" aria-label="启用计算服务" :disabled="busy" /></div>
           </div>
+          <section v-if="enabled" class="node-discovery" aria-label="局域网计算节点">
+            <div class="discovery-heading"><div><h3>从局域网连接</h3><p>由服务节点扫描局域网，选用支持配对的节点即可连接，无需手动填写密钥。</p></div></div>
+            <details class="discovery-range">
+              <summary>指定扫描范围</summary>
+              <p>留空时扫描服务节点所在网段的 18090 / 8090 端口。可填写其他局域网网段或自定义端口。</p>
+              <label><span>IPv4 网段（可选）</span><ElInput v-model="scanRange.network" aria-label="扫描网段" placeholder="例如 192.168.1.0/24" maxlength="32" :disabled="busy || scanning" @keydown.enter.prevent="scan" /></label>
+              <label><span>端口（可选）</span><ElInput v-model="scanRange.port" aria-label="扫描端口" inputmode="numeric" placeholder="例如 18090" maxlength="5" :disabled="busy || scanning" @keydown.enter.prevent="scan" /></label>
+              <small>仅支持局域网 IPv4 网段 /24～/32，端口范围 1～65535。</small>
+            </details>
+            <div class="discovery-actions"><ElButton :loading="scanning" :disabled="busy" @click="scan">扫描局域网内计算节点</ElButton><ElButton v-if="scanning" text @click="cancelScan">取消扫描</ElButton></div>
+            <p v-if="scanning" class="discovery-status" role="status">正在扫描，请稍候…扫描不会更改当前连接。</p>
+            <ElAlert v-if="scanError" class="editor-feedback" :title="scanError" type="error" :closable="false" show-icon />
+            <p v-if="scanMessage" class="discovery-status" role="status">{{ scanMessage }}</p>
+            <p v-if="scanCompleted && !discovered.length" class="discovery-empty">未发现可连接的计算节点。请确认设备在局域网内，或指定网段与端口后重试，也可在下方手动连接。</p>
+            <ul v-if="discovered.length" class="discovery-list" aria-label="扫描到的计算节点">
+              <li v-for="node in discovered" :key="node.id">
+                <div><strong>{{ node.name || '计算节点' }}</strong><code>{{ node.endpoint }}</code><p v-if="node.message">{{ node.message }}</p><small v-if="node.pairingAvailable">选用后会验证并保存此连接</small></div>
+                <ElButton type="primary" plain :disabled="busy || scanning || !node.pairingAvailable || discoveryConflict" :aria-label="`连接${node.name || '计算节点'}（${node.endpoint}）`" @click="connectDiscovered(node)">连接此节点</ElButton>
+              </li>
+            </ul>
+            <p v-if="pairing" class="discovery-status" role="status">正在配对并验证连接…</p>
+            <ElAlert v-if="pairingError" class="editor-feedback" :title="pairingError" type="error" :closable="false" show-icon><ElButton v-if="discoveryConflict" text :disabled="busy" @click="load">放弃草稿，读取最新配置</ElButton></ElAlert>
+          </section>
+        <form id="compute-connection-form" @submit.prevent="save()">
           <div v-if="enabled" class="manual-settings">
             <label class="node-field"><span>计算服务地址</span><ElInput v-model="draft.endpoint" aria-label="计算服务地址" placeholder="例如 http://192.168.1.20:18090" maxlength="512" :disabled="busy" /></label>
             <label class="node-field"><span>连接密钥 <ElTag v-if="canKeepToken || hasDeploymentToken" size="small" effect="plain">已配置</ElTag></span><ElInput v-model="draft.token" aria-label="计算节点认证凭据" type="password" autocomplete="new-password" :placeholder="hasDeploymentToken ? '已使用部署密钥，留空保留' : canKeepToken ? '留空保留已保存密钥' : '填写计算服务的连接密钥'" maxlength="256" show-password :disabled="busy || draft.clearToken" /><small v-if="!hasDeploymentToken && !canKeepToken && endpointChanged && effectiveEndpoint" class="credential-warning">服务地址已改变，需重新填写密钥。</small></label>
@@ -247,6 +325,21 @@ onBeforeUnmount(() => { active = false; currentGeneration++; draftGeneration++; 
 .disabled-note { margin: 0; font-size: 13px; color: var(--sv-text-secondary); }
 input[type=radio], input[type=checkbox] { accent-color: var(--sv-accent-primary); flex-shrink: 0; }
 .manual-settings { max-width: 640px; }
+.node-discovery { padding: 18px; margin: 8px 0 26px; border: 1px solid var(--sv-border-subtle); border-radius: 10px; background: var(--sv-surface-2); }
+.discovery-heading h3 { margin: 0; font-size: 14px; }
+.discovery-heading p, .discovery-range p, .discovery-status, .discovery-empty { font-size: 12px; color: var(--sv-text-secondary); line-height: 1.8; margin: 8px 0; }
+.discovery-range { margin: 14px 0; }
+.discovery-range label { display: grid; gap: 8px; margin-top: 12px; font-size: 12px; }
+.discovery-range > small { display: block; margin-top: 10px; color: var(--sv-text-secondary); font-size: 11px; line-height: 1.7; }
+.discovery-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.discovery-actions .el-button { margin: 0; }
+.discovery-list { list-style: none; padding: 0; margin: 16px 0 0; }
+.discovery-list li { display: flex; align-items: center; gap: 16px; padding: 14px 0; border-top: 1px solid var(--sv-border-subtle); }
+.discovery-list li > div { min-width: 0; flex: 1; }
+.discovery-list strong { display: block; font-size: 13px; }
+.discovery-list code { display: block; overflow-wrap: anywhere; font: 11px/1.7 var(--sv-font-mono); color: var(--sv-text-secondary); margin-top: 5px; }
+.discovery-list p, .discovery-list small { display: block; font-size: 11px; line-height: 1.7; color: var(--sv-text-secondary); margin: 5px 0 0; }
+.discovery-list .el-button { flex: none; font-size: 12px; }
 .node-field { display: grid; gap: 10px; font-size: 14px; margin: 28px 0; }
 .node-field :deep(.el-input__wrapper) { min-height: 40px; }
 .credential-help { margin-bottom: 8px; font-size: 12px; }

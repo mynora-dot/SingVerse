@@ -96,6 +96,8 @@ WebDAV 使用保存的地址和加密凭据在服务端发起 GET/HEAD，转发 
 计算服务使用 POST /internal/v1/media/remote-tags，所有本地／WebDAV 标签请求均携带 reference、callbackOrigin、filename、size；Java 提供短期授权 Range 回源。转码、音轨任务同样使用引用和回调地址，禁止传本地路径；原 /internal/v1/media/tags 已移除。连接测试增加 /internal/v1/callback/check 及 Java 的短期 /api/v1/internal/compute-callback/{id}。详见 compute-internal.openapi.json；前端不访问计算节点。
 
 - 管理员性能节点：`GET/PUT /api/v1/compute-node` 和 `POST /api/v1/compute-node/test`；写入和测试要求 CSRF，凭据仅写，AUTO 解析部署变量、MANUAL 使用加密配置、DISABLED 停用。测试失败使用 Check.status 表达，不返回上游原始错误或触发管理员登出。
+- 管理员局域网发现：`POST /api/v1/compute-node/discovery` 可省略请求体，或提交 `{network,port}`。使用 HTTP 单播，默认优先业务回源地址的私网 `/24`、已保存/部署节点地址及 Java 私网网卡，最多 3 个网段、768 个主机、32 个并发、单次请求 500 毫秒、总计 10 秒及 32 个结果；默认端口 18090、8090。显式 `network` 只接受 RFC1918 IPv4 `/24`～`/32`，本机回环仅允许 `/32`；显式 `port` 为单个 1～65535 端口。公网、链路本地及 IPv6 全网扫描均拒绝。返回短期 `id`、名称、固定 IP 端点、`nodeId`、`pairingAvailable` 和提示，发现记录仅在服务端保留 2 分钟。
+- `POST /api/v1/compute-node/pair` 提交 `{discoveryId,revision}`，不接受客户端指定节点地址或凭据。Java 使用业务库持久 RSA3072 身份完成 PSS-SHA256 挑战签名及 OAEP-SHA256 凭据解密，再检查内部 Bearer 认证与节点到业务服务的回源；只有 `AVAILABLE` 才以 MANUAL 保存，失败保留原设置，修订号冲突返回 409。内部连接密钥、公钥、私钥、签名、挑战和 owner 身份均不进入浏览器。发现及配对均要求管理员 Cookie 和 CSRF；节点内网首次配对采用 TOFU，已绑定节点只允许相同身份恢复，且节点必须开启局域网配对。固定私网 IP、回环或 ULA 端点可配对，不跟随 HTTP 重定向。
 - 计算内部 `GET /internal/v1/status` 验证 Bearer 凭据后返回身份和实际能力；与公开进程健康及兼容能力探测分离。
 
 ## TV 与亲友聚会
@@ -114,7 +116,7 @@ WebDAV 使用保存的地址和加密凭据在服务端发起 GET/HEAD，转发 
 
 `GET /api/v1/tv/library/songs/{id}` 读取当前歌曲展示投影，歌曲移除返回 404。投影沿用已应用元数据/文件标签与文件名解析的现有优先级，新增可用的 album、releaseDate、durationMs、scannedAt 与不透明 revision；无依据字段省略或 null，不补假值。revision 包含元数据和分类变化，供封面重载使用，不暴露路径或来源凭据。所有设备/参与者仍遵循现有授权；首页不对参与者开放。
 
-TV 非转码增强新增设备专用 text-tracks 与 releases/current、releases/apk；直放资源含 revision。文字检索读取有效元数据，支持规范化全拼、首字母及精确编号；共享读索引最长约30秒更新，分类先过滤再分页。接口定义只覆盖实际读取/发布能力，不承诺转码或自动轨道语义。
+TV 非转码增强新增设备专用 text-tracks 与 releases/current、releases/apk；直放资源含 revision。text-tracks 优先使用有效原始 LRC，缺少时复用已有内嵌歌词缓存；真实毫秒时间以 LRC 返回，无同步时间以新增的 `format=text` 返回，保留原有路径及鉴权，手机接口复用相同结果。读取不触发媒体重新探测。文字检索读取有效元数据，支持规范化全拼、首字母及精确编号；共享读索引最长约30秒更新，分类先过滤再分页。接口定义只覆盖实际读取/发布能力，不承诺转码或自动轨道语义。
 
 聚会快照现同时返回 stateRevision（包含播放事件的持久版本）和 revision（队列乐观并发版本）；TV 用前者防止旧快照覆盖，用后者提交队列命令。换会话/NAS 的迟到响应被忽略。
 
@@ -145,3 +147,20 @@ compute 内部 `/internal/v1/audio-roles/tasks` 接收固定 UUID、mode=PROBE|A
 `/api/v1/audio-processing` 为管理员伴奏中心：歌曲分页筛选、持久批次预览/提交/详情/取消/重试、单项取消、当前节点及模型下载/导入/试跑/选择。变更请求继续使用管理员会话和CSRF；上传按固定 `model` 参数接受有界原始权重或多文件模型 ZIP，省略参数兼容 htdemucs。基准上限 100MiB，htdemucs-openvino 上限 128MiB，未知模型及超限拒绝。compute内部 `/internal/v1/audio-roles/models` 使用Bearer鉴权，模型下载仅使用固定清单；原有单曲音轨接口保留。
 
 节点响应保留原 `model` 字段，并增加 `models`、`build` 和 `deployment`；后端支持 `openvino`，当前镜像未包含时返回 `IMAGE_MISSING`。可用资格绑定构建、运行库、设备与模型摘要；变更后须重新试跑。镜像构建及模型安装不等于硬件通过验收。
+
+## 电视首页个性化
+
+新增`/api/v1/admin/tv-settings`及封面上传/删除/图片接口：管理员Cookie读取，写入再验证CSRF与全局revision；上限8张JPEG/PNG，单张2,000,000字节、4096像素，归一为最长边1280px的JPEG。上传即保存并启用；PUT完整保存文案、轮播设置与全部已有图片的启停/顺序，不能通过PUT增删图片。冲突409，不静默覆盖。
+
+`GET /api/v1/tv/home`兼容增加`appearance`与`featuredPlaylists`，后者最多4个已保存共享歌单；配置按数组顺序提供已启用图片。`GET /api/v1/tv/home/banners/{id}/image`只接受已授权device，不接受亲友participant；删除或禁用404。全部图片接口no-store，元数据含稳定内容版本，TV可自行有界缓存。没有公开静态图片路径或外部URL代理。
+
+
+## 歌曲解码缓存
+
+管理员 `GET /api/v1/transcoding/cache` 按 `page`（默认0，上限1000000）、`size`（默认20，上限100）分页查看 Java 服务节点完整成功的实时 HLS 缓存，按 `lastAccessAt` 倒序和 ID 升序。返回设置、Java 缓存目录实际用量、完整缓存总数，以及包含缓存 ID、可用歌曲名称/歌手、音频/视频类型、大小、生成/访问时间、复用次数、租约状态和输出参数的条目；不暴露来源路径与节点凭据。实际用量可包含接收中的临时文件；列表不包含独立保存的离线兼容成品。
+
+`PUT /api/v1/transcoding/cache/settings` 接受完整 `SongCacheSettings`（容量64MiB–1PiB、策略LRU/LFU/TTL/MANUAL、TTL保留小时1–8760、revision），返回新设置。设置、索引及独立会话租约均保存在业务数据库。TTL 从完成生成时计算；LRU/LFU 仅在容量压力下淘汰，MANUAL 仅显式删除。旧修订返回409。`DELETE /cache/{id}` 成功204、播放租约保护409；`POST /cache/clear` 返回已清理/受保护数量。以上写入均要求管理员Cookie及 `X-CSRF-Token`，设备/亲友Bearer不能管理缓存。
+
+Java 按歌曲、素材指纹及完整播放参数查找缓存，命中时沿用同源受权播放接口，创建独立播放会话，执行结果包含 `cacheHit=true` 和不透明 `cacheId`。缓存读取、管理及清理不依赖 compute 在线。未命中时 compute 执行解码，Java 下载已完成产物并验证长度、SHA-256 和整包 HLS 引用，原子发布后才进入索引；确认落盘后释放 compute 临时产物。任一策略和批量清理都跳过活动租约，满额且无法腾出空间时返回507，删除失败保留索引。重启保留完整缓存，会话租约按续租到期释放。
+
+`PlaybackOptions.start` 是原媒体时间轴上的请求起点。非零起点优先匹配仅将 `start` 设为 0 的同参数整曲缓存；命中后 `PlaybackResource.offset` 仍为缓存的真实偏移 0，客户端对 HLS、DIRECT、VERSION 均按 `max(0, start - offset)` 定位本地媒体时间，播放回报使用 `currentTime + offset`。无完整缓存时仍精确匹配局部起点或按请求起点转码，画质、编码、音轨、字幕、终端能力及兼容处理意图保持隔离；不会因起点不同主动删除旧缓存。

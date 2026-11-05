@@ -19,10 +19,12 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** Business authorization, durable offline intent and compatibility version ownership. */
+/** Business authorization and service-owned decoded caches and compatibility versions. */
 @Service
 public class TranscodeService {
     @org.springframework.beans.factory.annotation.Autowired private com.mynora.singverse.media.audio.AudioJobService audioJobs;
+    @org.springframework.beans.factory.annotation.Autowired private SongCacheService cache;
+    private final Set<String> caching = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final TranscodeMapper mapper;
     private final TranscodeClient compute;
     private final MediaSongRepository songs;
@@ -166,8 +168,12 @@ public class TranscodeService {
 
     private String insert(
             String songId, String owner, String purpose, JsonNode target, Connection connection) {
+        return insert(UUID.randomUUID().toString(), songId, owner, purpose, target, connection);
+    }
+
+    private String insert(String id,
+            String songId, String owner, String purpose, JsonNode target, Connection connection) {
         var song = songs.get(songId);
-        String id = UUID.randomUUID().toString();
         var source = input(id, songId, connection);
         var row = new HashMap<String, Object>();
         row.put("id", id);
@@ -176,7 +182,7 @@ public class TranscodeService {
         row.put("purpose", purpose);
         row.put("state", purpose.equals("OFFLINE") ? "QUEUED" : "STARTING");
         row.put("fingerprint", fingerprint(song));
-        row.put("node_origin", connection.origin().toString());
+        row.put("node_origin", connection == null ? "" : connection.origin().toString());
         row.put("input_json", source.toString());
         row.put("target_json", target.toString());
         row.put("now", now());
@@ -206,6 +212,40 @@ public class TranscodeService {
         var song = songs.get(songId);
         var client = body.path("client");
         var selected = target(body, "REALTIME");
+        String mediaFingerprint = fingerprint(song);
+        String cacheKey = cache.key(songId, mediaFingerprint, selected, client,
+                body.path("force").asBoolean(false), body.hasNonNull("codec"));
+        String cachedSession = UUID.randomUUID().toString();
+        var cachedTarget = selected;
+        ObjectNode cached = null;
+        if (selected.path("start").asDouble() > 0) {
+            // A full-song cache serves seeks with its original offset; partial caches keep exact keys.
+            var wholeTarget = selected.deepCopy().put("start", 0.0);
+            String wholeKey = cache.key(songId, mediaFingerprint, wholeTarget, client,
+                    body.path("force").asBoolean(false), body.hasNonNull("codec"));
+            cached = cache.acquire(wholeKey, cachedSession);
+            if (cached != null && (!cached.path("offset").isNumber() || cached.path("offset").asDouble() != 0.0)) {
+                cache.release(cachedSession);
+                cached = null;
+            }
+            if (cached != null) {
+                cacheKey = wholeKey;
+                cachedTarget = wholeTarget;
+            }
+        }
+        if (cached == null) cached = cache.acquire(cacheKey, cachedSession);
+        if (cached != null) {
+            try {
+                insert(cachedSession, songId, owner, "REALTIME", cachedTarget, null);
+                cached.put("id", cachedSession).put("cacheKey", cacheKey).put("cacheHit", true).put("computeReleased", true);
+                if (mapper.saveActiveCache(cachedSession, cached.toString(), now()) != 1)
+                    throw fail(410, "播放资源已结束");
+                return view(cachedSession, owner, prefix);
+            } catch (RuntimeException error) {
+                cache.release(cachedSession);
+                throw error;
+            }
+        }
         ObjectNode cachedVersion = null;
         for (var version : mapper.versions(songId, fingerprint(song))) {
             if (body.hasNonNull("audio_id")
@@ -303,6 +343,7 @@ public class TranscodeService {
                         && !selected.path("fmp4").asBoolean(false))
                     selected.put("mode", "TRANSCODE");
             mapper.plan(id, selected.toString());
+            cache.assertCapacity();
             // Persist the exact mode used by retries and restart recovery.
             var row = mapper.find(id);
             var start = (ObjectNode) decode(row.get("input_json"));
@@ -330,6 +371,7 @@ public class TranscodeService {
             }
             ((ObjectNode) execution).set("media", plan.path("media"));
             ((ObjectNode) execution).set("reasons", plan.path("reasons"));
+            ((ObjectNode) execution).put("cacheKey", cacheKey);
             mapper.update(id, "RUNNING", execution.toString(), "", now());
             return view(id, owner, prefix);
         } catch (org.springframework.web.server.ResponseStatusException e) {
@@ -360,14 +402,23 @@ public class TranscodeService {
             throw fail(409, "媒体已变化，请重建播放资源");
         JsonNode result = decode(row.get("result_json"));
         if (List.of("STARTING", "RUNNING").contains(str(row, "state"))) {
-            var remote =
-                    compute.call(
-                            compute.connection(str(row, "node_origin")),
-                            "/internal/v1/transcoding/executions/" + execution(row) + "/lease",
-                            "POST",
-                            null);
             var merged = (ObjectNode) result.deepCopy();
-            merged.setAll((ObjectNode) remote);
+            var local = str(row, "purpose").equals("REALTIME") ? cache.renew(id) : null;
+            if (local != null) {
+                boolean hit = merged.path("cacheHit").asBoolean();
+                merged.setAll(local);
+                merged.put("id", id).put("cacheHit", hit);
+                if (!result.hasNonNull("cacheId") && mapper.saveActiveCache(id, merged.toString(), now()) != 1) {
+                    cache.release(id);
+                    throw fail(410, "播放资源已结束");
+                }
+            } else {
+                if (result.hasNonNull("cacheId")) throw fail(410, "缓存已清理，请重新开始播放");
+                var remote = compute.call(compute.connection(str(row, "node_origin")),
+                        "/internal/v1/transcoding/executions/" + execution(row) + "/lease", "POST", null);
+                merged.setAll((ObjectNode) remote);
+                merged = cacheCompleted(row, merged);
+            }
             result = merged;
             mapper.renew(id, now());
         }
@@ -396,6 +447,42 @@ public class TranscodeService {
                         + "/artifacts/"
                         + (str(row, "purpose").equals("OFFLINE") ? "output.mp4" : "master.m3u8"));
         return out;
+    }
+
+    /** Publish verified HLS on the service node before releasing compute's temporary output. */
+    private ObjectNode cacheCompleted(Map<String, Object> row, ObjectNode execution) {
+        String id = str(row, "id");
+        if (!str(row, "purpose").equals("REALTIME") || execution.hasNonNull("cacheId")
+                || !execution.path("state").asText().equals("SUCCEEDED")
+                || execution.path("cacheKey").asText().isBlank() || !caching.add(id)) return execution;
+        try {
+            var connection = compute.connection(str(row, "node_origin"));
+            var saved = cache.capture(row, execution.path("cacheKey").asText(), connection, execution);
+            saved.put("id", id).put("cacheKey", execution.path("cacheKey").asText()).put("cacheHit", false)
+                    .put("computeReleased", false);
+            if (mapper.saveActiveCache(id, saved.toString(), now()) != 1) cache.release(id);
+            acknowledgeCached(row, saved);
+            return saved;
+        } catch (RuntimeException error) {
+            // A failed cache transfer must not interrupt the current temporary playback.
+            org.slf4j.LoggerFactory.getLogger(TranscodeService.class).warn("Song cache transfer deferred for execution {}", id);
+            return execution;
+        } finally {
+            caching.remove(id);
+        }
+    }
+
+    private void acknowledgeCached(Map<String, Object> row, ObjectNode result) {
+        if (result.path("computeReleased").asBoolean() || str(row, "node_origin").isBlank()) return;
+        try {
+            compute.call(compute.connection(str(row, "node_origin")),
+                    "/internal/v1/transcoding/executions/" + execution(row) + "/acknowledge", "POST", null);
+            result.put("computeReleased", true);
+            if (mapper.saveActiveCache(str(row, "id"), result.toString(), now()) != 1)
+                cache.release(str(row, "id"));
+        } catch (RuntimeException error) {
+            org.slf4j.LoggerFactory.getLogger(TranscodeService.class).warn("Temporary compute output release deferred for execution {}", str(row, "id"));
+        }
     }
 
     public JsonNode hardwareSettings() {
@@ -473,6 +560,27 @@ public class TranscodeService {
 
     public synchronized void cancel(String id, String owner) {
         var row = require(id, owner);
+        var result = (ObjectNode) decode(row.get("result_json"));
+        if (str(row, "purpose").equals("REALTIME") && !result.hasNonNull("cacheId")) {
+            var local = cache.renew(id);
+            if (local != null) {
+                result.setAll(local);
+            } else {
+                try {
+                    var remote = compute.call(compute.connection(str(row, "node_origin")),
+                            "/internal/v1/transcoding/executions/" + execution(row), "GET", null);
+                    result.setAll((ObjectNode) remote);
+                    result = cacheCompleted(row, result);
+                } catch (org.springframework.web.server.ResponseStatusException unavailable) {
+                    // Cancellation still releases local ownership when a node is unavailable.
+                }
+            }
+        }
+        if (result.hasNonNull("cacheId")) {
+            cache.release(id);
+            mapper.update(id, "CANCELLED", result.toString(), "", now());
+            return;
+        }
         if (str(row, "state").equals("QUEUED")) {
             mapper.update(id, "CANCELLED", "{}", "", now());
             return;
@@ -529,14 +637,20 @@ public class TranscodeService {
             version(id, str(row, "song_id"), response, range, false);
             return;
         }
-        var remote =
-                compute.artifact(
-                        compute.connection(str(row, "node_origin")),
-                        "/internal/v1/transcoding/executions/"
-                                + execution(row)
-                                + "/artifacts/"
-                                + name,
-                        range);
+        if (cache.serve(id, name, range, false, response)) return;
+        if (decode(row.get("result_json")).hasNonNull("cacheId"))
+            throw fail(410, "缓存已清理，请重新开始播放");
+        java.net.http.HttpResponse<InputStream> remote;
+        try {
+            remote = compute.artifact(
+                    compute.connection(str(row, "node_origin")),
+                    "/internal/v1/transcoding/executions/" + execution(row) + "/artifacts/" + name,
+                    range);
+        } catch (org.springframework.web.server.ResponseStatusException unavailable) {
+            // A concurrent publish may have released compute's copy after the first local lookup.
+            if (!response.isCommitted() && cache.serve(id, name, range, false, response)) return;
+            throw unavailable;
+        }
         try (var input = remote.body()) {
             response.setStatus(remote.statusCode());
             response.setHeader("Cache-Control", "private, no-store");
@@ -606,12 +720,22 @@ public class TranscodeService {
                         mapper.update(id, "FAILED", "{}", "源媒体已变化", now());
                         continue;
                     }
-                    var connection = compute.connection(str(row, "node_origin"));
                     if (str(row, "purpose").equals("REALTIME")) {
-                        if (now() - ((Number) row.get("renewed_at")).longValue() > 120000)
+                        var result = (ObjectNode) decode(row.get("result_json"));
+                        if (result.hasNonNull("cacheId")) acknowledgeCached(row, result);
+                        else if (result.hasNonNull("cacheKey")) {
+                            var remote = compute.call(compute.connection(str(row, "node_origin")),
+                                    "/internal/v1/transcoding/executions/" + execution(row), "GET", null);
+                            result.setAll((ObjectNode) remote);
+                            cacheCompleted(row, result);
+                        }
+                        // Transfers may outlast this pending snapshot; expire against the latest
+                        // lease in the database so a player renewing during capture stays active.
+                        if (mapper.expireRealtime(id, now() - 120000, now()) == 1)
                             cancel(id, str(row, "owner_id"));
                         continue;
                     }
+                    var connection = compute.connection(str(row, "node_origin"));
                     JsonNode result;
                     if (str(row, "state").equals("QUEUED")) {
                         var body = (ObjectNode) decode(row.get("input_json"));

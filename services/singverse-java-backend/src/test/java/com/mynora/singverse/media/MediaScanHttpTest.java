@@ -21,11 +21,13 @@ import org.springframework.test.context.*;
 class MediaScanHttpTest {
     @TempDir static Path temp;
     static com.sun.net.httpserver.HttpServer computeStub;
+    static final java.util.concurrent.atomic.AtomicInteger tagRequests = new java.util.concurrent.atomic.AtomicInteger();
     static void startComputeStub() {
         if (computeStub != null) return;
         try {
             computeStub = com.sun.net.httpserver.HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             computeStub.createContext("/internal/v1/media/remote-tags", exchange -> {
+                tagRequests.incrementAndGet();
                 var mapper = new ObjectMapper();
                 boolean authorized = "Bearer isolated-compute-token-01234567890123456789".equals(exchange.getRequestHeaders().getFirst("Authorization"));
                 byte[] response = "{}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
@@ -36,6 +38,11 @@ class MediaScanHttpTest {
                     String content;
                     try {content=java.net.http.HttpClient.newHttpClient().send(req,java.net.http.HttpResponse.BodyHandlers.ofString()).body();}catch(InterruptedException e){Thread.currentThread().interrupt();throw new java.io.IOException(e);}
                     if(content.startsWith("tagged"))response=mapper.writeValueAsBytes(Map.of("tags",Map.of("title", "内嵌歌名", "artists", List.of("内嵌歌手"), "album", "内嵌专辑", "releaseDate", "2021-02-03")));
+                    if(content.startsWith("tagged lyrics") || content.startsWith("lyrics-only")) {
+                        var result = mapper.readTree(content.startsWith("tagged") ? response : "{\"tags\":{}}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        ((com.fasterxml.jackson.databind.node.ObjectNode)result).putObject("lyrics").put("timing", "lrc").put("text", "[00:01.00]本地第一句\n[00:02.00]本地第二句");
+                        response = mapper.writeValueAsBytes(result);
+                    }
                 }
                 exchange.sendResponseHeaders(authorized ? 200 : 401, response.length);
                 try (var output = exchange.getResponseBody()) { output.write(response); }
@@ -57,11 +64,14 @@ class MediaScanHttpTest {
         registry.add("singverse.compute.token-file", () -> temp.resolve("compute-token").toString());
         registry.add("singverse.sqlite.path", () -> temp.resolve("scan.db").toString());
         registry.add("singverse.auth.key-file", () -> temp.resolve("master.key").toString());
+        registry.add("singverse.webdav.metadata-path", () -> temp.resolve("derived").toString());
     }
     @LocalServerPort int port;
     @Autowired JdbcTemplate db;
     @Autowired ObjectMapper json;
     @Autowired com.mynora.singverse.media.audio.AudioJobService audioJobs;
+    @Autowired com.mynora.singverse.media.metadata.MetadataFileService metadataFiles;
+    @Autowired com.mynora.singverse.tv.TvTextService tvText;
     HttpClient client;
     String profileId, selectedRuleId;
     static final String PARSER = "/api/v1/filename-parser";
@@ -165,6 +175,50 @@ class MediaScanHttpTest {
         assertThat(request(source + "/scan", "POST", null, true).statusCode()).isEqualTo(200);
         indexed = body(request(source + "/songs", "GET", null, false));
         for (var song : indexed.path("items")) if (song.path("relativePath").asText().endsWith(".flac")) assertThat(song.path("metadata").isNull()).isTrue();
+    }
+
+    @Test void localEmbeddedLyricsPersistAndProjectWithoutReprobingAndClearOnRescan() throws Exception {
+        login(); createProfile();
+        Path directory = Files.createTempDirectory(temp, "local-lyrics-");
+        Path tagged = Files.writeString(directory.resolve("有标签-歌手.mp3"), "tagged lyrics fixture");
+        Path lyricsOnly = Files.writeString(directory.resolve("只有歌词-歌手.flac"), "lyrics-only fixture");
+        String source = local(directory);
+        String sourceId = source.substring(source.lastIndexOf('/') + 1);
+        assertThat(request(source + "/scan", "POST", null, true).statusCode()).isEqualTo(200);
+        var indexed = body(request(source + "/songs", "GET", null, false));
+        assertThat(indexed.path("items")).hasSize(2);
+        int requestsAfterScan = tagRequests.get();
+        metadataFiles.runNext();
+        for (var song : indexed.path("items")) {
+            String id = song.path("id").asText();
+            var embedded = json.readTree(db.queryForObject("SELECT embedded_tags_json FROM media_song WHERE id=?", String.class, id));
+            assertThat(embedded.at("/lyrics/text").asText()).contains("[00:01.00]本地第一句");
+            if (song.path("relativePath").asText().startsWith("只有歌词")) assertThat(song.path("metadata").isNull()).isTrue();
+            Path managed = metadataFiles.directory(sourceId, id);
+            assertThat(Files.readString(managed.resolve("media.lrc"))).contains("本地第一句", "[00:02.00]");
+            assertThat(json.readTree(Files.readString(managed.resolve("metadata.json"))).at("/metadata/lyrics/timing").asText()).isEqualTo("lrc");
+            JsonNode textTracks = json.valueToTree(tvText.tracks(id));
+            assertThat(textTracks.at("/items/0/id").asText()).isEqualTo("metadata-lyrics");
+            assertThat(textTracks.at("/items/0/text").asText()).contains("[00:01.00]本地第一句");
+        }
+        assertThat(tagRequests.get()).isEqualTo(requestsAfterScan);
+        assertThat(Files.readString(tagged)).isEqualTo("tagged lyrics fixture");
+        assertThat(Files.readString(lyricsOnly)).isEqualTo("lyrics-only fixture");
+        try (var files = Files.list(directory)) { assertThat(files.count()).isEqualTo(2); }
+
+        Files.writeString(tagged, "tagged fixture without lyrics");
+        Files.writeString(lyricsOnly, "fixture without lyrics");
+        assertThat(request(source + "/scan", "POST", null, true).statusCode()).isEqualTo(200);
+        metadataFiles.runNext();
+        for (var song : indexed.path("items")) {
+            String id = song.path("id").asText();
+            String embedded = db.queryForObject("SELECT embedded_tags_json FROM media_song WHERE id=?", String.class, id);
+            assertThat(embedded == null || !json.readTree(embedded).has("lyrics")).isTrue();
+            Path managed = metadataFiles.directory(sourceId, id);
+            assertThat(Files.exists(managed.resolve("media.lrc"))).isFalse();
+            assertThat(Files.exists(managed.resolve("media.lyrics.json"))).isFalse();
+            assertThat(json.<JsonNode>valueToTree(tvText.tracks(id)).path("items")).isEmpty();
+        }
     }
 
     @Test void localVideoRequiresSessionSupportsRangesAndRejectsEscapedFiles() throws Exception {

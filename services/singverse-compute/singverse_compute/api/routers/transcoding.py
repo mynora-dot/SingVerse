@@ -128,14 +128,31 @@ def remove(request: Request, identifier: str):
 @router.get('/executions/{identifier}/artifacts/{name}')
 def artifact(request: Request, identifier: str, name: str):
     service = request.app.state.transcoding
-    path = service.artifact(identifier, name)
-    service.renew(identifier)
+    with service.lock:
+        path = service.artifact(identifier, name)
+        service.renew(identifier)
     mime = {'m3u8':'application/vnd.apple.mpegurl','ts':'video/mp2t','m4s':'video/iso.segment','mp4':'video/mp4','vtt':'text/vtt'}[path.suffix[1:]]
     return FileResponse(path, media_type=mime, headers={'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'})
 
 @router.post('/executions/{identifier}/acknowledge')
 def acknowledge(request: Request, identifier: str):
     return request.app.state.transcoding.acknowledge(identifier)
+
+
+class ArtifactDigest(BaseModel):
+    size: int = Field(gt=0)
+    sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
+class ArtifactExport(BaseModel):
+    artifacts: dict[str, ArtifactDigest]
+
+
+@router.get('/executions/{identifier}/export', response_model=ArtifactExport,
+            responses={409: {'description': 'Not a complete realtime HLS execution'},
+                       410: {'description': 'Execution artifacts already released'}})
+def export(request: Request, identifier: str):
+    return request.app.state.transcoding.export(identifier)
 
 class HardwareSelection(BaseModel):
     model_config = ConfigDict(extra='forbid')

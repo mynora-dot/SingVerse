@@ -2,6 +2,8 @@
 
 家庭KTV多端基础工程：Flutter Android手机端、Android TV、独立NAS管理前端、Java业务主服务、Python计算节点，以及亲友H5点歌页。亲友入口已调整为**微信扫一扫打开NAS网页**，不再使用小程序。当前已具备曲库管理及多端点唱基础，已增加单管理员登录与可选TOTP二次验证；已支持管理端本地/WebDAV 原始音视频在线播放；已增加电视设备授权、原始媒体直放、聚会队列与亲友 H5 扫码点歌；已支持计算节点转码、全曲库音轨角色及可选离线伴奏分离，真实电视/微信/NAS 验收见验证记录。
 
+完整成功的音视频解码结果由 Java 服务节点保存，可跨播放复用；管理端「曲库 → 歌曲缓存」可查看、删除缓存并配置容量，以及最近使用优先、热门歌曲优先、到期清理或手动清理策略。命中缓存与缓存管理无需计算节点在线；计算节点只保留临时执行产物。正在播放的数据受租约保护，媒体原件保持只读，详见[转码与缓存说明](docs/transcoding.md#任务缓存和恢复)。
+
 ## 技术栈与目录
 
 | 部分 | 技术 | 位置 |
@@ -145,6 +147,8 @@ Java 后端业务 SQL 统一使用 MyBatis Mapper XML，仓库后续开发遵守
 
 视频兼容播放、离线版本、工具安装及硬件边界见 [转码说明](docs/transcoding.md)。
 
+「设备与服务 → 性能节点配置 → 连接设置」支持扫描局域网计算节点，选择“连接此节点”后由服务端配对、检查双向连接并保存，无需手填连接密钥。同套 Compose 继续使用部署自动连接。独立设备须升级 compute，并将其 HTTP 入口绑定到主服务可达的受限内网地址；默认扫描常用端口，也可指定网段与端口。首次配对信任所在局域网，已配对节点仅允许同一主服务身份恢复连接，密钥不返回浏览器；完整边界见[计算节点说明](services/singverse-compute/README.md)。
+
 ## 转码硬件加速设置
 
 后台入口：**系统设置 → 性能节点配置 → 转码与硬件加速**。点击“读取硬件加速设置”，选择方式，可测试所选方式、探测所有编码器并保存。保存后对新任务生效；正在运行的任务不切换编码器。指定硬件方式时保存前自动执行短样本编码，失败保留原设置。
@@ -191,6 +195,8 @@ SINGVERSE_MACOS_COMPUTE=1 make docker-check
 ```
 
 后台性能节点连接方式使用“自动识别”。Java 经 `host.docker.internal:18090` 连接仅监听回环的 Mac 节点，复用现有内部凭据，使用 VideoToolbox；WebDAV 仍通过 Java 读取。本地曲库只需挂载到 Java，Mac 节点通过任务授权回源读取，无需相同路径。节点缓存与凭据也保存在被忽略的 `data/macos-compute`，均不放入媒体目录。启动器使用当前用户的 launchd 保持节点运行，并在 `~/Library/LaunchAgents` 注册指向本地运行配置的登录启动项；保留本仓库及虚拟环境路径。`scripts/macos-compute.py status` 查询、`stop` 停止节点并移除本启动器自己的登录启动项。Java HTTP 入口需为本机默认 18080；其他端口部署请调整 macOS Compose 覆盖文件中 Java 的业务回源地址。重启应用继续带上 macOS 覆盖文件，以保留此连接配置。
+
+Mac 启动器会把当前 shell 的 `COMPUTE_LAN_PAIRING_ENABLED=true|false` 写入 launchd 配置；未设置时保留上次配置，首次默认 `true`。例如 `COMPUTE_LAN_PAIRING_ENABLED=false services/singverse-compute/.venv/bin/python scripts/macos-compute.py restart` 关闭自动配对，后续普通重启继续保留；原有 Bearer 连接不受影响。仅接受 `true` / `false`，非法值会在停止现有节点前报错。
 
 Mac 原唱／伴奏使用原生 CPU 或 MPS：显式执行 `make compute-audio-setup` 安装固定依赖及权重后，用 `scripts/macos-compute.py restart` 加载音频配置，再到“设备与服务 → 性能节点配置”对 CPU／MPS 试跑。启动器默认 4GiB 音频预算，可显式指定 `--audio-memory-mib 2048`，后续重启保留该预算。本机 M2 已通过 MPS 分块卷积、CPU 数值对照及 8／60 秒批量分离验证；不启用隐式 CPU 算子回退。复验可执行 `make macos-audio-check`，完整说明见 compute README。
 

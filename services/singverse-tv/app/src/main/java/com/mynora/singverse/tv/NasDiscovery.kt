@@ -13,6 +13,7 @@ class NasDiscovery(context: Context) {
     private val main = Handler(Looper.getMainLooper())
     var services by mutableStateOf(listOf<Pair<String,String>>()); private set
     var status by mutableStateOf(""); private set
+    var searching by mutableStateOf(false); private set
     private var listener: NsdManager.DiscoveryListener? = null
     private val pending = java.util.ArrayDeque<NsdServiceInfo>()
     private var resolving = false
@@ -36,18 +37,18 @@ class NasDiscovery(context: Context) {
         })
     }
     fun start() {
-        stop(); services = emptyList(); status = "正在查找局域网 NAS…"
+        stop(); searching = true; services = emptyList(); status = "正在查找局域网 NAS…"
         val next = object : NsdManager.DiscoveryListener {
-            override fun onDiscoveryStarted(type: String) { main.post { status = "正在查找；也可手动输入地址" } }
+            override fun onDiscoveryStarted(type: String) { main.post { if (listener === this) status = "正在查找；也可手动输入地址" } }
             override fun onDiscoveryStopped(type: String) { }
             override fun onStartDiscoveryFailed(type: String, code: Int) { main.post { if(listener===this){ status = "发现不可用，请手动输入 NAS 地址"; stop() } } }
             override fun onStopDiscoveryFailed(type: String, code: Int) { }
-            override fun onServiceFound(info: NsdServiceInfo) { main.post { if (listener != null) { pending.add(info); resolve() } } }
-            override fun onServiceLost(info: NsdServiceInfo) { main.post { services = services.filterNot { it.first == info.serviceName } } }
+            override fun onServiceFound(info: NsdServiceInfo) { main.post { if (listener === this) { pending.add(info); resolve() } } }
+            override fun onServiceLost(info: NsdServiceInfo) { main.post { if (listener === this) services = services.filterNot { it.first == info.serviceName } } }
         }
         listener = next
-        runCatching { manager.discoverServices("_singverse._tcp.", NsdManager.PROTOCOL_DNS_SD, next) }.onFailure { status = "发现不可用，请手动输入 NAS 地址"; listener = null }
+        runCatching { manager.discoverServices("_singverse._tcp.", NsdManager.PROTOCOL_DNS_SD, next) }.onFailure { status = "发现不可用，请手动输入 NAS 地址"; listener = null; searching = false }
         main.postDelayed({ if (listener === next) { stop(); status = if (services.isEmpty()) "未发现 NAS；请确认服务已发布 mDNS，或手动输入" else "已发现 ${services.size} 个服务" } }, 15000)
     }
-    fun stop() { generation++;listener?.let { runCatching { manager.stopServiceDiscovery(it) } }; listener = null; pending.clear() }
+    fun stop() { searching = false; generation++;listener?.let { runCatching { manager.stopServiceDiscovery(it) } }; listener = null; pending.clear() }
 }

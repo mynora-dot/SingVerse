@@ -1,5 +1,7 @@
 package com.mynora.singverse.infrastructure.compute;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
 import java.util.*;
@@ -11,8 +13,15 @@ import org.springframework.stereotype.Component;
 /** Java requests metadata from the authenticated compute service; never launches media subprocesses. */
 @Component
 public class MediaTagsClient {
-    public record Tags(String title, List<String> artists, String album, String releaseDate) {
-        public Tags { artists = artists == null ? List.of() : List.copyOf(artists); }
+    public record Tags(String title, List<String> artists, String album, String releaseDate,
+            @JsonInclude(JsonInclude.Include.NON_NULL) JsonNode lyrics) {
+        public Tags {
+            artists = artists == null ? List.of() : List.copyOf(artists);
+            lyrics = lyrics == null || lyrics.isNull() ? null : lyrics.deepCopy();
+        }
+        public Tags(String title, List<String> artists, String album, String releaseDate) {
+            this(title, artists, album, releaseDate, null);
+        }
         public Set<String> fields() {
             var fields = new HashSet<String>();
             if (title != null && !title.isBlank()) fields.add("title");
@@ -65,8 +74,11 @@ public class MediaTagsClient {
                 .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(payload))).build();
             var response = http.send(request, info -> new com.mynora.singverse.media.metadata.BoundedResponse(4*1024*1024));
             if (response.statusCode() != 200) return null;
-            var tags = json.treeToValue(json.readTree(response.body()).path("tags"), Tags.class);
-            if (tags.fields().isEmpty()) return null;
+            var result = json.readTree(response.body());
+            if (!result.path("tags").isObject()) return null;
+            var extracted = json.treeToValue(result.path("tags"), Tags.class);
+            var tags = new Tags(extracted.title(), extracted.artists(), extracted.album(), extracted.releaseDate(), lyrics(result.get("lyrics")));
+            if (tags.fields().isEmpty() && tags.lyrics() == null) return null;
             if (tags.title() != null && tags.title().length() > 500 || tags.album() != null && tags.album().length() > 500
                     || tags.artists().size() > 32 || tags.artists().stream().anyMatch(a -> a == null || a.isBlank() || a.length() > 200)
                     || tags.releaseDate() != null && tags.releaseDate().length() > 32) return null;
@@ -74,5 +86,11 @@ public class MediaTagsClient {
         } catch (InterruptedException error) { Thread.currentThread().interrupt(); return null; }
         catch (Exception error) { return null; }
         finally { if (reference != null) input.revoke(reference); }
+    }
+    private JsonNode lyrics(JsonNode value) throws com.fasterxml.jackson.core.JsonProcessingException {
+        if (value == null || !value.isObject() || json.writeValueAsBytes(value).length > 262144) return null;
+        boolean text = value.path("text").isTextual() && !value.path("text").asText().isBlank();
+        boolean lines = value.path("lines").isArray() && !value.path("lines").isEmpty();
+        return text || lines ? value : null;
     }
 }

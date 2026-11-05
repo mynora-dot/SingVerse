@@ -19,6 +19,9 @@ services:
       WEBDAV_METADATA_PATH: /data/metadata/webdav
       METADATA_CACHE_PATH: /data/metadata/covers
       TRANSCODE_VERSION_PATH: /data/transcoding
+      SINGVERSE_SONG_CACHE_PATH: /data/transcoding/cache
+      SINGVERSE_SONG_CACHE_BYTES: '${SINGVERSE_SONG_CACHE_BYTES:-10737418240}'
+      SINGVERSE_SONG_CACHE_MINIMUM_FREE_BYTES: '${SINGVERSE_SONG_CACHE_MINIMUM_FREE_BYTES:-2147483648}'
       AUDIO_DERIVED_PATH: /data/audio-roles
     volumes:
       - singverse-data:/data

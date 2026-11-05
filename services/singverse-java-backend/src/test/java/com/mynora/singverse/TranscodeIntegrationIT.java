@@ -34,6 +34,8 @@ class TranscodeIntegrationIT {
         p.add("singverse.compute.base-url", () -> "http://127.0.0.1:" + COMPUTE_PORT);
         p.add("singverse.compute.token-file", () -> temp.resolve("compute-token").toString());
         p.add("singverse.transcoding.directory", () -> temp.resolve("versions").toString());
+        p.add("singverse.transcoding.cache-directory", () -> temp.resolve("service-cache").toString());
+        p.add("singverse.transcoding.cache-minimum-free-bytes", () -> "0");
         p.add("singverse.classification.worker-enabled", () -> false);
     }
 
@@ -250,6 +252,7 @@ class TranscodeIntegrationIT {
                             req("/api/v1/internal/transcode-input/" + id, "GET", null, false)
                                     .statusCode())
                     .isEqualTo(401);
+            verifyReusableCache(song, id);
             String offline =
                     ok(
                                     "/api/v1/transcoding/offline",
@@ -361,8 +364,60 @@ class TranscodeIntegrationIT {
                         created.path("location").asText(),
                         sourceId);
             }
+            var offlineCacheRequest = Map.of("force", true, "client",
+                    Map.of("video", List.of("h264"), "audio", List.of("aac")));
+            var produced = ok("/api/v1/transcoding/playback/" + song, "POST", offlineCacheRequest, true);
+            String producedSession = produced.path("id").asText();
+            for (int i = 0; i < 100 && produced.path("execution").path("cacheId").asText().isBlank(); i++) {
+                Thread.sleep(100);
+                produced = ok("/api/v1/transcoding/sessions/" + producedSession, "GET", null, false);
+            }
+            String storedId = produced.path("execution").path("cacheId").asText();
+            assertThat(storedId).isNotBlank();
+            assertThat(temp.resolve("service-cache").resolve(storedId).resolve("master.m3u8")).exists();
+            for (int i = 0; i < 100 && Files.exists(temp.resolve("cache").resolve(producedSession).resolve("master.m3u8")); i++) {
+                service.tick(); Thread.sleep(50);
+            }
+            assertThat(temp.resolve("cache").resolve(producedSession).resolve("master.m3u8")).doesNotExist();
             worker.destroy();
             worker.waitFor(10, TimeUnit.SECONDS);
+            var cachedOffline = ok("/api/v1/transcoding/playback/" + song, "POST", offlineCacheRequest, true);
+            assertThat(cachedOffline.path("execution").path("cacheHit").asBoolean()).isTrue();
+            assertThat(cachedOffline.path("execution").path("cacheId").asText()).isEqualTo(storedId);
+            long entriesBeforeSeek = ok("/api/v1/transcoding/cache", "GET", null, false).path("entryCount").asLong();
+            var offlineSeekRequest = new HashMap<String, Object>(offlineCacheRequest);
+            offlineSeekRequest.put("start", 1.21576);
+            var seekedOffline = ok("/api/v1/transcoding/playback/" + song, "POST", offlineSeekRequest, true);
+            assertThat(seekedOffline.path("id").asText()).isNotEqualTo(cachedOffline.path("id").asText());
+            assertThat(seekedOffline.path("execution").path("cacheHit").asBoolean()).isTrue();
+            assertThat(seekedOffline.path("execution").path("cacheId").asText()).isEqualTo(storedId);
+            assertThat(seekedOffline.path("offset").asDouble()).isZero();
+            assertThat(ok("/api/v1/transcoding/cache", "GET", null, false).path("entryCount").asLong()).isEqualTo(entriesBeforeSeek);
+            String localManifest = req(cachedOffline.path("url").asText(), "GET", null, false).body();
+            assertThat(localManifest).contains("#EXTM3U");
+            assertThat(req(seekedOffline.path("url").asText(), "GET", null, false).body()).isEqualTo(localManifest);
+            String variantName = localManifest.lines().filter(line -> !line.isBlank() && !line.startsWith("#")).findFirst().orElseThrow();
+            URI localBase = URI.create("http://127.0.0.1:" + port + cachedOffline.path("url").asText());
+            URI variantUrl = localBase.resolve(variantName);
+            String variantManifest = req(variantUrl.getPath(), "GET", null, false).body();
+            assertThat(variantManifest).contains("#EXT-X-ENDLIST");
+            String segmentName = variantManifest.lines().filter(line -> !line.isBlank() && !line.startsWith("#")).findFirst().orElseThrow();
+            String cacheRoot = "/api/v1/transcoding/cache";
+            var settingsOffline = ok(cacheRoot, "GET", null, false).path("settings");
+            var changedOffline = ok(cacheRoot + "/settings", "PUT", Map.of("maxBytes", settingsOffline.path("maxBytes").asLong(),
+                    "policy", "LRU", "ttlHours", 24, "revision", settingsOffline.path("revision").asLong()), true);
+            assertThat(changedOffline.path("policy").asText()).isEqualTo("LRU");
+            assertThat(req(cacheRoot + "/" + storedId, "DELETE", null, true).statusCode()).isEqualTo(409);
+            var localBytes = client.send(HttpRequest.newBuilder(variantUrl.resolve(segmentName))
+                    .header("Range", "bytes=0-15").build(), HttpResponse.BodyHandlers.ofByteArray());
+            assertThat(localBytes.statusCode()).isEqualTo(206);
+            assertThat(localBytes.body()).hasSize(16);
+            ok("/api/v1/transcoding/sessions/" + producedSession + "/cancel", "POST", null, true);
+            ok("/api/v1/transcoding/sessions/" + cachedOffline.path("id").asText() + "/cancel", "POST", null, true);
+            assertThat(req(cacheRoot + "/" + storedId, "DELETE", null, true).statusCode()).isEqualTo(409);
+            ok("/api/v1/transcoding/sessions/" + seekedOffline.path("id").asText() + "/cancel", "POST", null, true);
+            assertThat(req(cacheRoot + "/" + storedId, "DELETE", null, true).statusCode()).isEqualTo(204);
+            assertThat(temp.resolve("service-cache").resolve(storedId)).doesNotExist();
             var version =
                     ok(
                             "/api/v1/transcoding/playback/" + song,
@@ -395,6 +450,75 @@ class TranscodeIntegrationIT {
             worker.destroy();
             if (!worker.waitFor(10, TimeUnit.SECONDS)) worker.destroyForcibly();
         }
+    }
+
+    void verifyReusableCache(String song, String originalSession) throws Exception {
+        JsonNode completed = null;
+        for (int i = 0; i < 100; i++) {
+            completed = ok("/api/v1/transcoding/sessions/" + originalSession, "GET", null, false);
+            if (!completed.path("execution").path("cacheId").asText().isBlank()) break;
+            Thread.sleep(50);
+        }
+        assertThat(completed.path("execution").path("state").asText()).isEqualTo("SUCCEEDED");
+        assertThat(completed.path("execution").path("cacheHit").asBoolean()).isFalse();
+        String cacheId = completed.path("execution").path("cacheId").asText();
+        assertThat(cacheId).isNotBlank().isNotEqualTo(originalSession);
+
+        var reused = ok("/api/v1/transcoding/playback/" + song, "POST",
+                Map.of("client", Map.of("video", List.of("h264"), "audio", List.of("aac"))), true);
+        String reusedSession = reused.path("id").asText();
+        assertThat(reusedSession).isNotBlank().isNotEqualTo(originalSession);
+        assertThat(reused.path("execution").path("cacheHit").asBoolean()).isTrue();
+        assertThat(reused.path("status").asText()).isEqualTo("READY");
+        assertThat(reused.path("url").asText()).contains(reusedSession);
+        assertThat(req(reused.path("url").asText(), "GET", null, false).body())
+                .isEqualTo(req(completed.path("url").asText(), "GET", null, false).body())
+                .contains("#EXTM3U");
+
+        // A seek is a new authorized session over the existing full-song media, not a new tail cache.
+        var seeked = ok("/api/v1/transcoding/playback/" + song, "POST",
+                Map.of("start", 1.21576, "client", Map.of("video", List.of("h264"), "audio", List.of("aac"))), true);
+        String seekedSession = seeked.path("id").asText();
+        assertThat(seekedSession).isNotEqualTo(originalSession).isNotEqualTo(reusedSession);
+        assertThat(seeked.path("execution").path("cacheHit").asBoolean()).isTrue();
+        assertThat(seeked.path("execution").path("cacheId").asText()).isEqualTo(cacheId);
+        assertThat(seeked.path("offset").asDouble()).isZero();
+        assertThat(req(seeked.path("url").asText(), "GET", null, false).body())
+                .isEqualTo(req(completed.path("url").asText(), "GET", null, false).body());
+
+        String cacheRoot = "/api/v1/transcoding/cache";
+        var cache = ok(cacheRoot, "GET", null, false);
+        assertThat(cache.path("entryCount").asInt()).isEqualTo(1);
+        assertThat(cache.path("totalElements").asInt()).isEqualTo(1);
+        var entry = cache.path("items").get(0);
+        assertThat(entry.path("id").asText()).isEqualTo(cacheId);
+        assertThat(entry.path("songId").asText()).isEqualTo(song);
+        assertThat(entry.path("title").asText()).contains("测试歌曲");
+        assertThat(entry.path("artist").asText()).contains("歌手");
+        assertThat(entry.path("mediaType").asText()).isEqualTo("VIDEO");
+        assertThat(entry.path("hits").asInt()).isEqualTo(2);
+        assertThat(entry.path("bytes").asLong()).isPositive();
+        assertThat(entry.path("leased").asBoolean()).isTrue();
+
+        long revision = cache.path("settings").path("revision").asLong();
+        var saved = ok(cacheRoot + "/settings", "PUT",
+                Map.of("maxBytes", 64L * 1024 * 1024, "policy", "LFU", "ttlHours", 72,
+                        "revision", revision), true);
+        assertThat(saved.path("revision").asLong()).isEqualTo(revision + 1);
+        assertThat(saved.path("maxBytes").asLong()).isEqualTo(64L * 1024 * 1024);
+        assertThat(saved.path("policy").asText()).isEqualTo("LFU");
+        assertThat(ok(cacheRoot, "GET", null, false).path("settings")).isEqualTo(saved);
+        assertThat(req(cacheRoot + "/" + cacheId, "DELETE", null, true).statusCode()).isEqualTo(409);
+
+        ok("/api/v1/transcoding/sessions/" + originalSession + "/cancel", "POST", null, true);
+        // Releasing the producing session must preserve a separate player's cache lease.
+        assertThat(req(cacheRoot + "/" + cacheId, "DELETE", null, true).statusCode()).isEqualTo(409);
+        assertThat(req(reused.path("url").asText(), "GET", null, false).body()).contains("#EXTM3U");
+        ok("/api/v1/transcoding/sessions/" + reusedSession + "/cancel", "POST", null, true);
+        assertThat(req(cacheRoot + "/" + cacheId, "DELETE", null, true).statusCode()).isEqualTo(409);
+        ok("/api/v1/transcoding/sessions/" + seekedSession + "/cancel", "POST", null, true);
+        assertThat(req(cacheRoot + "/" + cacheId, "DELETE", null, true).statusCode()).isEqualTo(204);
+        assertThat(ok(cacheRoot, "GET", null, false).path("entryCount").asInt()).isZero();
     }
 
     static void run(String... args) throws Exception {

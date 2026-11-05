@@ -370,6 +370,22 @@ void main() {
       throwsFormatException,
     );
   });
+  test('TV login QR provides the NAS origin, authorization id and code', () {
+    final qr = TvAuthorizationQr.parse(
+      'http://nas.local:18080/admin/#/system/tv-devices?authorization=abc-123&code=012345',
+    );
+    expect(qr.origin, 'http://nas.local:18080');
+    expect(qr.id, 'abc-123');
+    expect(qr.code, '012345');
+    for (final value in [
+      'http://nas.local/admin/#/system/tv-devices?authorization=abc&code=12345',
+      'http://nas.local/admin/#/system/tv-devices?authorization=abc&code=123456&extra=1',
+      'http://user:pass@nas.local/admin/#/system/tv-devices?authorization=abc&code=123456',
+      'http://nas.local/party/#invite=${'a' * 43}',
+    ]) {
+      expect(() => TvAuthorizationQr.parse(value), throwsFormatException);
+    }
+  });
   test('text timelines use media time and preserve timed gaps', () {
     final lrc = parseText('lrc', '[offset:200]\n[00:01.20][00:03.000]一句歌词');
     expect(lrc.map((line) => line.startMs), [1000, 2800]);

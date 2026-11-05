@@ -9,6 +9,8 @@
  VALUES(#{row.id},#{row.id},'2',#{row.song_id},#{row.owner_id},#{row.purpose},#{row.state},#{row.fingerprint},#{row.node_origin},#{row.input_json},#{row.target_json},'{}','',#{row.now},#{row.now},#{row.now})</insert>
  <update id="update">UPDATE media_transcode SET state=#{state},result_json=#{result},error=#{error},updated_at=#{now} WHERE id=#{id} AND state NOT IN ('CANCELLED','DELETING')</update>
  <update id="renew">UPDATE media_transcode SET renewed_at=#{now} WHERE id=#{id}</update>
+ <update id="expireRealtime">UPDATE media_transcode SET state='CANCELLED',updated_at=#{now} WHERE id=#{id} AND purpose='REALTIME' AND state IN ('STARTING','RUNNING') AND renewed_at&lt;=#{since}</update>
+ <update id="saveActiveCache">UPDATE media_transcode SET state='RUNNING',result_json=#{result},error='',updated_at=#{now} WHERE id=#{id} AND purpose='REALTIME' AND state IN ('STARTING','RUNNING')</update>
  <update id="plan">UPDATE media_transcode SET target_json=#{target} WHERE id=#{id}</update>
  <update id="requeue">UPDATE media_transcode SET state='QUEUED',pipeline_version='2',execution_id=#{execution},result_json='{}',error='',updated_at=#{now} WHERE id=#{id} AND state NOT IN ('CANCELLED','DELETING')</update>
  <delete id="delete">DELETE FROM media_transcode WHERE id=#{id}</delete>

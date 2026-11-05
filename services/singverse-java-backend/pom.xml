@@ -46,7 +46,7 @@
       <build><plugins><plugin>
         <groupId>org.apache.maven.plugins</groupId><artifactId>maven-failsafe-plugin</artifactId>
         <configuration>
-          <includes><include>**/ComputeIntegrationIT.java</include><include>**/TranscodeIntegrationIT.java</include></includes>
+          <includes><include>**/ComputeIntegrationIT.java</include><include>**/TranscodeIntegrationIT.java</include><include>**/ComputeLanIntegrationIT.java</include></includes>
           <failIfNoTests>true</failIfNoTests>
           <systemPropertyVariables><compute.python>${compute.python}</compute.python></systemPropertyVariables>
         </configuration>

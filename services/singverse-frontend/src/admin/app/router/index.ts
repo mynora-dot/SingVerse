@@ -15,6 +15,8 @@ import { adminBasePath } from '../../core/hosting/mount-path'
 export const router = createRouter({
   history: createWebHashHistory(adminBasePath),
   routes: [
+    { path: '/library/cache', component: () => import('../../modules/song-cache/SongCacheView.vue'), meta: { title: '歌曲缓存' } },
+    { path: '/system/tv-settings', component: () => import('../../modules/tv-settings/TvSettingsView.vue'), meta: { title: '电视设置' } },
     { path: "/system/tv-devices", component: () => import("../../modules/tv-devices/TvDevicesView.vue"), meta: { title: "电视设备" } },
     ...mediaLibraryRoutes,
     ...songManagementRoutes,

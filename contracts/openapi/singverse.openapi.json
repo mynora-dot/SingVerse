@@ -10957,6 +10957,17 @@
                     "generatedAt": {
                       "type": "string",
                       "format": "date-time"
+                    },
+                    "appearance": {
+                      "$ref": "#/components/schemas/TvHomeAppearance"
+                    },
+                    "featuredPlaylists": {
+                      "type": "array",
+                      "maxItems": 4,
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "First four existing shared playlists; not a popularity ranking."
                     }
                   }
                 }
@@ -11027,7 +11038,7 @@
         "tags": [
           "TV and party"
         ],
-        "summary": "Read bounded same-stem UTF-8 or BOM UTF-16 LRC/SRT/VTT inside the authorized source",
+        "summary": "Read bounded original LRC/SRT/VTT sidecars or cached embedded lyrics for an authorized song",
         "security": [
           {
             "TvBearer": []
@@ -11077,7 +11088,8 @@
                             "enum": [
                               "lrc",
                               "srt",
-                              "vtt"
+                              "vtt",
+                              "text"
                             ]
                           },
                           "text": {
@@ -16978,6 +16990,989 @@
           }
         }
       }
+    },
+    "/api/v1/admin/tv-settings": {
+      "get": {
+        "operationId": "getTvSettings",
+        "tags": [
+          "TV settings"
+        ],
+        "summary": "Read shared television personalization settings",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvHomeAppearance"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input or unsupported image"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "CSRF failed or device identity required"
+          },
+          "404": {
+            "description": "Image absent, removed or disabled"
+          },
+          "409": {
+            "description": "Settings changed; reload before retry"
+          }
+        }
+      },
+      "put": {
+        "operationId": "saveTvSettings",
+        "tags": [
+          "TV settings"
+        ],
+        "summary": "Atomically save text, carousel behavior, enabled flags and banner order",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvHomeAppearance"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input or unsupported image"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "CSRF failed or device identity required"
+          },
+          "404": {
+            "description": "Image absent, removed or disabled"
+          },
+          "409": {
+            "description": "Settings changed; reload before retry"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TvHomeAppearance"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/tv-settings/banners": {
+      "post": {
+        "operationId": "uploadTvHomeBanner",
+        "tags": [
+          "TV settings"
+        ],
+        "summary": "Upload one JPEG/PNG <=2,000,000 bytes, <=4096px; normalize to JPEG <=1280px. Maximum eight images. Immediately saved and enabled.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvHomeAppearance"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input or unsupported image"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "CSRF failed or device identity required"
+          },
+          "404": {
+            "description": "Image absent, removed or disabled"
+          },
+          "409": {
+            "description": "Settings changed; reload before retry"
+          }
+        },
+        "parameters": [
+          {
+            "name": "revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/tv-settings/banners/{id}": {
+      "delete": {
+        "operationId": "removeTvHomeBanner",
+        "tags": [
+          "TV settings"
+        ],
+        "summary": "Delete a stored image with revision check",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TvHomeAppearance"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input or unsupported image"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "CSRF failed or device identity required"
+          },
+          "404": {
+            "description": "Image absent, removed or disabled"
+          },
+          "409": {
+            "description": "Settings changed; reload before retry"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/tv-settings/banners/{id}/image": {
+      "get": {
+        "operationId": "getAdminTvHomeBanner",
+        "tags": [
+          "TV settings"
+        ],
+        "summary": "Read a stored image including disabled images",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input or unsupported image"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "CSRF failed or device identity required"
+          },
+          "404": {
+            "description": "Image absent, removed or disabled"
+          },
+          "409": {
+            "description": "Settings changed; reload before retry"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/tv/home/banners/{id}/image": {
+      "get": {
+        "operationId": "getTvHomeBanner",
+        "tags": [
+          "TV settings"
+        ],
+        "summary": "Read an enabled homepage image; only authorized television devices",
+        "security": [
+          {
+            "TvBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input or unsupported image"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "CSRF failed or device identity required"
+          },
+          "404": {
+            "description": "Image absent, removed or disabled"
+          },
+          "409": {
+            "description": "Settings changed; reload before retry"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/transcoding/cache": {
+      "get": {
+        "tags": [
+          "Transcoding"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List complete decoded audio/video caches stored by the Java server",
+        "operationId": "listSongCache",
+        "description": "Default size 20, maximum 100. Sorted by lastAccessAt descending, then id ascending. Lists complete realtime HLS outputs verified and atomically published to Java-owned persistent storage. Saved offline compatibility versions keep their existing lifecycle. Cache settings, index and per-session leases persist in the business database. Listing, settings, deletion, clearing and authorized cache playback work while compute is offline. No media paths or compute address are exposed.",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000,
+              "default": 0
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SongCachePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid pagination or cache settings",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Administrator session required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin or CSRF rejected",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Cache entry unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Settings revision changed or cache entry is leased",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Server cache storage unavailable; no compute connection is required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "Server song-cache capacity or minimum free-disk budget exhausted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Local cache storage operation failed; failed deletion preserves the cache index",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transcoding/cache/settings": {
+      "put": {
+        "tags": [
+          "Transcoding"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Save decoded-cache capacity and eviction policy",
+        "operationId": "saveSongCacheSettings",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SongCacheSettings"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SongCacheSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid pagination or cache settings",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Administrator session required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin or CSRF rejected",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Cache entry unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Settings revision changed or cache entry is leased",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Server cache storage unavailable; no compute connection is required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "Server song-cache capacity or minimum free-disk budget exhausted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Local cache storage operation failed; failed deletion preserves the cache index",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "description": "Persist server-owned cache capacity and policy in the business database with revision protection. Defaults initialize from Java deployment configuration. No compute connection is required."
+      }
+    },
+    "/api/v1/transcoding/cache/{id}": {
+      "delete": {
+        "tags": [
+          "Transcoding"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Delete one unleased decoded-cache entry",
+        "operationId": "deleteSongCache",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Cache deleted"
+          },
+          "400": {
+            "description": "Invalid pagination or cache settings",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Administrator session required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin or CSRF rejected",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Cache entry unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Settings revision changed or cache entry is leased",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Server cache storage unavailable; no compute connection is required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "Server song-cache capacity or minimum free-disk budget exhausted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Local cache storage operation failed; failed deletion preserves the cache index",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "description": "Delete the Java-owned files before removing their database index. Active session leases return 409. No compute connection is required."
+      }
+    },
+    "/api/v1/transcoding/cache/clear": {
+      "post": {
+        "tags": [
+          "Transcoding"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Clear decoded caches while preserving active playback leases",
+        "operationId": "clearSongCache",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SongCacheClearResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid pagination or cache settings",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Administrator session required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin or CSRF rejected",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Cache entry unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Settings revision changed or cache entry is leased",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Server cache storage unavailable; no compute connection is required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "Server song-cache capacity or minimum free-disk budget exhausted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Local cache storage operation failed; failed deletion preserves the cache index",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "description": "Clear unleased Java-owned cache files; active playback leases are counted as skipped. No compute connection is required."
+      }
+    },
+    "/api/v1/compute-node/discovery": {
+      "post": {
+        "operationId": "discoverComputeLanNodes",
+        "summary": "Scan a bounded private LAN by HTTP unicast; retain fixed IP discovery IDs for two minutes",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComputeLanScan"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success; credentials and pairing proofs remain on the Java server.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComputeLanDiscovery"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid private IPv4 scan range, port or request"
+          },
+          "401": {
+            "description": "Administrator login required"
+          },
+          "403": {
+            "description": "CSRF rejected"
+          },
+          "404": {
+            "description": "Discovery record expired; scan again"
+          },
+          "409": {
+            "description": "Stale settings revision, changed node identity or pairing unavailable"
+          },
+          "422": {
+            "description": "Node authentication or business callback failed; previous settings retained"
+          },
+          "429": {
+            "description": "A bounded scan is already running"
+          },
+          "502": {
+            "description": "Invalid or failed node pairing exchange; previous settings retained"
+          },
+          "503": {
+            "description": "Operation interrupted"
+          }
+        }
+      }
+    },
+    "/api/v1/compute-node/pair": {
+      "post": {
+        "operationId": "pairComputeLanNode",
+        "summary": "Pair a discovered private node using the persistent server RSA identity; verify reverse callback before saving",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComputeLanPair"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success; credentials and pairing proofs remain on the Java server.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComputeNodeSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid private IPv4 scan range, port or request"
+          },
+          "401": {
+            "description": "Administrator login required"
+          },
+          "403": {
+            "description": "CSRF rejected"
+          },
+          "404": {
+            "description": "Discovery record expired; scan again"
+          },
+          "409": {
+            "description": "Stale settings revision, changed node identity or pairing unavailable"
+          },
+          "422": {
+            "description": "Node authentication or business callback failed; previous settings retained"
+          },
+          "429": {
+            "description": "A bounded scan is already running"
+          },
+          "502": {
+            "description": "Invalid or failed node pairing exchange; previous settings retained"
+          },
+          "503": {
+            "description": "Operation interrupted"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -21504,7 +22499,8 @@
           "start": {
             "type": "number",
             "minimum": 0,
-            "maximum": 86400
+            "maximum": 86400,
+            "description": "Requested position in original media seconds. A matching full-song cache may return HLS with offset 0; seek locally to max(0, start - resource.offset)."
           },
           "audio_id": {
             "type": "string",
@@ -21567,7 +22563,7 @@
           },
           "offset": {
             "type": "number",
-            "description": "Original media timeline offset in seconds"
+            "description": "Actual resource origin on the original media timeline, in seconds. Full-song cached HLS has offset 0 even for a nonzero requested start. All playback modes seek locally to max(0, requested start - offset) and report currentTime + offset."
           },
           "revision": {
             "type": "string"
@@ -21585,6 +22581,15 @@
                 "type": "integer",
                 "minimum": 0,
                 "description": "Observed child RSS peak; zero means not observed, not zero usage"
+              },
+              "cacheHit": {
+                "type": "boolean",
+                "description": "True when this playback uses an existing completed cache stored by Java; false for newly generated data."
+              },
+              "cacheId": {
+                "type": "string",
+                "format": "uuid",
+                "description": "Opaque identifier for a verified Java-owned persistent cache; each playback retains its own authorization and lease."
               }
             }
           },
@@ -21767,7 +22772,8 @@
                   "enum": [
                     "lrc",
                     "srt",
-                    "vtt"
+                    "vtt",
+                    "text"
                   ]
                 },
                 "text": {
@@ -22461,6 +23467,349 @@
             }
           }
         }
+      },
+      "TvHomeBanner": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "enabled",
+          "version",
+          "imagePath"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string",
+            "readOnly": true
+          },
+          "imagePath": {
+            "type": "string",
+            "readOnly": true,
+            "description": "Authenticated same-origin image path; no filesystem path."
+          }
+        }
+      },
+      "TvHomeAppearance": {
+        "type": "object",
+        "required": [
+          "revision",
+          "headline",
+          "subtitle",
+          "autoRotate",
+          "rotationSeconds",
+          "banners"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "headline": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "subtitle": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "autoRotate": {
+            "type": "boolean"
+          },
+          "rotationSeconds": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 60
+          },
+          "banners": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "$ref": "#/components/schemas/TvHomeBanner"
+            },
+            "description": "Array order is display order. TV omits disabled entries. PUT must include exactly current banner IDs; upload/remove are separate revision-checked operations."
+          }
+        }
+      },
+      "SongCacheSettings": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "maxBytes",
+          "policy",
+          "ttlHours",
+          "revision"
+        ],
+        "properties": {
+          "maxBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 67108864,
+            "maximum": 1125899906842624,
+            "description": "Persistent Java-server song-cache budget in bytes. Initialized to 10 GiB unless configured otherwise. Active leases are protected; shrinking may remain over budget until they finish."
+          },
+          "policy": {
+            "type": "string",
+            "enum": [
+              "LRU",
+              "LFU",
+              "TTL",
+              "MANUAL"
+            ],
+            "description": "Evict least recently used, least frequently reused, expire by age, or explicit administrator deletion only. Active leases are always protected."
+          },
+          "ttlHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8760,
+            "description": "Retention duration from successful completion for TTL policy, in hours; ignored by LRU, LFU and MANUAL."
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Optimistic concurrency revision. A stale save returns 409."
+          }
+        }
+      },
+      "SongCacheEntry": {
+        "type": "object",
+        "required": [
+          "id",
+          "mediaType",
+          "bytes",
+          "createdAt",
+          "lastAccessAt",
+          "hits",
+          "leased",
+          "target"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Opaque cache artifact identifier; never a filesystem path."
+          },
+          "songId": {
+            "type": "string",
+            "description": "Originating song identifier retained in the server cache index, when available."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Current effective song title, when the song still exists."
+          },
+          "artist": {
+            "type": "string",
+            "description": "Current effective artists separated by /, when the song still exists."
+          },
+          "mediaType": {
+            "type": "string",
+            "enum": [
+              "VIDEO",
+              "AUDIO"
+            ]
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastAccessAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "hits": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Number of completed-cache reuses; segment reads do not increase this count."
+          },
+          "leased": {
+            "type": "boolean",
+            "description": "True while playback holds a lease; manual and automatic eviction skip it."
+          },
+          "target": {
+            "type": "object",
+            "description": "Cache output parameters, including codec, resolution, tracks, subtitle mode and original timeline start. Media inputs and callback origins are omitted."
+          }
+        }
+      },
+      "SongCachePage": {
+        "type": "object",
+        "required": [
+          "settings",
+          "usageBytes",
+          "entryCount",
+          "items",
+          "page",
+          "size",
+          "totalElements"
+        ],
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/SongCacheSettings"
+          },
+          "usageBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Current bytes used in the Java-owned song-cache directory, including complete caches and in-progress temporary downloads; excludes compute temporary outputs and separate offline compatibility versions."
+          },
+          "entryCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Count of complete, verified realtime HLS cache entries in the Java server index."
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SongCacheEntry"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "totalElements": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "SongCacheClearResult": {
+        "type": "object",
+        "required": [
+          "removed",
+          "skipped"
+        ],
+        "properties": {
+          "removed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Entries protected by active playback leases."
+          }
+        }
+      },
+      "ComputeLanScan": {
+        "type": "object",
+        "properties": {
+          "network": {
+            "type": "string",
+            "maxLength": 32,
+            "description": "Optional RFC1918 IPv4 /24–/32; loopback is allowed only as a single /32. Public, link-local and IPv6 subnet scans are rejected. Defaults to callback-origin LAN, known node addresses and local private NIC networks (up to three /24 networks).",
+            "example": "192.168.1.0/24"
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535,
+            "description": "Optional single port. Defaults to 18090 and 8090; saved node endpoints are also checked."
+          }
+        },
+        "description": "At most 768 hosts, 32 concurrent requests, 500 ms per discovery request, 10 s total and 32 returned nodes. Fixed private IPs only; redirects are refused."
+      },
+      "ComputeLanPair": {
+        "type": "object",
+        "required": [
+          "discoveryId",
+          "revision"
+        ],
+        "properties": {
+          "discoveryId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Opaque server discovery record, valid for two minutes; arbitrary endpoint input is not accepted."
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Current ComputeNodeSettings revision; checked before pairing and again when saving."
+          }
+        }
+      },
+      "ComputeLanItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "endpoint",
+          "nodeId",
+          "pairingAvailable",
+          "message"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "endpoint": {
+            "type": "string",
+            "description": "Pinned numeric private IP HTTP(S) origin; no DNS resolution or redirects during pairing."
+          },
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "pairingAvailable": {
+            "type": "boolean",
+            "description": "Node pairing is enabled and owner is empty or matches this Java identity."
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ComputeLanDiscovery": {
+        "type": "object",
+        "required": [
+          "items",
+          "message"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "$ref": "#/components/schemas/ComputeLanItem"
+            }
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "description": "Never includes owner IDs, internal tokens, public/private keys, signatures or challenges."
       }
     }
   }

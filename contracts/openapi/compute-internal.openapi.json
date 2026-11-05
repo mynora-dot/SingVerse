@@ -140,6 +140,564 @@
         ]
       }
     },
+    "/internal/v1/lan/discovery": {
+      "get": {
+        "tags": [
+          "LAN pairing"
+        ],
+        "summary": "私网单播节点发现，不返回凭据",
+        "operationId": "discovery_internal_v1_lan_discovery_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Discovery"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Direct private peer and IP literal Host required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "title": "Type",
+                      "default": "about:blank"
+                    },
+                    "title": {
+                      "type": "string",
+                      "title": "Title"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "title": "Status"
+                    },
+                    "instance": {
+                      "type": "string",
+                      "title": "Instance"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "title",
+                    "status",
+                    "instance"
+                  ],
+                  "title": "Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Persistent identity unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "title": "Type",
+                      "default": "about:blank"
+                    },
+                    "title": {
+                      "type": "string",
+                      "title": "Title"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "title": "Status"
+                    },
+                    "instance": {
+                      "type": "string",
+                      "title": "Instance"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "title",
+                    "status",
+                    "instance"
+                  ],
+                  "title": "Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/lan/challenge": {
+      "post": {
+        "tags": [
+          "LAN pairing"
+        ],
+        "summary": "创建绑定节点、客户端身份和私网来源的一次性挑战",
+        "operationId": "challenge_internal_v1_lan_challenge_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChallengeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Challenge"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Pairing disabled or private boundary rejected",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "title": "Type",
+                      "default": "about:blank"
+                    },
+                    "title": {
+                      "type": "string",
+                      "title": "Title"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "title": "Status"
+                    },
+                    "instance": {
+                      "type": "string",
+                      "title": "Instance"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "title",
+                    "status",
+                    "instance"
+                  ],
+                  "title": "Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Node already owned or identity changed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "title": "Type",
+                      "default": "about:blank"
+                    },
+                    "title": {
+                      "type": "string",
+                      "title": "Title"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "title": "Status"
+                    },
+                    "instance": {
+                      "type": "string",
+                      "title": "Instance"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "title",
+                    "status",
+                    "instance"
+                  ],
+                  "title": "Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "title": "Type",
+                      "default": "about:blank"
+                    },
+                    "title": {
+                      "type": "string",
+                      "title": "Title"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "title": "Status"
+                    },
+                    "instance": {
+                      "type": "string",
+                      "title": "Instance"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "title",
+                    "status",
+                    "instance"
+                  ],
+                  "title": "Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Challenge or rate limit reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "title": "Type",
+                      "default": "about:blank"
+                    },
+                    "title": {
+                      "type": "string",
+                      "title": "Title"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "title": "Status"
+                    },
+                    "instance": {
+                      "type": "string",
+                      "title": "Instance"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "title",
+                    "status",
+                    "instance"
+                  ],
+                  "title": "Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Persistent identity unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "title": "Type",
+                      "default": "about:blank"
+                    },
+                    "title": {
+                      "type": "string",
+                      "title": "Title"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "title": "Status"
+                    },
+                    "instance": {
+                      "type": "string",
+                      "title": "Instance"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "title",
+                    "status",
+                    "instance"
+                  ],
+                  "title": "Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/lan/pair": {
+      "post": {
+        "tags": [
+          "LAN pairing"
+        ],
+        "summary": "签名配对或同身份恢复，仅返回 RSA 加密后的内部凭据",
+        "operationId": "pair_internal_v1_lan_pair_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid signature, challenge or client identity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "title": "Type",
+                      "default": "about:blank"
+                    },
+                    "title": {
+                      "type": "string",
+                      "title": "Title"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "title": "Status"
+                    },
+                    "instance": {
+                      "type": "string",
+                      "title": "Instance"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "title",
+                    "status",
+                    "instance"
+                  ],
+                  "title": "Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Pairing disabled or private boundary rejected",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "title": "Type",
+                      "default": "about:blank"
+                    },
+                    "title": {
+                      "type": "string",
+                      "title": "Title"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "title": "Status"
+                    },
+                    "instance": {
+                      "type": "string",
+                      "title": "Instance"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "title",
+                    "status",
+                    "instance"
+                  ],
+                  "title": "Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Node already owned or identity changed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "title": "Type",
+                      "default": "about:blank"
+                    },
+                    "title": {
+                      "type": "string",
+                      "title": "Title"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "title": "Status"
+                    },
+                    "instance": {
+                      "type": "string",
+                      "title": "Instance"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "title",
+                    "status",
+                    "instance"
+                  ],
+                  "title": "Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "title": "Type",
+                      "default": "about:blank"
+                    },
+                    "title": {
+                      "type": "string",
+                      "title": "Title"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "title": "Status"
+                    },
+                    "instance": {
+                      "type": "string",
+                      "title": "Instance"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "title",
+                    "status",
+                    "instance"
+                  ],
+                  "title": "Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "title": "Type",
+                      "default": "about:blank"
+                    },
+                    "title": {
+                      "type": "string",
+                      "title": "Title"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "title": "Status"
+                    },
+                    "instance": {
+                      "type": "string",
+                      "title": "Instance"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "title",
+                    "status",
+                    "instance"
+                  ],
+                  "title": "Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Persistent identity unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "title": "Type",
+                      "default": "about:blank"
+                    },
+                    "title": {
+                      "type": "string",
+                      "title": "Title"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "title": "Status"
+                    },
+                    "instance": {
+                      "type": "string",
+                      "title": "Instance"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "title",
+                    "status",
+                    "instance"
+                  ],
+                  "title": "Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/internal/v1/media/remote-tags": {
       "post": {
         "summary": "Remote Tags",
@@ -565,6 +1123,56 @@
                 "schema": {}
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/transcoding/executions/{identifier}/export": {
+      "get": {
+        "summary": "Export",
+        "operationId": "export_internal_v1_transcoding_executions__identifier__export_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "identifier",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Identifier"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactExport"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not a complete realtime HLS execution"
+          },
+          "410": {
+            "description": "Execution artifacts already released"
           },
           "422": {
             "description": "Validation Error",
@@ -1125,6 +1733,42 @@
   },
   "components": {
     "schemas": {
+      "ArtifactDigest": {
+        "properties": {
+          "size": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Size"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Sha256"
+          }
+        },
+        "type": "object",
+        "required": [
+          "size",
+          "sha256"
+        ],
+        "title": "ArtifactDigest"
+      },
+      "ArtifactExport": {
+        "properties": {
+          "artifacts": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ArtifactDigest"
+            },
+            "type": "object",
+            "title": "Artifacts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "artifacts"
+        ],
+        "title": "ArtifactExport"
+      },
       "Backend": {
         "properties": {
           "backend": {
@@ -1195,6 +1839,47 @@
         },
         "type": "object",
         "title": "Capabilities"
+      },
+      "Challenge": {
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$",
+            "title": "Nodeid"
+          },
+          "challenge": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Challenge"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nodeId",
+          "challenge"
+        ],
+        "title": "Challenge"
+      },
+      "ChallengeRequest": {
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$",
+            "title": "Nodeid"
+          },
+          "clientId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Clientid"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "nodeId",
+          "clientId"
+        ],
+        "title": "ChallengeRequest"
       },
       "ClientInput": {
         "properties": {
@@ -1419,6 +2104,45 @@
         ],
         "title": "Create"
       },
+      "Discovery": {
+        "properties": {
+          "service": {
+            "type": "string",
+            "title": "Service",
+            "default": "singverse-compute"
+          },
+          "apiVersion": {
+            "type": "string",
+            "title": "Apiversion",
+            "default": "1"
+          },
+          "nodeId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$",
+            "title": "Nodeid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "ownerId": {
+            "type": "string",
+            "title": "Ownerid"
+          },
+          "pairingEnabled": {
+            "type": "boolean",
+            "title": "Pairingenabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nodeId",
+          "name",
+          "ownerId",
+          "pairingEnabled"
+        ],
+        "title": "Discovery"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1546,6 +2270,72 @@
           "callbackOrigin"
         ],
         "title": "Negotiate"
+      },
+      "PairRequest": {
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$",
+            "title": "Nodeid"
+          },
+          "clientId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Clientid"
+          },
+          "publicKey": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Publickey"
+          },
+          "challenge": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Challenge"
+          },
+          "signature": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Signature"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "nodeId",
+          "clientId",
+          "publicKey",
+          "challenge",
+          "signature"
+        ],
+        "title": "PairRequest"
+      },
+      "PairResult": {
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$",
+            "title": "Nodeid"
+          },
+          "challenge": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Challenge"
+          },
+          "encryptedToken": {
+            "type": "string",
+            "title": "Encryptedtoken"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nodeId",
+          "challenge",
+          "encryptedToken"
+        ],
+        "title": "PairResult"
       },
       "Submit": {
         "properties": {

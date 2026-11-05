@@ -1,0 +1,139 @@
+[
+  {
+    "name": "review-reports-findings-without-editing",
+    "prompt": "Review this Flutter diff for bugs without changing files. Repository rule: report findings only.\n\n```diff\n--- a/lib/profile_screen.dart\n+++ b/lib/profile_screen.dart\n@@\n+Future<void> loadProfile() async {\n+  final profile = await repository.fetchProfile();\n+  setState(() => _profile = profile);\n+}\n```\n\nThe method belongs to a State object and can still be running when the route is popped.",
+    "resources": [
+      "references/review-workflow.md",
+      "references/flutter-review-checklist.md"
+    ],
+    "expectations": [
+      "uses the supplied diff and repository rule as the review scope",
+      "reports the reachable setState-after-dispose lifecycle defect with a tight file location and proportionate fix",
+      "does not edit files, post comments, or invent issues when no actionable defect exists"
+    ]
+  },
+  {
+    "name": "review-follows-async-data-flow",
+    "prompt": "Review a search-screen diff that adds debouncing and asynchronous HTTP results.",
+    "resources": [
+      "references/review-workflow.md",
+      "references/flutter-review-checklist.md"
+    ],
+    "expectations": [
+      "traces query identity, cancellation, stale-result ordering, error propagation, and disposal",
+      "checks whether tests cover out-of-order completion and teardown",
+      "does not recommend a state-management migration without a demonstrated defect"
+    ]
+  },
+  {
+    "name": "review-does-not-comment-on-unchanged-style",
+    "prompt": "Review this two-line checkout bug fix. The surrounding legacy file has old naming and is 900 lines long.",
+    "resources": ["references/review-workflow.md"],
+    "expectations": [
+      "focuses on changed behavior and follows surrounding code only for evidence",
+      "does not report unrelated naming, file length, or speculative refactors",
+      "checks regression coverage proportionate to the checkout risk"
+    ]
+  },
+  {
+    "name": "review-calibrates-security-severity",
+    "prompt": "Review a diff that adds a client-visible maps API key and an unrestricted WebView payment bridge.",
+    "resources": [
+      "references/review-workflow.md",
+      "references/flutter-review-checklist.md"
+    ],
+    "expectations": [
+      "classifies the API key from provider restrictions instead of assuming it is a secret",
+      "identifies the reachable untrusted WebView bridge path and its privileged impact",
+      "orders findings by realistic impact and preconditions rather than security keywords"
+    ]
+  },
+  {
+    "name": "delivery-workflow-review-stays-within-task-impact",
+    "prompt": "Act as the review pass for a completed Flutter profile-save implementation before its delivery workflow reports done. The diff adds an async save, shows a snackbar through the old BuildContext after await, and has only a success-path unit test. The surrounding feature contains unrelated legacy naming issues.",
+    "resources": [
+      "references/review-workflow.md",
+      "references/flutter-review-checklist.md"
+    ],
+    "expectations": [
+      {
+        "id": "reviews-delivery-diff",
+        "text": "accepts invocation from the active delivery workflow and reviews the completed implementation, acceptance behavior, tests, and directly affected lifecycle",
+        "mandatory": true
+      },
+      "reports the reachable post-await context or disposal risk and missing failure or teardown regression coverage with concrete locations and corrections",
+      "returns material findings and focused checks to the implementation workflow without independently expanding its authorization",
+      "does not report unrelated legacy naming or speculative architecture changes"
+    ]
+  },
+  {
+    "name": "clean-implementation-gate-rejects-residue-and-weakened-tests",
+    "prompt": "Review a completed Flutter bug fix before delivery. The behavior now works, but the diff leaves debugPrint calls, a commented-out old implementation, an unused dependency, an unrelated generated file, and changes an exact regression assertion to anyOf so the test passes. The author says format and analyze are green.",
+    "resources": [
+      "references/review-workflow.md",
+      "references/flutter-review-checklist.md"
+    ],
+    "expectations": [
+      {
+        "id": "rejects-false-clean-completion",
+        "text": "does not treat green format and analysis as clean completion while implementation residue unrelated generated churn and a weakened regression assertion remain",
+        "mandatory": true
+      },
+      "requires removal of temporary logging commented code unused dependency and accidental generated changes unless each is justified by the task",
+      "restores a behavior-specific regression assertion rather than accepting anyOf or deleting durable coverage",
+      "reviews the final changed-file list and diff and reruns focused tests without proposing unrelated style or architecture rewrites"
+    ]
+  },
+  {
+    "name": "review-proves-versioned-output-compatibility-and-redaction-order",
+    "prompt": "Review a Python helper shipped inside a Flutter device-testing skill. The base revision accepted an unversioned matrix and emitted schema_version 1 with a top-level device_id. The diff still accepts that old matrix, but now always emits schema_version 2, moves device_id under target, and hides it by default while the changelog claims 'version 1 compatibility'. The same diff keeps only the last 4000 characters of command output before applying `Authorization: Bearer <token>` redaction; a long prefix can push the marker outside the retained tail while leaving the token inside it. Short-token tests pass. Report findings only; do not edit files.",
+    "resources": [
+      "references/review-workflow.md",
+      "references/flutter-review-checklist.md"
+    ],
+    "expectations": [
+      {
+        "id": "rejects-input-only-compatibility-proof",
+        "text": "reports that accepting the legacy matrix does not preserve the version 1 report contract because schema fields and default identifier visibility changed, and asks for either compatible version 1 output or an explicit breaking contract",
+        "mandatory": true
+      },
+      {
+        "id": "catches-redaction-truncation-order",
+        "text": "reports the reachable token disclosure when output is truncated before redaction and directs redaction to occur before bounded tail retention with an adversarial regression test",
+        "mandatory": true
+      },
+      "leads with the two concrete findings, gives failure paths and proportionate corrections, and does not broaden into a rewrite of the device-testing skill"
+    ]
+  },
+  {
+    "name": "review-large-diff-keeps-internal-coverage-without-file-tour",
+    "prompt": "Review a 19-file Flutter pull request spanning checkout UI, repository serialization, Android configuration, tests, generated output, and documentation. Some shared modules also contain unrelated legacy TODOs and naming problems outside the diff. The user wants actionable defects only, not a file summary. Explain how you keep the review complete when later files are at risk of receiving a shallow pass.",
+    "resources": ["references/review-workflow.md"],
+    "expectations": [
+      {
+        "id": "uses-risk-slices-and-coverage-ledger",
+        "text": "groups the diff into coherent risk slices and tracks changed production files contracts tests generated boundaries and configuration internally before concluding",
+        "mandatory": true
+      },
+      "does not use file count or file size as a finding and does not emit a compulsory per-file summary when the user asked for actionable defects only",
+      "explicitly distinguishes tracing directly affected consumers from expanding into the supplied unrelated legacy cleanup"
+    ]
+  },
+  {
+    "name": "review-self-critique-removes-defeated-and-duplicate-findings",
+    "prompt": "Review a Flutter diff after an initial scan proposed four comments: (1) lib/checkout_page.dart:73 navigates after await, but the changed code checks context.mounted immediately before Navigator; (2) lib/search_bloc.dart:88 and :101 received separate comments caused by the same stale-response race; (3) migrate the feature from Bloc to Riverpod for readability; and (4) lib/order_parser.dart:42 changes to an int cast that crashes when the documented API sends 12.5. Return the final review only.",
+    "resources": [
+      "references/review-workflow.md",
+      "references/flutter-review-checklist.md"
+    ],
+    "expectations": [
+      {
+        "id": "filters-and-deduplicates-candidates",
+        "text": "does not report the mounted-guard false positive or unrequested state-management migration and emits only one stale-response finding for the shared root cause",
+        "mandatory": true
+      },
+      "retains the reachable numeric JSON cast defect at lib/order_parser.dart:42 with a concrete trigger impact and proportionate correction",
+      "does not include praise or repeat discarded candidates in the final findings"
+    ]
+  }
+]

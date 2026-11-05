@@ -59,7 +59,7 @@ public class TranscodeClient {
             body = object.deepCopy().put("callbackOrigin", callback.origin(c));
         }
         return HttpRequest.newBuilder(c.origin().resolve(path))
-                .timeout(Duration.ofSeconds(path.endsWith("/capabilities") ? 60 : 30))
+                .timeout(Duration.ofSeconds(path.endsWith("/export") ? 300 : path.endsWith("/capabilities") ? 60 : 30))
                 .header("Authorization", "Bearer " + c.token())
                 .header("Content-Type", "application/json")
                 .method(
@@ -76,12 +76,14 @@ public class TranscodeClient {
             if (r.statusCode() < 200 || r.statusCode() >= 300) {
                 int status =
                         switch (r.statusCode()) {
-                            case 404, 409, 422, 429 -> r.statusCode();
+                            case 400, 404, 409, 422, 429, 507 -> r.statusCode();
                             default -> 502;
                         };
                 String message =
                         status == 409
                                 ? "配置或执行状态已变化，请重新读取"
+                                : status == 507
+                                        ? "转码缓存或磁盘空间不足，请清理缓存或调整容量"
                                 : status == 422
                                         ? "所选加速方式或媒体任务测试未通过，请检查驱动和设备权限"
                                         : "计算任务请求失败（" + r.statusCode() + "）";

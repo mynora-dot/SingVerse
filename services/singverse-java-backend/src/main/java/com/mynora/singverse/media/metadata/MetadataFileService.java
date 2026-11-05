@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 public class MetadataFileService {
     private final MetadataFileMapper files;
     private final MediaSongRepository songs;
+    private final MediaSongMapper songRows;
     private final MediaSourceRepository sources;
     private final WebDavMetadataMapper remote;
     private final WebDavMetadataService metadata;
@@ -28,12 +29,12 @@ public class MetadataFileService {
     private final AtomicBoolean running = new AtomicBoolean();
     private final AtomicBoolean scheduled = new AtomicBoolean();
     private final java.util.concurrent.ExecutorService executor=java.util.concurrent.Executors.newSingleThreadExecutor(task->{var thread=new Thread(task,"metadata-files");thread.setDaemon(true);return thread;});
-    public MetadataFileService(MetadataFileMapper files, MediaSongRepository songs, MediaSourceRepository sources,
+    public MetadataFileService(MetadataFileMapper files, MediaSongRepository songs, MediaSongMapper songRows, MediaSourceRepository sources,
             WebDavMetadataMapper remote, WebDavMetadataService metadata, MetadataCoverService covers,
             WebDavShareService sharing, ObjectMapper json,
             @Value("${singverse.webdav.metadata-path:./data/metadata/webdav}") String path,
             @Value("${singverse.metadata.file-worker-enabled:true}") boolean enabled) {
-        this.files=files; this.songs=songs; this.sources=sources; this.remote=remote; this.metadata=metadata;
+        this.files=files; this.songs=songs; this.songRows=songRows; this.sources=sources; this.remote=remote; this.metadata=metadata;
         this.covers=covers; this.sharing=sharing; this.json=json; this.root=Path.of(path).toAbsolutePath().normalize().resolve("library"); this.enabled=enabled;
     }
     public Path directory(String sourceId, String songId) { return root.resolve(UUID.fromString(sourceId).toString()).resolve(UUID.fromString(songId).toString()); }
@@ -67,6 +68,17 @@ public class MetadataFileService {
         if(!cached.isEmpty() && cached.getFirst().get("result_json")!=null) {
             var prior=json.readTree(cached.getFirst().get("result_json").toString());
             for(String field:List.of("tags","technical","lyrics","fields","extractorVersion","evidence","aliases"))if(prior.has(field))snapshot.set(field,prior.get(field));
+        }
+        if(source.type().equals("LOCAL")) {
+            var local=songRows.find(songId);
+            if(!local.isEmpty() && local.getFirst().get("embedded_tags_json")!=null) {
+                var embedded=json.readValue(local.getFirst().get("embedded_tags_json").toString(),com.mynora.singverse.infrastructure.compute.MediaTagsClient.Tags.class);
+                if(embedded.lyrics()!=null) {
+                    snapshot.set("lyrics",embedded.lyrics());
+                    var coverage=snapshot.path("fields").isObject()?(ObjectNode)snapshot.get("fields"):snapshot.putObject("fields");
+                    coverage.put("lyrics","PRESENT");
+                }
+            }
         }
         var tags=snapshot.path("tags").isObject()?(ObjectNode)snapshot.get("tags"):snapshot.putObject("tags");
         if(!tags.hasNonNull("title"))tags.put("title",song.result().title());

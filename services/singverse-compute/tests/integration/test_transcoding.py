@@ -221,9 +221,52 @@ class TranscodingHttpTest(unittest.TestCase):
         previous=service.settings
         service.settings=replace(previous,cache_bytes=1)
         try:
-            with self.assertRaises(HTTPError) as caught:self.create()
+            with self.assertRaises(HTTPError) as caught:self.create(width=640, height=360)
             self.assertEqual(caught.exception.code,507);caught.exception.close()
         finally:service.settings=previous
+
+    def test_export_transfers_real_hls_with_authenticated_integrity_and_release(self):
+        service = self.app.state.transcoding
+        first = str(uuid.uuid4())
+        body = {'id': first, 'path': str(self.source), 'fingerprint': 'export-http-fixture', 'target': {'fmp4': True}}
+        self.request('/executions', body)
+        self.assertEqual(self.wait(first)['state'], 'SUCCEEDED')
+        with self.assertRaises(HTTPError) as caught:
+            self.request('/executions/' + first + '/export', auth=False)
+        self.assertEqual(caught.exception.code, 401)
+        caught.exception.close()
+        exported = json.loads(self.request('/executions/' + first + '/export')[1])
+        self.assertIn('master.m3u8', exported['artifacts'])
+        self.assertIn('init_0.mp4', exported['artifacts'])
+        for name, metadata in exported['artifacts'].items():
+            data = self.request('/executions/' + first + '/artifacts/' + name)[1]
+            self.assertEqual(len(data), metadata['size'])
+            self.assertEqual(hashlib.sha256(data).hexdigest(), metadata['sha256'])
+        second = str(uuid.uuid4())
+        self.request('/executions', {**body, 'id': second})
+        self.assertEqual(self.wait(second)['state'], 'SUCCEEDED')
+        self.assertTrue((self.root / 'cache' / second / 'master.m3u8').is_file())
+        released = json.loads(self.request('/executions/' + first + '/acknowledge', {}, method='POST')[1])
+        self.assertTrue(released['released'])
+        self.assertFalse(released['ready'])
+        self.assertEqual(json.loads(self.request('/executions/' + first + '/acknowledge', {}, method='POST')[1]), released)
+        for suffix in ('/export', '/artifacts/master.m3u8'):
+            with self.assertRaises(HTTPError) as caught:
+                self.request('/executions/' + first + suffix)
+            self.assertEqual(caught.exception.code, 410)
+            caught.exception.close()
+        service.get(second).finished = service.get(second).renewed = time.time() - 601
+        service.collect()
+        self.assertFalse((self.root / 'cache' / second).exists())
+        self.assertEqual(hashlib.sha256(self.source.read_bytes()).digest(), self.digest)
+
+    def test_compute_has_no_persistent_song_cache_api(self):
+        for path, method, body in [('/cache/query', 'POST', {}), ('/cache/settings', 'PUT', {}),
+                                   ('/cache/clear', 'POST', {}), ('/cache/' + str(uuid.uuid4()), 'DELETE', None)]:
+            with self.subTest(path=path), self.assertRaises(HTTPError) as caught:
+                self.request(path, body, method=method)
+            self.assertEqual(caught.exception.code, 404)
+            caught.exception.close()
 
     def test_hdr_to_sdr_and_stereo_channels_are_preserved(self):
         hdr=self.root/'media'/'hdr.mkv'

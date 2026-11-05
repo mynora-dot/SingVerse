@@ -18,6 +18,7 @@ public class TvController {
     private com.mynora.singverse.media.playlist.PlaylistService playlists;
 
     @org.springframework.beans.factory.annotation.Autowired private TvLibrary library;
+    @org.springframework.beans.factory.annotation.Autowired private TvHomeSettingsService homeSettings;
 
     @org.springframework.beans.factory.annotation.Autowired
     private com.mynora.singverse.media.artist.ArtistService artists;
@@ -187,8 +188,16 @@ public class TvController {
                 recent.totalElements(),
                 "recentSongs",
                 recent.items().stream().map(service::projection).toList(),
+                "appearance", homeSettings.read(true),
+                "featuredPlaylists", playlists.list("", 0, 4).get("items"),
                 "generatedAt",
                 java.time.Instant.now().toString());
+    }
+
+    @GetMapping("/api/v1/tv/home/banners/{id}/image")
+    public org.springframework.http.ResponseEntity<byte[]> homeBanner(HttpServletRequest request, @PathVariable String id) {
+        device(request);
+        return homeSettings.image(id, true);
     }
 
     @GetMapping("/api/v1/tv/library/songs/{id}")

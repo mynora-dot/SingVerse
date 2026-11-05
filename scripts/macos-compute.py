@@ -23,6 +23,16 @@ def audio_environment(model_repo, memory_mib):
             'COMPUTE_AUDIO_THREADS': '2', 'PYTORCH_ENABLE_MPS_FALLBACK': '0'}
 
 
+def pairing_environment(previous):
+    name = 'COMPUTE_LAN_PAIRING_ENABLED'
+    value = os.environ.get(name)
+    if value is None:
+        value = plistlib.loads(previous.read_bytes()).get('EnvironmentVariables', {}).get(name, 'true') if previous.exists() else 'true'
+    if not isinstance(value, str) or value.lower() not in ('true', 'false'):
+        raise ValueError(name + ' must be true or false')
+    return {name: value.lower()}
+
+
 def bootstrap(domain, target):
     # bootout returns before launchd finishes removing its registration. A
     # restart can briefly receive EIO even though print already says not found.
@@ -66,12 +76,13 @@ def main():
         return
     model_repo = args.audio_model_repo.expanduser().resolve()
     memory_mib = args.audio_memory_mib
+    previous = RUNTIME / 'compute.plist'
     if memory_mib is None:
-        previous = RUNTIME / 'compute.plist'
         memory_mib = int(plistlib.loads(previous.read_bytes()).get('EnvironmentVariables', {}).get(
             'COMPUTE_AUDIO_MEMORY_BYTES', str(4096*1024**2))) // 1024**2 if previous.exists() else 4096
     try:
         audio = audio_environment(model_repo, memory_mib)
+        pairing = pairing_environment(previous) if args.action != 'stop' else {}
     except ValueError as error:
         parser.error(str(error))
     if active.returncode == 0:
@@ -121,6 +132,7 @@ def main():
             'COMPUTE_HARDWARE_BACKEND': 'videotoolbox',
             'COMPUTE_PROCESS_MEMORY_BYTES': '1073741824',
             **audio,
+            **pairing,
         },
         'RunAtLoad': True, 'KeepAlive': True, 'ThrottleInterval': 10,
         'StandardOutPath': str(RUNTIME / 'node.log'),

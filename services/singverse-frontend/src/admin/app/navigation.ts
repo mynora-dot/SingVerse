@@ -1,4 +1,4 @@
-import { Collection, CollectionTag, Connection, Document, FolderOpened, Headset, House, Key, MagicStick, Microphone, Monitor, Odometer, Setting, Tools } from '@element-plus/icons-vue'
+import { Collection, CollectionTag, Connection, Document, Files, FolderOpened, Headset, House, Key, MagicStick, Microphone, Monitor, Odometer, Setting, Tools } from '@element-plus/icons-vue'
 
 /** 按管理员日常任务分组；URL 保持不变以兼容已保存的链接。 */
 export const overviewEntry = { path: '/overview', label: '概览', icon: House }
@@ -8,6 +8,7 @@ export const navigationGroups = [
     children: [
       { path: '/library/songs', label: '全部歌曲', icon: Headset },
       { path: '/library/audio-processing', label: '原唱与伴奏', icon: Headset },
+      { path: '/library/cache', label: '歌曲缓存', icon: Files },
       { path: '/library/artists', label: '歌手库', icon: Microphone },
       { path: '/library/playlists', label: '歌单管理', icon: Collection },
       { path: '/library/classification', label: '歌曲分类', icon: CollectionTag },
@@ -33,6 +34,7 @@ export const navigationGroups = [
   {
     id: 'system', label: '系统设置',
     children: [
+      { path: '/system/tv-settings', label: '电视设置', icon: Monitor },
       { path: '/system/ai', label: 'AI 设置', icon: Setting },
       { path: '/system/parameters', label: '账号与安全', icon: Key },
     ],

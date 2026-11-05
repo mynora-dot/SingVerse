@@ -25,6 +25,7 @@ class Settings:
     audio_model_repo: Path | None = None
     audio_memory_bytes: int = 4 * 1024**3
     audio_threads: int = 2
+    lan_pairing_enabled: bool = True
 
     @classmethod
     def from_env(cls):
@@ -46,6 +47,9 @@ class Settings:
             raise ValueError('Invalid transcode resource budget')
         audio_memory = int(os.environ.get('COMPUTE_AUDIO_MEMORY_BYTES', str(4 * 1024**3)))
         audio_threads = int(os.environ.get('COMPUTE_AUDIO_THREADS', '2'))
+        lan_pairing = os.environ.get('COMPUTE_LAN_PAIRING_ENABLED', 'true').lower()
+        if lan_pairing not in ('true', 'false'):
+            raise ValueError('COMPUTE_LAN_PAIRING_ENABLED must be true or false')
         if audio_memory < 512*1024**2 or not 1 <= audio_threads <= 8:
             raise ValueError('Invalid audio resource budget')
         return cls(tuple(root.resolve() for root in roots), Path(token) if token else None,
@@ -56,4 +60,5 @@ class Settings:
                    transcode_concurrency=concurrency, process_memory_bytes=memory_bytes, cache_bytes=cache_bytes,
                    minimum_free_bytes=free_bytes,
                    audio_model_repo=Path(audio_repo).resolve() if audio_repo else None,
-                   audio_memory_bytes=audio_memory, audio_threads=audio_threads)
+                   audio_memory_bytes=audio_memory, audio_threads=audio_threads,
+                   lan_pairing_enabled=lan_pairing == 'true')

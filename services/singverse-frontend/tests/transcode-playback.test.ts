@@ -71,6 +71,37 @@ it('HLS 准备轮询不丢失首次协商的伴奏资源和角色快照', async 
     expect(wrapper.findAll('.role-picker button')[1]!.attributes('disabled')).toBeUndefined()
   } finally { wrapper.unmount(); vi.useRealTimers() }
 })
+
+it.each([
+  { native: true, offset: 0, mediaTime: 100.21576, displayedTime: '1:40' },
+  { native: true, offset: 40, mediaTime: 60.21576, displayedTime: '1:40' },
+  { native: true, offset: 100.21576, mediaTime: 0, displayedTime: '1:40' },
+  { native: true, offset: 120, mediaTime: 0, displayedTime: '2:00' },
+  { native: false, offset: 0, mediaTime: 100.21576, displayedTime: '1:40' },
+  { native: false, offset: 40, mediaTime: 60.21576, displayedTime: '1:40' },
+])('HLS 协商保留原曲位置（native=$native，offset=$offset）', async ({ native, offset, mediaTime, displayedTime }) => {
+  vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue(native ? 'probably' : '')
+  const cached = { id: 'cached', mode: 'HLS', status: 'READY', url: '/api/v1/cached.m3u8', offset,
+    execution: { cacheHit: true, media: { duration: 240, streams: [] } } }
+  vi.mocked(playback.start).mockResolvedValueOnce({ id: 'initial', mode: 'HLS', status: 'READY', url: '/api/v1/initial.m3u8', offset: 0,
+    media: { duration: 240, streams: [] } }).mockResolvedValueOnce(cached)
+  const wrapper = mount(SongVideoDialog, { props: { song }, global: { stubs: { teleport: true } } })
+  try {
+    for (let i = 0; i < 5; i++) await flushPromises()
+    wrapper.get('video').element.currentTime = 100.21576
+    await wrapper.get('video').trigger('timeupdate')
+    await wrapper.get('.settings-button').trigger('click')
+    await wrapper.get('[aria-label="播放画质"]').setValue('1080p')
+    for (let i = 0; i < 5; i++) await flushPromises()
+    expect(playback.start).toHaveBeenLastCalledWith(song.id, expect.objectContaining({ start: 100.21576 }))
+    const video = wrapper.get('video')
+    if (native) expect(video.attributes('src')).toBe('/api/v1/cached.m3u8')
+    else expect(adapter.load).toHaveBeenLastCalledWith('/api/v1/cached.m3u8')
+    await video.trigger('loadedmetadata')
+    expect(video.element.currentTime).toBeCloseTo(mediaTime)
+    expect(wrapper.get('.timeline span').text()).toBe(displayedTime)
+  } finally { wrapper.unmount() }
+})
 afterEach(() => { vi.restoreAllMocks(); document.body.innerHTML = '' })
 it('非原生浏览器连接 HLS 适配器，错误时终止请求并取消后台执行', async () => {
   const wrapper = mount(SongVideoDialog, { props: { song }, global: { stubs: { teleport: true } } })

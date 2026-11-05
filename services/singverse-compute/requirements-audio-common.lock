@@ -22,5 +22,5 @@ submitit==1.5.4
 treetable==0.2.6
 cloudpickle==3.1.2
 soundfile==0.13.1
-cffi==1.17.1
+cffi==2.1.1
 pycparser==2.22

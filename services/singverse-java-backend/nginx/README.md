@@ -40,3 +40,5 @@ HTTP/HTTPS代理scheme通过proxy-scheme.conf显式区分；HTTPS外层部署使
 
 
 音视频原流接口 `/api/v1/media-songs/{id}/video` 使用专用 location，保留 Range/HEAD 并关闭 proxy_buffering、proxy_cache，读取空闲超时 60 秒；同源会话鉴权由 Java 执行，不暴露 WebDAV 凭据。
+
+电视封面上传 `/api/v1/admin/tv-settings/banners` 复用图片上传专用 3m 请求体限制（应用校验单张2MB），查询参数 `revision` 不影响匹配；其他普通接口继续使用16k。升级电视设置上传功能时须同步更新并重新加载 Nginx 配置，不能只更新 Java 或前端。多选上传由前端逐张提交，不增加单次请求体上限。

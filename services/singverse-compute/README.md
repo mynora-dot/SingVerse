@@ -10,6 +10,7 @@ Python 3.12+ / FastAPI。所有 FFmpeg/ffprobe 执行都由本工程处理，Jav
 
 - 原始曲库仅挂载到 Java。性能节点不配置媒体目录或业务地址；每项媒体任务携带 `reference` 和 `callbackOrigin`，凭任务授权通过 HTTP Range 读取业务节点。
 - `COMPUTE_AUTH_TOKEN_FILE`：内部Bearer凭据文件。CLI首次启动以0600生成随机凭据；Java仅只读挂载该文件，禁止提交或输出内容。没有有效凭据或ffprobe时不声明标签能力。
+- `COMPUTE_LAN_PAIRING_ENABLED`：默认 `true`，允许受限局域网内由 Java 服务端发现和首次配对；设置 `false` 关闭配对，已配置的内部 Bearer 调用继续生效。没有有效凭据文件时不能配对。
 - Java用 `COMPUTE_NODE_URL` 与 `COMPUTE_AUTH_TOKEN_FILE` 连接。Java不启动Python或FFmpeg子进程，节点离线/失败回退文件名，不影响主服务健康。
 
 应用 Compose 仅给 Java 挂载媒体卷；compute 只挂载内部凭据、模型和缓存卷，不发布端口。跨主机计算节点同样无需共享文件系统；保留认证、TLS／受限网络。Java 镜像不含 Python／FFmpeg。
@@ -59,6 +60,9 @@ tests/
 |---|---|
 | GET /health | 进程健康，不证明媒体可处理 |
 | GET /internal/v1/capabilities | 仅在工具、根目录和凭据齐备时声明media-tags，否则空列表 |
+| GET /internal/v1/lan/discovery | 受限私网单播发现；仅节点身份、名称、绑定状态，不返回凭据 |
+| POST /internal/v1/lan/challenge | 为 Java 身份和真实来源创建 30 秒一次性签名挑战 |
+| POST /internal/v1/lan/pair | 验证 RSA-3072 签名，首次绑定或同身份恢复；凭据只以该身份公钥加密返回 |
 | POST /internal/v1/media/tags | Bearer鉴权；请求 `{path: "/media/歌曲.mkv"}`，返回title/artists/album/releaseDate。路径必须在白名单内 |
 | GET /openapi.json | 受版本管理的内部契约；交互文档关闭 |
 
@@ -81,7 +85,7 @@ cd services/singverse-compute
 
 ## 管理端配置与独立部署
 
-“系统设置 → 性能节点配置”支持 AUTO/MANUAL/DISABLED。同套 `compose.app.yaml` 通过已知服务名和共享凭据自动识别，无需填写，也不扫描局域网。`GET /internal/v1/status` 使用 Bearer 认证返回身份、API 版本和实际能力；健康页可用不代表认证或媒体能力可用。
+“系统设置 → 性能节点配置”支持 AUTO/MANUAL/DISABLED。同套 `compose.app.yaml` 通过已知服务名和共享凭据自动识别，无需填写。独立节点可由 Java 通过受限候选私网地址进行 HTTP 单播发现和配对，不依赖 Docker bridge 难以转发的广播或 mDNS。`GET /internal/v1/status` 使用 Bearer 认证返回身份、API 版本和实际能力；健康页可用不代表认证或媒体能力可用。
 
 独立部署示例（在目标设备的仓库根执行，媒体原件只读）：
 
@@ -91,13 +95,21 @@ docker compose -f compose.compute.yaml up -d --build
 
 默认仅发布 `127.0.0.1:18090`。跨主机部署时显式设置 `COMPUTE_HTTP_BIND` 为该设备受限内网地址，限制入站访问；公网使用可信 TLS 反向代理，保留认证与证书验证。主应用 Compose 的计算端口保持不公开。`compose.compute.yaml` 使用独立项目与凭据卷，不启动业务数据库。
 
-节点初次启动生成认证 token，路径为 `/run/singverse-compute/token`。有权限的部署管理员可在目标设备通过以下命令读取，并填入管理页面的“认证凭据”；该值是敏感信息，不粘贴到日志或工单：
+节点初次启动生成认证 token，路径为 `/run/singverse-compute/token`。局域网内可在管理端发现并连接节点，凭据交换仅在 Java 与 compute 之间进行，不返回浏览器。仍需手动接入的受信 TLS 部署，可由有权限的部署管理员在目标设备读取 token 并填写管理页面的“认证凭据”；该值是敏感信息，不粘贴到日志或工单：
 
 ```sh
 docker compose -f compose.compute.yaml exec -T singverse-compute cat /run/singverse-compute/token
 ```
 
-在管理页面选择独立部署，填写 Java 可达的计算节点地址及凭据。曲库仍由 Java 的本地来源或 WebDAV 来源管理；不需要把歌曲复制或挂载到计算机器。旧目录映射兼容读取，但不参与新任务。
+手动连接时在管理页面选择独立部署，填写 Java 可达的计算节点地址及凭据。曲库仍由 Java 的本地来源或 WebDAV 来源管理；不需要把歌曲复制或挂载到计算机器。旧目录映射兼容读取，但不参与新任务。
+
+### 局域网配对边界与恢复
+
+三个 `/internal/v1/lan/*` 接口只接受真实 socket 来源为 loopback、RFC1918 IPv4 或 IPv6 ULA，IPv4-mapped IPv6 先归一；公网、link-local、组播及其他保留地址均拒绝。请求 `Host` 必须是允许范围内的 IP literal；带 `Origin`、`Forwarded` 或 `X-Forwarded-*` 的请求直接拒绝，CLI 不采信代理头。不要把这些接口通过公网反向代理转发。它们不要求既有 Bearer，但 POST 在 JSON 解析前限制为 8 KiB，且严格拒绝未知字段。发现只提供 `service/apiVersion/nodeId/name/ownerId/pairingEnabled`。
+
+首次绑定采用受限局域网 TOFU：首次成功签名的 Java 身份成为节点唯一 owner，不宣称抵御同一局域网内主动中间人或抢先绑定。挑战绑定节点、真实来源 IP 和 Java 身份，30 秒过期、使用一次；最多保留 64 个，每个来源 30 秒内最多 16 次挑战或配对请求。签名使用 RSA-PSS/SHA-256、MGF1/SHA-256、32 字节 salt，消息为精确 UTF-8 `singverse-compute-lan-v1\n{nodeId}\n{challenge}\n{clientId}`，无尾换行；`clientId` 为 RSA-3072 DER-SPKI 公钥的 SHA-256 小写十六进制。返回 `encryptedToken` 使用 RSA-OAEP/SHA-256、MGF1/SHA-256，label 为 UTF-8 `singverse-compute-lan-v1:{nodeId}:{challenge}`。只有持有对应私钥的 Java 能解密；浏览器不参与签名或接收凭据。
+
+节点身份和 owner 公钥原子保存在 token 同目录的 `lan-pairing.json`，Unix 权限 0600，Windows 仅当前 SID 和 SYSTEM；跨进程文件锁防止并发首次配对覆盖 owner。重启、IP 变化和内部 token 重新生成均保留 owner，同一 Java 身份可再次签名恢复当前凭据，其他身份返回 409。保留认证卷和 Java 身份备份；目录不可写或已有身份文件损坏时，LAN 接口返回 503，不自动清除 owner，现有 Bearer 计算接口继续可用。修复目录权限或恢复身份文件后重启节点。`COMPUTE_LAN_PAIRING_ENABLED=false` 可禁用新配对与恢复，不创建或修改旁置身份文件；身份可读取时发现仍返回无凭据的节点信息和 `pairingEnabled=false`。
 
 测试连接先检查节点身份、认证和能力，再由节点反向验证业务回源身份。`CALLBACK_FAILED` 表示节点可连接但业务回源不可用。配置变更只影响新任务；扫描固定连接快照，节点不可用时保留文件名回退。
 
@@ -112,6 +124,10 @@ Java 随任务发送回调地址，计算节点不保存部署级业务地址，
 ## 后台硬件加速配置
 
 管理员可在“系统设置 → 性能节点配置 → 转码与硬件加速”测试及保存后端，设置持久化在转码缓存根目录 `hardware-settings.json`。后台选择优先于 `COMPUTE_HARDWARE_BACKEND`，选择“遵循部署配置”恢复部署默认。仅影响新任务，不自动修改容器设备和驱动；接口、生命周期及部署前提见[转码说明](../../docs/transcoding.md)。
+
+歌曲解码缓存由 Java 持久保存和管理，compute 仅保存 FFmpeg 临时工作产物；相同素材使用不同执行 ID 仍会独立解码，本节点没有长期歌曲缓存、缓存策略或缓存管理接口，也不读取旧 `cache-settings.json`。`COMPUTE_CACHE_BYTES` 仍为临时工作目录预算（默认 10 GiB），满时新任务返回 507。实时任务租约为 120 秒，成功、失败或取消后未再续租的执行及临时文件在 10 分钟后回收；离线成品继续由 Java 校验下载后确认释放。
+
+Java 可在实时执行成功后读取 `GET /internal/v1/transcoding/executions/{id}/export`，获取 `artifacts` 文件名到 `{size,sha256}` 的映射。导出会验证主/媒体播放列表、所有白名单本地 URI、分片与初始化文件、媒体 `ENDLIST`、非符号链接、每个文件长度与 SHA-256，并续租，未完成返回 409。Java 应校验全部下载数据并原子保存，再调用 `POST /executions/{id}/acknowledge` 删除 compute 副本；确认可重试且保留执行记录，`released=true`、`ready=false`，再次导出/读产物返回 410。必须先把仍在播放的会话切换至 Java 缓存，避免释放临时文件后继续读取旧播放地址。所有内部接口继续使用 Bearer，不对客户端开放；完整行为见[转码说明](../../docs/transcoding.md)。
 
 完整硬件图通过 `infrastructure/transcoding/pipelines.py` 的固定模板选择，执行前用实际素材试跑。任务返回 `pipeline` 各阶段和观测 RSS；能力页的硬解/零拷贝/GPU 色调映射只来源于已通过的素材试跑。`COMPUTE_PROCESS_MEMORY_BYTES` 默认 1 GiB，以观测 RSS 检查并终止超限子进程；Linux 容器额外默认 2 GiB 内存/2 CPU 硬限制，可按 NAS 资源调整。
 

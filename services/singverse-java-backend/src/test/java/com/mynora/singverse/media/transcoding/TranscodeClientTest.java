@@ -15,6 +15,27 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 
 class TranscodeClientTest {
+    @Test void cacheStorageAndLeaseConflictsKeepTheirHttpStatus() throws Exception {
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/internal/v1/transcoding/cache/clear", exchange -> {
+            assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isEqualTo("Bearer isolated-cache-token");
+            var body = "{\"title\":\"private source details\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            int status = exchange.getRequestMethod().equals("POST") ? 507 : 409;
+            exchange.sendResponseHeaders(status, body.length);
+            try (var out = exchange.getResponseBody()) { out.write(body); }
+        });
+        server.start();
+        try {
+            var settings = mock(ComputeNodeSettings.class);
+            var connection = new Connection(URI.create("http://127.0.0.1:" + server.getAddress().getPort()), "isolated-cache-token", List.of());
+            var client = new TranscodeClient(settings, new ObjectMapper());
+            assertThatThrownBy(() -> client.call(connection, "/internal/v1/transcoding/cache/clear", "POST", null))
+                    .hasMessageContaining("507", "缓存或磁盘空间不足").hasMessageNotContaining("private source details");
+            assertThatThrownBy(() -> client.call(connection, "/internal/v1/transcoding/cache/clear", "DELETE", null))
+                    .hasMessageContaining("409").hasMessageNotContaining("private source details");
+        } finally { server.stop(0); }
+    }
+
     @Test void fixedFastClassifierDownloadsAndImportsThroughAuthorizedProxy() throws Exception {
         var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
         var requests=new CopyOnWriteArrayList<String>();

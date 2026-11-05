@@ -5,6 +5,26 @@ import secrets
 from pathlib import Path
 from ..core.errors import ComputeError
 
+def restrict_file(path: Path):
+    """Apply the same private credential-file policy on native and container hosts."""
+    if os.name == 'nt':
+        import csv
+        import io
+        import subprocess
+        identity = subprocess.run(['whoami', '/user', '/fo', 'csv', '/nh'], check=True,
+                                  capture_output=True, text=True, timeout=5)
+        try:
+            sid = next(csv.reader(io.StringIO(identity.stdout)))[1]
+        except (csv.Error, StopIteration, IndexError) as error:
+            raise ValueError('Cannot determine credential file owner') from error
+        if not sid.startswith('S-1-'):
+            raise ValueError('Cannot determine credential file owner')
+        subprocess.run(['icacls', str(path), '/inheritance:r', '/grant:r',
+                        '*' + sid + ':F', '*S-1-5-18:F'], check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+    else:
+        path.chmod(0o600)
+
 class InternalAuth:
     def __init__(self, token_file: Path | None):
         self.token_file = token_file
@@ -15,21 +35,7 @@ class InternalAuth:
         self.token_file.parent.mkdir(parents=True, exist_ok=True)
         try:
             with self.token_file.open('x') as output:
-                if os.name == 'nt':
-                    # Windows chmod does not set an ACL. Limit the new token to this SID and SYSTEM.
-                    import csv
-                    import io
-                    import subprocess
-                    identity = subprocess.run(['whoami','/user','/fo','csv','/nh'], check=True,
-                                              capture_output=True, text=True, timeout=5)
-                    sid = next(csv.reader(io.StringIO(identity.stdout)))[1]
-                    if not sid.startswith('S-1-'):
-                        raise ValueError('Cannot determine credential file owner')
-                    subprocess.run(['icacls', str(self.token_file), '/inheritance:r', '/grant:r',
-                                    '*'+sid+':F', '*S-1-5-18:F'], check=True,
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
-                else:
-                    self.token_file.chmod(0o600)
+                restrict_file(self.token_file)
                 output.write(secrets.token_hex(32))
         except FileExistsError:
             pass

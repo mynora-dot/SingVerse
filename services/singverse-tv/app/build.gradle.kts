@@ -8,10 +8,14 @@ plugins {
 android {
     namespace = "com.mynora.singverse.tv"
     compileSdk = 35
+    // Platform-only UI instrumentation: no additional test framework downloads.
+    useLibrary("android.test.runner", false)
+    useLibrary("android.test.base", false)
     defaultConfig {
         applicationId = "com.mynora.singverse.tv"
         minSdk = 23
         targetSdk = 35
+        testInstrumentationRunner = "com.mynora.singverse.tv.TvUiTestRunner"
         versionCode = providers.gradleProperty("singverseVersionCode").orElse("1").get().toInt()
         versionName = providers.gradleProperty("singverseVersionName").orElse("0.1.0").get()
     }

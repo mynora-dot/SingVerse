@@ -26,6 +26,10 @@ public interface TranscodeMapper {
 
     int renew(@Param("id") String id, @Param("now") long now);
 
+    int expireRealtime(@Param("id") String id, @Param("since") long since, @Param("now") long now);
+
+    int saveActiveCache(@Param("id") String id, @Param("result") String result, @Param("now") long now);
+
     int plan(@Param("id") String id, @Param("target") String target);
 
     int requeue(

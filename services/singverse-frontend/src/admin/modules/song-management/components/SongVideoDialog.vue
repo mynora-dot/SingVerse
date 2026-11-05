@@ -161,7 +161,7 @@ async function start(force = false, startAt = position.value, resumePlayback = p
     const element = mediaElement.value; if (!element) return
     element.addEventListener('loadedmetadata', () => {
       if (turn !== generation) return
-      if (value.mode !== 'HLS' && startAt) element.currentTime = startAt
+      element.currentTime = Math.max(0, startAt - value.offset)
       applyVolume(); updatePosition(); if (resumePlayback) void resume()
     }, { once: true })
     applyVolume()

@@ -32,6 +32,9 @@ singverse:
     cache-path: ${METADATA_CACHE_PATH:./data/metadata/covers}
   transcoding:
     directory: ${TRANSCODE_VERSION_PATH:./data/transcoding}
+    cache-directory: ${SINGVERSE_SONG_CACHE_PATH:${singverse.transcoding.directory:./data/transcoding}/cache}
+    cache-bytes: ${SINGVERSE_SONG_CACHE_BYTES:10737418240}
+    cache-minimum-free-bytes: ${SINGVERSE_SONG_CACHE_MINIMUM_FREE_BYTES:2147483648}
   compute:
     callback-origin: ${SINGVERSE_CALLBACK_ORIGIN:}
     auto-callback-origin: ${SINGVERSE_COMPUTE_AUTO_CALLBACK_ORIGIN:}

@@ -92,6 +92,19 @@ class AuthHttpTest {
     }
 
     @Test
+    void songCacheRequiresAdministratorAndCsrfForEveryMutation() throws Exception {
+        String root = "/api/v1/transcoding/cache";
+        assertThat(request(root, "GET", null, false).statusCode()).isEqualTo(401);
+        assertThat(login().statusCode()).isEqualTo(200);
+        var settings = Map.of("maxBytes", 1073741824L, "policy", "LRU", "ttlHours", 168, "revision", 0);
+        assertThat(request(root + "/settings", "PUT", settings, false).statusCode()).isEqualTo(403);
+        assertThat(request(root + "/clear", "POST", null, false).statusCode()).isEqualTo(403);
+        assertThat(request(root + "/00000000-0000-0000-0000-000000000001", "DELETE", null, false).statusCode()).isEqualTo(403);
+        assertThat(request(root + "?page=-1", "GET", null, false).statusCode()).isEqualTo(400);
+        assertThat(request(root + "/settings", "PUT", Map.of("policy", "LRU"), true).statusCode()).isEqualTo(400);
+    }
+
+    @Test
     void usernameChangeValidatesCredentialsAndRevokesAllSessions() throws Exception {
         var payload = Map.of("password", "admin", "newUsername", "family-admin");
         assertThat(request("/api/v1/auth/username", "POST", payload, true).statusCode()).isEqualTo(401);
@@ -136,6 +149,8 @@ class AuthHttpTest {
 
     @Test
     void csrfAndSessionAreEnforcedAndLogoutRevokes() throws Exception {
+        for (String path : List.of("/api/v1/compute-node/discovery", "/api/v1/compute-node/pair"))
+            assertThat(request(path, "POST", Map.of(), true).statusCode()).isEqualTo(401);
         assertThat(request("/api/v1/audio-processing/batches","GET",null,false).statusCode()).isEqualTo(401);
         assertThat(request("/api/v1/system/parameters", "GET", null, false).statusCode())
                 .isEqualTo(401);
@@ -149,6 +164,8 @@ class AuthHttpTest {
                 .isEqualTo(403);
         var logged = login();
         assertThat(logged.statusCode()).isEqualTo(200);
+        for (String path : List.of("/api/v1/compute-node/discovery", "/api/v1/compute-node/pair"))
+            assertThat(request(path, "POST", Map.of(), false).statusCode()).isEqualTo(403);
         assertThat(request("/api/v1/audio-processing/batches/preview","POST",Map.of("ids",List.of("fixture")),false).statusCode()).isEqualTo(403);
         assertThat(body(logged).get("state").asText()).isEqualTo("authenticated");
         assertThat(logged.headers().allValues("Set-Cookie"))
@@ -483,6 +500,7 @@ class AuthHttpTest {
                         com.mynora.singverse.media.audio.AudioProcessingController.class,
                         com.mynora.singverse.ai.AiController.class,
                         com.mynora.singverse.compute.ComputeNodeController.class,
+                        com.mynora.singverse.compute.ComputeLanController.class,
                         com.mynora.singverse.compute.ComputeCallbackController.class,
                         com.mynora.singverse.media.classification.ClassificationController.class,
                         com.mynora.singverse.media.controller.MediaSourceController.class,
@@ -495,7 +513,9 @@ class AuthHttpTest {
                         com.mynora.singverse.media.playlist.PlaylistController.class,
                         com.mynora.singverse.mobile.MobileLibraryController.class,
                         com.mynora.singverse.tv.TvController.class,
+                        com.mynora.singverse.tv.TvHomeSettingsController.class,
                         com.mynora.singverse.media.transcoding.TranscodeController.class,
+                        com.mynora.singverse.media.transcoding.SongCacheController.class,
                         com.mynora.singverse.media.transcoding.TranscodeInputController.class)) {
             var base =
                     (controller.isAnnotationPresent(org.springframework.web.bind.annotation.RequestMapping.class)

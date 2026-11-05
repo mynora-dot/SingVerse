@@ -4,6 +4,7 @@ import { ElAlert, ElButton, ElInput, ElMessage, ElSkeleton, ElTag } from 'elemen
 import { RefreshRight } from '@element-plus/icons-vue'
 import { authRequest } from '../../core/auth/api'
 import PageHeader from '../../shared/ui/PageHeader.vue'
+import { readApprovalLink } from './approval-link'
 import { confirmDanger } from '../../shared/ui/confirm'
 type Device = { id: string; name: string; revoked: boolean }
 type Pending = { id: string; name: string; expiresAt: string }
@@ -11,6 +12,9 @@ const data = ref<{ devices: Device[]; pending: Pending[] }>({ devices: [], pendi
 /** 轮询只更新 loadError；用户操作的失败保留在 actionError，直到下一次操作或手动关闭。 */
 const loadError = ref(''), actionError = ref(''), busy = ref(false), loaded = ref(false), refreshing = ref(false)
 const codes = ref<Record<string, string>>({})
+const scanned = ref(readApprovalLink(window.location.hash))
+let appliedScan = ''
+const scannedPending = computed(() => data.value.pending.find(p => p.id === scanned.value?.id))
 const devices = computed(() => [...data.value.devices].sort((a, b) => Number(a.revoked) - Number(b.revoked)))
 const activeCount = computed(() => data.value.devices.filter(device => !device.revoked).length)
 let timer: ReturnType<typeof setInterval> | undefined
@@ -19,7 +23,14 @@ const expiry = (value: string) => new Date(value).toLocaleTimeString('zh-CN', { 
 
 async function load(manual = false) {
   if (manual) refreshing.value = true
-  try { data.value = await authRequest('/api/v1/admin/tv-devices'); loadError.value = ''; loaded.value = true }
+  try {
+    data.value = await authRequest('/api/v1/admin/tv-devices'); loadError.value = ''; loaded.value = true
+    scanned.value = readApprovalLink(window.location.hash)
+    if (scannedPending.value && scanned.value && appliedScan !== `${scanned.value.id}:${scanned.value.code}`) {
+      codes.value[scanned.value.id] = scanned.value.code
+      appliedScan = `${scanned.value.id}:${scanned.value.code}`
+    }
+  }
   catch (e) { loadError.value = message(e, '加载失败') }
   finally { refreshing.value = false }
 }
@@ -54,6 +65,8 @@ onUnmounted(() => clearInterval(timer))
     <PageHeader title="电视设备" description="电视首次连接时会显示设备名称和六位授权码，核对一致后批准。电视只能访问曲库与聚会，不会获得管理员权限。">
       <template #actions><ElButton :icon="RefreshRight" :loading="refreshing" @click="load(true)">刷新</ElButton></template>
     </PageHeader>
+    <ElAlert v-if="scannedPending" :title="`正在授权「${scannedPending.name}」`" description="请核对下方设备名称与六位授权码是否和电视一致，再点击批准连接。" type="info" show-icon :closable="false" />
+    <ElAlert v-else-if="scanned" title="该电视申请已处理或已过期，请返回电视刷新二维码。" type="warning" show-icon :closable="false" />
     <ElAlert v-if="actionError" :title="actionError" type="error" show-icon @close="actionError = ''" />
     <ElAlert v-if="loadError" :title="loaded ? `最新状态读取失败：${loadError}，正在自动重试` : loadError" :type="loaded ? 'warning' : 'error'" show-icon :closable="false"><ElButton v-if="!loaded" text @click="load(true)">重试</ElButton></ElAlert>
     <ElSkeleton v-if="!loaded && !loadError" :rows="4" animated />
@@ -61,7 +74,7 @@ onUnmounted(() => clearInterval(timer))
       <section class="sv-panel" aria-labelledby="tv-pending-title">
         <div class="sv-panel-head"><h2 id="tv-pending-title">等待批准 <span v-if="data.pending.length" class="sv-count-pill warn">{{ data.pending.length }}</span></h2><span class="muted">每 5 秒自动刷新</span></div>
         <p v-if="!data.pending.length" class="device-empty">暂无申请。在电视端 SingVerse 中输入本机 NAS 地址即可发起授权。</p>
-        <form v-for="p in data.pending" :key="p.id" class="device-row authorization-form" @submit.prevent="approve(p)">
+        <form v-for="p in data.pending" :key="p.id" class="device-row authorization-form" :class="{ 'scanned-authorization': p.id === scanned?.id }" @submit.prevent="approve(p)">
           <div class="device-info"><h3>{{ p.name }}</h3><p>有效至 {{ expiry(p.expiresAt) }}，过期后需在电视上重新申请</p></div>
           <label class="code-field" :for="`authorization-code-${p.id}`"><span>电视上的六位授权码</span><ElInput :id="`authorization-code-${p.id}`" v-model="codes[p.id]" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" :aria-label="`${p.name} 的授权码`" :disabled="busy" /></label>
           <div class="device-actions"><ElButton type="primary" native-type="submit" :disabled="busy || !/^\d{6}$/.test(codes[p.id] ?? '')">批准连接</ElButton><ElButton :disabled="busy" @click="deny(p)">拒绝</ElButton></div>
@@ -85,6 +98,7 @@ onUnmounted(() => clearInterval(timer))
 .sv-panel-head h2 { display: flex; gap: 8px; align-items: center; }
 .device-empty { padding: 24px 20px; color: var(--sv-text-tertiary); font-size: var(--sv-font-meta); }
 .device-row { display: flex; gap: 16px; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--sv-border-subtle); }
+.scanned-authorization { background: var(--sv-bg-subtle, #f0f6ff); }
 .device-row:last-child { border-bottom: 0; }
 .device-info { flex: 1; min-width: 0; }
 .device-info h3 { margin: 0; font-size: var(--sv-font-body); font-weight: 600; overflow-wrap: anywhere; }

@@ -4,6 +4,15 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import AudioTrackPreview from '../src/admin/modules/song-management/components/AudioTrackPreview.vue'
 import { playback } from '../src/admin/modules/transcoding/playback'
 import { mockMediaElements } from './media-element-mocks'
+const adapter = vi.hoisted(() => ({ load: vi.fn(), attach: vi.fn(), destroy: vi.fn(), on: vi.fn() }))
+vi.mock('hls.js', () => ({ default: class {
+  static Events = { MANIFEST_PARSED: 'manifestParsed', ERROR: 'error' }
+  static isSupported() { return true }
+  loadSource = adapter.load
+  attachMedia = adapter.attach
+  destroy = adapter.destroy
+  on = adapter.on
+} }))
 vi.mock('../src/admin/modules/transcoding/playback', () => ({ playback: { start: vi.fn(), status: vi.fn(), cancel: vi.fn() } }))
 const streams = [{ id: 'stream:1' }, { id: 'stream:2' }]
 let wrapper: ReturnType<typeof mount> | undefined
@@ -29,6 +38,34 @@ it('未标记也能指定音轨试听，切换时保留时间且释放旧会话'
   wrapper.unmount(); wrapper = undefined
   expect(playback.cancel).toHaveBeenCalledWith('session2')
   expect(vi.getTimerCount()).toBe(0)
+})
+it.each([
+  { native: true, offset: 0, mediaTime: 100.21576 },
+  { native: true, offset: 40, mediaTime: 60.21576 },
+  { native: false, offset: 0, mediaTime: 100.21576 },
+  { native: false, offset: 40, mediaTime: 60.21576 },
+])('切轨命中 HLS 缓存时保留原曲位置（native=$native，offset=$offset）', async ({ native, offset, mediaTime }) => {
+  vi.mocked(HTMLMediaElement.prototype.canPlayType).mockReturnValue(native ? 'probably' : '')
+  wrapper = mount(AudioTrackPreview, { props: { songId: 'song', streams } })
+  await wrapper.findAll('button')[0]!.trigger('click')
+  for (let i = 0; i < 5; i++) await flushPromises()
+  const audio = wrapper.get('audio')
+  await audio.trigger('loadedmetadata')
+  audio.element.currentTime = 100.21576
+  const cached = { id: 'cached', mode: 'HLS', status: 'READY', offset, url: '/cached.m3u8', execution: { cacheHit: true, media: { duration: 240, streams: [] } } }
+  vi.mocked(playback.start).mockResolvedValue(cached)
+  await wrapper.findAll('button')[1]!.trigger('click')
+  for (let i = 0; i < 5; i++) await flushPromises()
+  expect(playback.start).toHaveBeenLastCalledWith('song', { audio_id: 'stream:2', quality: 'auto', start: 100.21576 })
+  audio.element.currentTime = 0 // A new media URL starts at the resource's zero point.
+  await audio.trigger('loadedmetadata')
+  if (!native) {
+    const onParsed = adapter.on.mock.calls.filter(([event]) => event === 'manifestParsed').at(-1)![1] as () => void
+    onParsed(); await flushPromises()
+    expect(adapter.load).toHaveBeenLastCalledWith('/cached.m3u8')
+  }
+  expect(audio.element.currentTime).toBeCloseTo(mediaTime)
+  expect(audio.element.paused).toBe(false)
 })
 it('关闭或切换歌曲后迟到的会话会被释放，不会开始播放', async () => {
   let finish!: (value: Awaited<ReturnType<typeof playback.start>>) => void

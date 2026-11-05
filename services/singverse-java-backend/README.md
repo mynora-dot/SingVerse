@@ -31,6 +31,10 @@ SPRING_PROFILES_ACTIVE=mysql ./mvnw spring-boot:run
 
 业务授权、扫描编排与唯一业务数据库写入由 Java 负责，FFmpeg 等媒体处理由独立 Python 服务执行。管理员 `/api/v1/compute-node` 读取/保存单个活动节点配置，`POST /api/v1/compute-node/test` 测试草稿而不保存。AUTO 从部署的 `COMPUTE_NODE_URL`、`COMPUTE_AUTH_TOKEN_FILE` 读取连接；MANUAL 使用数据库加密凭据与路径映射；DISABLED 停止新调用。节点不属于 Actuator 健康依赖，不在 Java 启动时连通检查。测试请求 2 秒连接、4 秒响应超时、64 KiB 响应上限，保持 TLS 验证且不跟随重定向；HTTP 限本机/受限内网，禁止链路本地等地址。接口只返回 hasToken；更改地址须重填或明确清除凭据。SQLite/MySQL 配置迁移与 MyBatis XML 同步。每次扫描固定连接快照，后续修改只影响新扫描。`make backend-check` 验证真实 Python 生命周期及主服务健康隔离。
 
+性能节点支持 `POST /api/v1/compute-node/discovery` 扫描局域网、`POST /api/v1/compute-node/pair` 选择发现结果并连接，无需在浏览器填写密钥；两者均受管理员会话和 CSRF 保护。扫描采用 HTTP 单播，优先 NAS 业务回源所在私网 `/24`，再检查已有节点和 Java 私网网卡，最多 3 个网段、768 个主机、32 并发、每请求 500 毫秒、总计 10 秒、32 个结果，默认端口 18090/8090；可指定 RFC1918 IPv4 `/24`～`/32` 及单个端口，本机回环只允许单点 `/32`。Docker 桥接网络不能推断宿主机所有网段时，可填写 Java 可达的 NAS 私网网段。发现返回固定 IP 和有效期 2 分钟的 opaque 标识，配对不接受任意地址，不访问公网或链路本地，不跟随重定向。
+
+Java 首次扫描时创建 RSA3072 身份，公钥为 SPKI、私钥为 PKCS8；私钥复用认证主密钥加密，连同公钥保存在 `compute_pairing_identity` 单行表，`clientId` 是公钥 DER 的 SHA256。备份/恢复需同时保留业务数据库和匹配的认证主密钥。节点开放局域网配对后，Java 对节点一次性挑战签名（RSA-PSS、SHA256、MGF1-SHA256、salt32），并用带节点/挑战标签的 OAEP-SHA256 解密已有内部 Bearer。节点首次采用局域网 TOFU 绑定，已绑定节点只允许同一身份恢复；公钥、挑战、签名及 Bearer 全程只在 Java 与计算节点间交换。只有节点认证和业务回源都成功才 CAS 保存 MANUAL 配置，失败或过期修订不替换旧连接。现有计算 API 继续要求 Bearer，不因发现功能开放。
+
 mysql-check是Maven测试Profile，执行MySqlConnectionIT；普通测试独立验证SQLite及H5，临时数据库不污染开发文件。健康端点保留Actuator原生响应，不泄露数据库详情。
 
 ## Nginx与API前缀
@@ -252,7 +256,7 @@ TV 首页 `/api/v1/tv/home` 复用 MyBatis 曲库分页查询，独立返回全�
 
 ### TV 非转码增强
 
-TV/亲友只读曲库支持有效元数据、拼音全拼/首字母及已解析编号检索（TvLibrary，共享 30 秒只读索引），正式标签过滤仍同维 OR/跨维 AND，先过滤后分页。新增设备专用同名 LRC/SRT/VTT 文本读取和发布目录的 manifest/APK 接口，具体字段见 OpenAPI；来源凭据不对外，文本每个上限 128KiB，发布包上限 256MiB。没有新增业务表，SQL 仍通过现有 TvMapper.xml。
+TV/亲友只读曲库支持有效元数据、拼音全拼/首字母及已解析编号检索（TvLibrary，共享 30 秒只读索引），正式标签过滤仍同维 OR/跨维 AND，先过滤后分页。设备专用 text-tracks 优先读取同名 LRC/SRT/VTT；没有有效原始 LRC 时，复用已保存的 WebDAV/共享或本地扫描内嵌歌词。已有毫秒时间转换为 LRC，无时间文本返回 `format=text`，不为 MPEG 帧数或纯文本编造时间。读取不会重新探测媒体；变化或归档的远程缓存不返回旧歌词。旧版本本地扫描未保存歌词时需重新扫描一次。发布目录提供 manifest/APK 接口，具体字段见 OpenAPI；来源凭据不对外，文本每个上限 128KiB，发布包上限 256MiB。没有新增业务表，SQL 通过现有 Mapper XML。
 
 `SINGVERSE_TV_RELEASE_DIRECTORY` 默认空，不启用发布；配置为 Java 可读的专用发布目录，包含 `release.json`（versionCode/versionName）和 `singverse-tv.apk`。客户端仍验证同签名/递增版本，不靠服务端摘要代替签名。Docker 的变量是容器内路径，步骤见 TV README。
 
@@ -277,7 +281,7 @@ TV/有效参与者GET `/api/v1/tv/library/classification-tags/{id}/cover`只读�
 
 ## 手机原生曲库只读接口
 
-`mobile.MobileLibraryController` 提供管理员 Cookie 鉴权的 GET `/api/v1/mobile/library/songs`、`/{id}`、`/{id}/text-tracks`。列表支持 q/page/size/tagIds/unclassified/artistId，复用现有曲库拼音索引与分类/歌手筛选；返回媒体条目而非按同名合并的歌曲组。DTO 补充 mediaType/format/language，未知可播状态保持 UNKNOWN，封面为已有管理员资源路径。歌词复用受限来源内同名 LRC/SRT/VTT 读取，不读取任意路径。
+`mobile.MobileLibraryController` 提供管理员 Cookie 鉴权的 GET `/api/v1/mobile/library/songs`、`/{id}`、`/{id}/text-tracks`。列表支持 q/page/size/tagIds/unclassified/artistId，复用现有曲库拼音索引与分类/歌手筛选；返回媒体条目而非按同名合并的歌曲组。DTO 补充 mediaType/format/language，未知可播状态保持 UNKNOWN，封面为已有管理员资源路径。歌词复用受限来源内同名 LRC/SRT/VTT 与现有内嵌缓存读取，不读取任意路径；`format=text` 是无同步时间的实际歌词，旧客户端可忽略不支持的格式。
 
 手机继续使用现有 auth、artists、classification/tags、playlists 和 transcoding 接口，不创建 TV 设备/聚会，不新增表或业务 SQL。`MobileLibraryHttpTest` 在随机端口和隔离 SQLite 验证鉴权、真实扫描、分页、中文/拼音、分类及歌手筛选、来源边界与文本大小限制。
 
@@ -354,3 +358,30 @@ WebDAV version 2 分享索引的 `audioRoles` 仅含源轨映射、轨道描述�
 原始曲库只挂载到 Java，所有本地／WebDAV 计算请求使用任务引用和回源地址。Java 的 `SINGVERSE_CALLBACK_ORIGIN` 可指定计算节点可达的业务根地址；未设置时采用既有公开入口或已认证管理员请求入口。仅可信代理可提供转发 Host／Proto。性能节点无需媒体目录映射或部署级业务 URL；连接测试同时检查反向认证回源。详见 compute README 的升级要求。
 
 同套／Mac 原生自动节点使用 `SINGVERSE_COMPUTE_AUTO_CALLBACK_ORIGIN`；切换到其他独立节点时不复用该内部或回环地址。通过 `localhost` 打开的管理页不能给远端节点提供可达入口，请改用业务机器的局域网地址，或在业务 Compose 显式配置 `SINGVERSE_CALLBACK_ORIGIN`。
+
+## 电视首页个性化
+
+管理员`GET/PUT /api/v1/admin/tv-settings`配置全局首页文案、自动轮播与5–60秒间隔；`POST /banners?revision=...`上传、`DELETE /banners/{id}?revision=...`移除、`GET /banners/{id}/image`读取图片（上述后缀均相对此管理路径）。最多8张，排序/启停和设置在单事务内保存，写入均校验全局revision。沿用管理员Cookie与CSRF，不能以设备Bearer写入。新MyBatis XML及SQLite/MySQL迁移`202611050001`保存配置、排序和归一JPEG字节；不存外部图片URL、不增加文件目录或环境变量。数据库备份同时包含首页图片。
+
+TV首页兼容新增`appearance`和最多4个真实`featuredPlaylists`；`GET /api/v1/tv/home/banners/{id}/image`显式要求电视device身份且图片启用，亲友不可读取。上传复用`UploadedImage`的2MB/JPEG/PNG/4096px限制和1280px归一，返回受权同源路径、不公开文件系统。并发修改返回409；停用或移除后TV图片返回404。契约见根`contracts/openapi/singverse.openapi.json`，SQLite随机端口集成测试见`TvHttpTest`。
+
+
+## 歌曲解码缓存
+
+实时 HLS 音视频缓存由 Java 服务节点持久保存，compute 只负责解码和短期执行产物。Java 下载 compute 已完成的整包清单，逐项校验长度、SHA-256 和 HLS 引用后原子发布；未完成或校验失败的文件不进入可播放索引。完成接收后再确认释放 compute 临时产物。缓存文件、媒体原件和离线兼容成品分别管理；不向客户端返回服务器路径或计算节点地址。
+
+管理员 `GET /api/v1/transcoding/cache?page=0&size=20` 查看服务端完整实时缓存，默认 20 条、最大 100 条，按最近访问时间倒序及 ID 升序。条目包含当前有效歌名、歌手、音频/视频类型、大小、生成/访问时间、命中次数及播放占用状态；歌曲下架仍可按缓存 ID 清理。容量摘要统计 Java 缓存目录的实际占用，可包含接收中的临时文件，因此可能大于完整条目合计。离线兼容成品继续在原歌曲播放设置中独立管理。
+
+缓存设置、索引和独立会话租约通过 MyBatis XML 保存在业务数据库，SQLite/MySQL 迁移为 `202611050002_song_cache.sql`。`PUT /cache/settings` 保存完整 `maxBytes/policy/ttlHours/revision`，路径相对上述管理接口；容量 64MiB–1PiB、保留时间 1–8760 小时，旧 revision 返回 409。默认容量 10GiB、策略 LRU；内置最近使用优先保留 LRU、热门优先保留 LFU、生成后到期 TTL、手动清理 MANUAL。TTL 从生成完成时计算，LRU/LFU 不使用到期时间；MANUAL 容量不足拒绝新解码任务，但仍允许缓存命中。
+
+`DELETE /cache/{id}` 删除单项，播放租约冲突返回 409；`POST /cache/clear` 清理未占用缓存并返回 removed/skipped。任何策略都保护活动播放租约，删除文件失败保留索引供重试。每次命中创建独立授权会话，关闭其中一次播放只释放自己的租约；重启后完整缓存继续保留，未续租的会话到期释放。源指纹或输出参数变化不会复用不匹配的结果。缓存管理、命中读取和清理均不依赖 compute 在线，客户端仍通过 Java 同源受权播放接口读取。
+
+非零播放起点优先复用同歌曲、素材指纹、输出参数及终端能力的零起点整曲缓存，命中后不会重复生成后半段。返回 `offset` 仍为缓存本身的原时间轴偏移（整曲为 0），客户端使用 `max(0, 请求起点 - offset)` 定位媒体；不能把请求起点当作返回偏移。没有可用整曲缓存时才匹配相同起点的局部缓存或按原请求执行转码，局部缓存不会冒充整曲；已有不同起点的缓存不自动删除。
+
+| Java 配置 | 默认与用途 |
+|---|---|
+| `SINGVERSE_SONG_CACHE_PATH` | 原生为 `TRANSCODE_VERSION_PATH/cache`，未配置版本目录时为 `./data/transcoding/cache`；必须与媒体原件分开 |
+| `SINGVERSE_SONG_CACHE_BYTES` | `10737418240`（10GiB），首次初始化预算，后续以管理员保存的数据库配置为准 |
+| `SINGVERSE_SONG_CACHE_MINIMUM_FREE_BYTES` | `2147483648`（2GiB），接收新缓存时保留的磁盘空间 |
+
+应用 Compose 和业务独立部署 Compose 均使用 `/data/transcoding/cache`，复用 Java 的 `singverse-data` 持久卷；原生自定义目录时，备份或迁移须同时保留业务数据库和该目录。compute 的 `COMPUTE_TRANSCODE_ROOT` / `COMPUTE_CACHE_BYTES` 仅限制执行临时目录，不是歌曲缓存的配置入口。新增行为测试见 `SongCacheServiceTest`、`AuthHttpTest` 与 `TranscodeIntegrationIT`。

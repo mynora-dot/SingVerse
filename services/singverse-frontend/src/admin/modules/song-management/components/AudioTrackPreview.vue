@@ -41,6 +41,9 @@ async function preview(id: string) {
     await nextTick()
     if (turn !== generation || !player.value) return
     const element = player.value
+    element.addEventListener('loadedmetadata', () => {
+      if (turn === generation) element.currentTime = Math.max(0, position - value.offset)
+    }, { once: true })
     const play = () => {
       if (turn !== generation) return
       void element.play().catch(() => { if (turn === generation) notice.value = '点击播放器的播放按钮开始试听' })

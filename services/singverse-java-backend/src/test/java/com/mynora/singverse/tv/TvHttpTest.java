@@ -679,4 +679,64 @@ class TvHttpTest {
                                 .statusCode())
                 .isEqualTo(410);
     }
+    private HttpResponse<String> uploadHomeBanner(long revision, byte[] image, boolean csrf) throws Exception {
+        String boundary = "SingVerseTestBoundary";
+        var body = new java.io.ByteArrayOutputStream();
+        body.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"cover.png\"\r\nContent-Type: image/png\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        body.write(image);
+        body.write(("\r\n--" + boundary + "--\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/admin/tv-settings/banners?revision=" + revision))
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary);
+        if (csrf) request.header("X-CSRF-Token", json.readTree(req(admin, "/api/v1/auth/csrf", "GET", null, null, false).body()).path("token").asText());
+        return admin.send(request.POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test void homeSettingsImagesOrderingRevisionAndDeviceIsolation() throws Exception {
+        String root = "/api/v1/admin/tv-settings";
+        assertThat(req(guest, root, "GET", null, null, false).statusCode()).isEqualTo(401);
+        String token = device();
+        assertThat(req(guest, root, "GET", null, token, false).statusCode()).isEqualTo(401);
+        var initial = ok(admin, root, "GET", null, null, false);
+        long revision = initial.path("revision").asLong();
+        var picture = new java.awt.image.BufferedImage(16, 9, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        var bytes = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(picture, "png", bytes);
+        assertThat(uploadHomeBanner(revision, bytes.toByteArray(), false).statusCode()).isEqualTo(403);
+        assertThat(uploadHomeBanner(revision, new byte[] {1,2,3}, true).statusCode()).isEqualTo(400);
+        var firstUpload = uploadHomeBanner(revision, bytes.toByteArray(), true);
+        assertThat(firstUpload.statusCode()).withFailMessage(firstUpload.body()).isEqualTo(200);
+        var first = json.readTree(firstUpload.body());
+        assertThat(uploadHomeBanner(revision, bytes.toByteArray(), true).statusCode()).isEqualTo(409);
+        var second = json.readTree(uploadHomeBanner(first.path("revision").asLong(), bytes.toByteArray(), true).body());
+        var draft = (com.fasterxml.jackson.databind.node.ObjectNode) second.deepCopy();
+        draft.put("headline", "今晚一起唱"); draft.put("autoRotate", false); draft.put("rotationSeconds", 12);
+        var banners = (com.fasterxml.jackson.databind.node.ArrayNode) draft.path("banners");
+        var a = banners.get(0).deepCopy(); var b = banners.get(1).deepCopy(); banners.removeAll(); banners.add(b); banners.add(a);
+        assertThat(req(admin, root, "PUT", draft, null, false).statusCode()).isEqualTo(403);
+        var saved = ok(admin, root, "PUT", draft, null, true);
+        assertThat(req(admin, root, "PUT", draft, null, true).statusCode()).isEqualTo(409);
+        var home = ok(guest, "/api/v1/tv/home", "GET", null, token, false).path("appearance");
+        assertThat(home.path("headline").asText()).isEqualTo("今晚一起唱");
+        assertThat(home.path("autoRotate").asBoolean()).isFalse();
+        assertThat(home.path("banners").get(0).path("id").asText()).isEqualTo(b.path("id").asText());
+        String tvImage = home.path("banners").get(0).path("imagePath").asText();
+        assertThat(req(guest, tvImage, "GET", null, null, false).statusCode()).isEqualTo(401);
+        var image = guest.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + tvImage)).header("Authorization", "Bearer " + token).GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+        assertThat(image.statusCode()).isEqualTo(200);
+        assertThat(image.headers().firstValue("Content-Type").orElse("")).isEqualTo("image/jpeg");
+        assertThat(javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(image.body()))).isNotNull();
+        var disabled = (com.fasterxml.jackson.databind.node.ObjectNode) saved.deepCopy();
+        ((com.fasterxml.jackson.databind.node.ObjectNode)disabled.path("banners").get(0)).put("enabled", false);
+        var newState = ok(admin, root, "PUT", disabled, null, true);
+        assertThat(req(guest, tvImage, "GET", null, token, false).statusCode()).isEqualTo(404);
+        assertThat(ok(guest, "/api/v1/tv/home", "GET", null, token, false).path("appearance").path("banners")).hasSize(1);
+        var invalid = (com.fasterxml.jackson.databind.node.ObjectNode)newState.deepCopy(); invalid.put("rotationSeconds", 1);
+        assertThat(req(admin, root, "PUT", invalid, null, true).statusCode()).isEqualTo(400);
+        String imageId = b.path("id").asText();
+        assertThat(req(admin, root + "/banners/" + imageId + "?revision=" + revision, "DELETE", null, null, true).statusCode()).isEqualTo(409);
+        var removed = ok(admin, root + "/banners/" + imageId + "?revision=" + newState.path("revision").asLong(), "DELETE", null, null, true);
+        assertThat(removed.path("banners")).hasSize(1);
+        assertThat(req(admin, b.path("imagePath").asText(), "GET", null, null, false).statusCode()).isEqualTo(404);
+    }
+
 }

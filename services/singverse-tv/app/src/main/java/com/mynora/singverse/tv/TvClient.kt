@@ -51,22 +51,24 @@ class TvClient(context: Context) {
     }
     fun clear() { covers.evictAll(); token = ""; preferences.edit().remove("token").apply() }
     suspend fun image(path: String, revision: String): android.graphics.Bitmap? = withContext(Dispatchers.IO) {
-        val key=base+path+"@"+revision
+        val address = base; val credential = token
+        val key=address+path+"@"+revision
         covers.get(key)?.let { return@withContext it }
-        if (!path.startsWith("/api/v1/tv/library/songs/") && !path.startsWith("/api/v1/tv/library/classification-tags/") && !path.startsWith("/api/v1/tv/library/artists/")) return@withContext null
-        val connection = URI(base + path).toURL().openConnection() as HttpURLConnection
+        if (!path.startsWith("/api/v1/tv/home/banners/") && !path.startsWith("/api/v1/tv/library/songs/") && !path.startsWith("/api/v1/tv/library/classification-tags/") && !path.startsWith("/api/v1/tv/library/artists/")) return@withContext null
+        val connection = URI(address + path).toURL().openConnection() as HttpURLConnection
         try {
             connection.connectTimeout = 3000; connection.readTimeout = 5000; connection.instanceFollowRedirects = false
-            connection.setRequestProperty("Authorization", "Bearer $token")
+            connection.setRequestProperty("Authorization", "Bearer $credential")
             if (connection.responseCode != 200) return@withContext null
             val bytes = connection.inputStream.use { it.readBytesBounded(2_000_000) }
             val options=android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds=true }
             android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.size,options)
             if(options.outWidth<=0 || options.outHeight<=0)return@withContext null
             options.inSampleSize=1
-            val limit=if(path.startsWith("/api/v1/tv/library/classification-tags/") || path.startsWith("/api/v1/tv/library/artists/"))1280 else 512
+            val limit=if(path.startsWith("/api/v1/tv/home/banners/") || path.startsWith("/api/v1/tv/library/classification-tags/") || path.startsWith("/api/v1/tv/library/artists/"))1280 else 512
             while(maxOf(options.outWidth/options.inSampleSize,options.outHeight/options.inSampleSize)>limit)options.inSampleSize*=2
             options.inJustDecodeBounds=false
+            if (base != address || token != credential) return@withContext null
             android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.size,options)?.also { covers.put(key,it) }
         } finally { connection.disconnect() }
     }

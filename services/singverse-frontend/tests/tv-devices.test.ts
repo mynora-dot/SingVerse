@@ -88,3 +88,29 @@ it('操作失败的提示不会被后台轮询的成功刷新清除', async () =
     expect(wrapper.text()).toContain('授权码已过期')
   } finally { wrapper.unmount(); vi.useRealTimers() }
 })
+
+it('手机扫码只预填匹配申请并等待管理员明确批准，保留前导零', async () => {
+  window.location.hash = '#/system/tv-devices?authorization=second&code=012345'
+  const wrapper = mount(TvDevices)
+  try {
+    await flushPromises()
+    const forms = wrapper.findAll('form.authorization-form')
+    expect((forms[0]!.get('input').element as HTMLInputElement).value).toBe('')
+    expect((forms[1]!.get('input').element as HTMLInputElement).value).toBe('012345')
+    expect(wrapper.text()).toContain('请核对下方设备名称与六位授权码')
+    expect(authRequest).toHaveBeenCalledTimes(1)
+    await forms[1]!.trigger('submit'); await flushPromises()
+    expect(authRequest).toHaveBeenCalledWith('/api/v1/admin/device-authorizations/second/approve', 'POST', { code: '012345' })
+  } finally { wrapper.unmount(); window.location.hash = '' }
+})
+
+it('过期扫码申请不会向其他电视填入授权码', async () => {
+  window.location.hash = '#/system/tv-devices?authorization=missing&code=012345'
+  const wrapper = mount(TvDevices)
+  try {
+    await flushPromises()
+    expect(wrapper.text()).toContain('该电视申请已处理或已过期')
+    expect(wrapper.findAll('form input').every(input => (input.element as HTMLInputElement).value === '')).toBe(true)
+    expect(authRequest).toHaveBeenCalledTimes(1)
+  } finally { wrapper.unmount(); window.location.hash = '' }
+})

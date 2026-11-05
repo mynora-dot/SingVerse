@@ -109,3 +109,32 @@ class TvInvite {
     return TvInvite(uri.origin, token);
   }
 }
+
+class TvAuthorizationQr {
+  TvAuthorizationQr(this.origin, this.id, this.code);
+  final String origin;
+  final String id;
+  final String code;
+
+  static TvAuthorizationQr parse(String input) {
+    final uri = Uri.tryParse(input);
+    if (uri == null ||
+        !['http', 'https'].contains(uri.scheme) ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty ||
+        uri.path != '/admin/' ||
+        uri.hasQuery) {
+      throw const FormatException('请扫描电视上的 SingVerse 登录二维码');
+    }
+    final route = Uri.tryParse(uri.fragment);
+    final id = route?.queryParameters['authorization'] ?? '';
+    final code = route?.queryParameters['code'] ?? '';
+    if (route?.path != '/system/tv-devices' ||
+        route?.queryParameters.length != 2 ||
+        !RegExp(r'^[A-Za-z0-9-]{1,80}$').hasMatch(id) ||
+        !RegExp(r'^\d{6}$').hasMatch(code)) {
+      throw const FormatException('电视授权二维码无效或已过期，请重新显示二维码');
+    }
+    return TvAuthorizationQr(uri.origin, id, code);
+  }
+}
