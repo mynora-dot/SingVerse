@@ -19,6 +19,7 @@ import androidx.media3.common.*
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.hls.HlsManifest
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.*
 import org.json.JSONArray
@@ -119,11 +120,12 @@ class PlaybackService : MediaSessionService() {
         player.addListener(object : Player.Listener {
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                 if (resourceMode != "DIRECT" || selectedSourceId.isBlank()) return
-                val available = tracks.groups.flatMap { group -> (0 until group.length).filter { group.type == C.TRACK_TYPE_AUDIO && group.isTrackSupported(it) }.map { group to it } }
+                val available = availableAudioTracks(tracks)
                 if (available.size != sourceAudioIds.size) return
                 val ordinal = sourceAudioIds.indexOf(selectedSourceId)
                 val target = available.getOrNull(ordinal) ?: return
-                if (!target.first.isTrackSelected(target.second)) player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setOverrideForType(androidx.media3.common.TrackSelectionOverride(target.first.mediaTrackGroup, target.second)).build()
+                val group = tracks.groups[target.groupIndex]
+                if (!target.selected) player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setOverrideForType(androidx.media3.common.TrackSelectionOverride(group.mediaTrackGroup, target.trackIndex)).build()
                 selectedSourceId = ""
             }
             override fun onEvents(p: Player, events: Player.Events) {
@@ -297,9 +299,11 @@ class PlaybackService : MediaSessionService() {
             }
             "useRole" -> {
                 val saved = roles.getString(roleKey(value.toString()), "").orEmpty().split('|')
-                if (sharedRoles.optJSONArray("streams")?.length() == 1 && saved.size == 2 && saved[1] in listOf("LEFT", "RIGHT")) {
+                val localTrack = availableAudioTracks().singleOrNull()
+                if (saved.size == 2 && saved[1] in listOf("LEFT", "RIGHT") && localTrack != null && localTrack.id == saved[0] && localTrack.channelCount == 2) {
                     command("track", saved[0]); command("channel", saved[1]); return
                 }
+                chain.channels.mode = "STEREO"
                 requestedAudioRole = value.toString()
                 open(song, server, player.currentPosition + offsetMs, force, player.playWhenReady, preserveSettings = true)
             }
@@ -323,7 +327,8 @@ class PlaybackService : MediaSessionService() {
                 val parts = value.toString().split(':')
                 val group = player.currentTracks.groups.getOrNull(parts[0].toIntOrNull() ?: -1)
                 val index = parts.getOrNull(1)?.toIntOrNull() ?: -1
-                if (group != null && index in 0 until group.length && group.isTrackSupported(index))
+                if (group != null && index in 0 until group.length && group.isTrackSupported(index) &&
+                    (group.type != C.TRACK_TYPE_AUDIO || availableAudioTracks().any { it.id == value.toString() }))
                     player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(group.type, false)
                         .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, index)).build()
             }
@@ -357,6 +362,21 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+    private fun availableAudioTracks(tracks: Tracks = player.currentTracks): List<PlaybackAudioTrack> {
+        val available = tracks.groups.flatMapIndexed { g, group ->
+            (0 until group.length).filter { group.type == C.TRACK_TYPE_AUDIO && group.isTrackSupported(it) }.map { i ->
+                val format = group.getTrackFormat(i)
+                PlaybackAudioTrack(g, i, group.isTrackSelected(i), format.sampleMimeType, format.channelCount, format.sampleRate)
+            }
+        }
+        val manifest = if (resourceMode == "HLS") player.currentManifest as? HlsManifest else null
+        val variant = manifest?.multivariantPlaylist?.variants?.singleOrNull()
+        val rendition = manifest?.multivariantPlaylist?.audios?.singleOrNull()
+        val duplicate = variant != null && rendition?.url != null && variant.url == rendition.url && variant.audioGroupId == rendition.groupId
+        val decoded = player.audioFormat?.let { PlaybackAudioFormat(it.sampleMimeType, it.channelCount, it.sampleRate) }
+        return PlaybackAudioTracks.usable(available, sourceAudioIds.count { it.isNotBlank() }, duplicate, decoded)
+    }
+
     fun snapshot(): Map<String, Any?> {
         if (resourceReady && state !in listOf("ERROR", "AUTH_REQUIRED")) state = when (player.playbackState) {
             Player.STATE_BUFFERING -> "BUFFERING"
@@ -365,12 +385,27 @@ class PlaybackService : MediaSessionService() {
             else -> state
         }
         var audioOrdinal = 0
-        val audioCount = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }.sumOf { group -> (0 until group.length).count { group.isTrackSupported(it) } }
-        val tracks = player.currentTracks.groups.flatMapIndexed { g, group -> (0 until group.length).filter { group.isTrackSupported(it) && group.type in listOf(C.TRACK_TYPE_AUDIO, C.TRACK_TYPE_TEXT) }.map { i ->
+        val availableAudio = availableAudioTracks()
+        val audioIds = availableAudio.map { it.id }.toSet()
+        val audioCount = availableAudio.size
+        val tracks = player.currentTracks.groups.flatMapIndexed { g, group -> (0 until group.length).filter { group.isTrackSupported(it) && (group.type == C.TRACK_TYPE_TEXT || group.type == C.TRACK_TYPE_AUDIO && "$g:$it" in audioIds) }.map { i ->
             val f = group.getTrackFormat(i)
             mapOf("sourceId" to if(group.type == C.TRACK_TYPE_AUDIO && audioCount == sourceAudioIds.size) sourceAudioIds.getOrElse(audioOrdinal++) { "" } else "", "id" to "$g:$i", "type" to if (group.type == C.TRACK_TYPE_AUDIO) "audio" else "text", "selected" to group.isTrackSelected(i), "channels" to f.channelCount,
                 "label" to listOfNotNull(f.label, f.language?.takeUnless { it == "und" }, f.channelCount.takeIf { it > 0 }?.let { "$it 声道" }).joinToString(" · ").ifBlank { "轨道 ${i + 1}" })
         } }
+        val selectedAudio = tracks.firstOrNull { it["type"] == "audio" && it["selected"] == true }
+        val localBacking = roles.getString(roleKey("backing"), "") == selectedAudio?.get("id").toString() + "|" + chain.channels.mode
+        val localOriginal = roles.getString(roleKey("original"), "") == selectedAudio?.get("id").toString() + "|" + chain.channels.mode
+        val selectedSource = selectedAudio?.get("sourceId").toString()
+        val audioRole = when {
+            workId.isNotBlank() -> ""
+            localBacking || sharedRoles.optString("backingId").isNotBlank() && sharedRoles.optString("backingId") == selectedSource -> "backing"
+            localOriginal || sharedRoles.optString("originalId").isNotBlank() && sharedRoles.optString("originalId") == selectedSource -> "original"
+            selectedSource.isBlank() || selectedSource == "null" -> requestedAudioRole
+            else -> ""
+        }
+        val videoSize = player.videoSize
+        val videoAspect = if (videoSize.width > 0 && videoSize.height > 0) videoSize.width.toDouble() * videoSize.pixelWidthHeightRatio / videoSize.height else 16.0 / 9.0
         val duration = if (originalDuration > 0) originalDuration else player.duration.takeIf { it != C.TIME_UNSET && it > 0 }?.plus(offsetMs) ?: 0L
         return mapOf("song" to song.toString(), "instanceId" to server, "state" to state, "message" to message,
             "positionMs" to (if (resourceReady) player.currentPosition + offsetMs else requestedPosition), "durationMs" to duration,
@@ -378,6 +413,7 @@ class PlaybackService : MediaSessionService() {
             "karaoke" to karaoke.snapshot(), "countdown" to countdown, "pitch" to pitch, "speed" to speed,
             "volume" to player.volume, "channel" to chain.channels.mode, "rangeA" to rangeA, "rangeB" to rangeB,
             "originalMapped" to (sharedRoles.optString("originalId").isNotBlank() || sourceAudioIds.size == 1), "backingMapped" to (sharedRoles.optString("backingId").isNotBlank() || sharedRoles.has("backingResource") || roles.contains(roleKey("backing"))),
+            "audioRole" to audioRole, "videoAspect" to videoAspect,
             "output" to (chain.audioTrack?.routedDevice?.productName?.toString() ?: "播放后显示实际输出设备"))
     }
     private fun publish() { if (!destroyed) listener?.invoke(snapshot()) }

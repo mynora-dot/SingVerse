@@ -3,6 +3,22 @@ import 'package:flutter/material.dart';
 import '../../app/design.dart';
 import '../../core/app_state.dart';
 
+Future<void> openConnection(BuildContext context, AppState state) async {
+  if (state.taking || state.singingPhase == 'RENDERING') {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('请先结束录音或等待混音完成，再修改 NAS 连接。')));
+    return;
+  }
+  await Navigator.push(
+    context,
+    MaterialPageRoute<void>(
+      settings: const RouteSettings(name: 'connection'),
+      builder: (_) => ConnectionPage(state: state),
+    ),
+  );
+}
+
 class ConnectionPage extends StatefulWidget {
   const ConnectionPage({super.key, required this.state});
   final AppState state;
@@ -14,6 +30,9 @@ class _ConnectionPageState extends State<ConnectionPage> {
   late final address = TextEditingController(text: widget.state.origin);
   final password = TextEditingController(), code = TextEditingController();
   bool editing = false;
+  bool checked = false;
+  bool get locked =>
+      widget.state.taking || widget.state.singingPhase == 'RENDERING';
   @override
   void initState() {
     super.initState();
@@ -30,19 +49,83 @@ class _ConnectionPageState extends State<ConnectionPage> {
 
   Future<void> submit() async {
     final state = widget.state;
-    if (state.busy) return;
+    if (state.busy || locked) return;
     if (editing) {
       await state.connect(address.text);
-      if (state.error == null) setState(() => editing = false);
+      if (mounted && state.error == null) {
+        setState(() {
+          editing = false;
+          checked = true;
+        });
+      }
     } else if (state.mfaRequired) {
       await state.verify(code.text.trim());
       code.clear();
+      if (mounted && state.authenticated) Navigator.pop(context);
     } else {
       await state.login(password.text);
       password.clear();
+      if (mounted && state.authenticated) Navigator.pop(context);
     }
-    if (mounted && state.authenticated) Navigator.pop(context);
   }
+
+  Future<void> logout() async {
+    if (locked) return;
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('退出 NAS 登录？'),
+        content: const Text('本机播放将停止。收藏、练唱记录和录音作品仍保留在手机上。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('退出登录'),
+          ),
+        ],
+      ),
+    );
+    if (yes == true && mounted) await uiTask(context, widget.state.logout);
+  }
+
+  Widget detail(String label, Widget value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 12),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Align(alignment: Alignment.centerRight, child: value),
+        ),
+      ],
+    ),
+  );
+
+  Widget management(
+    IconData icon,
+    String title,
+    String subtitle,
+    VoidCallback? action,
+  ) => ListTile(
+    minTileHeight: widget.state.senior ? 84 : 66,
+    leading: Icon(icon, size: 22),
+    title: Text(
+      title,
+      style: Theme.of(context).textTheme.bodyMedium
+          ?.copyWith(fontWeight: FontWeight.w500),
+    ),
+    subtitle: Text(subtitle),
+    trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+    onTap: action,
+  );
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -50,94 +133,246 @@ class _ConnectionPageState extends State<ConnectionPage> {
     builder: (context, _) {
       final state = widget.state;
       return Scaffold(
-        appBar: AppBar(title: const Text('连接 NAS')),
+        appBar: AppBar(title: Text(editing ? '连接 NAS' : 'NAS 连接与账号')),
         body: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: AutofillGroup(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SizedBox(height: 36),
-                  const Icon(Icons.graphic_eq_rounded, size: 64, color: mint),
-                  const SizedBox(height: 20),
+          child: ContentWidth(
+            child: ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                if (editing) ...[
                   Text(
-                    '好歌，就在家里。',
-                    style: Theme.of(context).textTheme.headlineLarge,
+                    '连接你的家庭曲库',
+                    style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 12),
-                  const Text('连接你的 SingVerse NAS，把喜欢的歌唱成自己的作品。'),
-                  const SizedBox(height: 36),
-                  if (editing) ...[
-                    TextField(
-                      controller: address,
-                      keyboardType: TextInputType.url,
-                      autocorrect: false,
-                      decoration: const InputDecoration(
-                        labelText: 'NAS 地址',
-                        hintText: 'http://nas.local:18080',
-                      ),
-                      onSubmitted: (_) => submit(),
+                  Text(
+                    '歌曲和歌单都从这里读取。请输入手机可以访问的 NAS 根地址。',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 20),
+                  TextField(
+                    controller: address,
+                    keyboardType: TextInputType.url,
+                    autocorrect: false,
+                    textInputAction: TextInputAction.go,
+                    decoration: const InputDecoration(
+                      labelText: 'NAS 地址',
+                      hintText: 'http://nas.local:18080',
                     ),
-                    const SizedBox(height: 12),
-                    const Text('请输入手机可以访问的 NAS 根地址。'),
-                  ] else ...[
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.dns_outlined),
-                        title: const Text('SingVerse · admin'),
-                        subtitle: Text(state.origin),
-                        trailing: IconButton(
-                          tooltip: '修改地址',
-                          icon: const Icon(Icons.edit_outlined),
-                          onPressed: state.busy
-                              ? null
-                              : () => setState(() => editing = true),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    if (state.mfaRequired)
-                      TextField(
-                        controller: code,
-                        autofocus: true,
-                        autocorrect: false,
-                        decoration: const InputDecoration(labelText: '动态码或恢复码'),
-                        onSubmitted: (_) => submit(),
-                      )
-                    else
-                      TextField(
-                        controller: password,
-                        obscureText: true,
-                        autofillHints: const [AutofillHints.password],
-                        decoration: const InputDecoration(labelText: '管理员密码'),
-                        onSubmitted: (_) => submit(),
-                      ),
-                  ],
-                  if (state.error != null)
-                    Notice(
-                      '${state.error}${state.retryAfter?.isNotEmpty == true ? '，请在 ${state.retryAfter} 秒后重试' : ''}',
-                    ),
-                  const SizedBox(height: 24),
+                    onSubmitted: (_) => submit(),
+                  ),
+                  const SizedBox(height: 20),
                   FilledButton(
-                    onPressed: state.busy ? null : submit,
-                    child: Text(
-                      state.busy
-                          ? '正在连接…'
-                          : editing
-                          ? '验证 NAS'
-                          : state.mfaRequired
-                          ? '验证并登录'
-                          : '登录',
+                    onPressed: state.busy || locked ? null : submit,
+                    child: Text(state.busy ? '正在连接…' : '连接曲库'),
+                  ),
+                  if (state.origin.isNotEmpty)
+                    TextButton(
+                      onPressed: () => setState(() {
+                        editing = false;
+                        address.text = state.origin;
+                      }),
+                      child: const Text('取消修改'),
+                    ),
+                ] else ...[
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 18, 16, 4),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(11),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .primaryContainer,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(
+                                  Icons.dns_outlined,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(width: 13),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '家里的曲库',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium,
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      checked ? '连接检查通过' : 'NAS 地址已保存',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 18),
+                          const Divider(),
+                          detail(
+                            '曲库地址',
+                            SelectableText(
+                              state.origin,
+                              textAlign: TextAlign.right,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ),
+                          const Divider(),
+                          detail(
+                            '账号状态',
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  state.authenticated ? '已登录家庭曲库' : '尚未登录',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                                if (state.authenticated)
+                                  Text(
+                                    state.accountName.isEmpty
+                                        ? '账号已登录'
+                                        : state.accountName,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 20),
-                  const Text(
-                    '歌曲从 NAS 获取，收藏和播放历史保存在此手机。',
-                    textAlign: TextAlign.center,
-                  ),
+                  if (state.authenticated) ...[
+                    Text('连接管理', style: Theme.of(context).textTheme.bodySmall),
+                    const SizedBox(height: 8),
+                    Card(
+                      child: Column(
+                        children: [
+                          management(
+                            Icons.refresh_rounded,
+                            state.busy ? '检查连接中…' : '检查连接',
+                            '确认家庭曲库可以正常访问',
+                            state.busy || locked
+                                ? null
+                                : () async {
+                                    await state.connect(state.origin);
+                                    if (mounted) {
+                                      setState(
+                                        () => checked = state.error == null,
+                                      );
+                                    }
+                                  },
+                          ),
+                          const Divider(indent: 16),
+                          management(
+                            Icons.edit_outlined,
+                            '修改 NAS 地址',
+                            '收藏和练唱记录按曲库分别保留',
+                            state.busy || locked
+                                ? null
+                                : () => setState(() {
+                                    editing = true;
+                                    checked = false;
+                                  }),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    Text('账号', style: Theme.of(context).textTheme.bodySmall),
+                    const SizedBox(height: 8),
+                    Card(
+                      child: management(
+                        Icons.logout_rounded,
+                        '退出登录',
+                        state.accountName.isEmpty
+                            ? '账号已登录'
+                            : '当前账号：${state.accountName}',
+                        state.busy || locked ? null : logout,
+                      ),
+                    ),
+                  ] else ...[
+                    Text(
+                      state.mfaRequired ? '验证身份' : '登录曲库',
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      state.mfaRequired
+                          ? '输入验证器中的动态码，或使用恢复码。'
+                          : '使用 NAS 管理员 admin 访问家里的歌曲。',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 16),
+                    AutofillGroup(
+                      child: state.mfaRequired
+                          ? TextField(
+                              controller: code,
+                              autocorrect: false,
+                              decoration: const InputDecoration(
+                                labelText: '动态码或恢复码',
+                              ),
+                              onSubmitted: (_) => submit(),
+                            )
+                          : TextField(
+                              controller: password,
+                              obscureText: true,
+                              autofillHints: const [AutofillHints.password],
+                              decoration: const InputDecoration(
+                                labelText: '管理员密码',
+                              ),
+                              onSubmitted: (_) => submit(),
+                            ),
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: state.busy || locked ? null : submit,
+                      child: Text(
+                        state.busy
+                            ? '正在登录…'
+                            : state.mfaRequired
+                            ? '验证并登录'
+                            : '登录',
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: state.busy || locked
+                          ? null
+                          : () => setState(() => editing = true),
+                      child: const Text('修改 NAS 地址'),
+                    ),
+                  ],
                 ],
-              ),
+                if (state.error != null)
+                  Notice(
+                    '${state.error}${state.retryAfter?.isNotEmpty == true ? '，请在 ${state.retryAfter} 秒后重试' : ''}',
+                  ),
+                const SizedBox(height: 24),
+                Text(
+                  '作品和草稿保存在此手机。退出登录或修改地址后，仍可在原曲库的作品中继续回听。',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
           ),
         ),

@@ -68,6 +68,86 @@ class TvPlayerRemoteTest : InstrumentationTestCase() {
         }
     }
 
+    fun testNaturalCompletionContinuesAudioAndVideoQueueAndStopsWhenEmpty() {
+        start("test-song-1", next = "test-song-2")
+        onMain { app.command("ADD", songId = "test-song-3") }
+        waitFor("三首歌曲已入队") { onMain { queuedSongCount(app) == 3 && app.pendingOperation == null } }
+        val commandIndex = fixture.actions.size
+        listOf("test-song-2", "test-song-3").forEachIndexed { index, nextSong ->
+            // Seek near EOF, then let the real decoder finish; never synthesize STATE_ENDED.
+            if (index == 0) playback.holdEndedResponse = true
+            try {
+                onMain { app.player.seekTo(app.player.duration - 700) }
+                if (index == 0) {
+                    waitFor("自然结束响应暂缓，准备重复回报") { playback.heldEndedResponse != null }
+                    onMain { repeat(3) { app.report(continueQueue = true) } }
+                    waitFor("重复结束事件均已到达服务端") { playback.playbackEvents.count { it.optString("state") == "ENDED" } >= 4 }
+                }
+            } finally {
+                if (index == 0) { playback.holdEndedResponse = false; playback.releaseEndedResponse() }
+            }
+            waitFor("自然播完后自动播放$nextSong", 20000) {
+                onMain {
+                    app.snapshot.optJSONObject("playback")?.optString("songId") == nextSong &&
+                        app.hasConfirmedPlayback && app.player.playbackState == Player.STATE_READY &&
+                        app.playing && app.pendingOperation == null
+                }
+            }
+            assertEquals("自然结束只START一次，不能用NEXT跳过已完成歌曲",
+                List(index + 1) { "START" }, fixture.actions.drop(commandIndex))
+            assertEquals("刚播完的歌曲必须保留已唱状态", "COMPLETED",
+                onMain { app.snapshot.getJSONArray("queue").getJSONObject(index).getString("status") })
+            assertNull("自动续播不能弹出确认框", onMain { app.pendingConfirm })
+            assertEquals("自动续播不能打开弹窗", 0, onMain { activity.focusMemory.activeDialogs })
+        }
+        onMain { app.player.seekTo(app.player.duration - 700) }
+        waitFor("空队列保持演唱结束") {
+            onMain { app.playerState == "ENDED" && app.snapshot.getJSONArray("queue").objects().all { it.optString("status") == "COMPLETED" } }
+        }
+        onMain { repeat(3) { app.report(continueQueue = true) } }
+        SystemClock.sleep(1200)
+        assertEquals("空队列和重复结束回报不能再启动歌曲", listOf("START", "START"), fixture.actions.drop(commandIndex))
+        assertEquals("每首歌只加载一次", listOf("test-song-1", "test-song-2", "test-song-3"), playback.resourceRequests.map { it.getString("songId") })
+        assertTrue("每次资源请求都必须已确认", playback.unconfirmedResourceRequests.isEmpty())
+        waitFor("播完后保留可操作的遥控焦点") { focused().contains(":action:player:") }
+        assertVisibleFocus()
+    }
+
+    fun testLateCompletionCannotStartRemoteHandoff() {
+        start("test-song-1", next = "test-song-2")
+        val starts = fixture.actions.count { it == "START" }
+        playback.holdEndedResponse = true
+        try {
+            onMain { app.player.seekTo(app.player.duration - 700) }
+            waitFor("服务端已收到自然结束，暂缓响应") { playback.heldEndedResponse != null }
+            playback.remoteNext()
+            onMain { app.reconnect() }
+            waitFor("远程切歌已处理为待确认交接") {
+                onMain { app.snapshot.optJSONObject("playback")?.optString("songId") == "test-song-2" && app.playerState == "IDLE" }
+            }
+        } finally {
+            playback.releaseEndedResponse()
+        }
+        SystemClock.sleep(1200)
+        assertEquals("迟到的结束响应不能确认远程交接", starts, fixture.actions.count { it == "START" })
+        assertFalse("远程交接仍待电视确认", onMain { app.snapshot.getJSONObject("playback").getBoolean("confirmed") })
+        assertEquals("不能擅自加载下一首", 1, playback.resourceRequests.size)
+    }
+
+    fun testPauseAndLocalStopDoNotContinueQueue() {
+        start("test-song-1", next = "test-song-2")
+        val starts = fixture.actions.count { it == "START" }
+        onMain { app.pauseLocal(); app.player.seekTo(app.player.duration - 700) }
+        SystemClock.sleep(1200)
+        assertEquals("暂停不应自动切歌", starts, fixture.actions.count { it == "START" })
+        assertFalse("暂停在结尾附近也不能续播", onMain { app.playing })
+        onMain { app.stopLocal() }
+        SystemClock.sleep(1200)
+        assertEquals("本机停止不应自动切歌", starts, fixture.actions.count { it == "START" })
+        assertEquals("等待歌曲保持WAITING", "WAITING", onMain { app.snapshot.getJSONArray("queue").getJSONObject(1).getString("status") })
+        assertEquals("暂停/停止不能请求下一首资源", 1, playback.resourceRequests.size)
+    }
+
     fun testAudioPlaybackProgressLyricsQrSettingsAndQueue() {
         start("test-song-1", next = "test-song-2")
         assertLyricsBeforeFirstLine()
@@ -157,9 +237,7 @@ class TvPlayerRemoteTest : InstrumentationTestCase() {
         waitFor("音频播放器返回首页") { onMain { app.page == "首页" } && focused() == "首页:nav:首页" }
         key(KeyEvent.KEYCODE_DPAD_RIGHT)
         key(KeyEvent.KEYCODE_DPAD_RIGHT)
-        waitFor("遥控聚焦已点导航") { focused() == "首页:nav:已点" }
-        key(KeyEvent.KEYCODE_DPAD_CENTER)
-        waitFor("打开完整待唱队列") { onMain { app.page == "已点" } }
+        waitFor("遥控右键直接打开完整待唱队列") { onMain { app.page == "已点" } && focused() == "已点:nav:已点" }
         assertWaitingQueueSong("测试双音轨视频", "test-song-2", "test-song-1")
         screenshot("tv-queue-cover-no-owner").recycle()
     }

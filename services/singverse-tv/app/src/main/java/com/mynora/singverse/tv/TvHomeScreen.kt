@@ -33,6 +33,10 @@ import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable internal fun TvHomeScreen(app: TvApp, libraryState: LazyListState, onPhone: () -> Unit) {
+    val viewAllFocus = remember { FocusRequester() }
+    val focusMemory = LocalTvFocusMemory.current
+    val focusPage = LocalTvFocusPage.current
+    var lastLibrarySong by remember { mutableStateOf("") }
     val appearance = app.homeAppearance
     val banners = appearance.optJSONArray("banners")?.objects().orEmpty().filter { it.optBoolean("enabled", true) }
     val recommendations = app.homeSongs.take(5)
@@ -71,7 +75,7 @@ import kotlinx.coroutines.delay
                         color = Paper.copy(alpha = .72f), fontSize = 13.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Spacer(Modifier.weight(1f))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        HomeButton(if (song == null) "浏览曲库" else "播放", primary = true, focusKey = "featured:sing") {
+                        HomeButton(if (song == null) "浏览曲库" else "播放", focusKey = "featured:sing") {
                             if (song == null) app.navigate("找歌") else app.openSong(song)
                         }
                         if (song != null) HomeButton("加入已点", focusKey = "featured:add") { app.command("ADD", songId = song.getString("id")) }
@@ -94,15 +98,26 @@ import kotlinx.coroutines.delay
                     Text("我的曲库", color = Paper, fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.Medium)
                     Text("  ${app.homeTotal} 首", color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
                     Spacer(Modifier.weight(1f))
-                    HomeButton("查看全部", focusKey = "library:all") { app.navigate("找歌") }
+                    HomeButton("查看全部", Modifier.focusRequester(viewAllFocus).focusProperties {
+                        val songId = lastLibrarySong.ifBlank { app.homeSongs.getOrNull(libraryState.firstVisibleItemIndex)?.optString("id").orEmpty() }
+                        down = focusMemory.targets["$focusPage:song:$songId"] ?: FocusRequester.Default
+                    }, focusKey = "library:all") { app.navigate("找歌") }
                 }
                 if (app.homeSongs.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(if (app.busy) "正在读取曲库…" else "曲库还没有歌曲，请在 NAS 管理端扫描自备歌曲。", color = Muted, fontSize = 14.sp)
                 } else BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                    val coverSize = (maxHeight - 61.dp).coerceIn(68.dp, 116.dp)
+                    // Reserve both text lines plus button (10), metadata (8), gap (3) and row (18) dp.
+                    val textHeight = with(LocalDensity.current) { 19.sp.toDp() + 16.sp.toDp() }
+                    val coverSize = (maxHeight - textHeight - 39.dp).coerceIn(1.dp, 106.dp)
+                    // Shrink the artwork independently so the text retains its readable width.
+                    val cardWidth = (coverSize + 10.dp).coerceAtLeast(68.dp)
                     LazyRow(state = libraryState, modifier = Modifier.fillMaxSize().focusGroup(),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        items(app.homeSongs, key = { it.getString("id") }) { SongCard(app, it, Modifier.width(coverSize)) }
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 9.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        items(app.homeSongs, key = { it.getString("id") }) { song ->
+                            SongCard(app, song, Modifier.width(cardWidth).focusProperties { up = viewAllFocus }
+                                .onFocusChanged { if (it.isFocused) lastLibrarySong = song.getString("id") },
+                                imageHeight = coverSize, metadataVerticalPadding = 4.dp)
+                        }
                     }
                 }
             }
@@ -121,10 +136,9 @@ import kotlinx.coroutines.delay
         entries.forEachIndexed { i, entry ->
             HomeTile(
                 Modifier.weight(if (large && i == 0) 1.25f else 1f).height(if (large) 118.dp else 52.dp).tvFocusTarget("quick:$i"),
-                primary = large && i == 0,
                 onClick = { app.navigate(listOf("找歌", "歌手", "分类", "歌单")[i]) },
             ) {
-                val foreground = if (large && i == 0) Ink else Paper
+                val foreground = Paper
                 Row(Modifier.fillMaxSize().padding(horizontal = if (large) 20.dp else 14.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     HomeGlyph(entry.first, Modifier.size(if (large) 25.dp else 19.dp), foreground)
@@ -205,7 +219,6 @@ import kotlinx.coroutines.delay
 
 @Composable private fun HomeTile(
     modifier: Modifier,
-    primary: Boolean = false,
     translucent: Boolean = false,
     onClick: () -> Unit,
     content: @Composable RowScope.() -> Unit,
@@ -214,10 +227,10 @@ import kotlinx.coroutines.delay
     Button(onClick, modifier.onFocusChanged { focused = it.isFocused }.tvFocus(focused, TvShape.card),
         contentPadding = PaddingValues(0.dp), scale = ButtonDefaults.scale(focusedScale = 1f), shape = ButtonDefaults.shape(TvShape.card),
         colors = ButtonDefaults.colors(
-            containerColor = if (primary) Paper else if (translucent) Color(0xB818181A) else Panel.copy(alpha = .82f),
-            contentColor = if (primary) Ink else Paper,
-            focusedContainerColor = if (primary) Paper else Elevated,
-            focusedContentColor = if (primary) Ink else Paper,
+            containerColor = if (translucent) Color(0xB818181A) else Panel.copy(alpha = .82f),
+            contentColor = Paper,
+            focusedContainerColor = Elevated,
+            focusedContentColor = Paper,
         ), content = content)
 }
 

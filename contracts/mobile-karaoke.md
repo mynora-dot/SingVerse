@@ -18,6 +18,9 @@ Flutter 仅发送控制命令与接收摘要。人声、伴奏 PCM 和编码数�
 | range | `{a,b}`，原媒体毫秒 | b=0 表示整首；练唱循环，录唱单次结束 |
 | record | true 表示已明确确认当前素材 | 原生三秒倒数后打开 AudioRecord；冻结歌曲及音频参数 |
 | endRecord / cancelCountdown | 无 | 结束为独立片段，不自动拼接或重新开麦 |
+| subtitleInset | 浮点数 0.08…0.65 | 仅调整本机视频字幕距底部的高度比例，不改变播放或录音状态 |
+
+`subtitleInset` 是 Flutter 与 Android 宿主之间的本地界面命令，由 `MainActivity` 更新当前及随后创建的原生视频视图。横屏显示控制浮层时，Flutter 按底部控制区高度发送字幕边距，避免与按钮重叠；隐藏浮层、恢复竖屏或离开播放器时恢复 `0.08`。Android 将有限数值限制在 `0.08…0.65`，缺失或非有限数值使用 `0.08`。该命令不新增 NAS API，不修改播放进度、音轨选择、录音采集或作品文件。
 
 `singverse/karaoke`：
 
@@ -39,7 +42,9 @@ Flutter 仅发送控制命令与接收摘要。人声、伴奏 PCM 和编码数�
 
 ## 事件与状态
 
-`singverse/playback-events` 返回真实播放状态、原媒体时间、音轨/字幕、声道、移调、速度、区间及 `karaoke` 摘要。`karaoke` 包含 `phase/takeId/recordedMs/level/clipped/input/freeBytes/error`。计时取实际采样数，不使用页面计时器。`countdown` 为原生倒数；录音通知点击附带一次性 `openSinging`，由应用导航返回舞台。
+`singverse/playback-events` 返回真实播放状态、原媒体时间、音轨/字幕、声道、移调、速度、区间及 `karaoke` 摘要。`karaoke` 包含 `phase/takeId/songId/instanceId/recordedMs/level/clipped/input/freeBytes/error`。计时取实际采样数，不使用页面计时器；songId/instanceId 用于将草稿回听关联到正确的歌曲与 NAS，避免换歌后返回旧草稿。`countdown` 为原生倒数；录音通知点击附带一次性 `openSinging`，由应用导航返回舞台。
+
+播放器摘要另外提供 `audioRole`（`backing` / `original` / 空字符串表示未确认）和 `videoAspect`（包含像素宽高比的真实画面比例，无视频时回退 16:9）。界面根据真实音轨角色确认录音素材，以 FIT 显示完整视频；旧摘要缺少这些字段时保守回退。
 
 阶段为 IDLE、TESTING、RECORDING、FINALIZING、RENDERING、PREVIEW、SAVED、FAILED；准备能力由实际播放器状态和已识别音轨共同确定。暂停、焦点丢失、路由变化、读取/写入错误结束片段；不自动重新开麦。
 
@@ -50,3 +55,9 @@ Flutter 仅发送控制命令与接收摘要。人声、伴奏 PCM 和编码数�
 原生 SQLite 索引保存歌曲快照、NAS instanceId、修订、冻结参数、完整度、采样数、波形与混音参数。编码先写 `.part`，校验音轨/采样率/声道/时长后原子发布；发布后才标记成功。保存后清理临时伴奏 PCM，保留干声；已保存混音无需 NAS 可回放。
 
 启动修复中断 WAV 头与待处理状态，缺失成品明确标记 MISSING，不把半成品算作已保存。缓存被系统回收后，缺失的伴奏不能凭空恢复；干声仍留在本机。产品没有测试声源入口；androidTest 的可控输入只存在于测试构造代码。
+
+## 原生界面流程与本机偏好
+
+选歌直接 `open(autoplay=true)` 进入练唱，不申请麦克风；录音按钮经素材确认与权限检查后发送 `record`。歌词点击仅 seek，显式选段工具才发送 range。结束录音保留 PREVIEW 草稿并进入回听，显式应用混音调整才 render；保存和导出继续使用原有本机文件与 UUID。
+
+标准与长辈布局共享同一个 AppState 和原生服务；SharedPreferences 的 `uiMode` 取 `standard` 或 `senior`，不认识的值回退标准。模式切换不修改收藏、历史、作品和播放进度。UI 将原有 PREVIEW 等未保存作品称为“草稿”，不迁移或清空本机索引；作品入口按当前 NAS instanceId 过滤，并保留旧记录缺失 instanceId 时的可访问性。

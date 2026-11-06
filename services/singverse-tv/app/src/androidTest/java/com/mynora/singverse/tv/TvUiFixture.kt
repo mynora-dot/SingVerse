@@ -27,7 +27,16 @@ internal class TvUiFixture(private val playback: TvPlaybackFixture? = null) : Au
     val token = "ui-fixture-${UUID.randomUUID()}"
     val invitationUrl get() = "$base/party/#invite=$token"
     val actions = CopyOnWriteArrayList<String>()
+    val commandRequests = CopyOnWriteArrayList<JSONObject>()
     val httpEvents = CopyOnWriteArrayList<String>()
+    val songRequests = CopyOnWriteArrayList<String>()
+    @Volatile var extraGenreTags = 0
+    @Volatile var songCount = 20
+    @Volatile var mixedSongMetadata = false
+    @Volatile var addDelayMs = 0L
+    @Volatile var sessionId = "ui-test-session"
+    val rejectNextAdd = AtomicInteger()
+    val failNextAddResponse = AtomicInteger()
     private val clients = ConcurrentHashMap.newKeySet<Socket>()
     private val connectionNumber = AtomicInteger()
     private val connections = Executors.newFixedThreadPool(8) { task ->
@@ -35,6 +44,7 @@ internal class TvUiFixture(private val playback: TvPlaybackFixture? = null) : Au
     }
     private val queue = JSONArray()
     private var revision = 1L
+    private val addReceipts = mutableSetOf<String>()
     private val covers = (1..20).associateWith(::coverPng)
     private val worker = thread(name = "tv-ui-fixture", isDaemon = true) {
         while (!socket.isClosed) {
@@ -80,15 +90,30 @@ internal class TvUiFixture(private val playback: TvPlaybackFixture? = null) : Au
                 val coverNumber = Regex("/api/v1/tv/library/songs/test-song-(\\d+)/cover").matchEntire(path)?.groupValues?.get(1)?.toInt()
                 val media = playback?.media(path)
                 val jsonBody = if (length > 0) JSONObject(String(body, Charsets.UTF_8)) else JSONObject()
+                val adding = path.endsWith("/commands") && jsonBody.optString("action") == "ADD"
+                if (path.endsWith("/commands")) commandRequests.add(JSONObject(jsonBody.toString()))
+                if (adding && addDelayMs > 0) Thread.sleep(addDelayMs)
+                var responseStatus = 200
                 val bytes = if (media != null) media.first else if (coverNumber != null) covers.getValue(coverNumber)
-                    else response(path, jsonBody).also { playback?.beforeSend(path, jsonBody, it) }.toByteArray(Charsets.UTF_8)
+                    else try {
+                        val rejection = if (adding) rejectNextAdd.getAndSet(0) else 0
+                        if (rejection > 0) throw FixtureHttpException(rejection, "测试：本场已暂停接单")
+                        response(path, jsonBody, request.getOrElse(1) { path }).also {
+                            playback?.beforeSend(path, jsonBody, it)
+                            val failure = if (adding) failNextAddResponse.getAndSet(0) else 0
+                            if (failure > 0) throw FixtureHttpException(failure, "测试：命令回报中断，请核对后重试")
+                        }.toByteArray(Charsets.UTF_8)
+                    } catch (error: FixtureHttpException) {
+                        responseStatus = error.status
+                        JSONObject().put("detail", error.message).toString().toByteArray(Charsets.UTF_8)
+                    }
                 val contentType = media?.second ?: if (coverNumber != null) "image/png" else "application/json; charset=utf-8"
                 val requested = Regex("bytes=(\\d+)-(\\d*)").matchEntire(range)
                 val start = requested?.groupValues?.get(1)?.toLongOrNull() ?: 0
                 val end = requested?.groupValues?.get(2)?.toLongOrNull()?.coerceAtMost(bytes.lastIndex.toLong()) ?: bytes.lastIndex.toLong()
                 val invalidRange = requested != null && (start > end || start >= bytes.size)
                 val count = if (invalidRange) 0 else (end - start + 1).toInt()
-                val status = if (invalidRange) "416 Range Not Satisfiable" else if (requested != null) "206 Partial Content" else "200 OK"
+                val status = if (responseStatus != 200) "$responseStatus Fixture Failure" else if (invalidRange) "416 Range Not Satisfiable" else if (requested != null) "206 Partial Content" else "200 OK"
                 val rangeHeader = when {
                     invalidRange -> "Content-Range: bytes */${bytes.size}\r\n"
                     requested != null -> "Content-Range: bytes $start-$end/${bytes.size}\r\n"
@@ -110,7 +135,9 @@ internal class TvUiFixture(private val playback: TvPlaybackFixture? = null) : Au
             }
     }
 
-    @Synchronized private fun response(path: String, body: JSONObject): String {
+    private class FixtureHttpException(val status: Int, message: String) : RuntimeException(message)
+
+    @Synchronized private fun response(path: String, body: JSONObject, requestTarget: String): String {
         if (path.endsWith("/commands")) actions.add(body.getString("action"))
         playback?.response(path, body)?.let { return it }
         return when {
@@ -119,10 +146,14 @@ internal class TvUiFixture(private val playback: TvPlaybackFixture? = null) : Au
         path.endsWith("/participants") -> JSONArray().put(JSONObject().put("id", "test-friend").put("name", "测试亲友").put("revoked", false))
             .put(JSONObject().put("id", "test-revoked").put("name", "已撤销测试设备").put("revoked", true)).toString()
         path.endsWith("/commands") -> {
+            if (path.substringAfter("/sessions/").substringBefore('/') != sessionId) throw FixtureHttpException(410, "旧聚会已结束")
             val action = body.getString("action")
-            if (action == "ADD") {
-                val song = songs().first { it.optString("id") == body.optString("songId") }
-                queue.put(JSONObject().put("id", "test-queue-${queue.length()}").put("song", song).put("status", "WAITING").put("ownerName", "测试电视"))
+            if (action == "ADD" && body.optString("requestId") !in addReceipts) {
+                if (body.optLong("expectedRevision") != revision) throw FixtureHttpException(409, "队列已更新，请核对后重试")
+                val song = songs(songCount, mixedSongMetadata).first { it.optString("id") == body.optString("songId") }
+                queue.put(JSONObject().put("id", "test-queue-${queue.length()}").put("songId", song.getString("id"))
+                    .put("song", song).put("status", "WAITING").put("ownerName", "测试电视"))
+                addReceipts.add(body.getString("requestId"))
                 revision++
             }
             currentSnapshot().toString()
@@ -130,12 +161,18 @@ internal class TvUiFixture(private val playback: TvPlaybackFixture? = null) : Au
         path.endsWith("/snapshot") || path.endsWith("/recover") || path == "/api/v1/tv/sessions" -> currentSnapshot().toString()
         path == "/api/v1/tv/home" -> JSONObject().put("recentSongs", JSONArray(songs())).put("totalSongs", 20)
             .put("server", JSONObject().put("name", "UI 验收测试服务")).put("appearance", appearance()).put("featuredPlaylists", JSONArray(playlists())).toString()
-        path.matches(Regex("/api/v1/tv/library/songs/test-song-\\d+")) -> songs().first { it.optString("id") == path.substringAfterLast('/') }.toString()
-        path == "/api/v1/tv/library/songs" || path == "/api/v1/tv/library/artists/test-artist/songs" || path == "/api/v1/tv/library/playlists/test-playlist/songs" ->
-            JSONObject().put("items", JSONArray(songs())).put("totalElements", 20).toString()
+        path.matches(Regex("/api/v1/tv/library/songs/test-song-\\d+")) -> songs(songCount, mixedSongMetadata).first { it.optString("id") == path.substringAfterLast('/') }.toString()
+        path == "/api/v1/tv/library/songs" || path == "/api/v1/tv/library/artists/test-artist/songs" || path == "/api/v1/tv/library/playlists/test-playlist/songs" -> {
+            songRequests.add(requestTarget)
+            val parameters = android.net.Uri.parse(requestTarget)
+            val page = parameters.getQueryParameter("page")?.toIntOrNull() ?: 0
+            val rows = songs(songCount, mixedSongMetadata)
+            JSONObject().put("items", JSONArray(rows.drop(page * 20).take(20))).put("totalElements", rows.size).toString()
+        }
         path == "/api/v1/tv/library/classification-tags" -> JSONArray()
             .put(JSONObject().put("id", "tag-language").put("dimension", "LANGUAGE").put("name", "国语").put("count", 20))
-            .put(JSONObject().put("id", "tag-genre").put("dimension", "GENRE").put("name", "流行").put("count", 12)).toString()
+            .put(JSONObject().put("id", "tag-genre").put("dimension", "GENRE").put("name", "流行").put("count", 12))
+            .apply { repeat(extraGenreTags) { index -> put(JSONObject().put("id", "tag-genre-$index").put("dimension", "GENRE").put("name", "风格 ${index + 1}").put("count", 20)) } }.toString()
         path == "/api/v1/tv/library/artists" -> JSONObject().put("items", JSONArray(artists())).put("totalElements", 1).toString()
         path == "/api/v1/tv/library/artists/test-artist" -> artists().first().toString()
         path == "/api/v1/tv/library/playlists" -> JSONObject().put("items", JSONArray(playlists())).put("totalElements", 1).toString()
@@ -144,7 +181,7 @@ internal class TvUiFixture(private val playback: TvPlaybackFixture? = null) : Au
         }
     }
 
-    private fun currentSnapshot(): JSONObject = snapshot().put("queue", JSONArray(queue.toString())).put("revision", revision).put("stateRevision", revision)
+    private fun currentSnapshot(): JSONObject = snapshot().put("id", sessionId).put("queue", JSONArray(queue.toString())).put("revision", revision).put("stateRevision", revision)
 
     override fun close() {
         socket.close()
@@ -160,11 +197,20 @@ internal class TvUiFixture(private val playback: TvPlaybackFixture? = null) : Au
             .put("revision", 1).put("stateRevision", 1).put("acceptingRequests", true)
             .put("queue", JSONArray()).put("commands", JSONArray())
 
-        fun songs(): List<JSONObject> = (1..20).map { number ->
+        fun songs(count: Int = 20, mixedMetadata: Boolean = false): List<JSONObject> = (1..count).map { number ->
             JSONObject().put("id", "test-song-$number").put("title", "测试歌曲 ${number.toString().padStart(2, '0')}")
-                .put("artists", JSONArray().put("测试歌手 $number")).put("revision", "test-v1")
-                .put("coverPath", "/api/v1/tv/library/songs/test-song-$number/cover")
+                .put("artists", JSONArray().put(when (number) { 1 -> "B.A.D."; 2 -> "gypq 测试歌手"; else -> "测试歌手 $number" })).put("revision", "test-v1")
+                .put("coverPath", "/api/v1/tv/library/songs/test-song-${(number - 1) % 20 + 1}/cover")
                 .put("sourceName", "仅限 UI 自动化验收").put("durationMs", 180000)
+                .put("version", "ORIGINAL").also { song ->
+                    if (mixedMetadata && number == 1) {
+                        song.put("title", "长歌名测试：My Lovely Girl 与今晚一起唱的歌，检查完整表格行和详情")
+                            .put("artists", JSONArray().put("B.A.D. / gypq 中文歌手组合，长署名测试"))
+                    }
+                    if (mixedMetadata && number == 2) {
+                        song.remove("coverPath"); song.remove("durationMs"); song.remove("version")
+                    }
+                }
         }
 
         private fun artists(): List<JSONObject> = listOf(

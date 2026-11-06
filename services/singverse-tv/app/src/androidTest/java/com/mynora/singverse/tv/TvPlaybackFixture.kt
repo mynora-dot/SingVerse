@@ -21,6 +21,10 @@ internal class TvPlaybackFixture(videoBytes: ByteArray) {
     @Volatile var heldNextResponse: String? = null
         private set
     private val nextResponseGate = CountDownLatch(1)
+    @Volatile var holdEndedResponse = false
+    @Volatile var heldEndedResponse: String? = null
+        private set
+    private val endedResponseGate = CountDownLatch(1)
     val resourceRequests = CopyOnWriteArrayList<JSONObject>()
     val unconfirmedResourceRequests = CopyOnWriteArrayList<JSONObject>()
     val playbackEvents = CopyOnWriteArrayList<JSONObject>()
@@ -43,9 +47,14 @@ internal class TvPlaybackFixture(videoBytes: ByteArray) {
             heldNextResponse = response
             check(nextResponseGate.await(30, TimeUnit.SECONDS)) { "测试NEXT响应未释放" }
         }
+        if (holdEndedResponse && path.endsWith("/playback-events") && body.optString("state") == "ENDED") {
+            heldEndedResponse = response
+            check(endedResponseGate.await(30, TimeUnit.SECONDS)) { "测试ENDED响应未释放" }
+        }
     }
 
     fun releaseNextResponse() { nextResponseGate.countDown() }
+    fun releaseEndedResponse() { endedResponseGate.countDown() }
 
     /** Simulates another authorized controller; the app learns this state through real HTTP refresh. */
     @Synchronized fun remoteNext() { next(); revision++ }
@@ -70,7 +79,14 @@ internal class TvPlaybackFixture(videoBytes: ByteArray) {
             if (play != null && body.optString("attemptId") == play.optString("attemptId") && body.optLong("eventSeq", -1) > lastEvent) {
                 lastEvent = body.getLong("eventSeq")
                 play.put("state", body.optString("state")).put("positionMs", body.optLong("positionMs"))
-                if (body.optString("state") == "PLAYING") queue.firstOrNull { it.optString("id") == play.optString("itemId") }?.put("status", "PLAYING")
+                val status = when (body.optString("state")) {
+                    "PLAYING" -> "PLAYING"
+                    "ENDED" -> "COMPLETED"
+                    "ERROR" -> "FAILED"
+                    "IDLE" -> "SKIPPED"
+                    else -> null
+                }
+                if (status != null) queue.firstOrNull { it.optString("id") == play.optString("itemId") }?.put("status", status)
             }
             revision++
             snapshot().toString()

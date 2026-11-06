@@ -117,6 +117,16 @@ class TvApp(context: android.content.Context) {
     private var detailGeneration = 0
     private var lastLibraryRefresh = 0L
     var songs by mutableStateOf(listOf<JSONObject>())
+    internal var songListResetVersion by mutableIntStateOf(0)
+        private set
+    internal var songListFocusFirst by mutableStateOf(false)
+        private set
+    internal var queueAddSongId by mutableStateOf("")
+        private set
+    internal var queueAddMessage by mutableStateOf("")
+        private set
+    private var queueAddGeneration = 0
+    private var queueAddMessageJob: Job? = null
     var tags by mutableStateOf(listOf<JSONObject>())
     var participants by mutableStateOf(listOf<JSONObject>())
     var participantsKnown by mutableStateOf(false)
@@ -136,6 +146,8 @@ class TvApp(context: android.content.Context) {
     }.also { if (client.base.isNotBlank()) it.setAddress(client.base) }
     var selectedTags by mutableStateOf(setOf<String>())
     var unclassified by mutableStateOf(false)
+    internal var categoryResults by mutableStateOf(false)
+        private set
     var number by mutableIntStateOf(0)
     var total by mutableLongStateOf(0)
     var artists by mutableStateOf(listOf<JSONObject>())
@@ -144,7 +156,7 @@ class TvApp(context: android.content.Context) {
     private var artistDetailGeneration=0
     fun openArtist(artist: JSONObject) {
         val generation=++artistDetailGeneration;val id=artist.getString("id");lastArtistId=id
-        run { val detail=json("/api/v1/tv/library/artists/$id");if(generation!=artistDetailGeneration)return@run;artistDetail=detail;selected=null;artistId=id;number=0;songs=emptyList();total=0;loadSongs() }
+        run { val detail=json("/api/v1/tv/library/artists/$id");if(generation!=artistDetailGeneration)return@run;artistDetail=detail;selected=null;artistId=id;number=0;songs=emptyList();total=0;loadSongs(resetList = true) }
     }
     fun closeArtist() {artistDetailGeneration++;detailGeneration++;requestGeneration++;artistDetail=null;artistId="";selected=null}
     var playlists by mutableStateOf(listOf<JSONObject>())
@@ -156,7 +168,7 @@ class TvApp(context: android.content.Context) {
     private var playlistGeneration=0
     suspend fun fetchPlaylists(){val generation=++playlistGeneration;val result=json("/api/v1/tv/library/playlists?q=${URLEncoder.encode(playlistQuery,"UTF-8")}&page=$playlistPage&size=20");if(generation==playlistGeneration){playlists=result.getJSONArray("items").objects();playlistTotal=result.getLong("totalElements")}}
     fun loadPlaylists()=run {fetchPlaylists()}
-    fun openPlaylist(playlist:JSONObject){val generation=++playlistGeneration;val id=playlist.getString("id");lastPlaylistId=id;run {val detail=json("/api/v1/tv/library/playlists/$id");if(generation!=playlistGeneration)return@run;playlistDetail=detail;artistId="";selected=null;number=0;songs=emptyList();total=0;loadSongs()}}
+    fun openPlaylist(playlist:JSONObject){val generation=++playlistGeneration;val id=playlist.getString("id");lastPlaylistId=id;run {val detail=json("/api/v1/tv/library/playlists/$id");if(generation!=playlistGeneration)return@run;playlistDetail=detail;artistId="";selected=null;number=0;songs=emptyList();total=0;loadSongs(resetList = true)}}
     fun closePlaylist(){playlistGeneration++;detailGeneration++;requestGeneration++;playlistDetail=null;selected=null}
     var artistId by mutableStateOf("")
     var lastSongId by mutableStateOf("")
@@ -172,6 +184,7 @@ class TvApp(context: android.content.Context) {
     var pendingConfirm by mutableStateOf<String?>(null)
     var pendingOperation by mutableStateOf<JSONObject?>(null)
     private var loadedAttempt = ""
+    private var playbackLifecycleGeneration = 0
     var foreground by mutableStateOf(true)
         private set
     private var seq = 0L
@@ -202,7 +215,7 @@ class TvApp(context: android.content.Context) {
             override fun onPlaybackStateChanged(state: Int) {
                 playerState = if(player.playerError!=null) "ERROR" else when (state) { Player.STATE_BUFFERING -> "BUFFERING"; Player.STATE_ENDED -> "ENDED"; Player.STATE_READY -> if (player.isPlaying) "PLAYING" else "PAUSED"; else -> "IDLE" }
                 if (state == Player.STATE_ENDED) controlVisible = true
-                report()
+                report(continueQueue = state == Player.STATE_ENDED)
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying; if (player.playbackState == Player.STATE_READY) playerState = if (isPlaying) "PLAYING" else "PAUSED"; report() }
             override fun onPlayerError(exception: PlaybackException) { if (!fallbackAttempted && connected && loadedAttempt.isNotBlank()) { fallbackAttempted = true; this@TvApp.run { rebuildPlayback(true) }; return }; playerState = "ERROR"; controlVisible = true; error = "此素材播放失败，可重试或跳过。${exception.errorCodeName}"; report() }
@@ -319,6 +332,7 @@ class TvApp(context: android.content.Context) {
     private fun acceptSnapshot(value: JSONObject, replaceSession: Boolean = false) {
         if(!replaceSession && snapshot.optString("id").isNotBlank() && value.optString("id")!=snapshot.optString("id"))return
         if(value.optString("id")==snapshot.optString("id") && value.has("stateRevision") && snapshot.has("stateRevision") && value.getLong("stateRevision")<snapshot.getLong("stateRevision"))return
+        if (value.optString("id") != snapshot.optString("id")) { pendingOperation = null; error = "" }
         if (value.optString("id") != snapshot.optString("id") || value.optString("status") != "ACTIVE") clearPartyConnection()
         snapshot=value
     }
@@ -382,6 +396,7 @@ class TvApp(context: android.content.Context) {
         artistDetailGeneration++
         detailGeneration++
         selected = null
+        categoryResults = false
         page = destination
         run {
             when (destination) {
@@ -411,14 +426,63 @@ class TvApp(context: android.content.Context) {
         if (generation == artistGeneration) { artists = result.getJSONArray("items").objects(); artistTotal = result.getLong("totalElements") }
     }
     fun loadArtists() = run { fetchArtists() }
-    suspend fun loadSongs() {
+    suspend fun loadSongs(resetList: Boolean = false, focusFirst: Boolean = false) {
         val generation = ++requestGeneration
         val filter = selectedTags.joinToString("") { "&tagIds=${URLEncoder.encode(it, "UTF-8")}" }
         val path = if (playlistDetail!=null) "/api/v1/tv/library/playlists/${playlistDetail!!.getString("id")}/songs?page=$number&size=20" else if (artistId.isNotEmpty()) "/api/v1/tv/library/artists/$artistId/songs?page=$number&size=20" else "/api/v1/tv/library/songs?q=${URLEncoder.encode(query, "UTF-8")}&page=$number&size=20$filter&unclassified=$unclassified"
         val result = json(path)
-        if (generation == requestGeneration) { songs = result.getJSONArray("items").objects(); total = result.getLong("totalElements") }
+        if (generation == requestGeneration) {
+            songs = result.getJSONArray("items").objects()
+            total = result.getLong("totalElements")
+            if (resetList) { songListFocusFirst = focusFirst; songListResetVersion++ }
+        }
     }
-    fun search(reset: Boolean = true) = run { if (reset) number = 0; selected = null; loadSongs() }
+    fun search(reset: Boolean = true, focusFirst: Boolean = false) = run {
+        if (reset) number = 0
+        detailGeneration++; selected = null
+        loadSongs(resetList = true, focusFirst = focusFirst)
+    }
+    fun openCategory(tagId: String? = null) {
+        query = ""
+        artistId = ""
+        selectedTags = tagId?.let { setOf(it) }.orEmpty()
+        unclassified = tagId == null
+        categoryResults = true
+        page = "找歌"
+        songs = emptyList()
+        total = 0
+        search(focusFirst = true)
+    }
+    internal fun addSongFromList(song: JSONObject) {
+        // Set this before launching so a second confirm cannot enqueue another request.
+        if (queueAddSongId.isNotBlank()) return
+        val server = client.base; val credential = client.token; val sessionId = snapshot.optString("id")
+        val generation = ++queueAddGeneration
+        fun current() = generation == queueAddGeneration && client.base == server && client.token == credential &&
+            snapshot.optString("id") == sessionId && connected
+        queueAddSongId = song.getString("id")
+        queueAddMessageJob?.cancel(); queueAddMessage = ""
+        run {
+            try {
+                sendCommand("ADD", songId = song.getString("id"))
+                if (current()) {
+                    showQueueAddMessage("已加入队列：${song.optString("title")}", generation)
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException || current()) throw e
+            } finally {
+                if (generation == queueAddGeneration) queueAddSongId = ""
+            }
+        }
+    }
+    private fun showQueueAddMessage(message: String, generation: Int) {
+        queueAddMessageJob?.cancel()
+        queueAddMessage = message
+        queueAddMessageJob = scope.launch {
+            delay(2500)
+            if (generation == queueAddGeneration) queueAddMessage = ""
+        }
+    }
     fun command(action: String, itemId: String? = null, songId: String? = null, participantId: String? = null) = run {
         sendCommand(action, itemId, songId, participantId)
     }
@@ -433,8 +497,10 @@ class TvApp(context: android.content.Context) {
         pendingOperation = body
         try {
             val response = json("/api/v1/tv/sessions/$sessionId/commands", "POST", body)
+            if (snapshot.optString("id") != sessionId) return
+            check(response.optString("id") == sessionId) { "聚会响应不匹配，请核对状态" }
             acceptSnapshot(response)
-            pendingOperation = null
+            if (pendingOperation === body) pendingOperation = null
             error = ""
             val handoff = response.optJSONObject("playback")?.takeIf {
                 action == "NEXT" && response.optString("id") == sessionId && !it.optBoolean("confirmed")
@@ -450,7 +516,8 @@ class TvApp(context: android.content.Context) {
                 }) sendCommand("START")
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            if (e is TvHttpException && e.status in 400..499) pendingOperation = null
+            if (snapshot.optString("id") != sessionId) return
+            if (e is TvHttpException && e.status in 400..499 && pendingOperation === body) pendingOperation = null
             refresh()
             throw e
         }
@@ -467,7 +534,32 @@ class TvApp(context: android.content.Context) {
     }
     fun reloadText() = run { val songId = snapshot.optJSONObject("playback")?.optString("songId") ?: return@run; loadText(songId) }
     private suspend fun loadText(songId: String) { playbackOptions.beginTextRead(songId); try { playbackOptions.applyText(songId, json("/api/v1/tv/library/songs/$songId/text-tracks")) } catch (e: Exception) { if (e is CancellationException) throw e; playbackOptions.textFailed(songId) } }
-    fun retryPending() = run { val body = pendingOperation ?: return@run; acceptSnapshot(json("/api/v1/tv/sessions/${snapshot.getString("id")}/commands", "POST", body)); pendingOperation = null; executeCommands() }
+    fun retryPending() = run {
+        val body = pendingOperation ?: return@run
+        val sessionId = snapshot.getString("id")
+        val generation = queueAddGeneration
+        try {
+            val response = json("/api/v1/tv/sessions/$sessionId/commands", "POST", body)
+            if (snapshot.optString("id") != sessionId) return@run
+            check(response.optString("id") == sessionId) { "聚会响应不匹配，请核对状态" }
+            acceptSnapshot(response)
+            if (pendingOperation === body) pendingOperation = null
+            error = ""
+            executeCommands()
+            if (body.optString("action") == "ADD" && snapshot.optString("id") == sessionId && generation == queueAddGeneration) {
+                val title = response.optJSONArray("queue")?.objects()?.lastOrNull {
+                    it.optString("songId") == body.optString("songId")
+                }?.optJSONObject("song")?.optString("title")
+                showQueueAddMessage(title?.let { "已加入队列：$it" } ?: "点歌请求已确认", generation)
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            if (snapshot.optString("id") == sessionId) {
+                if (e is TvHttpException && e.status in 400..499 && pendingOperation === body) pendingOperation = null
+                throw e
+            }
+        }
+    }
     private suspend fun executeCommands() = commandsLock.withLock {
         for (c in snapshot.optJSONArray("commands")?.objects().orEmpty()) {
             val action = c.getString("action")
@@ -498,15 +590,42 @@ class TvApp(context: android.content.Context) {
             acceptSnapshot(json("/api/v1/tv/sessions/${snapshot.getString("id")}/playback-events", "POST", JSONObject().put("commandId", c.getString("id"))))
         }
     }
-    fun report() {
+    fun report(continueQueue: Boolean = false) {
         if (!connected || loadedAttempt.isEmpty()) return
+        val sessionId = snapshot.getString("id")
+        val generation = playbackLifecycleGeneration
+        val mayContinue = continueQueue && foreground && online && hasConfirmedPlayback && pendingOperation == null
         val attempt = loadedAttempt; val sequence = ++seq; val state = playerState; val pos = player.currentPosition.coerceAtLeast(0) + timelineOffset
-        scope.launch { runCatching { json("/api/v1/tv/sessions/${snapshot.getString("id")}/playback-events", "POST", JSONObject().put("attemptId", attempt).put("eventSeq", sequence).put("state", state).put("positionMs", pos)) } }
+        scope.launch {
+            val response = try {
+                json("/api/v1/tv/sessions/$sessionId/playback-events", "POST", JSONObject().put("attemptId", attempt).put("eventSeq", sequence).put("state", state).put("positionMs", pos))
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                return@launch
+            }
+            if (!mayContinue || state != "ENDED" || !foreground || !connected || !online ||
+                generation != playbackLifecycleGeneration || snapshot.optString("id") != sessionId) return@launch
+            acceptSnapshot(response)
+            // Finish any in-flight LOAD acknowledgement or remote control before deciding to continue.
+            this@TvApp.run {
+                executeCommands()
+                val playback = snapshot.optJSONObject("playback")
+                if (foreground && connected && online && generation == playbackLifecycleGeneration &&
+                    snapshot.optString("id") == sessionId && snapshot.optString("status") == "ACTIVE" &&
+                    loadedAttempt == attempt && playerState == "ENDED" && pendingOperation == null &&
+                    playback?.optString("attemptId") == attempt && playback.optBoolean("confirmed") &&
+                    playback.optString("state") == "ENDED" &&
+                    snapshot.optJSONArray("queue")?.objects().orEmpty().any { it.optString("status") == "WAITING" }) {
+                    // START preserves the completed item; NEXT would mark it skipped.
+                    sendCommand("START")
+                }
+            }
+        }
     }
     fun foreground() { foreground = true;playbackOptions.refreshRoutes();if(connected)reconnect() }
-    fun background() { foreground = false; pauseLocal() }
+    fun background() { playbackLifecycleGeneration++; foreground = false; pauseLocal() }
     fun pauseLocal() { player.pause(); report() }
-    fun stopLocal() { resourceGeneration++; audioRoleGeneration++; val old=transcodeId;transcodeId="";if(old.isNotBlank())run { json("/api/v1/tv/transcoding/$old/cancel","POST") }; player.stop(); player.playWhenReady = false; playerState = "IDLE"; report() }
+    fun stopLocal() { playbackLifecycleGeneration++; resourceGeneration++; audioRoleGeneration++; val old=transcodeId;transcodeId="";if(old.isNotBlank())run { json("/api/v1/tv/transcoding/$old/cancel","POST") }; player.stop(); player.playWhenReady = false; playerState = "IDLE"; report() }
     fun ensureInvitation() = requestInvitation(force = false)
     fun invite() = requestInvitation(force = true)
     private fun requestInvitation(force: Boolean) {
@@ -529,6 +648,9 @@ class TvApp(context: android.content.Context) {
         }
     }
     private fun clearPartyConnection() {
+        categoryResults = false
+        queueAddGeneration++; queueAddSongId = ""; queueAddMessage = ""
+        queueAddMessageJob?.cancel(); queueAddMessageJob = null
         partyInvitation = partyInvitation.clear()
         participantsGeneration++
         participants = emptyList()

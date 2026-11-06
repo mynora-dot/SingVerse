@@ -20,6 +20,7 @@ parser.add_argument('--suite', choices=('flow', 'visual'), default='flow')
 parser.add_argument('--nas', default='http://10.0.2.2:18181')
 parser.add_argument('--device', default='emulator-5554')
 parser.add_argument('--voice-sample', type=Path, required=True)
+parser.add_argument('--output', type=Path, help='New directory for this run; preserves earlier reports.')
 args = parser.parse_args()
 endpoint = urllib.parse.urlsplit(args.nas)
 if endpoint.hostname != '10.0.2.2' or endpoint.port != 18181:
@@ -29,6 +30,10 @@ if not args.voice_sample.is_file():
 repo = Path(__file__).resolve().parents[1]
 artifacts = repo / 'services/singverse-mobile/build/reports/karaoke-emulator'
 if args.suite == 'visual': artifacts = artifacts / 'visual'
+if args.output:
+    artifacts = args.output.resolve()
+    if artifacts.exists() and any(artifacts.iterdir()):
+        parser.error('Use a new, empty output directory to preserve earlier reports.')
 artifacts.mkdir(parents=True, exist_ok=True)
 package = 'com.mynora.singverse.mobile.e2e'
 video = None
@@ -172,11 +177,11 @@ try:
                 if not found:
                     raise RuntimeError('Microphone foreground notification missing.')
             elif 'KARAOKE_LOCK' in line:
-                adb('shell', 'input', 'keyevent', '26')
+                adb('shell', 'input', 'keyevent', '223')
                 time.sleep(3)
                 screenshot('14-locked-recording')
-                adb('shell', 'input', 'keyevent', '26')
-                adb('shell', 'input', 'keyevent', '82')
+                adb('shell', 'input', 'keyevent', '224')
+                adb('shell', 'wm', 'dismiss-keyguard')
             elif 'KARAOKE_WORK:' in line:
                 identifier = re.search(r'KARAOKE_WORK:([a-f0-9-]{36})', line).group(1)
                 for name in ('mix.m4a', 'voice.wav'):

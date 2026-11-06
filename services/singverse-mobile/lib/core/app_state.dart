@@ -9,6 +9,8 @@ import 'api.dart';
 import 'local_store.dart';
 import 'models.dart';
 
+enum UiMode { standard, senior }
+
 class AppState extends ChangeNotifier {
   AppState({
     required this.api,
@@ -16,7 +18,10 @@ class AppState extends ChangeNotifier {
     required this.preferences,
     bool listenPlayer = true,
   }) {
-    themeMode = ThemeMode.values[preferences.getInt('theme')?.clamp(0, 2) ?? 1];
+    themeMode = ThemeMode.values[preferences.getInt('theme')?.clamp(0, 2) ?? 0];
+    uiMode = preferences.getString('uiMode') == 'senior'
+        ? UiMode.senior
+        : UiMode.standard;
     reduceTransparency = preferences.getBool('reduceTransparency') ?? false;
     nativeEnabled = listenPlayer;
     if (listenPlayer) {
@@ -36,7 +41,7 @@ class AppState extends ChangeNotifier {
   final SharedPreferences preferences;
   static const player = MethodChannel('singverse/player');
   StreamSubscription<dynamic>? _events;
-  String origin = '', instanceId = '';
+  String origin = '', instanceId = '', accountName = '';
   bool initialized = false,
       authenticated = false,
       mfaRequired = false,
@@ -44,22 +49,47 @@ class AppState extends ChangeNotifier {
   String? error;
   String? retryAfter;
   ThemeMode themeMode = ThemeMode.system;
+  UiMode uiMode = UiMode.standard;
+  bool get senior => uiMode == UiMode.senior;
   bool reduceTransparency = false;
   bool nativeEnabled = true;
   Json singing = {};
   List<Json> works = [];
+  bool worksLoading = false;
+  String? worksError;
+  List<Json> get visibleWorks => works
+      .where(
+        (w) =>
+            instanceId.isEmpty ||
+            w['instanceId'] == null ||
+            w['instanceId'] == instanceId,
+      )
+      .toList();
   String workId = '';
   int stageRequests = 0;
   int countdown = 0, pitch = 0, rangeA = 0, rangeB = 0;
   double speed = 1, volume = 1;
-  String channelMode = 'STEREO', outputRoute = '系统默认';
+  String channelMode = 'STEREO', outputRoute = '系统默认', audioRole = '';
+  double videoAspect = 16 / 9;
   bool backingMapped = false, originalMapped = false;
   static const karaoke = MethodChannel('singverse/karaoke');
   String get singingPhase => singing['phase'] as String? ?? 'IDLE';
   bool get recording => singingPhase == 'RECORDING';
   bool get taking => recording || countdown > 0 || singingPhase == 'FINALIZING';
   String get takeId => singing['takeId'] as String? ?? '';
+  String get pendingReviewId =>
+      countdown == 0 &&
+          takeId.isNotEmpty &&
+          ['FINALIZING', 'PREVIEW', 'FAILED'].contains(singingPhase) &&
+          singing['songId'] == current?.id &&
+          singing['instanceId'] == playbackInstanceId
+      ? takeId
+      : '';
   String _workStatus = '';
+  int _worksGeneration = 0;
+  int _personalGeneration = 0;
+  int _playGeneration = 0;
+  void cancelPendingPlay() => _playGeneration++;
   Future<dynamic> sing(String method, [Json args = const {}]) async {
     final result = await karaoke.invokeMethod<dynamic>(method, args);
     return result is String &&
@@ -70,12 +100,27 @@ class AppState extends ChangeNotifier {
 
   Future<void> refreshWorks() async {
     if (!nativeEnabled || _disposed) return;
+    final ticket = ++_worksGeneration;
+    worksLoading = true;
+    worksError = null;
+    // WorksPage also requests its initial data from initState.
+    await Future<void>.value();
+    if (_disposed || ticket != _worksGeneration) return;
+    notifyListeners();
     try {
-      works = (await sing('works') as List).cast<Json>();
-      if (!_disposed) notifyListeners();
-    } on PlatformException catch (e) {
-      if (!_disposed) {
-        error = e.message;
+      final result = (await sing('works') as List)
+          .map((row) => Map<String, dynamic>.from(row as Map))
+          .toList();
+      if (!_disposed && ticket == _worksGeneration) works = result;
+    } catch (e) {
+      if (!_disposed && ticket == _worksGeneration) {
+        worksError = e is PlatformException
+            ? e.message ?? '无法读取本机录音，请重试。'
+            : e.toString();
+      }
+    } finally {
+      if (!_disposed && ticket == _worksGeneration) {
+        worksLoading = false;
         notifyListeners();
       }
     }
@@ -180,6 +225,7 @@ class AppState extends ChangeNotifier {
       final session = await api.request('/api/v1/auth/session') as Json;
       authenticated = true;
       defaultPassword = session['defaultPassword'] == true;
+      accountName = session['username'] as String? ?? '';
     } on ApiFailure {
       authenticated = false;
       rethrow;
@@ -208,6 +254,7 @@ class AppState extends ChangeNotifier {
     } finally {
       await api.forget();
       authenticated = false;
+      accountName = '';
       mfaRequired = false;
       error = null;
       notifyListeners();
@@ -248,10 +295,19 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> refreshPersonal() async {
-    if (instanceId.isEmpty) return;
-    favorites = await store.favorites(instanceId);
-    history = await store.history(instanceId);
-    if (!_disposed) notifyListeners();
+    final expectedInstance = instanceId;
+    final ticket = ++_personalGeneration;
+    if (expectedInstance.isEmpty || _disposed) return;
+    final nextFavorites = await store.favorites(expectedInstance);
+    final nextHistory = await store.history(expectedInstance);
+    if (_disposed ||
+        ticket != _personalGeneration ||
+        instanceId != expectedInstance) {
+      return;
+    }
+    favorites = nextFavorites;
+    history = nextHistory;
+    notifyListeners();
   }
 
   bool isFavorite(Song song) => favorites.any((s) => s.id == song.id);
@@ -263,6 +319,12 @@ class AppState extends ChangeNotifier {
   Future<void> setTheme(ThemeMode mode) async {
     themeMode = mode;
     await preferences.setInt('theme', mode.index);
+    notifyListeners();
+  }
+
+  Future<void> setUiMode(UiMode mode) async {
+    uiMode = mode;
+    await preferences.setString('uiMode', mode.name);
     notifyListeners();
   }
 
@@ -278,10 +340,12 @@ class AppState extends ChangeNotifier {
     int start = 0,
     bool autoplay = true,
   }) async {
+    final ticket = ++_playGeneration;
     final detail = Song(
       await get('/api/v1/mobile/library/songs/${Uri.encodeComponent(song.id)}')
           as Json,
     );
+    if (_disposed || ticket != _playGeneration) return;
     await player.invokeMethod<void>('open', {
       'song': jsonEncode(detail.data),
       'instanceId': instanceId,
@@ -294,6 +358,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> command(String action, [Object? value]) async {
+    if (action == 'pause' || action == 'stop') cancelPendingPlay();
     await player.invokeMethod<void>('command', {
       'action': action,
       'value': value,
@@ -328,6 +393,9 @@ class AppState extends ChangeNotifier {
     speed = (value['speed'] as num? ?? 1).toDouble();
     volume = (value['volume'] as num? ?? 1).toDouble();
     channelMode = value['channel'] as String? ?? 'STEREO';
+    audioRole = value['audioRole'] as String? ?? '';
+    final aspect = (value['videoAspect'] as num? ?? 16 / 9).toDouble();
+    videoAspect = aspect.isFinite && aspect > 0 ? aspect : 16 / 9;
     outputRoute = value['output'] as String? ?? '系统默认';
     rangeA = (value['rangeA'] as num? ?? 0).toInt();
     rangeB = (value['rangeB'] as num? ?? 0).toInt();
@@ -386,13 +454,19 @@ class SongQuery extends ChangeNotifier {
   int total = 0, _page = 0, _generation = 0;
   bool loading = false, disposed = false;
   String? error;
+  bool _failedMore = false;
+  String? _loadedCriteria;
   bool get hasMore => items.length < total;
+  Future<void> retry() => load(more: _failedMore);
   Future<void> load({bool more = false}) async {
-    if (more && (loading || !hasMore)) return;
+    if (disposed || more && (loading || !hasMore)) return;
+    final criteria = jsonEncode([query, tagIds, artistId]);
+    if (more && criteria != _loadedCriteria) return load();
     final ticket = ++_generation;
     final page = more ? _page + 1 : 0;
     loading = true;
     error = null;
+    _failedMore = false;
     if (!more) {
       items = [];
       total = 0;
@@ -414,9 +488,11 @@ class SongQuery extends ChangeNotifier {
       items = more ? [...items, ...rows] : rows.toList();
       total = result['totalElements'] as int;
       _page = page;
+      _loadedCriteria = criteria;
     } catch (e) {
       if (!disposed && ticket == _generation) {
         error = e is FormatException ? e.message : e.toString();
+        _failedMore = more;
       }
     } finally {
       if (!disposed && ticket == _generation) {

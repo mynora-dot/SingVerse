@@ -172,7 +172,7 @@ class KaraokeEngine(private val context: Context, private val track: () -> Audio
         require(backingGain in 0.0..2.0 && voiceGain in 0.0..2.0 && shiftMs in -1000..1000)
         val record = works.get(id)
         require(record.optString("status") != "SAVED") { "已保存成品不会被覆盖" }
-        busyRender = true; phase = "RENDERING"; takeId = id; error = ""; changed()
+        busyRender = true; phase = "RENDERING"; takeId = id; meta = record; error = ""; changed()
         jobs.execute {
             try {
                 val partial = works.file(id, "preview.part")
@@ -210,6 +210,7 @@ class KaraokeEngine(private val context: Context, private val track: () -> Audio
         changed()
     }
     fun snapshot(): Map<String, Any?> = mapOf("phase" to phase, "takeId" to takeId, "level" to level, "clipped" to clipped,
+        "songId" to meta.optJSONObject("song")?.optString("id").orEmpty(), "instanceId" to meta.optString("instanceId"),
         "freeBytes" to works.root.usableSpace, "recordedMs" to voiceFrames * 1000 / KaraokePcm.RATE, "error" to error,
         "input" to (recorder?.routeName ?: "系统默认麦克风"))
     fun close() {

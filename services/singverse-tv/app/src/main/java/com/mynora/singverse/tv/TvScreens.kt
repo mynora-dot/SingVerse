@@ -5,8 +5,11 @@ package com.mynora.singverse.tv
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
@@ -17,6 +20,7 @@ import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.*
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
@@ -31,12 +35,13 @@ import androidx.tv.material3.ButtonDefaults
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.MultiFormatWriter
+import kotlinx.coroutines.launch
 import org.json.*
 
 internal fun JSONArray.objects() = (0 until length()).map { getJSONObject(it) }
 internal fun stateLabel(value: String) = mapOf("IDLE" to "已停止", "PREPARING" to "准备中", "BUFFERING" to "缓冲中", "PLAYING" to "正在演唱", "PAUSED" to "已暂停", "ENDED" to "演唱结束", "ERROR" to "播放失败", "WAITING" to "待唱", "HANDOFF" to "等待确认", "COMPLETED" to "已唱", "SKIPPED" to "已跳过", "FAILED" to "播放失败", "CANCELLED" to "已撤回")[value] ?: "等待同步"
-private fun versionLabel(value: String) = mapOf("ORIGINAL" to "原唱", "ACCOMPANIMENT" to "伴奏", "INSTRUMENTAL" to "纯音乐", "DUET" to "合唱", "KARAOKE" to "卡拉 OK")[value] ?: "版本待确认"
-private fun time(ms: Long): String = "${ms.coerceAtLeast(0) / 60000}:${(ms.coerceAtLeast(0) / 1000 % 60).toString().padStart(2, '0')}"
+internal fun versionLabel(value: String) = mapOf("ORIGINAL" to "原唱", "ACCOMPANIMENT" to "伴奏", "INSTRUMENTAL" to "纯音乐", "DUET" to "合唱", "KARAOKE" to "卡拉 OK")[value] ?: "版本待确认"
+internal fun time(ms: Long): String = "${ms.coerceAtLeast(0) / 60000}:${(ms.coerceAtLeast(0) / 1000 % 60).toString().padStart(2, '0')}"
 
 @Composable internal fun Modal(
     title: String,
@@ -51,6 +56,7 @@ private fun time(ms: Long): String = "${ms.coerceAtLeast(0) / 60000}:${(ms.coerc
     val dialog = remember(title) { "dialog:${java.util.UUID.randomUUID()}:$title" }
     val returnTarget = remember(memory, parent, dialog) {
         memory.restoring = true
+        memory.directionalInput = false
         memory.last[parent]
     }
     DisposableEffect(memory, parent, dialog) {
@@ -112,7 +118,7 @@ private fun time(ms: Long): String = "${ms.coerceAtLeast(0) / 60000}:${(ms.coerc
         app.artistDetail != null -> "${app.page}:artist:${app.artistDetail?.optString("id")}"
         else -> app.page
     }
-    if (memory.view != view) { memory.view = view; memory.restoring = true }
+    if (memory.view != view) { memory.view = view; memory.restoring = true; memory.directionalInput = false }
     CompositionLocalProvider(LocalTvFocusMemory provides memory, LocalTvFocusPage provides view) {
         ConnectedTvContent(app, memory, view)
     }
@@ -120,20 +126,49 @@ private fun time(ms: Long): String = "${ms.coerceAtLeast(0) / 60000}:${(ms.coerc
 
 @Composable private fun ConnectedTvContent(app: TvApp, memory: TvFocusMemory, view: String) {
     var invitationOpen by remember { mutableStateOf(false) }
-    val grid = rememberLazyGridState()
+    val librarySongs = rememberLazyListState()
     val playlistsGrid = rememberLazyGridState()
-    val playlistSongsGrid = rememberLazyGridState()
+    val playlistSongs = rememberLazyListState()
     val artistsGrid = rememberLazyGridState()
-    val artistSongsGrid = rememberLazyGridState()
+    val categoriesGrid = rememberLazyGridState()
+    var categoryDimension by remember { mutableStateOf("LANGUAGE") }
+    val artistSongs = rememberLazyListState()
     val homeLibrary = rememberLazyListState()
+    var handledSongListReset by remember { mutableIntStateOf(app.songListResetVersion) }
     val homeFocus = remember { FocusRequester() }
     val windowFocused = LocalWindowInfo.current.isWindowFocused
     val selectedNavigation = if (app.selected != null || app.page in listOf("找歌", "歌手", "分类", "歌单", "点歌")) "点歌" else app.page
-    LaunchedEffect(app.connected, view, memory.restoreVersion, windowFocused) {
+    fun selectNavigation(destination: String) {
+        if (app.page == destination && app.selected == null && app.artistDetail == null && app.playlistDetail == null) return
+        // Selecting a tab must keep focus in the navigation, even if its page remembers content focus.
+        memory.last[destination] = "nav:$destination"
+        app.navigate(destination)
+    }
+    LaunchedEffect(app.connected, view, memory.restoreVersion, windowFocused, app.songListResetVersion) {
         if (app.connected && memory.activeDialogs == 0 && windowFocused) {
+            val navigation = "nav:$selectedNavigation"
+            if (app.page == selectedNavigation && memory.last[view] == navigation && memory.focusedTargets.singleOrNull() == "$view:$navigation") {
+                // Navigation survives the page content change; restoring it would interrupt key repeats.
+                memory.restoring = false
+                return@LaunchedEffect
+            }
             memory.restoring = true
             withFrameNanos { }; withFrameNanos { }
             if (memory.activeDialogs > 0) return@LaunchedEffect
+            val songList = when {
+                app.playlistDetail != null -> playlistSongs
+                app.artistDetail != null -> artistSongs
+                app.page == "找歌" -> librarySongs
+                else -> null
+            }
+            if (app.selected == null && songList != null && handledSongListReset != app.songListResetVersion) {
+                handledSongListReset = app.songListResetVersion
+                songList.scrollToItem(0)
+                if (app.songListFocusFirst || memory.last[view]?.startsWith("song:") == true) {
+                    app.songs.firstOrNull()?.let { memory.last[view] = "song:${it.getString("id")}" }
+                }
+            }
+            if (memory.last[view]?.startsWith("nav:") == true) memory.last[view] = "nav:$selectedNavigation"
             val target = memory.last[view].orEmpty()
             if (app.selected == null) {
                 val id = target.substringAfter(':', "")
@@ -144,14 +179,23 @@ private fun time(ms: Long): String = "${ms.coerceAtLeast(0) / 60000}:${(ms.coerc
                         val item = layout.visibleItemsInfo.firstOrNull { it.index == index }
                         if (item == null || item.offset < layout.viewportStartOffset || item.offset + item.size > layout.viewportEndOffset) homeLibrary.scrollToItem(index)
                     }
+                } else if (songList != null && target.startsWith("song:")) {
+                    var index = app.songs.indexOfFirst { it.optString("id") == id }
+                    if (index < 0 && app.songs.isNotEmpty()) {
+                        index = 0
+                        memory.last[view] = "song:${app.songs.first().getString("id")}"
+                    }
+                    if (index >= 0) {
+                        val layout = songList.layoutInfo
+                        val item = layout.visibleItemsInfo.firstOrNull { it.index == index }
+                        if (item == null || item.offset < layout.viewportStartOffset || item.offset + item.size > layout.viewportEndOffset) songList.scrollToItem(index)
+                    }
                 } else {
                     val (state, items) = when {
-                        app.playlistDetail != null && target.startsWith("song:") -> playlistSongsGrid to app.songs
-                        app.artistDetail != null && target.startsWith("song:") -> artistSongsGrid to app.songs
-                        app.page == "找歌" && target.startsWith("song:") -> grid to app.songs
                         app.page == "歌手" && target.startsWith("artist:") -> artistsGrid to app.artists
                         app.page == "歌单" && target.startsWith("playlist:") -> playlistsGrid to app.playlists
-                        else -> grid to emptyList()
+                        app.page == "分类" && target.startsWith("category:") -> categoriesGrid to app.tags.filter { it.optString("dimension") == categoryDimension }
+                        else -> artistsGrid to emptyList()
                     }
                     val index = items.indexOfFirst { it.optString("id") == id }
                     if (index >= 0) {
@@ -189,12 +233,17 @@ private fun time(ms: Long): String = "${ms.coerceAtLeast(0) / 60000}:${(ms.coerc
             app.playlistDetail != null -> app.closePlaylist()
             app.artistDetail != null -> app.closeArtist()
             app.page == "演唱" && app.controlVisible -> app.controlVisible = false
+            app.page == "找歌" && app.categoryResults -> app.navigate("分类")
             app.page in listOf("找歌", "歌手", "分类", "歌单") -> app.navigate("点歌")
             app.page != "首页" -> app.navigate("首页")
             else -> app.pendingConfirm = "退出演唱"
         }
     }
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF101010), Ink)))) {
+    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF101010), Ink))).onPreviewKeyEvent {
+        // Automatic selection belongs to D-pad focus movement, not platform/editor focus fallback.
+        memory.directionalInput = it.type == KeyEventType.KeyDown && it.key in listOf(Key.DirectionLeft, Key.DirectionRight, Key.DirectionUp, Key.DirectionDown)
+        false
+    }) {
         when {
             !app.connected -> TvLoginScreen(app)
             app.page == "演唱" -> PlayerScreen(app)
@@ -207,7 +256,9 @@ private fun time(ms: Long): String = "${ms.coerceAtLeast(0) / 60000}:${(ms.coerc
                     Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         listOf("首页", "点歌", "已点", "设置").forEach { page ->
                             TvNavigation(if (page == "已点") "已点 ${queuedSongCount(app)}" else page,
-                                (if (page == selectedNavigation) Modifier.focusRequester(homeFocus) else Modifier).tvFocusTarget("nav:$page"), selected = selectedNavigation == page) { app.navigate(page) }
+                                (if (page == selectedNavigation) Modifier.focusRequester(homeFocus) else Modifier).tvFocusTarget("nav:$page")
+                                    .onFocusChanged { if (it.isFocused && memory.directionalInput && memory.activeDialogs == 0) selectNavigation(page) },
+                                selected = selectedNavigation == page) { selectNavigation(page) }
                         }
                     }
                     Spacer(Modifier.weight(1f))
@@ -216,21 +267,28 @@ private fun time(ms: Long): String = "${ms.coerceAtLeast(0) / 60000}:${(ms.coerc
                 }
                 Box(Modifier.weight(1f)) {
                     if (app.selected != null) Detail(app)
-                    else if (app.playlistDetail != null) PlaylistDetail(app, playlistSongsGrid)
-                    else if (app.artistDetail != null) ArtistDetail(app, artistSongsGrid)
+                    else if (app.playlistDetail != null) PlaylistDetail(app, playlistSongs)
+                    else if (app.artistDetail != null) ArtistDetail(app, artistSongs)
                     else when (app.page) {
                         "首页" -> TvHomeScreen(app, homeLibrary) { if (!app.online) app.reconnect(); app.ensureInvitation(); invitationOpen = true }
                         "点歌" -> SongCenter(app)
-                        "找歌" -> Library(app, grid)
+                        "找歌" -> Library(app, librarySongs)
                         "歌单" -> Playlists(app, playlistsGrid)
                         "歌手" -> Artists(app, artistsGrid)
-                        "分类" -> Categories(app)
+                        "分类" -> Categories(app, categoriesGrid, categoryDimension) { categoryDimension = it }
                         "已点" -> Queue(app)
                         "设置" -> Settings(app)
                     }
                 }
                 if (app.page != "已点") SingingBar(app)
             }
+        }
+    }
+    if (app.queueAddMessage.isNotBlank() && app.selected == null && app.page != "演唱") {
+        Box(Modifier.fillMaxSize().padding(bottom = 80.dp), contentAlignment = Alignment.BottomCenter) {
+            Text(app.queueAddMessage, Modifier.widthIn(max = 700.dp).background(Elevated, TvShape.control)
+                .padding(horizontal = 20.dp, vertical = 10.dp), color = Paper, fontSize = 14.sp, lineHeight = 20.sp,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
     if (app.error.isNotEmpty() && !app.error.startsWith("与 NAS 同步失败")) Modal("操作提示", "操作没有完成，请根据提示继续。", dismiss = { app.error = "" }) {
@@ -345,7 +403,7 @@ internal fun queuedSongCount(app: TvApp) = app.snapshot.optJSONArray("queue")?.o
     }
 }
 
-@Composable private fun Library(app: TvApp, grid: LazyGridState) {
+@Composable private fun Library(app: TvApp, list: LazyListState) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("搜索歌曲", color = Paper, fontSize = 24.sp, lineHeight = 32.sp, fontWeight = FontWeight.Medium)
@@ -359,49 +417,68 @@ internal fun queuedSongCount(app: TvApp) = app.snapshot.optJSONArray("queue")?.o
         }
         SectionTitle("曲库结果", "${app.total} 首歌曲${if (app.selectedTags.isNotEmpty()) " · ${app.selectedTags.size} 项分类" else ""}")
         if (app.songs.isEmpty()) EmptyState(if (app.busy) "正在找歌" else "没有找到歌曲", "试试其他关键词，或清除筛选条件。", Modifier.weight(1f))
-        else BoxWithConstraints(Modifier.weight(1f)) {
-            // Reserve the title/artist block, card padding and focus breathing room for a complete row.
-            val coverSize = (maxHeight - 84.dp).coerceIn(48.dp, 160.dp)
-            LazyVerticalGrid(GridCells.Fixed(5), state = grid, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(10.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                items(app.songs, key = { it.getString("id") }) { SongCard(app, it, Modifier.fillMaxWidth(), imageHeight = coverSize) }
-            }
-        }
-        Pagination(app.number, app.total, { if (app.number > 0) { app.number--; app.search(false) } }, { if ((app.number + 1) * 20 < app.total) { app.number++; app.search(false) } })
+        else SongTable(app, list, Modifier.weight(1f))
+        SongPagination(app)
     }
 }
 
-@Composable private fun Pagination(page: Int, total: Long, previous: () -> Unit, next: () -> Unit) {
+@Composable private fun Pagination(page: Int, total: Long, previous: () -> Unit, next: () -> Unit, hint: String = "方向键选择 · 确认打开") {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         Action("上一页", enabled = page > 0, onClick = previous)
         Text("${page + 1} / ${maxOf(1, (total + 19) / 20)}", color = Muted, fontSize = 13.sp, lineHeight = 18.sp)
         Action("下一页", enabled = (page + 1) * 20 < total, onClick = next)
         Spacer(Modifier.weight(1f))
-        Text("方向键选择 · 确认打开", color = Muted.copy(alpha = .7f), fontSize = 11.sp)
+        Text(hint, color = Muted.copy(alpha = .7f), fontSize = 11.sp)
     }
 }
 
-@Composable private fun Categories(app: TvApp) {
+@Composable private fun SongPagination(app: TvApp) {
+    Pagination(app.number, app.total,
+        { if (app.number > 0) { app.number--; app.search(false, focusFirst = true) } },
+        { if ((app.number + 1) * 20 < app.total) { app.number++; app.search(false, focusFirst = true) } },
+        hint = "上下选歌 · 确认点歌 · 右键详情")
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable private fun Categories(app: TvApp, grid: LazyGridState, dimension: String, onDimensionChange: (String) -> Unit) {
     val dimensions = linkedMapOf("LANGUAGE" to "语种", "DECADE" to "年代", "GENRE" to "风格", "MOOD" to "情绪", "SCENE" to "场景", "CUSTOM" to "自定义")
-    var dimension by remember { mutableStateOf("LANGUAGE") }
+    val scope = rememberCoroutineScope()
+    val memory = LocalTvFocusMemory.current
+    fun selectDimension(key: String) {
+        if (dimension == key) return
+        onDimensionChange(key)
+        scope.launch { grid.scrollToItem(0) }
+    }
+    val focusMargin = with(LocalDensity.current) { 14.dp.toPx() }
+    val focusScroll = remember(focusMargin) { object : BringIntoViewSpec {
+        override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = when {
+            offset < focusMargin -> offset - focusMargin
+            offset + size > containerSize - focusMargin -> offset + size - containerSize + focusMargin
+            else -> 0f
+        }
+    } }
     Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
-        Heading("分类", "同类任选，不同维度同时满足；数量为全库歌曲数。")
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text("分类", color = Paper, fontSize = 28.sp, lineHeight = 36.sp, fontWeight = FontWeight.Medium)
+            Text("选择分类，直接查看歌曲；数量为全库歌曲数。", color = Muted, fontSize = 13.sp, lineHeight = 19.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(8.dp)) {
-            items(dimensions.keys.toList()) { key -> Action(dimensions.getValue(key), selected = dimension == key) { dimension = key } }
+            items(dimensions.keys.toList()) { key -> Action(dimensions.getValue(key),
+                modifier = Modifier.onFocusChanged { if (it.isFocused && memory.directionalInput && !memory.restoring && memory.activeDialogs == 0) selectDimension(key) },
+                selected = dimension == key) { selectDimension(key) } }
         }
         val tags = app.tags.filter { it.optString("dimension") == dimension }
         if (tags.isEmpty()) EmptyState("暂无${dimensions[dimension]}分类", "可以在 NAS 管理页整理歌曲分类。", Modifier.weight(1f))
-        else LazyVerticalGrid(GridCells.Fixed(3), modifier = Modifier.weight(1f), contentPadding = PaddingValues(10.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            items(tags, key = { it.getString("id") }) { tag ->
-                val id = tag.getString("id")
-                CategoryCard(app, tag, selected = id in app.selectedTags) { app.unclassified = false; app.selectedTags = if (id in app.selectedTags) app.selectedTags - id else app.selectedTags + id }
+        else CompositionLocalProvider(LocalBringIntoViewSpec provides focusScroll) {
+            LazyVerticalGrid(GridCells.Fixed(4), state = grid, modifier = Modifier.weight(1f), contentPadding = PaddingValues(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(tags, key = { it.getString("id") }) { tag ->
+                    val id = tag.getString("id")
+                    CategoryCard(app, tag, selected = id in app.selectedTags) { app.openCategory(id) }
+                }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Action("查看歌曲${if (app.selectedTags.isNotEmpty()) " · ${app.selectedTags.size} 项" else ""}", selected = app.selectedTags.isNotEmpty()) { app.artistId = ""; app.page = "找歌"; app.search() }
-            Action("未分类") { app.unclassified = true; app.artistId = ""; app.selectedTags = emptySet(); app.page = "找歌"; app.search() }
-        }
+        Action("未分类") { app.openCategory() }
     }
 }
 
@@ -437,49 +514,43 @@ internal fun queuedSongCount(app: TvApp) = app.snapshot.optJSONArray("queue")?.o
     }
 }
 
-@Composable private fun PlaylistDetail(app: TvApp, grid: LazyGridState) {
+@Composable private fun PlaylistDetail(app: TvApp, list: LazyListState) {
     val playlist = app.playlistDetail ?: return
     Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
-        Row(Modifier.fillMaxWidth().background(Panel, TvShape.panel).padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-            SongArtwork(app, JSONObject(playlist.toString()).put("revision", playlist.optString("coverVersion")), Modifier.size(82.dp))
+        Row(Modifier.fillMaxWidth().heightIn(min = 100.dp).background(Panel, TvShape.panel).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            SongArtwork(app, JSONObject(playlist.toString()).put("revision", playlist.optString("coverVersion")), Modifier.size(56.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(playlist.optString("name"), color = Paper, fontSize = 27.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(playlist.optString("name"), color = Paper, fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("${playlist.optInt("count")} 首歌曲", color = Primary, fontSize = 13.sp, lineHeight = 18.sp)
                 Text(playlist.optString("description").ifBlank { "选择一首想唱的歌" }, color = Muted, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Action("返回歌单") { app.closePlaylist() }
         }
         if (app.songs.isEmpty()) EmptyState(if (app.busy) "正在读取歌曲" else "歌单暂无可用歌曲", "请在 NAS 管理端选择曲库中的歌曲。", Modifier.weight(1f))
-        else LazyVerticalGrid(GridCells.Fixed(5), state = grid, modifier = Modifier.weight(1f), contentPadding = PaddingValues(10.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            items(app.songs, key = { it.getString("id") }) { SongCard(app, it, Modifier.fillMaxWidth()) }
-        }
-        Pagination(app.number, app.total, { if (app.number > 0) { app.number--; app.search(false) } }, { if ((app.number + 1) * 20 < app.total) { app.number++; app.search(false) } })
+        else SongTable(app, list, Modifier.weight(1f))
+        SongPagination(app)
     }
 }
 
-@Composable private fun ArtistDetail(app: TvApp, grid: LazyGridState) {
+@Composable private fun ArtistDetail(app: TvApp, list: LazyListState) {
     val artist = app.artistDetail ?: return
     Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
-        Box(Modifier.fillMaxWidth().height(140.dp).clip(TvShape.panel).background(Panel)) {
-            ArtistArtwork(app, artist, "background", Modifier.fillMaxSize())
-            Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Ink.copy(alpha = .96f), Ink.copy(alpha = .5f)))))
-            Row(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 15.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                ArtistArtwork(app, artist, "portrait", Modifier.size(96.dp))
+        Box(Modifier.fillMaxWidth().heightIn(min = 100.dp).clip(TvShape.panel).background(Panel)) {
+            ArtistArtwork(app, artist, "background", Modifier.matchParentSize())
+            Box(Modifier.matchParentSize().background(Brush.horizontalGradient(listOf(Ink.copy(alpha = .96f), Ink.copy(alpha = .5f)))))
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                ArtistArtwork(app, artist, "portrait", Modifier.size(56.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text(artist.optString("name"), color = Paper, fontSize = 29.sp, lineHeight = 36.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(artist.optString("name"), color = Paper, fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("${artist.optInt("count")} 首歌曲 · ${if (artist.optBoolean("managed")) "曲库歌手" else "曲库原署名"}", color = Primary, fontSize = 13.sp, lineHeight = 18.sp)
-                    Text(artist.optString("biography").ifBlank { "歌手信息随歌曲自动同步" }, color = Muted, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(artist.optString("biography").ifBlank { "歌手信息随歌曲自动同步" }, color = Muted, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Action("返回歌手") { app.closeArtist() }
             }
         }
         if (app.songs.isEmpty()) EmptyState(if (app.busy) "正在读取歌曲" else "暂无关联歌曲", "可以返回歌手页刷新资料。", Modifier.weight(1f))
-        else LazyVerticalGrid(GridCells.Fixed(5), state = grid, modifier = Modifier.weight(1f), contentPadding = PaddingValues(10.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            items(app.songs, key = { it.getString("id") }) { SongCard(app, it, Modifier.fillMaxWidth()) }
-        }
-        Pagination(app.number, app.total, { if (app.number > 0) { app.number--; app.search(false) } }, { if ((app.number + 1) * 20 < app.total) { app.number++; app.search(false) } })
+        else SongTable(app, list, Modifier.weight(1f))
+        SongPagination(app)
     }
 }
 

@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.View
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.AspectRatioFrameLayout
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.*
@@ -22,6 +23,7 @@ class MainActivity : FlutterActivity() {
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     private val videoViews = mutableSetOf<PlayerView>()
+    private var subtitleInset = .08f
     private var events: EventChannel.EventSink? = null
     private var permissionResult: MethodChannel.Result? = null
     private var notificationResult: MethodChannel.Result? = null
@@ -84,7 +86,14 @@ class MainActivity : FlutterActivity() {
                             call.argument<Boolean>("autoplay") ?: true)
                         videoViews.forEach { it.player = service.player }; result.success(null)
                     }
-                    "command" -> { service.command(call.argument<String>("action")!!, call.argument<Any>("value")); result.success(null) }
+                    "command" -> {
+                        if (call.argument<String>("action") == "subtitleInset") {
+                            subtitleInset = (call.argument<Number>("value")?.toFloat() ?: .08f)
+                                .takeIf { it.isFinite() }?.coerceIn(.08f, .65f) ?: .08f
+                            videoViews.forEach { it.subtitleView?.setBottomPaddingFraction(subtitleInset) }
+                        } else service.command(call.argument<String>("action")!!, call.argument<Any>("value"))
+                        result.success(null)
+                    }
                     "snapshot" -> result.success(service.snapshot())
                     else -> result.notImplemented()
                 }
@@ -133,7 +142,8 @@ class MainActivity : FlutterActivity() {
         }
         engine.platformViewsController.registry.registerViewFactory("singverse/video", object : PlatformViewFactory(StandardMessageCodec.INSTANCE) {
             override fun create(context: Context, viewId: Int, args: Any?): PlatformView {
-                val view = PlayerView(context).apply { useController = false; player = PlaybackService.current?.player }
+                val view = PlayerView(context).apply { useController = false; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT; player = PlaybackService.current?.player }
+                view.subtitleView?.setBottomPaddingFraction(subtitleInset)
                 videoViews.add(view)
                 return object : PlatformView {
                     override fun getView(): View = view

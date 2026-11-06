@@ -1,8 +1,5 @@
 import 'dart:async';
-import 'dart:io';
-import 'dart:ui' as ui;
 
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import 'package:flutter/material.dart';
@@ -23,6 +20,7 @@ class FakeApi implements NasApi {
   bool deferred = false;
   bool loggedIn = false;
   List<Json> rows = [];
+  List<Json> textTracks = [], tags = [], browseRows = [];
   bool offline = false;
   ApiFailure? loginFailure;
   @override
@@ -67,6 +65,18 @@ class FakeApi implements NasApi {
       pending.add(next);
       return next.future;
     }
+    if (path == '/api/v1/classification/tags') return tags;
+    if (path.endsWith('/text-tracks')) return {'items': textTracks};
+    if (RegExp(r'^/api/v1/mobile/library/songs/[^/?]+$').hasMatch(path)) {
+      return rows
+              .where((row) => row['id'] == path.split('/').last)
+              .firstOrNull ??
+          {'id': path.split('/').last, 'title': '测试歌曲'};
+    }
+    if (path.startsWith('/api/v1/artists?') ||
+        path.startsWith('/api/v1/playlists?')) {
+      return {'items': browseRows, 'totalElements': browseRows.length};
+    }
     return {'items': rows, 'totalElements': rows.length};
   }
 }
@@ -95,25 +105,95 @@ void main() {
     state.dispose();
     await store.close();
   });
-  testWidgets('disconnected shell exposes two tabs and scanner without NAS', (
+  testWidgets(
+    'disconnected shell exposes three tabs and settings without NAS',
+    (tester) async {
+      await state.initialize();
+      await tester.pumpWidget(SingVerseApp(state: state));
+      await tester.pumpAndSettle();
+      expect(find.text('点歌'), findsNWidgets(2));
+      expect(find.text('常唱'), findsOneWidget);
+      expect(find.text('作品'), findsOneWidget);
+      expect(find.byTooltip('扫一扫'), findsOneWidget);
+      expect(find.text('录音'), findsNothing);
+      await tester.tap(find.byKey(const Key('nav-frequent')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('设置'));
+      await tester.pumpAndSettle();
+      expect(find.text('长辈模式'), findsOneWidget);
+      expect(find.text('减少透明效果'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'senior navigation keeps three fixed accessible tabs and singing state',
+    (tester) async {
+      await state.initialize();
+      state.current = Song({'id': 'active', 'title': '正在唱的歌'});
+      state.singing = {
+        'phase': 'RECORDING',
+        'takeId': 'take-a',
+        'recordedMs': 12000,
+      };
+      await state.setUiMode(UiMode.senior);
+      await tester.pumpWidget(SingVerseApp(state: state));
+      await tester.pumpAndSettle();
+      for (final key in ['nav-songs', 'nav-frequent', 'nav-works']) {
+        final entry = find.byKey(Key(key));
+        expect(entry, findsOneWidget);
+        expect(tester.getSize(entry).height, greaterThanOrEqualTo(56));
+      }
+      await tester.tap(find.byKey(const Key('nav-works')));
+      await tester.pumpAndSettle();
+      expect(find.text('作品'), findsNWidgets(2));
+      expect(find.text('留下你的声音'), findsOneWidget);
+      await state.setUiMode(UiMode.standard);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('nav-songs')), findsOneWidget);
+      expect(find.text('作品'), findsNWidgets(2));
+      expect(state.takeId, 'take-a');
+      expect(state.recording, isTrue);
+      expect(state.current!.id, 'active');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('senior navigation stays usable with large type in both themes', (
     tester,
   ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 568));
+    tester.platformDispatcher.textScaleFactorTestValue = 1.8;
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     await state.initialize();
-    await tester.pumpWidget(SingVerseApp(state: state));
-    await tester.pumpAndSettle();
-    expect(find.text('曲库'), findsNWidgets(2));
-    expect(find.text('我的'), findsOneWidget);
-    expect(find.text('扫码点歌'), findsWidgets);
-    expect(find.text('录音'), findsNothing);
-    await tester.tap(find.text('我的'));
-    await tester.pumpAndSettle();
-    expect(find.text('常唱收藏'), findsOneWidget);
-    expect(find.text('减少透明效果'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    await state.setUiMode(UiMode.senior);
+    for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+      await state.setTheme(mode);
+      await tester.pumpWidget(SingVerseApp(state: state));
+      await tester.pumpAndSettle();
+      for (final key in ['nav-songs', 'nav-frequent', 'nav-works']) {
+        final entry = find.byKey(Key(key));
+        expect(entry.hitTestable(), findsOneWidget);
+        expect(tester.getSize(entry).height, greaterThanOrEqualTo(56));
+      }
+      for (final entry in [('open-tv', '扫码'), ('open-settings', '设置')]) {
+        final button = find.byKey(Key(entry.$1));
+        expect(button.hitTestable(), findsOneWidget);
+        expect(tester.getSize(button).height, greaterThanOrEqualTo(56));
+        expect(
+          find.descendant(of: button, matching: find.text(entry.$2)),
+          findsOneWidget,
+        );
+      }
+      expect(tester.takeException(), isNull);
+    }
   });
+
   testWidgets('recording notification request opens the singing stage', (
     tester,
   ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await state.initialize();
     state.current = Song({
       'id': 'notification-fixture',
@@ -126,7 +206,7 @@ void main() {
     state.stageRequests++;
     state.notifyListeners();
     await tester.pumpAndSettle();
-    expect(find.text('练唱模式 · 麦克风未开启'), findsOneWidget);
+    expect(find.text('练唱 · 麦克风未开启'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
   testWidgets('new take countdown does not reopen an older pending draft', (
@@ -153,16 +233,16 @@ void main() {
     await tester.pumpAndSettle();
     state.notifyListeners();
     await tester.pumpAndSettle();
-    expect(find.text('留下这次演唱'), findsNothing);
+    expect(find.text('录音草稿'), findsNothing);
     state.countdown = 0;
     state.singing = {'phase': 'RECORDING', 'takeId': 'new-take'};
     state.notifyListeners();
     await tester.pumpAndSettle();
-    expect(find.text('留下这次演唱'), findsNothing);
+    expect(find.text('录音草稿'), findsNothing);
     state.singing = {'phase': 'PREVIEW', 'takeId': 'new-take'};
     state.notifyListeners();
     await tester.pumpAndSettle();
-    expect(find.text('留下这次演唱'), findsOneWidget);
+    expect(find.text('录音草稿'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
   testWidgets('themes and large text preserve readable shell', (tester) async {
@@ -175,28 +255,13 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(SingVerseApp(state: state));
     await tester.pumpAndSettle();
-    final context = tester.element(find.text('我的'));
+    final context = tester.element(find.text('常唱'));
     expect(Theme.of(context).brightness, Brightness.dark);
     expect(tester.takeException(), isNull);
   });
   testWidgets('connected library and player render in light and dark themes', (
     tester,
   ) async {
-    const fontPath = String.fromEnvironment('CAPTURE_FONT');
-    if (fontPath.isNotEmpty) {
-      await tester.runAsync(() async {
-        final loader = FontLoader('Roboto')
-          ..addFont(
-            File(fontPath)
-                .readAsBytes()
-                .then((bytes) => ByteData.sublistView(bytes)),
-          );
-        await loader.load();
-        final icons = FontLoader('MaterialIcons')
-          ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
-        await icons.load();
-      });
-    }
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     api.rows = [
@@ -241,39 +306,20 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('今天，\n想唱哪首？'), findsOneWidget);
+    expect(find.text('今天，\n想唱哪首？'), findsNothing);
+    expect(find.text('全部歌曲'), findsOneWidget);
+    expect(find.text('3 首'), findsOneWidget);
+    for (final title in ['晴天', '富士山下', '慢慢喜欢你']) {
+      expect(tester.getBottomLeft(find.text(title).first).dy, lessThan(690));
+    }
     expect(find.text('家庭歌单'), findsOneWidget);
     expect(tester.takeException(), isNull);
-    if (const bool.fromEnvironment('CAPTURE_UI')) {
-      await tester.runAsync(() async {
-        final image =
-            await (boundary.currentContext!.findRenderObject()!
-                    as RenderRepaintBoundary)
-                .toImage(pixelRatio: 2);
-        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-        await File('/tmp/singverse-mobile-light.png')
-            .writeAsBytes(bytes!.buffer.asUint8List());
-        image.dispose();
-      });
-    }
     await state.setTheme(ThemeMode.dark);
     await tester.pumpAndSettle();
-    if (const bool.fromEnvironment('CAPTURE_UI')) {
-      await tester.runAsync(() async {
-        final image =
-            await (boundary.currentContext!.findRenderObject()!
-                    as RenderRepaintBoundary)
-                .toImage(pixelRatio: 2);
-        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-        await File('/tmp/singverse-mobile-dark.png')
-            .writeAsBytes(bytes!.buffer.asUint8List());
-        image.dispose();
-      });
-    }
     expect(tester.takeException(), isNull);
-    await tester.tap(find.text('返回演唱'));
+    await tester.tap(find.byKey(const Key('mini-player')).first);
     await tester.pumpAndSettle();
-    expect(find.text('练唱模式 · 麦克风未开启'), findsOneWidget);
+    expect(find.text('练唱 · 麦克风未开启'), findsOneWidget);
     expect(find.text('4:29'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.binding.setSurfaceSize(const Size(844, 390));

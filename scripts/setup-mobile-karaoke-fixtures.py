@@ -73,5 +73,7 @@ else:
         request('/api/v1/metadata/songs/' + song['id'] + '/review/apply', 'POST', {
             'requestId': str(uuid.uuid4()), 'fingerprint': review['fingerprint'], 'version': review['version'],
             'fields': ['title', 'artists'], 'edits': {
-                'title': '晨光练习' if song['format'] == 'WAV' else '晚风练习', 'artists': ['星河合唱团']}})
+                'title': (song['title'] if song['title'].startswith('视觉验收') else
+                          '晨光练习' if song['format'] == 'WAV' else '晚风练习'),
+                'artists': ['星河合唱团']}})
     print('Disposable NAS seeded through authenticated source, scan and metadata review APIs.')

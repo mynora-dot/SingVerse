@@ -6,6 +6,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -19,6 +22,7 @@ import androidx.compose.ui.focus.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -64,6 +68,7 @@ internal class TvFocusMemory {
     val activeDialogs get() = dialogs.size
     var view: String? = null
     var restoring = false
+    var directionalInput = false
     val last = mutableMapOf<String, String>()
     val focusedTargets = mutableSetOf<String>()
     val targets = mutableMapOf<String, FocusRequester>()
@@ -101,11 +106,11 @@ internal val LocalTvFocusPage = staticCompositionLocalOf { "default" }
 }
 
 /** Presentation only: Compose/TV Material retain ownership of remote focus and key handling. */
-@Composable internal fun Modifier.tvFocus(focused: Boolean, shape: Shape = TvShape.control): Modifier {
+@Composable internal fun Modifier.tvFocus(focused: Boolean, shape: Shape = TvShape.control, focusedScale: Float = 1.04f): Modifier {
     val amount by animateFloatAsState(if (focused) 1f else 0f, tween(180), label = "tvFocus")
     return this.graphicsLayer {
-        scaleX = 1f + .04f * amount
-        scaleY = 1f + .04f * amount
+        scaleX = 1f + (focusedScale - 1f) * amount
+        scaleY = 1f + (focusedScale - 1f) * amount
         clip = false
     }.drawWithContent {
         val outline = shape.createOutline(size, layoutDirection, this)
@@ -265,7 +270,8 @@ internal val LocalTvFocusPage = staticCompositionLocalOf { "default" }
     }
 }
 
-@Composable internal fun SongCard(app: TvApp, song: JSONObject, modifier: Modifier = Modifier, imageHeight: Dp = Dp.Unspecified) {
+@Composable internal fun SongCard(app: TvApp, song: JSONObject, modifier: Modifier = Modifier, imageHeight: Dp = Dp.Unspecified,
+    metadataVerticalPadding: Dp = 8.dp) {
     var focused by remember { mutableStateOf(false) }
     val shape = TvShape.card
     Button(onClick = { app.openSong(song) },
@@ -285,7 +291,7 @@ internal val LocalTvFocusPage = staticCompositionLocalOf { "default" }
                         modifier = Modifier.align(Alignment.BottomStart).padding(7.dp).background(Primary, RoundedCornerShape(6.dp)).padding(horizontal = 7.dp, vertical = 3.dp))
                 }
             }
-            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Column(Modifier.padding(horizontal = 4.dp, vertical = metadataVerticalPadding), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(song.optString("title"), fontSize = 14.sp, lineHeight = 19.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(song.artists(), color = Muted, fontSize = 11.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -294,6 +300,75 @@ internal val LocalTvFocusPage = staticCompositionLocalOf { "default" }
 }
 
 internal fun JSONObject.artists(): String = optJSONArray("artists")?.let { array -> (0 until array.length()).joinToString(" / ") { array.optString(it) } }.orEmpty().ifBlank { "歌手未知" }
+
+@Composable internal fun SongTable(app: TvApp, state: LazyListState, modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            SongTableText("序号", Modifier.width(32.dp), header = true)
+            SongTableText("歌曲", Modifier.weight(1.6f), header = true)
+            SongTableText("歌手", Modifier.weight(1f), header = true)
+            SongTableText("版本", Modifier.width(76.dp), header = true)
+            SongTableText("时长", Modifier.width(48.dp), header = true)
+            SongTableText("点歌状态", Modifier.width(96.dp), header = true)
+        }
+        LazyColumn(state = state, modifier = Modifier.weight(1f).fillMaxWidth().focusGroup(),
+            contentPadding = PaddingValues(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            itemsIndexed(app.songs, key = { _, song -> song.getString("id") }) { index, song ->
+                SongTableRow(app, song, app.number * 20 + index + 1)
+            }
+        }
+    }
+}
+
+@Composable private fun SongTableText(label: String, modifier: Modifier, header: Boolean = false, color: Color = Muted) {
+    Text(label, modifier, color = color, fontSize = if (header) 11.sp else 12.sp,
+        lineHeight = if (header) 16.sp else 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+}
+
+@Composable private fun SongTableRow(app: TvApp, song: JSONObject, number: Int) {
+    val id = song.getString("id")
+    var focused by remember { mutableStateOf(false) }
+    val queue = app.snapshot.optJSONArray("queue")?.objects().orEmpty().filter {
+        (it.optString("songId").ifBlank { it.optJSONObject("song")?.optString("id").orEmpty() }) == id &&
+            it.optString("status") in listOf("WAITING", "HANDOFF", "PLAYING")
+    }
+    val status = when {
+        app.queueAddSongId == id -> "加入中…"
+        app.pendingOperation?.let { it.optString("action") == "ADD" && it.optString("songId") == id } == true -> "待核对"
+        queue.isNotEmpty() -> "已点 ×${queue.size}"
+        else -> "＋ 点歌"
+    }
+    Button(onClick = { app.addSongFromList(song) },
+        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).tvFocusTarget("song:$id")
+            .onFocusChanged { focused = it.isFocused }.tvFocus(focused, TvShape.control, focusedScale = 1f)
+            .onPreviewKeyEvent {
+                if (it.key == Key.DirectionRight) {
+                    if (it.type == KeyEventType.KeyDown && it.nativeKeyEvent.repeatCount == 0) app.openSong(song)
+                    true
+                } else false
+            },
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        scale = ButtonDefaults.scale(focusedScale = 1f), shape = ButtonDefaults.shape(TvShape.control),
+        colors = ButtonDefaults.colors(containerColor = Panel.copy(alpha = .65f), contentColor = Paper,
+            focusedContainerColor = Elevated, focusedContentColor = Paper)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            SongTableText(number.toString(), Modifier.width(32.dp))
+            Row(Modifier.weight(1.6f), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                SongArtwork(app, song, Modifier.size(40.dp))
+                Text(song.optString("title"), Modifier.weight(1f), color = Paper, fontSize = 14.sp, lineHeight = 20.sp,
+                    fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            SongTableText(song.artists(), Modifier.weight(1f), color = Paper.copy(alpha = .85f))
+            SongTableText(versionLabel(song.optString("version")), Modifier.width(76.dp))
+            SongTableText(song.optLong("durationMs").takeIf { it > 0 }?.let(::time) ?: "—", Modifier.width(48.dp))
+            Column(Modifier.width(96.dp)) {
+                SongTableText(status, Modifier.fillMaxWidth(), color = if (queue.isNotEmpty()) Success else Paper)
+                if (focused) SongTableText("右键查看详情", Modifier.fillMaxWidth(), header = true)
+            }
+        }
+    }
+}
 
 @Composable internal fun CategoryCard(app: TvApp, tag: JSONObject, selected: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
@@ -313,15 +388,18 @@ internal fun JSONObject.artists(): String = optJSONArray("artists")?.let { array
         .onFocusChanged { focused = it.isFocused }.tvFocus(focused, TvShape.card),
         scale = ButtonDefaults.scale(focusedScale = 1f), contentPadding = PaddingValues(0.dp), shape = ButtonDefaults.shape(TvShape.card),
         colors = ButtonDefaults.colors(containerColor = Panel, focusedContainerColor = Panel)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(TvShape.card).background(Brush.linearGradient(listOf(tone, Panel)))) {
-            if (bitmap != null) Image(bitmap!!.asImageBitmap(), "${tag.optString("name")}分类封面", Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
-            else Text(tag.optString("name").take(2), color = Paper.copy(alpha = .1f), fontSize = 52.sp, lineHeight = 64.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp))
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE60B0E14)))))
-            Column(Modifier.align(Alignment.BottomStart).padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(tag.optString("name"), color = Paper, fontSize = 23.sp, lineHeight = 30.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Box(Modifier.fillMaxWidth().heightIn(min = 88.dp).clip(TvShape.card).background(Brush.linearGradient(listOf(tone, Panel))), contentAlignment = Alignment.CenterStart) {
+            if (bitmap != null) Image(bitmap!!.asImageBitmap(), "${tag.optString("name")}分类封面", Modifier.matchParentSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+            else Text(tag.optString("name").take(2), color = Paper.copy(alpha = .08f), fontSize = 36.sp, lineHeight = 44.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterEnd).padding(14.dp))
+            Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE60B0E14)))))
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(tag.optString("name"), modifier = Modifier.weight(1f), color = Paper, fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (selected) Text("已选", color = Primary, fontSize = 10.sp, lineHeight = 14.sp,
+                        modifier = Modifier.background(Primary.copy(alpha = .1f), RoundedCornerShape(5.dp)).padding(horizontal = 6.dp, vertical = 3.dp))
+                }
                 Text("${tag.optInt("count")} 首歌曲${if (failed) " · 封面暂不可用" else ""}", color = Paper.copy(alpha = .72f), fontSize = 12.sp, lineHeight = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (selected) StatusPill("已选", Primary, Modifier.align(Alignment.TopEnd).padding(12.dp))
         }
     }
 }
