@@ -65,8 +65,11 @@ private fun time(ms: Long): String = "${ms.coerceAtLeast(0) / 60000}:${(ms.coerc
             memory.restoreVersion++
         }
     }
+    // Dialog owns a separate Android window, whose platform density otherwise replaces
+    // the logical TV canvas density. Keep text and controls at the same scale as the player.
+    val canvasDensity = LocalDensity.current
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        CompositionLocalProvider(LocalTvFocusPage provides dialog) {
+        CompositionLocalProvider(LocalTvFocusPage provides dialog, LocalDensity provides canvasDensity) {
             val entry = remember { FocusRequester() }
             LaunchedEffect(dialog, memory.dialogs.lastOrNull(), memory.restoreVersion) {
                 withFrameNanos { }; withFrameNanos { }

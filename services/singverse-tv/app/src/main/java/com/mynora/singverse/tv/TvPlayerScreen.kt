@@ -104,11 +104,11 @@ import java.util.Locale
     }
     if (queueOpen) Modal("已点歌曲", "当前演唱保持独立，这里只管理接下来的歌曲。", dismiss = { queueOpen = false }, wide = true) {
         Action("完成") { queueOpen = false }
-        Box(Modifier.fillMaxWidth().height(292.dp)) { Queue(app, compact = true) }
+        Box(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 292.dp)) { Queue(app, compact = true) }
     }
     if (moreOpen) Modal("更多设置", "播放辅助与本机操作。", { moreOpen = false }) {
         Action("完成") { moreOpen = false }
-        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 278.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(6.dp)) {
+        LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 278.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(6.dp)) {
             item { Action("音轨设置", Modifier.fillMaxWidth()) { settings = "音轨" } }
             item { Action("同步设置", Modifier.fillMaxWidth()) { settings = "同步" } }
             item { Action("音质详情", Modifier.fillMaxWidth()) { qualityOpen = true } }
@@ -121,7 +121,7 @@ import java.util.Locale
     }
     settings?.let { tab -> Modal("播放设置", "更改只作用于当前播放链与本机设置。", dismiss = { settings = null }, wide = true) {
         Action("完成") { settings = null }
-        PlaybackSettings(app, initialTab = tab, audioOnly = audioOnly)
+        PlaybackSettings(app, initialTab = tab, audioOnly = audioOnly, modifier = Modifier.weight(1f, fill = false))
     } }
     if (qualityOpen) Modal("音质详情", "依据当前实际解码音轨；未提供的参数不显示。", { qualityOpen = false }) {
         val labels = app.audioQualityLabels
@@ -137,7 +137,7 @@ import java.util.Locale
         Action("完成") { favoritesOpen = false }
         val favorites = app.favoriteSongs()
         if (favorites.isEmpty()) EmptyState("还没有收藏歌曲", "播放歌曲时按「收藏」，下次可从这里快速加入已点。")
-        else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 280.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(6.dp)) {
+        else LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 280.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(6.dp)) {
             items(favorites, key = { it.optString("id") }) { favorite ->
                 Row(Modifier.fillMaxWidth().background(Panel, TvShape.card).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     SongArtwork(app, favorite, Modifier.size(50.dp))

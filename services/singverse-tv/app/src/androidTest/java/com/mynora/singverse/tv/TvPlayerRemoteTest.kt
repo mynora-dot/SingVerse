@@ -416,6 +416,13 @@ class TvPlayerRemoteTest : InstrumentationTestCase() {
         val settingsOrigin = focused()
         key(KeyEvent.KEYCODE_DPAD_CENTER)
         waitFor("播放设置默认完成按钮") { focused().startsWith("dialog:") && focused().endsWith(":action:完成") }
+        val canvasScale = onMain {
+            minOf(activity.window.decorView.width / 960f, activity.window.decorView.height / 540f)
+        }
+        val complete = nodes().first { it.isVisibleToUser && it.isClickable && label(it) == "完成" }
+        val completeBounds = Rect().also { complete.getBoundsInScreen(it) }
+        assertTrue("弹窗操作应沿用TV画布缩放，避免独立窗口把文字缩小：$completeBounds scale=$canvasScale",
+            completeBounds.height() >= 35f * canvasScale)
         key(KeyEvent.KEYCODE_DPAD_DOWN)
         waitFor("下键进入设置分类行") { focused().contains(":action:playback:tab:") }
 
