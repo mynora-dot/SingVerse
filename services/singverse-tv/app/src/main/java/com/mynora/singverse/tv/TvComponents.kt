@@ -30,13 +30,32 @@ import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-internal val Ink = Color(0xFF0B0E16)
-internal val Panel = Color(0xFF202636)
-internal val Elevated = Color(0xFF2A3448)
-internal val Paper = Color(0xFFF3F3F5)
-internal val Muted = Color(0xFF9299A8)
-internal val Gold = Color(0xFFE8C99B)
-internal val Accent = Color(0xFF28A9FF)
+internal val Ink = Color(0xFF050505)
+internal val Panel = Color(0xFF1C1C1E)
+internal val Elevated = Color(0xFF2C2C2E)
+internal val Paper = Color(0xFFF5F5F7)
+internal val Muted = Color(0xFFA1A1A6)
+internal val Primary = Color(0xFFF5F5F7)
+internal val Focus = Color(0xFFF5F5F7)
+internal val Success = Color(0xFF6FCF97)
+internal val Danger = Color(0xFFFF6961)
+internal val Hairline = Color(0xFF3A3A3C)
+
+internal object TvSpacing {
+    val xs = 4.dp
+    val sm = 8.dp
+    val md = 12.dp
+    val lg = 18.dp
+    val xl = 24.dp
+    val xxl = 32.dp
+}
+
+internal object TvShape {
+    val control = RoundedCornerShape(12.dp)
+    val card = RoundedCornerShape(18.dp)
+    val panel = RoundedCornerShape(28.dp)
+    val dialog = RoundedCornerShape(32.dp)
+}
 
 /** A memory of Compose focus targets, without intercepting directional keys. */
 internal class TvFocusMemory {
@@ -82,57 +101,116 @@ internal val LocalTvFocusPage = staticCompositionLocalOf { "default" }
 }
 
 /** Presentation only: Compose/TV Material retain ownership of remote focus and key handling. */
-@Composable internal fun Modifier.tvFocus(focused: Boolean, shape: Shape = RoundedCornerShape(12.dp)): Modifier {
-    val amount by animateFloatAsState(if (focused) 1f else 0f, tween(160), label = "tvFocus")
+@Composable internal fun Modifier.tvFocus(focused: Boolean, shape: Shape = TvShape.control): Modifier {
+    val amount by animateFloatAsState(if (focused) 1f else 0f, tween(180), label = "tvFocus")
     return this.graphicsLayer {
-        scaleX = 1f + .03f * amount
-        scaleY = 1f + .03f * amount
+        scaleX = 1f + .04f * amount
+        scaleY = 1f + .04f * amount
         clip = false
     }.drawWithContent {
-        // Draw the halo outside the surface too, without newer Android shadow APIs.
         val outline = shape.createOutline(size, layoutDirection, this)
         if (focused && amount > 0f) {
-            drawOutline(outline, Accent.copy(alpha = .07f * amount), style = Stroke(12.dp.toPx()))
-            drawOutline(outline, Accent.copy(alpha = .13f * amount), style = Stroke(7.dp.toPx()))
+            drawOutline(outline, Focus.copy(alpha = .08f * amount), style = Stroke(12.dp.toPx()))
         }
         drawContent()
-        if (focused && amount > 0f) drawOutline(outline, Accent.copy(alpha = amount), style = Stroke(2.dp.toPx()))
+        if (focused && amount > 0f) drawOutline(outline, Focus.copy(alpha = .95f * amount), style = Stroke(1.5.dp.toPx()))
     }
 }
 
 @Composable internal fun SingVerseTvTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = darkColorScheme(primary = Gold, onPrimary = Ink, surface = Panel, onSurface = Paper), content = content)
+    MaterialTheme(
+        colorScheme = darkColorScheme(
+            primary = Primary,
+            onPrimary = Ink,
+            background = Ink,
+            onBackground = Paper,
+            surface = Panel,
+            onSurface = Paper,
+            surfaceVariant = Elevated,
+            onSurfaceVariant = Muted,
+            error = Danger,
+            onError = Ink,
+        ),
+        content = content,
+    )
 }
 
-@Composable internal fun Action(label: String, modifier: Modifier = Modifier, selected: Boolean = false, focusKey: String = label, textSize: androidx.compose.ui.unit.TextUnit = 15.sp, onClick: () -> Unit) {
+@Composable internal fun Action(
+    label: String,
+    modifier: Modifier = Modifier,
+    selected: Boolean = false,
+    focusKey: String = label,
+    textSize: androidx.compose.ui.unit.TextUnit = 15.sp,
+    enabled: Boolean = true,
+    danger: Boolean = false,
+    onClick: () -> Unit,
+) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(22.dp)
-    Button(onClick = onClick, modifier = modifier.tvFocusTarget("action:$focusKey").onFocusChanged { focused = it.isFocused }.tvFocus(focused, shape),
-        scale = ButtonDefaults.scale(focusedScale = 1f), shape = ButtonDefaults.shape(shape),
-        colors = ButtonDefaults.colors(containerColor = if (selected) Gold else Panel, contentColor = if (selected) Ink else Paper,
-            focusedContainerColor = if (selected) Gold else Elevated, focusedContentColor = if (selected) Ink else Paper)) {
-        Text(label, fontSize = textSize, lineHeight = textSize * 1.3f, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    val shape = TvShape.control
+    val content = when {
+        !enabled -> Muted.copy(alpha = .55f)
+        selected -> Ink
+        danger -> Danger
+        else -> Paper
+    }
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.heightIn(min = 36.dp).tvFocusTarget("action:$focusKey")
+            .onFocusChanged { focused = it.isFocused }.tvFocus(focused, shape),
+        scale = ButtonDefaults.scale(focusedScale = 1f),
+        shape = ButtonDefaults.shape(shape),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+        colors = ButtonDefaults.colors(
+            containerColor = if (selected) Primary else if (danger) Danger.copy(alpha = .09f) else Panel,
+            contentColor = content,
+            focusedContainerColor = if (selected) Primary else if (danger) Danger.copy(alpha = .16f) else Elevated,
+            focusedContentColor = content,
+            disabledContainerColor = Panel.copy(alpha = .45f),
+            disabledContentColor = content,
+        ),
+    ) {
+        Text(label, fontSize = textSize, lineHeight = textSize * 1.35f, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
 @Composable internal fun Heading(title: String, subtitle: String = "") {
-    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Text(title, color = Paper, fontSize = 30.sp, lineHeight = 38.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        if (subtitle.isNotEmpty()) Text(subtitle, color = Muted, fontSize = 15.sp, lineHeight = 19.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Text(title, color = Paper, fontSize = 32.sp, lineHeight = 40.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (subtitle.isNotEmpty()) Text(subtitle, color = Muted, fontSize = 14.sp, lineHeight = 20.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable internal fun SectionTitle(title: String, detail: String = "") {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(title, color = Paper, fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.Medium)
+        if (detail.isNotEmpty()) Text(detail, color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
+    }
+}
+
+@Composable internal fun StatusPill(label: String, tone: Color = Muted, modifier: Modifier = Modifier) {
+    Row(modifier.background(tone.copy(alpha = .1f), RoundedCornerShape(7.dp)).padding(horizontal = 9.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(Modifier.size(5.dp).background(tone, RoundedCornerShape(3.dp)))
+        Text(label, color = tone, fontSize = 11.sp, lineHeight = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
 @Composable internal fun EmptyState(title: String, message: String, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        MusicMark(Modifier.size(36.dp))
-        Text(title, color = Paper, fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.Medium)
-        Text(message, color = Muted, fontSize = 15.sp, lineHeight = 19.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+    Column(modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(Modifier.size(54.dp).background(Panel, RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
+            MusicMark(Modifier.size(28.dp))
+        }
+        Text(title, color = Paper, fontSize = 21.sp, lineHeight = 28.sp, fontWeight = FontWeight.Medium)
+        Text(message, color = Muted, fontSize = 14.sp, lineHeight = 20.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
     }
 }
 
 @Composable internal fun MusicMark(modifier: Modifier = Modifier) {
     Canvas(modifier) {
-        val color = Color(0xFF9EA6BA)
+        val color = Muted
         val w = size.width; val h = size.height
         drawLine(color, Offset(w * .42f, h * .72f), Offset(w * .42f, h * .2f), w * .065f)
         drawLine(color, Offset(w * .42f, h * .2f), Offset(w * .8f, h * .12f), w * .065f)
@@ -162,10 +240,10 @@ internal val LocalTvFocusPage = staticCompositionLocalOf { "default" }
     BackHandler(editing) { finishEditing() }
     if (!editing) Action(value.ifBlank { hint }, Modifier.fillMaxWidth().focusRequester(buttonFocus)) { editing = true }
     else BasicTextField(value, onChange, modifier = Modifier.fillMaxWidth().focusRequester(editorFocus).tvFocusTarget("input:$hint")
-        .onFocusChanged { editorFocused = it.isFocused }.tvFocus(editorFocused, RoundedCornerShape(16.dp))
-        .background(Elevated, RoundedCornerShape(16.dp)).padding(14.dp), singleLine = true,
+        .onFocusChanged { editorFocused = it.isFocused }.tvFocus(editorFocused, TvShape.control)
+        .background(Elevated, TvShape.control).padding(14.dp), singleLine = true,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { finishEditing() }),
-        textStyle = TextStyle(color = Paper, fontSize = 18.sp, lineHeight = 23.sp), cursorBrush = SolidColor(Accent))
+        textStyle = TextStyle(color = Paper, fontSize = 18.sp, lineHeight = 24.sp), cursorBrush = SolidColor(Focus))
 }
 
 @Composable internal fun SongArtwork(app: TvApp, song: JSONObject?, modifier: Modifier,
@@ -181,31 +259,35 @@ internal val LocalTvFocusPage = staticCompositionLocalOf { "default" }
             throw cancelled
         } catch (_: Exception) { null }
     }
-    Box(modifier.clip(RoundedCornerShape(10.dp)).background(Brush.linearGradient(listOf(Color(0xFF303B50), Color(0xFF151C29))))) {
+    Box(modifier.clip(TvShape.card).background(Brush.linearGradient(listOf(Color(0xFF343434), Color(0xFF171717))))) {
         if (bitmap != null) Image(bitmap!!.asImageBitmap(), "歌曲封面", Modifier.fillMaxSize(), contentScale = contentScale)
         else MusicMark(Modifier.size(32.dp).align(Alignment.Center))
     }
 }
 
-@Suppress("UNUSED_PARAMETER") // Retained for callers compiled against the earlier card API.
-@Composable internal fun SongCard(app: TvApp, song: JSONObject, modifier: Modifier = Modifier, imageHeight: Dp = 96.dp) {
+@Composable internal fun SongCard(app: TvApp, song: JSONObject, modifier: Modifier = Modifier, imageHeight: Dp = Dp.Unspecified) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(10.dp)
+    val shape = TvShape.card
     Button(onClick = { app.openSong(song) },
         modifier = modifier.tvFocusTarget("song:${song.optString("id")}").onFocusChanged { focused = it.isFocused }.tvFocus(focused, shape),
-        scale = ButtonDefaults.scale(focusedScale = 1f), contentPadding = PaddingValues(0.dp),
+        scale = ButtonDefaults.scale(focusedScale = 1f), contentPadding = PaddingValues(5.dp),
         shape = ButtonDefaults.shape(shape),
-        colors = ButtonDefaults.colors(containerColor = Color.Transparent, contentColor = Paper, focusedContainerColor = Elevated, focusedContentColor = Paper)) {
+        colors = ButtonDefaults.colors(containerColor = Color.Transparent, contentColor = Paper,
+            focusedContainerColor = Panel, focusedContentColor = Paper)) {
         Column(Modifier.fillMaxWidth()) {
-            Box {
-                SongArtwork(app, song, Modifier.fillMaxWidth().aspectRatio(1f))
+            Box(Modifier.align(Alignment.CenterHorizontally)) {
+                val artworkModifier = if (imageHeight == Dp.Unspecified) Modifier.fillMaxWidth().aspectRatio(1f)
+                    else Modifier.widthIn(max = imageHeight).fillMaxWidth().aspectRatio(1f)
+                SongArtwork(app, song, artworkModifier)
                 val playingId = app.snapshot.optJSONArray("queue")?.objects()?.firstOrNull { it.optString("status") == "PLAYING" }?.optJSONObject("song")?.optString("id").orEmpty()
-                if (playingId.isNotBlank() && playingId == song.optString("id")) Text(stateLabel(app.playerState), color = Gold, fontSize = 10.sp, lineHeight = 14.sp,
-                    modifier = Modifier.align(Alignment.BottomStart).padding(6.dp).background(Ink.copy(alpha = .88f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 3.dp))
+                if (playingId.isNotBlank() && playingId == song.optString("id")) {
+                    Text(stateLabel(app.playerState), color = Ink, fontSize = 10.sp, lineHeight = 14.sp,
+                        modifier = Modifier.align(Alignment.BottomStart).padding(7.dp).background(Primary, RoundedCornerShape(6.dp)).padding(horizontal = 7.dp, vertical = 3.dp))
+                }
             }
-            Column(Modifier.padding(horizontal = 5.dp, vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(song.optString("title"), fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(song.artists(), color = Muted, fontSize = 11.sp, lineHeight = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(song.optString("title"), fontSize = 14.sp, lineHeight = 19.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(song.artists(), color = Muted, fontSize = 11.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -213,108 +295,112 @@ internal val LocalTvFocusPage = staticCompositionLocalOf { "default" }
 
 internal fun JSONObject.artists(): String = optJSONArray("artists")?.let { array -> (0 until array.length()).joinToString(" / ") { array.optString(it) } }.orEmpty().ifBlank { "歌手未知" }
 
-
 @Composable internal fun CategoryCard(app: TvApp, tag: JSONObject, selected: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     var bitmap by remember(tag.optString("id")) { mutableStateOf<Bitmap?>(null) }
     var failed by remember { mutableStateOf(false) }
     LaunchedEffect(tag.optString("id"), tag.optString("coverVersion"), app.client.base) {
-        bitmap=null;failed=false
-        val path=tag.optString("coverPath")
-        if(path.isNotBlank()) {
-            bitmap=try { app.client.image(path,tag.optString("coverVersion")) } catch(cancelled: kotlinx.coroutines.CancellationException) { throw cancelled } catch(failure: Exception) { null }
-            failed=bitmap==null
+        bitmap = null; failed = false
+        val path = tag.optString("coverPath")
+        if (path.isNotBlank()) {
+            bitmap = try { app.client.image(path, tag.optString("coverVersion")) } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled } catch (_: Exception) { null }
+            failed = bitmap == null
         }
     }
-    val tones=listOf(Color(0xFF465B75),Color(0xFF5D4E70),Color(0xFF395F62),Color(0xFF66544C),Color(0xFF555C73),Color(0xFF4C5C50))
-    val tone=tones[(tag.optString("id").hashCode() ushr 1)%tones.size]
-    Button(onClick=onClick,modifier=Modifier.fillMaxWidth().tvFocusTarget("category:${tag.optString("id")}").onFocusChanged { focused=it.isFocused }.tvFocus(focused, RoundedCornerShape(18.dp)),scale=ButtonDefaults.scale(focusedScale=1f),contentPadding=PaddingValues(0.dp),shape=ButtonDefaults.shape(RoundedCornerShape(18.dp)),colors=ButtonDefaults.colors(containerColor=Panel,focusedContainerColor=Panel)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(16f/9f).clip(RoundedCornerShape(18.dp)).background(Brush.linearGradient(listOf(tone,Panel)))) {
-            if(bitmap!=null) Image(bitmap!!.asImageBitmap(),"${tag.optString("name")}分类封面",Modifier.fillMaxSize(),contentScale=androidx.compose.ui.layout.ContentScale.Crop)
-            else Text(tag.optString("name").take(2),color=Paper.copy(alpha=.12f),fontSize=52.sp,lineHeight=64.sp,fontWeight=FontWeight.Bold,modifier=Modifier.align(Alignment.TopEnd).padding(16.dp))
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent,Color(0xDD08090B)))))
-            Column(Modifier.align(Alignment.BottomStart).padding(16.dp),verticalArrangement=Arrangement.spacedBy(3.dp)) {
-                Text(tag.optString("name"),color=Paper,fontSize=24.sp,lineHeight=30.sp,fontWeight=FontWeight.SemiBold,maxLines=1,overflow=TextOverflow.Ellipsis)
-                Text("${tag.optInt("count")} 首歌曲${if(failed) " · 封面暂不可用" else ""}",color=Paper.copy(alpha=.75f),fontSize=13.sp,lineHeight=17.sp,maxLines=1,overflow=TextOverflow.Ellipsis)
+    val tones = listOf(Color(0xFF465B75), Color(0xFF5D4E70), Color(0xFF395F62), Color(0xFF66544C), Color(0xFF555C73), Color(0xFF4C5C50))
+    val tone = tones[(tag.optString("id").hashCode() ushr 1) % tones.size]
+    Button(onClick = onClick, modifier = Modifier.fillMaxWidth().tvFocusTarget("category:${tag.optString("id")}")
+        .onFocusChanged { focused = it.isFocused }.tvFocus(focused, TvShape.card),
+        scale = ButtonDefaults.scale(focusedScale = 1f), contentPadding = PaddingValues(0.dp), shape = ButtonDefaults.shape(TvShape.card),
+        colors = ButtonDefaults.colors(containerColor = Panel, focusedContainerColor = Panel)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(TvShape.card).background(Brush.linearGradient(listOf(tone, Panel)))) {
+            if (bitmap != null) Image(bitmap!!.asImageBitmap(), "${tag.optString("name")}分类封面", Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+            else Text(tag.optString("name").take(2), color = Paper.copy(alpha = .1f), fontSize = 52.sp, lineHeight = 64.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp))
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE60B0E14)))))
+            Column(Modifier.align(Alignment.BottomStart).padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(tag.optString("name"), color = Paper, fontSize = 23.sp, lineHeight = 30.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("${tag.optInt("count")} 首歌曲${if (failed) " · 封面暂不可用" else ""}", color = Paper.copy(alpha = .72f), fontSize = 12.sp, lineHeight = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if(selected)Text("✓ 已选",color=Ink,fontSize=12.sp,lineHeight=16.sp,fontWeight=FontWeight.Medium,modifier=Modifier.align(Alignment.TopEnd).padding(12.dp).background(Gold,RoundedCornerShape(12.dp)).padding(horizontal=9.dp,vertical=5.dp))
+            if (selected) StatusPill("已选", Primary, Modifier.align(Alignment.TopEnd).padding(12.dp))
         }
     }
 }
-
 
 @Composable internal fun ArtistArtwork(app: TvApp, artist: JSONObject, kind: String, modifier: Modifier) {
-    var bitmap by remember(artist.optString("id"),kind) {mutableStateOf<Bitmap?>(null)}
-    var derived by remember(artist.optString("id"),kind) {mutableStateOf(false)}
-    LaunchedEffect(artist.optString("id"),artist.optString(kind+"Version"),artist.optString("portraitVersion"),app.client.base) {
-        bitmap=null;derived=false
-        val path=artist.optString(kind+"Path")
-        if(path.isNotBlank())bitmap=try {app.client.image(path,artist.optString(kind+"Version"))}catch(cancelled:kotlinx.coroutines.CancellationException){throw cancelled}catch(failure:Exception){null}
-        if(kind=="background" && bitmap==null) {
-            val portraitPath=artist.optString("portraitPath")
-            if(portraitPath.isNotBlank()) {
-                val portrait=try {app.client.image(portraitPath,artist.optString("portraitVersion"))}catch(cancelled:kotlinx.coroutines.CancellationException){throw cancelled}catch(failure:Exception){null}
-                if(portrait!=null) { bitmap=withContext(Dispatchers.Default) { softenedArtistBackground(portrait) };derived=true }
+    var bitmap by remember(artist.optString("id"), kind) { mutableStateOf<Bitmap?>(null) }
+    var derived by remember(artist.optString("id"), kind) { mutableStateOf(false) }
+    LaunchedEffect(artist.optString("id"), artist.optString(kind + "Version"), artist.optString("portraitVersion"), app.client.base) {
+        bitmap = null; derived = false
+        val path = artist.optString(kind + "Path")
+        if (path.isNotBlank()) bitmap = try { app.client.image(path, artist.optString(kind + "Version")) } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled } catch (_: Exception) { null }
+        if (kind == "background" && bitmap == null) {
+            val portraitPath = artist.optString("portraitPath")
+            if (portraitPath.isNotBlank()) {
+                val portrait = try { app.client.image(portraitPath, artist.optString("portraitVersion")) } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled } catch (_: Exception) { null }
+                if (portrait != null) { bitmap = withContext(Dispatchers.Default) { softenedArtistBackground(portrait) }; derived = true }
             }
         }
     }
-    val shape=if(kind=="portrait") androidx.compose.foundation.shape.CircleShape else RoundedCornerShape(20.dp)
-    Box(modifier.clip(shape).background(Brush.linearGradient(listOf(Color(0xFF354352),Panel))),contentAlignment=Alignment.Center) {
-        if(bitmap!=null)Image(bitmap!!.asImageBitmap(),"${artist.optString("name")}${if(kind=="portrait") "头像" else if(derived) "由头像生成的背景" else "背景图"}",Modifier.fillMaxSize(),contentScale=androidx.compose.ui.layout.ContentScale.Crop)
-        else if(kind=="portrait")Text(artist.optString("name").take(1),color=Muted,fontSize=36.sp,lineHeight=44.sp,fontWeight=FontWeight.Medium)
-        if(derived) Box(Modifier.fillMaxSize().background(Ink.copy(alpha=.28f)))
-        if(derived)Text("头像生成背景",color=Paper.copy(alpha=.84f),fontSize=11.sp,lineHeight=15.sp,
-            modifier=Modifier.align(Alignment.TopEnd).padding(10.dp).background(Ink.copy(alpha=.72f),RoundedCornerShape(6.dp)).padding(horizontal=8.dp,vertical=4.dp))
+    val shape = if (kind == "portrait") androidx.compose.foundation.shape.CircleShape else TvShape.panel
+    Box(modifier.clip(shape).background(Brush.linearGradient(listOf(Color(0xFF354352), Panel))), contentAlignment = Alignment.Center) {
+        if (bitmap != null) Image(bitmap!!.asImageBitmap(), "${artist.optString("name")}${if (kind == "portrait") "头像" else if (derived) "由头像生成的背景" else "背景图"}", Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+        else if (kind == "portrait") Text(artist.optString("name").take(1), color = Muted, fontSize = 36.sp, lineHeight = 44.sp, fontWeight = FontWeight.Medium)
+        if (derived) Box(Modifier.fillMaxSize().background(Ink.copy(alpha = .28f)))
+        if (derived) Text("头像生成背景", color = Paper.copy(alpha = .84f), fontSize = 11.sp, lineHeight = 15.sp,
+            modifier = Modifier.align(Alignment.TopEnd).padding(10.dp).background(Ink.copy(alpha = .72f), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp))
     }
 }
 
-/** A small, softened presentation bitmap; the original portrait and NAS image data remain intact. */
 internal fun softenedArtistBackground(source: Bitmap): Bitmap {
-    val width=minOf(96,source.width).coerceAtLeast(1)
-    val height=minOf(96,source.height).coerceAtLeast(1)
-    val sample=Bitmap.createScaledBitmap(source,width,height,true)
-    var pixels=IntArray(width*height)
-    sample.getPixels(pixels,0,width,0,0,width,height)
-    if(sample!==source)sample.recycle()
+    val width = minOf(96, source.width).coerceAtLeast(1)
+    val height = minOf(96, source.height).coerceAtLeast(1)
+    val sample = Bitmap.createScaledBitmap(source, width, height, true)
+    var pixels = IntArray(width * height)
+    sample.getPixels(pixels, 0, width, 0, 0, width, height)
+    if (sample !== source) sample.recycle()
     repeat(2) {
-        val horizontal=IntArray(pixels.size)
-        for(y in 0 until height)for(x in 0 until width){
-            var red=0;var green=0;var blue=0;var count=0
-            for(dx in -6..6){val color=pixels[y*width+(x+dx).coerceIn(0,width-1)];red+=android.graphics.Color.red(color);green+=android.graphics.Color.green(color);blue+=android.graphics.Color.blue(color);count++}
-            horizontal[y*width+x]=android.graphics.Color.rgb(red/count,green/count,blue/count)
+        val horizontal = IntArray(pixels.size)
+        for (y in 0 until height) for (x in 0 until width) {
+            var red = 0; var green = 0; var blue = 0; var count = 0
+            for (dx in -6..6) { val color = pixels[y * width + (x + dx).coerceIn(0, width - 1)]; red += android.graphics.Color.red(color); green += android.graphics.Color.green(color); blue += android.graphics.Color.blue(color); count++ }
+            horizontal[y * width + x] = android.graphics.Color.rgb(red / count, green / count, blue / count)
         }
-        val vertical=IntArray(pixels.size)
-        for(y in 0 until height)for(x in 0 until width){
-            var red=0;var green=0;var blue=0;var count=0
-            for(dy in -6..6){val color=horizontal[(y+dy).coerceIn(0,height-1)*width+x];red+=android.graphics.Color.red(color);green+=android.graphics.Color.green(color);blue+=android.graphics.Color.blue(color);count++}
-            vertical[y*width+x]=android.graphics.Color.rgb(red/count,green/count,blue/count)
+        val vertical = IntArray(pixels.size)
+        for (y in 0 until height) for (x in 0 until width) {
+            var red = 0; var green = 0; var blue = 0; var count = 0
+            for (dy in -6..6) { val color = horizontal[(y + dy).coerceIn(0, height - 1) * width + x]; red += android.graphics.Color.red(color); green += android.graphics.Color.green(color); blue += android.graphics.Color.blue(color); count++ }
+            vertical[y * width + x] = android.graphics.Color.rgb(red / count, green / count, blue / count)
         }
-        pixels=vertical
+        pixels = vertical
     }
-    return Bitmap.createBitmap(pixels,width,height,Bitmap.Config.ARGB_8888)
+    return Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
 }
+
 @Composable internal fun ArtistCard(app: TvApp, artist: JSONObject) {
-    var focused by remember {mutableStateOf(false)}
-    Button(onClick={app.openArtist(artist)},modifier=Modifier.fillMaxWidth().tvFocusTarget("artist:${artist.optString("id")}").onFocusChanged {focused=it.isFocused}.tvFocus(focused, RoundedCornerShape(18.dp)),scale=ButtonDefaults.scale(focusedScale=1f),shape=ButtonDefaults.shape(RoundedCornerShape(18.dp)),colors=ButtonDefaults.colors(containerColor=Color.Transparent,focusedContainerColor=Panel),contentPadding=PaddingValues(12.dp)) {
-        Column(Modifier.fillMaxWidth(),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(7.dp)) {
-            ArtistArtwork(app,artist,"portrait",Modifier.size(112.dp))
-            Text(artist.optString("name"),color=Paper,fontSize=18.sp,lineHeight=24.sp,fontWeight=FontWeight.SemiBold,maxLines=1,overflow=TextOverflow.Ellipsis)
-            Text("${artist.optInt("count")} 首${if(!artist.optBoolean("managed")) "" else ""}",color=Muted,fontSize=12.sp,lineHeight=16.sp,maxLines=1,overflow=TextOverflow.Ellipsis)
+    var focused by remember { mutableStateOf(false) }
+    Button(onClick = { app.openArtist(artist) }, modifier = Modifier.fillMaxWidth().tvFocusTarget("artist:${artist.optString("id")}")
+        .onFocusChanged { focused = it.isFocused }.tvFocus(focused, TvShape.card),
+        scale = ButtonDefaults.scale(focusedScale = 1f), shape = ButtonDefaults.shape(TvShape.card),
+        colors = ButtonDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = Panel), contentPadding = PaddingValues(12.dp)) {
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            ArtistArtwork(app, artist, "portrait", Modifier.size(112.dp))
+            Text(artist.optString("name"), color = Paper, fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${artist.optInt("count")} 首", color = Muted, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
 
 @Composable internal fun PlaylistCard(app: TvApp, playlist: JSONObject, modifier: Modifier) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(12.dp)
-    Button(onClick = { app.openPlaylist(playlist) }, modifier = modifier.tvFocusTarget("playlist:${playlist.optString("id")}").onFocusChanged { focused = it.isFocused }.tvFocus(focused, shape),
-        scale = ButtonDefaults.scale(focusedScale = 1f), shape = ButtonDefaults.shape(shape),
+    Button(onClick = { app.openPlaylist(playlist) }, modifier = modifier.tvFocusTarget("playlist:${playlist.optString("id")}")
+        .onFocusChanged { focused = it.isFocused }.tvFocus(focused, TvShape.card),
+        scale = ButtonDefaults.scale(focusedScale = 1f), shape = ButtonDefaults.shape(TvShape.card),
         colors = ButtonDefaults.colors(containerColor = Panel, contentColor = Paper, focusedContainerColor = Elevated, focusedContentColor = Paper), contentPadding = PaddingValues(0.dp)) {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             SongArtwork(app, JSONObject(playlist.toString()).put("revision", playlist.optString("coverVersion")), Modifier.fillMaxWidth().aspectRatio(1f))
             Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(playlist.optString("name"), fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${playlist.optInt("count")} 首歌曲", color = Muted, fontSize = 13.sp, lineHeight = 18.sp)
+                Text(playlist.optString("name"), fontSize = 17.sp, lineHeight = 23.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("${playlist.optInt("count")} 首歌曲", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
             }
         }
     }

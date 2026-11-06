@@ -585,12 +585,12 @@ class TvPlayerRemoteTest : InstrumentationTestCase() {
     private fun assertVisibleFocus() {
         assertEquals("播放器只能有一个真实Compose遥控焦点", 1, onMain { activity.focusMemory.focusedTargets.size })
         val target = focused()
-        waitFor("蓝色遥控焦点完成绘制") {
+        waitFor("白色遥控焦点完成绘制") {
             assertEquals("等待绘制时不能改变焦点", target, focused())
             val image = instrumentation.uiAutomation.takeScreenshot() ?: return@waitFor false
             val pixels = IntArray(image.width * image.height)
             image.getPixels(pixels, 0, image.width, 0, 0, image.width, image.height)
-            val visible = pixels.count { abs(Color.red(it) - 40) < 12 && abs(Color.green(it) - 169) < 12 && abs(Color.blue(it) - 255) < 12 } > 100
+            val visible = pixels.count { abs(Color.red(it) - 245) < 12 && abs(Color.green(it) - 245) < 12 && abs(Color.blue(it) - 247) < 12 } > 100
             image.recycle()
             visible
         }

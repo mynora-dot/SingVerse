@@ -164,3 +164,11 @@ compute 内部 `/internal/v1/audio-roles/tasks` 接收固定 UUID、mode=PROBE|A
 Java 按歌曲、素材指纹及完整播放参数查找缓存，命中时沿用同源受权播放接口，创建独立播放会话，执行结果包含 `cacheHit=true` 和不透明 `cacheId`。缓存读取、管理及清理不依赖 compute 在线。未命中时 compute 执行解码，Java 下载已完成产物并验证长度、SHA-256 和整包 HLS 引用，原子发布后才进入索引；确认落盘后释放 compute 临时产物。任一策略和批量清理都跳过活动租约，满额且无法腾出空间时返回507，删除失败保留索引。重启保留完整缓存，会话租约按续租到期释放。
 
 `PlaybackOptions.start` 是原媒体时间轴上的请求起点。非零起点优先匹配仅将 `start` 设为 0 的同参数整曲缓存；命中后 `PlaybackResource.offset` 仍为缓存的真实偏移 0，客户端对 HLS、DIRECT、VERSION 均按 `max(0, start - offset)` 定位本地媒体时间，播放回报使用 `currentTime + offset`。无完整缓存时仍精确匹配局部起点或按请求起点转码，画质、编码、音轨、字幕、终端能力及兼容处理意图保持隔离；不会因起点不同主动删除旧缓存。
+
+## 播放记录与缺歌反馈
+
+`GET /api/v1/playback-history`、`/popular`、`/summary` 共用 `q`（最多 200 字符）、`period=7d|30d|all`（默认 30d）、`songId`（最多 64 字符）过滤。时间范围以服务端 UTC 当前时刻向前滚动，全部时间也排除未来记录。明细和排行默认 `page=0,size=20`，最大页大小 100，page 上限 1000000；明细按开始时间倒序、ID 倒序，排行按有效次数倒序、最近播放时间倒序、songId 升序。有效播放为实播至少 30000ms，或时长为 1～29999ms 的短歌曲自然结束且实播不少于歌曲时长；拖动进度不等于实播时长。后台试听 `ADMIN` 的 effective 固定为 false，并排除在排行所有字段之外。排行仅返回有效次数大于零的歌曲，汇总的有效次数和歌曲数也排除后台试听；总尝试数和实播总时长则包含全部匹配明细。歌曲与设备展示使用历史快照，不依赖曲库歌曲继续存在。
+
+`GET/POST /api/v1/missing-song-feedback` 查询/登记缺歌，`GET/PUT /{id}` 读取/处理反馈。列表支持 `q`、`status=ALL|PENDING|PROCESSING|RESOLVED|CLOSED`，默认全部状态，分页默认 0/20、最大 100，搜索与状态在 SQL 分页前筛选，按登记时间倒序及 ID 升序。创建必须提供稳定 UUID requestId 和全部原始反馈字段；相同 ID、相同原始输入重试返回原记录（201），不同输入返回 409。处理只更新 status、handlingNote、resolvedSongId，并校验 revision；RESOLVED 必须关联现存歌曲，重开清除关联和 resolvedAt。反馈没有删除接口，也不会自动下载歌曲。
+
+以上接口仅接受管理员 Cookie，缺歌写入另需 `X-CSRF-Token`；字段、长度和空值规则见 `PlaybackHistory*`、`PlaybackPopular*`、`MissingSongFeedback*` schemas。本阶段只实现后台管理和存储，没有新增手机、TV 或试听上报，历史表初始为空，旧聚会队列不转换成播放历史。详见[功能说明](../song-activity.md)。

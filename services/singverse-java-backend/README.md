@@ -385,3 +385,9 @@ TV首页兼容新增`appearance`和最多4个真实`featuredPlaylists`；`GET /a
 | `SINGVERSE_SONG_CACHE_MINIMUM_FREE_BYTES` | `2147483648`（2GiB），接收新缓存时保留的磁盘空间 |
 
 应用 Compose 和业务独立部署 Compose 均使用 `/data/transcoding/cache`，复用 Java 的 `singverse-data` 持久卷；原生自定义目录时，备份或迁移须同时保留业务数据库和该目录。compute 的 `COMPUTE_TRANSCODE_ROOT` / `COMPUTE_CACHE_BYTES` 仅限制执行临时目录，不是歌曲缓存的配置入口。新增行为测试见 `SongCacheServiceTest`、`AuthHttpTest` 与 `TranscodeIntegrationIT`。
+
+## 播放记录与缺歌反馈
+
+管理员 `GET /api/v1/playback-history`、`/popular` 和 `/summary` 分别读取逐次播放记录、按有效播放聚合的歌曲排行和汇总。共享 `q/period/songId` 过滤，明细与排行在数据库分页；歌曲、来源、设备及点歌人使用播放时快照，删除歌曲不删除历史。SQLite/MySQL 迁移 `202611060001_playback_history.sql` 创建独立历史表。本阶段没有新增上报或手工写入播放记录接口，也不从聚会队列回填历史，初始查询为空。
+
+`/api/v1/missing-song-feedback` 提供管理员登记与分页查询，`/{id}` 支持查询及带 revision 的处理状态更新。创建使用稳定 requestId 去重，原始反馈只读；标记已补齐必须关联现存曲库歌曲，重开清除关联和补齐时间。迁移 `202611060002_missing_song_feedback.sql` 保存反馈，所有业务 SQL 在 MyBatis XML，写接口继续要求管理员 Cookie 与 CSRF。没有手机/TV 上报或自动下载接口，详见[功能与契约说明](../../contracts/song-activity.md)。

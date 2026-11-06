@@ -4,17 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -80,11 +70,11 @@ import androidx.tv.material3.Text
         hasSong -> "继续"
         else -> "播放"
     }
-    Column(modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
         PlayerProgress(app)
         Row(Modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             PlayerControlButton(label, if (pause) "pause" else if (retrying) "restart" else "play", "player:pause",
-                Modifier.focusRequester(primaryFocus), enabled = hasSong || confirming) {
+                Modifier.focusRequester(primaryFocus), enabled = hasSong || confirming, emphasized = true) {
                 when {
                     confirming -> app.command("START")
                     retrying -> app.retryPlayback()
@@ -98,7 +88,7 @@ import androidx.tv.material3.Text
             val favorite = songId.isNotBlank() && app.isFavorite(songId)
             PlayerControlButton(if (favorite) "已收藏" else "收藏", "favorite", "player:favorite", selected = favorite, enabled = songId.isNotBlank()) { app.toggleFavorite() }
             Spacer(Modifier.weight(1f))
-            Row(Modifier.background(Ink.copy(alpha = .5f), RoundedCornerShape(13.dp)).padding(2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(Modifier.background(Ink.copy(alpha = .48f), TvShape.control).padding(3.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 PlayerControlButton("原唱", "original", "player:role:original", selected = app.activeAudioRole == "original", enabled = app.canUseAudioRole(true)) { app.useAudioRole(true) }
                 PlayerControlButton("伴奏", "backing", "player:role:backing", selected = app.activeAudioRole == "backing", enabled = app.canUseAudioRole(false)) { app.useAudioRole(false) }
             }
@@ -120,10 +110,10 @@ import androidx.tv.material3.Text
     val fraction = if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
     BackHandler(enabled = focused && preview != null) { preview = null }
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp).height(28.dp).tvFocusTarget("player:progress")
+        Modifier.fillMaxWidth().padding(horizontal = 10.dp).height(30.dp).tvFocusTarget("player:progress")
             .onFocusChanged { focused = it.isFocused; if (!it.isFocused) preview = null }
-            .tvFocus(focused, RoundedCornerShape(9.dp))
-            .background(if (focused) Elevated.copy(alpha = .8f) else Color.Transparent, RoundedCornerShape(9.dp))
+            .tvFocus(focused, RoundedCornerShape(8.dp))
+            .background(if (focused) Elevated.copy(alpha = .8f) else Color.Transparent, RoundedCornerShape(8.dp))
             .onPreviewKeyEvent { event ->
                 when (event.key) {
                     Key.DirectionLeft, Key.DirectionRight -> {
@@ -150,10 +140,10 @@ import androidx.tv.material3.Text
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text(controlTime(position), color = if (preview != null) Gold else Paper, fontSize = 11.sp, lineHeight = 15.sp)
+        Text(controlTime(position), color = if (preview != null) Primary else Paper, fontSize = 11.sp, lineHeight = 15.sp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Box(Modifier.fillMaxWidth().height(3.dp).background(Paper.copy(alpha = .16f), RoundedCornerShape(2.dp))) {
-                Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(Gold, RoundedCornerShape(2.dp)))
+            Box(Modifier.fillMaxWidth().height(4.dp).background(Paper.copy(alpha = .16f), RoundedCornerShape(2.dp))) {
+                Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(if (preview != null) Focus else Primary, RoundedCornerShape(2.dp)))
             }
             if (preview != null) Text("确认跳转 · 返回取消", color = Muted, fontSize = 9.sp, lineHeight = 11.sp)
         }
@@ -168,11 +158,13 @@ import androidx.tv.material3.Text
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     enabled: Boolean = true,
+    emphasized: Boolean = false,
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(11.dp)
-    val ink = if (selected) Ink else if (enabled) Paper else Muted.copy(alpha = .6f)
+    val shape = TvShape.control
+    val highlighted = selected || emphasized
+    val ink = if (highlighted && enabled) Ink else if (enabled) Paper else Muted.copy(alpha = .6f)
     Button(
         onClick = onClick,
         enabled = enabled,
@@ -184,16 +176,17 @@ import androidx.tv.material3.Text
         scale = ButtonDefaults.scale(focusedScale = 1f),
         shape = ButtonDefaults.shape(shape),
         colors = ButtonDefaults.colors(
-            containerColor = if (selected) Gold else Panel.copy(alpha = .75f), contentColor = ink,
-            focusedContainerColor = if (selected) Gold else Elevated, focusedContentColor = ink,
-            disabledContainerColor = if (selected) Gold.copy(alpha = .65f) else Panel.copy(alpha = .35f), disabledContentColor = ink,
+            containerColor = if (highlighted) Primary else Panel.copy(alpha = .8f), contentColor = ink,
+            focusedContainerColor = if (highlighted) Primary else Elevated, focusedContentColor = ink,
+            disabledContainerColor = if (selected) Primary.copy(alpha = .65f) else Panel.copy(alpha = .35f), disabledContentColor = ink,
         ),
         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             PlayerControlGlyph(icon, ink)
             Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Text(label, color = ink, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(label, color = ink, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = if (highlighted) FontWeight.SemiBold else FontWeight.Medium,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (!enabled) Text("不可用", color = ink, fontSize = 8.sp, lineHeight = 10.sp)
             }
         }

@@ -511,6 +511,8 @@ class AuthHttpTest {
                         com.mynora.singverse.media.controller.FilenameParserController.class,
                         com.mynora.singverse.media.artist.ArtistController.class,
                         com.mynora.singverse.media.playlist.PlaylistController.class,
+                        com.mynora.singverse.media.playbackhistory.PlaybackHistoryController.class,
+                        com.mynora.singverse.media.missingfeedback.MissingFeedbackController.class,
                         com.mynora.singverse.mobile.MobileLibraryController.class,
                         com.mynora.singverse.tv.TvController.class,
                         com.mynora.singverse.tv.TvHomeSettingsController.class,
@@ -528,7 +530,8 @@ class AuthHttpTest {
                                         org.springframework.web.bind.annotation.RequestMapping
                                                 .class);
                 if (mapping == null) continue;
-                for (var path : mapping.value())
+                var paths = mapping.value().length == 0 ? new String[] {""} : mapping.value();
+                for (var path : paths)
                     for (var verb : mapping.method()) {
                         assertThat(
                                         spec.path("paths")

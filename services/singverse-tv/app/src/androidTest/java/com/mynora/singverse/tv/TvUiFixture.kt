@@ -129,11 +129,17 @@ internal class TvUiFixture(private val playback: TvPlaybackFixture? = null) : Au
         }
         path.endsWith("/snapshot") || path.endsWith("/recover") || path == "/api/v1/tv/sessions" -> currentSnapshot().toString()
         path == "/api/v1/tv/home" -> JSONObject().put("recentSongs", JSONArray(songs())).put("totalSongs", 20)
-            .put("server", JSONObject().put("name", "UI 验收测试服务")).put("appearance", appearance()).put("featuredPlaylists", JSONArray()).toString()
+            .put("server", JSONObject().put("name", "UI 验收测试服务")).put("appearance", appearance()).put("featuredPlaylists", JSONArray(playlists())).toString()
         path.matches(Regex("/api/v1/tv/library/songs/test-song-\\d+")) -> songs().first { it.optString("id") == path.substringAfterLast('/') }.toString()
-        path == "/api/v1/tv/library/songs" -> JSONObject().put("items", JSONArray(songs())).put("totalElements", 20).toString()
-        path == "/api/v1/tv/library/classification-tags" -> "[]"
-        path == "/api/v1/tv/library/artists" || path == "/api/v1/tv/library/playlists" -> JSONObject().put("items", JSONArray()).put("totalElements", 0).toString()
+        path == "/api/v1/tv/library/songs" || path == "/api/v1/tv/library/artists/test-artist/songs" || path == "/api/v1/tv/library/playlists/test-playlist/songs" ->
+            JSONObject().put("items", JSONArray(songs())).put("totalElements", 20).toString()
+        path == "/api/v1/tv/library/classification-tags" -> JSONArray()
+            .put(JSONObject().put("id", "tag-language").put("dimension", "LANGUAGE").put("name", "国语").put("count", 20))
+            .put(JSONObject().put("id", "tag-genre").put("dimension", "GENRE").put("name", "流行").put("count", 12)).toString()
+        path == "/api/v1/tv/library/artists" -> JSONObject().put("items", JSONArray(artists())).put("totalElements", 1).toString()
+        path == "/api/v1/tv/library/artists/test-artist" -> artists().first().toString()
+        path == "/api/v1/tv/library/playlists" -> JSONObject().put("items", JSONArray(playlists())).put("totalElements", 1).toString()
+        path == "/api/v1/tv/library/playlists/test-playlist" -> playlists().first().toString()
         else -> JSONObject().toString()
         }
     }
@@ -160,6 +166,17 @@ internal class TvUiFixture(private val playback: TvPlaybackFixture? = null) : Au
                 .put("coverPath", "/api/v1/tv/library/songs/test-song-$number/cover")
                 .put("sourceName", "仅限 UI 自动化验收").put("durationMs", 180000)
         }
+
+        private fun artists(): List<JSONObject> = listOf(
+            JSONObject().put("id", "test-artist").put("name", "测试歌手").put("count", 20)
+                .put("managed", false).put("biography", "仅用于隔离 UI 验收"),
+        )
+
+        private fun playlists(): List<JSONObject> = listOf(
+            JSONObject().put("id", "test-playlist").put("name", "今晚一起唱").put("count", 20)
+                .put("description", "仅用于隔离 UI 验收").put("coverVersion", "test-v1")
+                .put("coverPath", "/api/v1/tv/library/songs/test-song-1/cover"),
+        )
 
         /** Include landscape and portrait originals to exercise production ContentScale.Crop. */
         private fun coverPng(number: Int): ByteArray {

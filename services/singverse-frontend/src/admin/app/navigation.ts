@@ -1,4 +1,4 @@
-import { Collection, CollectionTag, Connection, Document, Files, FolderOpened, Headset, House, Key, MagicStick, Microphone, Monitor, Odometer, Setting, Tools } from '@element-plus/icons-vue'
+import { ChatLineSquare, Clock, Collection, CollectionTag, Connection, Document, Files, FolderOpened, Headset, House, Key, MagicStick, Microphone, Monitor, Odometer, Setting, Tools } from '@element-plus/icons-vue'
 
 /** 按管理员日常任务分组；URL 保持不变以兼容已保存的链接。 */
 export const overviewEntry = { path: '/overview', label: '概览', icon: House }
@@ -11,6 +11,8 @@ export const navigationGroups = [
       { path: '/library/cache', label: '歌曲缓存', icon: Files },
       { path: '/library/artists', label: '歌手库', icon: Microphone },
       { path: '/library/playlists', label: '歌单管理', icon: Collection },
+      { path: '/library/playback-history', label: '播放记录', icon: Clock },
+      { path: '/library/missing-feedback', label: '缺歌反馈', icon: ChatLineSquare },
       { path: '/library/classification', label: '歌曲分类', icon: CollectionTag },
       { path: '/library/songs/metadata', label: '元数据整理', icon: MagicStick },
     ],

@@ -60,10 +60,10 @@ import kotlin.math.sin
             val text = buildAnnotatedString {
                 if (!current.hasCompleteWords) append(current.text)
                 else current.words.forEach { word ->
-                    withStyle(SpanStyle(color = if (word.at <= options.lyricPosition) Gold else Paper)) { append(word.text) }
+                    withStyle(SpanStyle(color = if (word.at <= options.lyricPosition) Primary else Paper)) { append(word.text) }
                 }
             }
-            Text(text, color = Gold, fontSize = 24.sp, lineHeight = 31.sp, fontWeight = FontWeight.SemiBold,
+            Text(text, color = Primary, fontSize = 24.sp, lineHeight = 31.sp, fontWeight = FontWeight.SemiBold,
                 maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.alpha(opacity))
         } else Text(when {
             options.textSelection == "关闭" -> "歌词已关闭"
@@ -92,7 +92,7 @@ import kotlin.math.sin
             val envelope = .18f + .82f * abs(sin(index * .16f))
             val pulse = if (playing) .3f + .7f * abs(sin(index * .61f + phase)) else .12f
             val height = size.height * envelope * pulse
-            drawRect(Gold.copy(alpha = if (playing) .55f else .2f), Offset(index * stride, size.height - height), Size(stride * .5f, height))
+            drawRect(Primary.copy(alpha = if (playing) .55f else .2f), Offset(index * stride, size.height - height), Size(stride * .5f, height))
         }
     }
 }

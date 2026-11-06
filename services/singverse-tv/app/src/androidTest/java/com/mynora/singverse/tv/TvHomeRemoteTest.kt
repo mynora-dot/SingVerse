@@ -60,17 +60,23 @@ class TvHomeRemoteTest : InstrumentationTestCase() {
         }
     }
 
-    fun testNavigationKeepsGoldActiveSeparateFromBlueRemoteFocus() {
+    fun testNavigationKeepsActiveSeparateFromRemoteFocus() {
         val homeBounds = navigationBounds("首页")
         val songCenterBounds = navigationBounds("点歌")
         assertEquals("首页初始页面", "首页", onMain { app.page })
         key(KeyEvent.KEYCODE_DPAD_RIGHT)
         waitFor("右键到点歌导航") { focusedLabel().contains("点歌") }
         assertEquals("移动焦点不能切换页面", "首页", onMain { app.page })
+        assertSingleVisibleFocus()
         val image = screenshot("home-active-and-focus")
-        assertTrue("首页须继续保留香槟金选中背景", colorPixels(image, 232, 201, 155, homeBounds) > 100)
-        assertEquals("仅聚焦的点歌导航不能得到金色页面选中背景", 0, colorPixels(image, 232, 201, 155, songCenterBounds))
-        assertTrue("点歌当前遥控焦点应有可见蓝色描边", colorPixels(image, 40, 169, 255, songCenterBounds) > 100)
+        assertTrue("首页须继续保留中性页面选中背景", colorPixels(image, 28, 28, 30, homeBounds) > 100)
+        assertFalse("仅聚焦的点歌导航不能成为选中页面", allNodes().first { it.isClickable && nodeLabel(it) == "点歌" }.isSelected)
+        assertTrue("点歌使用独立焦点容器", colorPixels(image, 44, 44, 46, songCenterBounds) > 100)
+        val focusBounds = Rect(
+            (songCenterBounds.left - 12).coerceAtLeast(0), (songCenterBounds.top - 12).coerceAtLeast(0),
+            (songCenterBounds.right + 12).coerceAtMost(image.width), (songCenterBounds.bottom + 12).coerceAtMost(image.height),
+        )
+        assertTrue("点歌当前遥控焦点应有可见白色描边", colorPixels(image, 245, 245, 247, focusBounds) > 100)
         assertSingleVisibleFocus()
 
         key(KeyEvent.KEYCODE_DPAD_CENTER)
@@ -248,6 +254,74 @@ class TvHomeRemoteTest : InstrumentationTestCase() {
         screenshot("queue-added-song")
     }
 
+    fun testSettingsGroupsKeepRemoteFocusAndRealParticipantState() {
+        repeat(3) { key(KeyEvent.KEYCODE_DPAD_RIGHT) }
+        key(KeyEvent.KEYCODE_DPAD_CENTER)
+        waitFor("进入设置") { onMain { app.page == "设置" } }
+        onMain { activity.focusMemory.targets["设置:action:连接"]?.requestFocus() }
+        waitFor("聚焦连接分组") { focusedAddress().endsWith(":action:连接") }
+        assertTrue("参与者数据来自隔离快照", onMain { app.participantCount == 1 })
+        screenshot("settings-connection")
+
+        listOf(
+            "播放设置" to "可用音轨",
+            "聚会管理" to "亲友点歌",
+            "本场参与者" to "测试亲友",
+            "设备信息" to "Android",
+            "应用更新" to "检查更新",
+        ).forEach { (group, content) ->
+            key(KeyEvent.KEYCODE_DPAD_DOWN)
+            waitFor("聚焦$group") { focusedAddress().endsWith(":action:$group") }
+            key(KeyEvent.KEYCODE_DPAD_CENTER)
+            waitFor("显示$group 内容") { allNodes().any { it.isVisibleToUser && nodeLabel(it).contains(content) } }
+            assertSingleVisibleFocus()
+            screenshot("settings-$group")
+        }
+    }
+
+    fun testArtistAndPlaylistDetailsRestoreCardFocus() {
+        onMain { app.navigate("歌手") }
+        waitFor("真实歌手列表") { onMain { app.artists.isNotEmpty() && app.page == "歌手" } }
+        repeat(4) { if (!focusedAddress().contains(":artist:test-artist")) key(KeyEvent.KEYCODE_DPAD_DOWN) }
+        waitFor("聚焦歌手卡片") { focusedAddress().contains(":artist:test-artist") }
+        key(KeyEvent.KEYCODE_DPAD_CENTER)
+        waitFor("打开歌手详情") { onMain { app.artistDetail?.optString("id") == "test-artist" } && focusedAddress().endsWith(":action:返回歌手") }
+        assertTrue("歌手详情包含真实歌曲", allNodes().any { nodeLabel(it).contains("测试歌曲 01") })
+        screenshot("artist-detail")
+        key(KeyEvent.KEYCODE_BACK)
+        waitFor("返回歌手卡片") { onMain { app.artistDetail == null } && focusedAddress().contains(":artist:test-artist") }
+        assertSingleVisibleFocus()
+
+        onMain { app.navigate("歌单") }
+        waitFor("真实歌单列表") { onMain { app.playlists.isNotEmpty() && app.page == "歌单" } }
+        repeat(4) { if (!focusedAddress().contains(":playlist:test-playlist")) key(KeyEvent.KEYCODE_DPAD_DOWN) }
+        waitFor("聚焦歌单卡片") { focusedAddress().contains(":playlist:test-playlist") }
+        key(KeyEvent.KEYCODE_DPAD_CENTER)
+        waitFor("打开歌单详情") { onMain { app.playlistDetail?.optString("id") == "test-playlist" } && focusedAddress().endsWith(":action:返回歌单") }
+        assertTrue("歌单详情包含真实歌曲", allNodes().any { nodeLabel(it).contains("测试歌曲 01") })
+        screenshot("playlist-detail")
+        key(KeyEvent.KEYCODE_BACK)
+        waitFor("返回歌单卡片") { onMain { app.playlistDetail == null } && focusedAddress().contains(":playlist:test-playlist") }
+        assertSingleVisibleFocus()
+    }
+
+    fun testQueueRowActionsAreReachableWithRemote() {
+        onMain { app.command("ADD", songId = "test-song-1") }
+        waitFor("加入第一首") { onMain { queuedSongCount(app) == 1 && app.pendingOperation == null } }
+        onMain { app.command("ADD", songId = "test-song-2") }
+        waitFor("加入第二首") { onMain { queuedSongCount(app) == 2 && app.pendingOperation == null } }
+        onMain { app.navigate("已点") }
+        waitFor("打开两首待唱") { onMain { app.page == "已点" } }
+        repeat(5) { if (!focusedAddress().contains(":action:queue:test-queue-0")) key(KeyEvent.KEYCODE_DPAD_DOWN) }
+        waitFor("聚焦第一首待唱") { focusedAddress().contains(":action:queue:test-queue-0") }
+        key(KeyEvent.KEYCODE_DPAD_CENTER)
+        waitFor("第一首可聚焦下移") { focusedAddress().endsWith(":action:queue:test-queue-0:DOWN") }
+        assertSingleVisibleFocus()
+        screenshot("queue-row-actions")
+        key(KeyEvent.KEYCODE_DPAD_CENTER)
+        waitFor("下移通过真实命令通道") { fixture.actions.contains("DOWN") }
+    }
+
     private fun key(code: Int) {
         val before = focusDetails()
         instrumentation.sendKeyDownUpSync(code)
@@ -329,9 +403,9 @@ class TvHomeRemoteTest : InstrumentationTestCase() {
         var settled: Bitmap? = null
         var capturedPendingFrame = false
         while (SystemClock.uptimeMillis() < deadline) {
-            assertEquals("等待蓝框绘制期间遥控焦点不能改变", expected, focusedAddress())
+            assertEquals("等待白色焦点框绘制期间遥控焦点不能改变", expected, focusedAddress())
             val frame = instrumentation.uiAutomation.takeScreenshot() ?: error("焦点可见性检查需要屏幕截图")
-            if (colorPixels(frame, 40, 169, 255) > 100) {
+            if (colorPixels(frame, 245, 245, 247) > 100) {
                 settled = frame
                 break
             }
@@ -343,7 +417,7 @@ class TvHomeRemoteTest : InstrumentationTestCase() {
             instrumentation.waitForIdleSync()
             SystemClock.sleep(70)
         }
-        assertNotNull("实际焦点蓝框必须在8秒内绘制到可见屏幕：$expected", settled)
+        assertNotNull("实际焦点白色焦点框必须在8秒内绘制到可见屏幕：$expected", settled)
         val bitmap = settled!!
         assertEquals("绘制后仍只能有一个真实焦点", 1, onMain { activity.focusMemory.focusedTargets.size })
         assertEquals("绘制后的焦点目标保持一致", expected, focusedAddress())
@@ -351,9 +425,9 @@ class TvHomeRemoteTest : InstrumentationTestCase() {
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
         val boundary = pixels.indices.any { index ->
             val x = index % bitmap.width; val y = index / bitmap.width
-            (x <= 1 || y <= 1 || x >= bitmap.width - 2 || y >= bitmap.height - 2) && isColor(pixels[index], 40, 169, 255)
+            (x <= 1 || y <= 1 || x >= bitmap.width - 2 || y >= bitmap.height - 2) && isColor(pixels[index], 245, 245, 247)
         }
-        assertFalse("蓝框不能被屏幕边缘裁切", boundary)
+        assertFalse("白色焦点框不能被屏幕边缘裁切", boundary)
         bitmap.recycle()
     }
 

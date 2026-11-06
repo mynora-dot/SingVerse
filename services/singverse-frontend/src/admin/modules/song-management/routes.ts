@@ -1,6 +1,8 @@
 import type { RouteRecordRaw } from 'vue-router'
 
 export const songManagementRoutes: RouteRecordRaw[] = [
+  { path: '/library/playback-history', component: () => import('../playback-history/PlaybackHistoryView.vue'), meta: { title: '播放记录' } },
+  { path: '/library/missing-feedback', component: () => import('../missing-feedback/MissingFeedbackView.vue'), meta: { title: '缺歌反馈' } },
   { path: '/library/audio-processing', component: () => import('../audio-processing/AudioProcessingView.vue'), meta: { title: '原唱与伴奏' } },
   { path: '/library/playlists', component: () => import('../playlists/PlaylistsView.vue'), meta: { title: '歌单管理' } },
   { path: '/library/artists', component: () => import('../artists/views/ArtistsView.vue'), meta: { title: '歌手库' } },

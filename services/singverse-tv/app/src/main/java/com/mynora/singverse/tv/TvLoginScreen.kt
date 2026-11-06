@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
@@ -36,10 +37,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val LoginInk = Color(0xFF09090B)
-private val LoginPanel = Color(0xFF1C1C20)
-private val Ivory = Color(0xFFF3EEE6)
-private val LoginMuted = Color(0xFFA5A5AA)
+private val LoginInk = Ink
+private val LoginPanel = Panel
+private val Ivory = Paper
+private val LoginMuted = Muted
 
 @Composable internal fun TvLoginScreen(app: TvApp) {
     val state = app.login
@@ -54,9 +55,9 @@ private val LoginMuted = Color(0xFFA5A5AA)
         val density = LocalDensity.current
         val scale = minOf(maxWidth.value / 960f, maxHeight.value / 540f)
         CompositionLocalProvider(LocalDensity provides Density(density.density * scale, density.fontScale)) {
-            Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0xFF17171B), LoginInk), radius = 650f))) {
+            Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0xFF202020), LoginInk), radius = 650f))) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 56.dp, vertical = 36.dp), verticalAlignment = Alignment.CenterVertically) {
-                    LoginIcon("brand", Modifier.size(18.dp), Ivory); Spacer(Modifier.width(8.dp))
+                    LoginIcon("brand", Modifier.size(18.dp), Primary); Spacer(Modifier.width(8.dp))
                     Text("SingVerse", color = Ivory, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.weight(1f))
                     Text(when (state.page) { LoginPage.METHODS -> "连接你的音乐 / 选择连接方式"; LoginPage.MANUAL -> "连接你的音乐 / 账号登录"; LoginPage.DISCOVERY -> "连接你的音乐 / 查找 NAS"; LoginPage.QR -> "连接你的音乐 / 手机扫码"; LoginPage.HISTORY -> "连接你的音乐 / 最近登录" }, color = LoginMuted, fontSize = 12.sp)
@@ -71,11 +72,11 @@ private val LoginMuted = Color(0xFFA5A5AA)
                     }
                 }
                 Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 30.dp), horizontalArrangement = Arrangement.spacedBy(22.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("✥  方向键切换", color = LoginMuted, fontSize = 11.sp)
-                    Text("▢ OK  确认选择", color = LoginMuted, fontSize = 11.sp)
-                    Text("‹  返回", color = LoginMuted, fontSize = 11.sp)
+                    Text("方向键  切换", color = LoginMuted, fontSize = 11.sp)
+                    Text("OK  确认选择", color = LoginMuted, fontSize = 11.sp)
+                    Text("返回键  返回", color = LoginMuted, fontSize = 11.sp)
                 }
-                if (state.error.isNotBlank()) Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 58.dp).widthIn(max = 660.dp).background(Color(0xFF35272B), RoundedCornerShape(12.dp)).padding(16.dp)) {
+                if (state.error.isNotBlank()) Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 58.dp).widthIn(max = 660.dp).background(Danger.copy(alpha = .14f), TvShape.card).padding(16.dp)) {
                     Text(state.error, color = Ivory, fontSize = 15.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
                     Text("按返回键关闭提示", color = LoginMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
                 }
@@ -90,10 +91,12 @@ private val LoginMuted = Color(0xFFA5A5AA)
 }
 
 @Composable private fun LoginButton(modifier: Modifier = Modifier, primary: Boolean = false, enabled: Boolean = true, padding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 8.dp), onClick: () -> Unit, content: @Composable RowScope.() -> Unit) {
-    Button(onClick = onClick, enabled = enabled, modifier = modifier, contentPadding = padding,
-        shape = ButtonDefaults.shape(RoundedCornerShape(10.dp)), scale = ButtonDefaults.scale(focusedScale = 1.03f),
-        colors = ButtonDefaults.colors(containerColor = if (primary) Ivory else LoginPanel, contentColor = if (primary) LoginInk else Ivory,
-            focusedContainerColor = Ivory, focusedContentColor = LoginInk)) {
+    var focused by remember { mutableStateOf(false) }
+    Button(onClick = onClick, enabled = enabled, modifier = modifier.onFocusChanged { focused = it.isFocused }.tvFocus(focused, TvShape.control), contentPadding = padding,
+        shape = ButtonDefaults.shape(TvShape.control), scale = ButtonDefaults.scale(focusedScale = 1f),
+        colors = ButtonDefaults.colors(containerColor = if (primary) Primary else LoginPanel, contentColor = if (primary) LoginInk else Ivory,
+            focusedContainerColor = if (primary) Primary else Elevated, focusedContentColor = if (primary) LoginInk else Ivory,
+            disabledContainerColor = LoginPanel.copy(alpha = .5f), disabledContentColor = LoginMuted)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, content = content)
     }
 }
@@ -249,27 +252,19 @@ private val LoginMuted = Color(0xFFA5A5AA)
 
 @Composable private fun BoxScope.LoginQr(state: TvLogin) {
     val initial = remember { FocusRequester() }; InitialFocus(initial, !state.busy)
-    var bitmap by remember(state.qrUrl) { mutableStateOf<android.graphics.Bitmap?>(null) }
-    LaunchedEffect(state.qrUrl) {
-        bitmap = if (state.qrUrl.isBlank()) null else withContext(Dispatchers.Default) {
-            val matrix = MultiFormatWriter().encode(state.qrUrl, BarcodeFormat.QR_CODE, 440, 440)
-            android.graphics.Bitmap.createBitmap(440, 440, android.graphics.Bitmap.Config.ARGB_8888).apply {
-                setPixels(IntArray(440 * 440) { i -> if (matrix[i % 440, i / 440]) android.graphics.Color.BLACK else android.graphics.Color.WHITE }, 0, 440, 0, 0, 440, 440)
-            }
-        }
-    }
     Row(Modifier.align(Alignment.Center).width(720.dp), horizontalArrangement = Arrangement.spacedBy(60.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("音乐就绪，只差你了", color = LoginMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 15.dp))
             LoginTitle("手机扫码登录", "使用微信或手机相机扫码，\n在 NAS 管理页确认电视授权。")
-            Text(if (state.qrUrl.isNotBlank()) "● NAS 已连接" else "正在核对 NAS", color = if (state.qrUrl.isNotBlank()) Color(0xFF8EC5A0) else LoginMuted, fontSize = 12.sp, modifier = Modifier.padding(top = 28.dp))
-            Text(state.serverName.ifBlank { "正在连接 NAS…" }, color = Ivory, fontSize = 18.sp, modifier = Modifier.padding(top = 5.dp))
+            StatusPill(if (state.qrUrl.isNotBlank()) "NAS 已连接" else "正在核对 NAS", if (state.qrUrl.isNotBlank()) Success else LoginMuted,
+                Modifier.padding(top = 24.dp))
+            Text(state.serverName.ifBlank { "正在连接 NAS…" }, color = Ivory, fontSize = 18.sp, modifier = Modifier.padding(top = 8.dp))
             Text("核对授权码：${state.authorizationCode.ifBlank { "—" }}", color = LoginMuted, fontSize = 15.sp, modifier = Modifier.padding(top = 16.dp))
             LoginButton(Modifier.padding(top = 15.dp), onClick = { state.open(LoginPage.MANUAL, forQr = true) }) { Text("更换 NAS", fontSize = 13.sp) }
         }
         Column(Modifier.width(275.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.size(220.dp).clip(RoundedCornerShape(12.dp)).background(Color.White).padding(8.dp), contentAlignment = Alignment.Center) {
-                if (bitmap != null) Image(bitmap!!.asImageBitmap(), "扫描二维码并核对电视授权码", Modifier.fillMaxSize())
+            Box(Modifier.size(220.dp).clip(TvShape.card).background(Color.White).padding(8.dp), contentAlignment = Alignment.Center) {
+                if (state.qrUrl.isNotBlank()) Qr(state.qrUrl, Modifier.fillMaxSize())
                 else Text(if (state.busy) "正在生成二维码…" else "二维码不可用", color = LoginInk, fontSize = 16.sp)
             }
             Text(if (state.remaining > 0) "等待手机确认" else "等待生成或刷新", color = Ivory, fontSize = 16.sp, modifier = Modifier.padding(top = 15.dp))

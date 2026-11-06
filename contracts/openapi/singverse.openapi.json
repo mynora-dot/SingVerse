@@ -17973,6 +17973,626 @@
           }
         }
       }
+    },
+    "/api/v1/playback-history": {
+      "get": {
+        "operationId": "listPlaybackHistory",
+        "summary": "List persisted playback attempts",
+        "description": "Filters are applied before database pagination. Stable ordering: startedAt descending, id descending. Records are not reconstructed from the queue. No playback reporting or manual record creation endpoint is provided.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 200,
+              "default": ""
+            },
+            "description": "Search saved song title and artists; control characters are rejected."
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "7d",
+                "30d",
+                "all"
+              ],
+              "default": "30d"
+            },
+            "description": "Rolling UTC interval ending at server now. Future attempts are always excluded, including period=all."
+          },
+          {
+            "name": "songId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "default": ""
+            },
+            "description": "Optional exact song ID; empty means all songs."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000,
+              "default": 0
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackHistoryPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query, enum, length or pagination.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Administrator authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/playback-history/popular": {
+      "get": {
+        "operationId": "listPopularPlaybackSongs",
+        "summary": "Rank songs from persisted effective playback attempts",
+        "description": "ADMIN preview attempts are excluded from all ranking fields. Only songs with at least one effective matching non-ADMIN attempt are returned. Order: effectivePlayCount descending, lastPlayedAt descending, songId ascending. All counts use the same filters; song metadata comes from the latest matching non-ADMIN snapshot.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 200,
+              "default": ""
+            },
+            "description": "Search saved song title and artists; control characters are rejected."
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "7d",
+                "30d",
+                "all"
+              ],
+              "default": "30d"
+            },
+            "description": "Rolling UTC interval ending at server now. Future attempts are always excluded, including period=all."
+          },
+          {
+            "name": "songId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "default": ""
+            },
+            "description": "Optional exact song ID; empty means all songs."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000,
+              "default": 0
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackPopularPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query, enum, length or pagination.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Administrator authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/playback-history/summary": {
+      "get": {
+        "operationId": "getPlaybackHistorySummary",
+        "summary": "Summarize persisted playback attempts",
+        "description": "Uses the same q, period and songId filters as playback history and ranking. totalPlays and playedMs include ADMIN previews; effectivePlays and playedSongs exclude them. Empty data returns zero counts and duration.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 200,
+              "default": ""
+            },
+            "description": "Search saved song title and artists; control characters are rejected."
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "7d",
+                "30d",
+                "all"
+              ],
+              "default": "30d"
+            },
+            "description": "Rolling UTC interval ending at server now. Future attempts are always excluded, including period=all."
+          },
+          {
+            "name": "songId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "default": ""
+            },
+            "description": "Optional exact song ID; empty means all songs."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackHistorySummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query, enum, length or pagination.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Administrator authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/missing-song-feedback": {
+      "get": {
+        "operationId": "listMissingSongFeedback",
+        "summary": "List administrator-registered missing-song requests",
+        "description": "Stable ordering: createdAt descending, id ascending. Status and search filters are applied in SQL before pagination.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 200,
+              "default": ""
+            },
+            "description": "Search original title, artist and requested version before pagination."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ALL",
+                "PENDING",
+                "PROCESSING",
+                "RESOLVED",
+                "CLOSED"
+              ],
+              "default": "ALL"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000,
+              "default": 0
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MissingSongFeedbackPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query, enum, length or pagination.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Administrator authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createMissingSongFeedback",
+        "summary": "Register a missing song for administrator follow-up",
+        "description": "All original feedback fields are required; only title must be nonblank. The original request is immutable. Repeating the same UUID and original payload returns the existing request with 201; a different payload with the same ID returns 409. Source is always ADMIN. No download or client reporting is triggered.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Obtain a current token from /api/v1/auth/csrf after login or session transitions."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MissingSongFeedbackCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created, or existing identical request returned after a retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MissingSongFeedback"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid feedback fields or request UUID.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Administrator authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin or CSRF rejected.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request UUID was already used with different original feedback.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/missing-song-feedback/{id}": {
+      "get": {
+        "operationId": "getMissingSongFeedback",
+        "summary": "Read a missing-song request and its handling state",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MissingSongFeedback"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query, enum, length or pagination.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Administrator authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Feedback does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateMissingSongFeedback",
+        "summary": "Update missing-song handling state and note",
+        "description": "Original title, artist, requested version, description and submitter cannot be changed. All handling states can be reopened. RESOLVED requires an available library song; other states require resolvedSongId to be omitted or null and clear the association and resolvedAt. Revision is checked atomically. No delete operation is provided.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Obtain a current token from /api/v1/auth/csrf after login or session transitions."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MissingSongFeedbackUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MissingSongFeedback"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid handling state, note, revision or association.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Administrator authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin or CSRF rejected.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Feedback does not exist.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict or the selected song is no longer available.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -23810,6 +24430,488 @@
           }
         },
         "description": "Never includes owner IDs, internal tokens, public/private keys, signatures or challenges."
+      },
+      "PlaybackHistoryRecord": {
+        "type": "object",
+        "required": [
+          "id",
+          "songId",
+          "title",
+          "artists",
+          "versionLabel",
+          "sourceName",
+          "clientType",
+          "deviceName",
+          "requestedBy",
+          "startedAt",
+          "endedAt",
+          "playedMs",
+          "durationMs",
+          "status",
+          "effective"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "songId": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "title": {
+            "type": "string"
+          },
+          "artists": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "versionLabel": {
+            "type": "string"
+          },
+          "sourceName": {
+            "type": "string"
+          },
+          "clientType": {
+            "type": "string",
+            "enum": [
+              "TV",
+              "MOBILE",
+              "ADMIN"
+            ]
+          },
+          "deviceName": {
+            "type": "string"
+          },
+          "requestedBy": {
+            "type": "string",
+            "description": "Song requester snapshot; does not identify the actual singer."
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "playedMs": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Actual elapsed playback in milliseconds, excluding pauses/buffering and seek jumps."
+          },
+          "durationMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PLAYING",
+              "COMPLETED",
+              "SKIPPED",
+              "STOPPED",
+              "ERROR",
+              "INTERRUPTED"
+            ]
+          },
+          "effective": {
+            "type": "boolean",
+            "description": "False for ADMIN previews. Otherwise true when playedMs >= 30000, or a completed song with duration 1..29999 ms has playedMs >= durationMs."
+          }
+        },
+        "description": "One persisted playback attempt, with independent song and device snapshots. No client reporting or administrator write endpoint is included in this release."
+      },
+      "PlaybackHistoryPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "page",
+          "size",
+          "totalElements"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaybackHistoryRecord"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "totalElements": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "PlaybackPopularSong": {
+        "type": "object",
+        "required": [
+          "songId",
+          "title",
+          "artists",
+          "versionLabel",
+          "sourceName",
+          "playCount",
+          "effectivePlayCount",
+          "completedCount",
+          "lastPlayedAt"
+        ],
+        "properties": {
+          "songId": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "title": {
+            "type": "string"
+          },
+          "artists": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "versionLabel": {
+            "type": "string"
+          },
+          "sourceName": {
+            "type": "string"
+          },
+          "playCount": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "All matching non-ADMIN playback attempts for this song."
+          },
+          "effectivePlayCount": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "completedCount": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Matching non-ADMIN attempts whose terminal status is COMPLETED; this is not a measure of listened coverage."
+          },
+          "lastPlayedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "description": "Statistics grouped by songId, excluding all ADMIN preview attempts. Display metadata comes from the latest matching non-ADMIN playback snapshot. Different song IDs and versions are not merged."
+      },
+      "PlaybackPopularPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "page",
+          "size",
+          "totalElements"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaybackPopularSong"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "totalElements": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "PlaybackHistorySummary": {
+        "type": "object",
+        "required": [
+          "totalPlays",
+          "effectivePlays",
+          "playedSongs",
+          "playedMs"
+        ],
+        "properties": {
+          "totalPlays": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "All matching attempts, including short, failed and interrupted attempts."
+          },
+          "effectivePlays": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Effective non-ADMIN playback attempts."
+          },
+          "playedSongs": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Distinct song IDs among effective non-ADMIN attempts."
+          },
+          "playedMs": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Sum of actual playback time across all matching attempts, including ineffective attempts."
+          }
+        }
+      },
+      "MissingSongFeedback": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "artist",
+          "versionLabel",
+          "description",
+          "submittedBy",
+          "source",
+          "status",
+          "handlingNote",
+          "resolvedSongId",
+          "resolvedSongTitle",
+          "resolvedSongArtists",
+          "resolvedSongAvailable",
+          "revision",
+          "createdAt",
+          "updatedAt",
+          "resolvedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "artist": {
+            "type": "string"
+          },
+          "versionLabel": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "submittedBy": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ADMIN"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "PROCESSING",
+              "RESOLVED",
+              "CLOSED"
+            ]
+          },
+          "handlingNote": {
+            "type": "string"
+          },
+          "resolvedSongId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64
+          },
+          "resolvedSongTitle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Song title snapshot captured when marked RESOLVED; retained if the song is later removed."
+          },
+          "resolvedSongArtists": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Artist snapshot captured when marked RESOLVED."
+          },
+          "resolvedSongAvailable": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "resolvedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "description": "Administrator-registered missing-song request. Original feedback is immutable; only handling state, note and resolved song association can be changed. No automatic download is triggered."
+      },
+      "MissingSongFeedbackPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "page",
+          "size",
+          "totalElements"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingSongFeedback"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "totalElements": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "MissingSongFeedbackCreate": {
+        "type": "object",
+        "required": [
+          "requestId",
+          "title",
+          "artist",
+          "versionLabel",
+          "description",
+          "submittedBy"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Stable UUID reused for retries; the same ID with different normalized original feedback returns 409."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Nonblank after trimming; control characters are rejected."
+          },
+          "artist": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "May be empty; control characters are rejected."
+          },
+          "versionLabel": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "May be empty; control characters are rejected."
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "May be empty; line breaks and tabs are allowed, other control characters are rejected."
+          },
+          "submittedBy": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "May be empty; control characters are rejected."
+          }
+        }
+      },
+      "MissingSongFeedbackUpdate": {
+        "type": "object",
+        "required": [
+          "revision",
+          "status",
+          "handlingNote"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "Expected current revision; stale updates return 409."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "PROCESSING",
+              "RESOLVED",
+              "CLOSED"
+            ]
+          },
+          "handlingNote": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "Line breaks and tabs are allowed, other control characters are rejected."
+          },
+          "resolvedSongId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64,
+            "description": "A currently available library song is required for RESOLVED. For other states omit or send null; the association and resolvedAt are cleared."
+          }
+        }
       }
     }
   }

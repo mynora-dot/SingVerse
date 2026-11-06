@@ -51,6 +51,7 @@ class SQLiteConnectionTest {
                                 String.class))
                 .containsExactlyInAnyOrder(
                         "audio_batch", "audio_batch_item", "media_audio_role", "media_audio_job", "media_audio_import", "schema_migrations", "media_metadata_file", "webdav_share_lock", "webdav_share_job", "webdav_share_entry", "webdav_share_asset", "webdav_share_receipt", "webdav_metadata_source", "webdav_resource", "webdav_metadata_task", "webdav_access_budget",
+                        "playback_history", "missing_song_feedback", "missing_song_feedback_lock",
                         "auth_account",
                         "auth_token",
                         "auth_recovery",
@@ -64,6 +65,8 @@ class SQLiteConnectionTest {
                         "filename_parser_config", "ai_registry_lock", "ai_service", "ai_feature", "compute_node_settings", "compute_pairing_identity", "tv_record", "tv_home_settings", "tv_home_banner");
         assertThat(jdbc.queryForObject("SELECT rotation_seconds FROM tv_home_settings WHERE id=1", Integer.class)).isEqualTo(8);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM tv_home_banner", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM playback_history", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM missing_song_feedback", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM filename_parser_config", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT mode FROM compute_node_settings WHERE id=1", String.class)).isEqualTo("AUTO");
     }
