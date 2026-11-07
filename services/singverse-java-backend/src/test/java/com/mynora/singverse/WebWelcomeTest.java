@@ -15,11 +15,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @ActiveProfiles("sqlite")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
 class WebWelcomeTest {
     @TempDir static Path temp;
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
+        registry.add("singverse.transcoding.cache-directory", () -> temp.resolve("cache").toString());
+        registry.add("singverse.transcoding.directory", () -> temp.resolve("versions").toString());
+        registry.add("singverse.audio.directory", () -> temp.resolve("audio").toString());
+        registry.add("singverse.auth.key-file", () -> temp.resolve("auth.key").toString());
+        registry.add("singverse.metadata.cache-path", () -> temp.resolve("covers").toString());
+        registry.add("singverse.webdav.metadata-path", () -> temp.resolve("webdav").toString());
         registry.add("singverse.sqlite.path", () -> temp.resolve("web-test.db").toString());
     }
 

@@ -1,7 +1,11 @@
 """Opt-in real Apple GPU check; synthetic input does not certify music quality."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from callback_source import CallbackTestCase
+
 import hashlib
 import os
-from pathlib import Path
 import tempfile
 import unittest
 import uuid
@@ -12,7 +16,7 @@ from singverse_compute.core.config import Settings
 
 
 @unittest.skipUnless(os.environ.get('SINGVERSE_TEST_MPS_MODEL_REPO'), 'Explicit local MPS model required')
-class MpsAudioSmokeTest(unittest.TestCase):
+class MpsAudioSmokeTest(CallbackTestCase):
     def test_mps_qualification_separation_and_cpu_comparison(self):
         import numpy as np
         import soundfile as sf
@@ -33,7 +37,7 @@ class MpsAudioSmokeTest(unittest.TestCase):
             original = hashlib.sha256(source.read_bytes()).hexdigest()
             token = root/'token'
             token.write_text('m'*64)
-            app = create_app(Settings((media,), token, transcode_root=root/'cache', minimum_free_bytes=0,
+            app = create_app(Settings(token_file=token, transcode_root=root/'cache', minimum_free_bytes=0,
                                       audio_model_repo=repo, audio_memory_bytes=2*1024**3))
             worker = app.state.audio_roles
             try:
@@ -42,7 +46,7 @@ class MpsAudioSmokeTest(unittest.TestCase):
                 self.assertEqual(worker.models.operation['state'], 'SUCCEEDED', worker.models.operation)
                 self.assertEqual(worker.models.selected(), 'mps')
                 identifier = str(uuid.uuid4())
-                worker.submit(identifier, str(source), None, 'SEPARATE', 'mps')
+                self.submit_audio(worker, identifier, source, 'SEPARATE', 'mps')
                 worker.thread.join(240)
                 result = worker.view(identifier)
                 self.assertEqual(result['state'], 'SUCCEEDED', result)

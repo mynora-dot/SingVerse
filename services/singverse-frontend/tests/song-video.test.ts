@@ -3,10 +3,13 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { mockMediaElements } from './media-element-mocks'
 import { playback } from '../src/admin/modules/transcoding/playback'
+import { adminActivity } from '../src/admin/modules/transcoding/activity'
 vi.mock('../src/admin/modules/transcoding/playback')
 beforeEach(() => {
   vi.resetAllMocks()
   mockMediaElements()
+  vi.spyOn(adminActivity, 'create').mockResolvedValue({ attemptId: 'admin-attempt', writeToken: 'test-write-token', eventSeq: -1, leaseSeconds: 120, startedAt: Date.now(), serverTime: Date.now() })
+  vi.spyOn(adminActivity, 'event').mockResolvedValue(undefined)
   vi.mocked(playback.start).mockImplementation(async id => ({ mode: 'DIRECT', status: 'READY', url: `/api/v1/media-songs/${id}/video`, offset: 0 }))
   vi.mocked(playback.tasks).mockResolvedValue([])
   vi.mocked(playback.roles).mockResolvedValue({ state: 'UNKNOWN', jobs: [] })
@@ -279,4 +282,32 @@ it('视频暂停和设置展开不会固定显示浮层', async () => {
     await flushPromises()
     expect(wrapper.get('.song-player').classes()).not.toContain('is-video')
   } finally { wrapper.unmount() }
+})
+
+
+it('管理员只按主媒体实际播放采集，独立伴奏不重复建实例，重建保留同一实例', async () => {
+  vi.mocked(playback.start).mockResolvedValue({ mode: 'DIRECT', status: 'READY', url: '/api/v1/main', offset: 0, backingUrl: '/api/v1/backing', audioRoles: confirmed })
+  const wrapper = mount(SongVideoDialog, { props: { song: videoSong }, global: { stubs: { teleport: true } } })
+  try {
+    await flushPromises()
+    expect(adminActivity.create).not.toHaveBeenCalled()
+    await wrapper.get('.main-play').trigger('click'); await flushPromises()
+    expect(adminActivity.create).toHaveBeenCalledOnce()
+    expect(adminActivity.create).toHaveBeenCalledWith(videoSong.id, expect.any(Number))
+    expect(adminActivity.event).toHaveBeenLastCalledWith('admin-attempt', expect.objectContaining({ state: 'PLAYING', actualPlayedMs: 0 }))
+    await wrapper.get('.backing-audio').trigger('playing'); await flushPromises()
+    expect(adminActivity.create).toHaveBeenCalledOnce()
+    const old = wrapper.get('video').element
+    await wrapper.get('video').trigger('waiting'); await flushPromises()
+    expect(adminActivity.event).toHaveBeenLastCalledWith('admin-attempt', expect.objectContaining({ state: 'BUFFERING' }))
+    await wrapper.get('[aria-label="播放编码"]').setValue('compatible'); await flushPromises()
+    await wrapper.get('video').trigger('loadedmetadata'); await flushPromises()
+    expect(adminActivity.create).toHaveBeenCalledOnce()
+    await wrapper.setProps({ song: { ...videoSong, id: 'new-preview' } }); await flushPromises()
+    expect(adminActivity.event).toHaveBeenLastCalledWith('admin-attempt', expect.objectContaining({ state: 'STOPPED' }))
+    old.dispatchEvent(new Event('playing')); await flushPromises()
+    expect(adminActivity.create).toHaveBeenCalledOnce()
+    await wrapper.get('.main-play').trigger('click'); await flushPromises()
+    expect(adminActivity.create).toHaveBeenCalledTimes(2)
+  } finally { wrapper.unmount(); await flushPromises() }
 })

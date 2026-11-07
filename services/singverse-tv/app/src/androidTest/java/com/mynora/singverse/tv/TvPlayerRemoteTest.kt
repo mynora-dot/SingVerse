@@ -148,6 +148,63 @@ class TvPlayerRemoteTest : InstrumentationTestCase() {
         assertEquals("暂停/停止不能请求下一首资源", 1, playback.resourceRequests.size)
     }
 
+    fun testActualPlaybackCountersExcludeSeekAndPausedTime() {
+        start("test-song-1", next = "test-song-2")
+        val attempt = onMain { app.snapshot.getJSONObject("playback").getString("attemptId") }
+        SystemClock.sleep(1200)
+        onMain { app.pauseLocal(); app.report() }
+        waitFor("暂停结算真实播放") { playback.playbackEvents.lastOrNull()?.optString("state") == "PAUSED" }
+        val before = playback.playbackEvents.last()
+        assertTrue("实际播放区间已计时", before.getLong("actualPlayedMs") >= 500)
+        SystemClock.sleep(1200)
+        onMain { app.player.seekTo(10000); app.report(); app.report() }
+        waitFor("暂停后重复事件不重复累计") { (playback.playbackEvents.lastOrNull()?.optLong("elapsedMs", 0) ?: 0) >= before.getLong("elapsedMs") + 1000 }
+        val after = playback.playbackEvents.last()
+        assertEquals(attempt, after.getString("attemptId"))
+        assertEquals("跳转和暂停不增加真实播放", before.getLong("actualPlayedMs"), after.getLong("actualPlayedMs"))
+        assertEquals("暂停心跳不能刷新最近真实播放", before.getLong("lastActivityAt"), after.getLong("lastActivityAt"))
+        assertTrue(after.getLong("occurredAt") >= before.getLong("occurredAt") + 1000)
+        assertTrue("累计真实播放不超过单调经过时间", after.getLong("actualPlayedMs") <= after.getLong("elapsedMs"))
+        onMain { app.player.play() }
+        waitFor("同实例恢复播放") { playback.playbackEvents.lastOrNull()?.optString("state") == "PLAYING" }
+        assertEquals(attempt, playback.playbackEvents.last().getString("attemptId"))
+        assertTrue(playback.playbackEvents.filter { it.optString("attemptId") == attempt }
+            .zipWithNext().all { (first, second) -> second.getLong("actualPlayedMs") >= first.getLong("actualPlayedMs") })
+    }
+
+    fun testDurationEventBelongsOnlyToTheCurrentPlayingAttempt() {
+        start("test-song-1", next = "test-song-2")
+        val attempt = onMain { app.snapshot.getJSONObject("playback").getString("attemptId") }
+        val playingIndex = playback.playbackEvents.size
+        onMain { app.report() }
+        waitFor("当前真实播放事件携带源总时长") {
+            playback.playbackEvents.drop(playingIndex).any {
+                it.optString("attemptId") == attempt && it.optString("state") == "PLAYING" && it.has("durationMs")
+            }
+        }
+        assertEquals(TvPlaybackFixture.DURATION_MS, playback.playbackEvents.drop(playingIndex)
+            .first { it.optString("state") == "PLAYING" }.getLong("durationMs"))
+
+        val pausedIndex = playback.playbackEvents.size
+        onMain { app.pauseLocal(); app.report() }
+        waitFor("暂停事件仍正常回报") {
+            playback.playbackEvents.drop(pausedIndex).any { it.optString("state") == "PAUSED" }
+        }
+        assertTrue("暂停时保留的播放器时长不能触发预缓存", playback.playbackEvents.drop(pausedIndex)
+            .filter { it.optString("state") == "PAUSED" }.all { !it.has("durationMs") })
+
+        playback.remoteNext()
+        onMain { app.reconnect() }
+        waitFor("切歌后旧媒体仍在播放器但新实例尚未确认") {
+            onMain { app.snapshot.getJSONObject("playback").getString("attemptId") != attempt &&
+                !app.hasConfirmedPlayback && app.playerState == "IDLE" && app.pendingOperation == null }
+        }
+        val handoffIndex = playback.playbackEvents.size
+        onMain { app.report() }
+        assertTrue("旧歌曲时长不能附到新的待确认实例", playback.playbackEvents.drop(handoffIndex).none { it.has("durationMs") })
+        assertEquals("上报时长不应申请或启动下一首资源", 1, playback.resourceRequests.size)
+    }
+
     fun testAudioPlaybackProgressLyricsQrSettingsAndQueue() {
         start("test-song-1", next = "test-song-2")
         assertLyricsBeforeFirstLine()
@@ -419,6 +476,143 @@ class TvPlayerRemoteTest : InstrumentationTestCase() {
         } finally {
             onMain { app.player.removeListener(listener) }
         }
+    }
+
+    fun testConfirmedLoadReportsPreparingBeforeResourceAndKeepsClockWhenReady() {
+        playback.holdResourceReadiness = true
+        onMain { app.command("ADD", songId = "test-song-1") }
+        waitFor("歌曲已入队") { onMain { app.pendingOperation == null && queuedSongCount(app) == 1 } }
+        try {
+            onMain { app.command("START") }
+            waitFor("资源尚未就绪时已发送PREPARING") {
+                playback.resourceRequests.isNotEmpty() && playback.playbackEvents.any { it.optString("state") == "PREPARING" }
+            }
+            val first = playback.playbackEvents.first { it.optString("state") == "PREPARING" }
+            waitFor("资源未到达仍每15秒续准备租约", 20000) {
+                playback.playbackEvents.any { it.optString("attemptId") == first.getString("attemptId") &&
+                    it.optString("state") == "PREPARING" && it.optLong("elapsedMs") >= 15000 }
+            }
+            val preparing = playback.playbackEvents.filter { it.optString("attemptId") == first.getString("attemptId") }
+            assertTrue(preparing.all { it.getLong("actualPlayedMs") == 0L && !it.has("lastActivityAt") && !it.has("durationMs") })
+            assertTrue(preparing.all { it.getLong("startedAt") == first.getLong("startedAt") })
+            assertFalse("准备心跳不能安装或播放尚未返回的媒体", onMain { app.hasConfirmedPlayback || app.playing })
+        } finally { playback.holdResourceReadiness = false }
+        waitFor("资源到达后同实例开始真实播放", 20000) { onMain { app.hasConfirmedPlayback && app.playing } }
+        val preparing = playback.playbackEvents.first { it.optString("state") == "PREPARING" }
+        waitFor("PLAYING沿用原始准备时钟") { playback.playbackEvents.any { it.optString("state") == "PLAYING" } }
+        val playing = playback.playbackEvents.first { it.optString("state") == "PLAYING" }
+        assertEquals(preparing.getString("attemptId"), playing.getString("attemptId"))
+        assertEquals(preparing.getLong("startedAt"), playing.getLong("startedAt"))
+        assertTrue(playing.getLong("elapsedMs") >= 15000)
+    }
+
+    fun testExpiredTelemetryStillCompletesAndContinuesTheQueue() {
+        start("test-song-1", next = "test-song-2")
+        val expired = onMain { app.snapshot.getJSONObject("playback").getString("attemptId") }
+        playback.expiredActivityAttempts.add(expired)
+        onMain { app.report() }
+        waitFor("服务端已拒绝过期遥测") { playback.rejectedActivityEvents.any { it.optString("attemptId") == expired } }
+        SystemClock.sleep(300)
+        val rejected = playback.rejectedActivityEvents.size
+        onMain { repeat(3) { app.report() } }
+        SystemClock.sleep(400)
+        assertEquals("410后停止当前实例遥测", rejected, playback.rejectedActivityEvents.size)
+        onMain { app.player.seekTo(app.player.duration - 700) }
+        waitFor("过期遥测不阻断自然结束与待唱续播", 20000) {
+            onMain { app.snapshot.optJSONObject("playback")?.optString("songId") == "test-song-2" &&
+                app.hasConfirmedPlayback && app.playing && app.pendingOperation == null }
+        }
+        assertEquals("COMPLETED", onMain { app.snapshot.getJSONArray("queue").getJSONObject(0).getString("status") })
+        assertTrue(playback.playbackEvents.any { it.optString("attemptId") == expired && it.optString("state") == "ENDED" })
+    }
+
+    fun testRemoteStopInterruptsResourcePreparationAndLateResourceCannotStart() {
+        playback.holdResourceResponse = true
+        onMain { app.command("ADD", songId = "test-song-1") }
+        waitFor("第一首已入队") { onMain { app.pendingOperation == null && queuedSongCount(app) == 1 } }
+        onMain { app.command("ADD", songId = "test-song-2") }
+        waitFor("第二首已入队") { onMain { app.pendingOperation == null && queuedSongCount(app) == 2 } }
+        try {
+            onMain { app.command("START") }
+            waitFor("正在等待资源响应") { playback.heldResourceResponse != null }
+            assertFalse("等待媒体不应占住全局操作", onMain { app.busy })
+            playback.remoteNext()
+            onMain { app.reconnect() }
+            waitFor("资源仍被阻塞时即可处理远程STOP", 3000) {
+                onMain { app.snapshot.optJSONObject("playback")?.optString("songId") == "test-song-2" && app.playerState == "IDLE" && !app.playing }
+            }
+        } finally { playback.holdResourceResponse = false; playback.releaseResourceResponse() }
+        SystemClock.sleep(800)
+        assertFalse("迟到资源不能自动播放下一首或旧媒体", onMain { app.playing || app.hasConfirmedPlayback })
+        assertEquals("下一首仍需明确确认，不得擅自申请资源", 1, playback.resourceRequests.size)
+        assertFalse(onMain { app.snapshot.getJSONObject("playback").getBoolean("confirmed") })
+    }
+
+    fun testPauseDuringResourcePreparationRemainsPausedWhenMediaArrives() {
+        playback.holdResourceResponse = true
+        onMain { app.command("ADD", songId = "test-song-1") }
+        waitFor("歌曲已入队") { onMain { app.pendingOperation == null && queuedSongCount(app) == 1 } }
+        try {
+            onMain { app.command("START") }
+            waitFor("等待媒体准备") { playback.heldResourceResponse != null }
+            playback.remotePause()
+            onMain { app.reconnect() }
+            waitFor("等待媒体时已确认远程暂停", 3000) { playback.playbackEvents.any { event ->
+                event.has("commandId") && onMain { app.snapshot.optJSONArray("commands")?.length() == 0 }
+            } }
+        } finally { playback.holdResourceResponse = false; playback.releaseResourceResponse() }
+        waitFor("媒体准备完成且保持暂停", 15000) {
+            onMain { app.hasConfirmedPlayback && app.player.playbackState == Player.STATE_READY && !app.player.playWhenReady && !app.playing }
+        }
+        assertEquals("暂停不能重复协商同一资源", 1, playback.resourceRequests.size)
+    }
+
+    fun testFailedResourceCanRetryAfterPauseAcknowledgedTheLoadCommand() {
+        playback.unavailableResourceSongs.add("test-song-1")
+        playback.holdResourceResponse = true
+        onMain { app.command("ADD", songId = "test-song-1") }
+        waitFor("歌曲已入队") { onMain { app.pendingOperation == null && queuedSongCount(app) == 1 } }
+        try {
+            onMain { app.command("START") }
+            waitFor("等待失败资源响应") { playback.heldResourceResponse != null }
+            playback.remotePause()
+            onMain { app.reconnect() }
+            waitFor("暂停累计确认已移除LOAD命令", 3000) { onMain { app.snapshot.optJSONArray("commands")?.length() == 0 } }
+        } finally { playback.holdResourceResponse = false; playback.releaseResourceResponse() }
+        waitFor("资源失败后保留当前确认实例") { onMain { app.error.contains("测试资源暂不可用") && app.playerState == "ERROR" && !app.hasConfirmedPlayback } }
+        val attempt = onMain { app.snapshot.getJSONObject("playback").getString("attemptId") }
+        playback.unavailableResourceSongs.remove("test-song-1")
+        onMain { app.retryPlayback() }
+        waitFor("LOAD已确认后仍可重试同一个实例", 15000) {
+            onMain { app.hasConfirmedPlayback && app.playing && app.player.playbackState == Player.STATE_READY && app.error.isBlank() }
+        }
+        assertEquals("重试不能生成新的演唱实例", attempt, onMain { app.snapshot.getJSONObject("playback").getString("attemptId") })
+        assertEquals("明确重试只再申请一次资源", 2, playback.resourceRequests.size)
+    }
+
+    fun testQualityChangeDuringPreparationKeepsCurrentAttemptAndPause() {
+        playback.holdResourceResponse = true
+        onMain { app.command("ADD", songId = "test-song-2") }
+        waitFor("视频已入队") { onMain { app.pendingOperation == null && queuedSongCount(app) == 1 } }
+        val attempt: String
+        try {
+            onMain { app.command("START") }
+            waitFor("视频资源准备中") { playback.heldResourceResponse != null }
+            attempt = onMain { app.snapshot.getJSONObject("playback").getString("attemptId") }
+            playback.remotePause()
+            onMain { app.reconnect() }
+            waitFor("准备期暂停已确认", 3000) { onMain { app.snapshot.optJSONArray("commands")?.length() == 0 } }
+            onMain { app.changeQuality("720p") }
+            waitFor("换画质只替换准备中的资源") { playback.resourceRequests.size == 2 }
+            assertEquals("720p", playback.resourceRequests.last().getString("quality"))
+        } finally { playback.holdResourceResponse = false; playback.releaseResourceResponse() }
+        waitFor("换画质后仍绑定同一实例并保留暂停", 15000) {
+            onMain { app.hasConfirmedPlayback && app.player.playbackState == Player.STATE_READY && !app.player.playWhenReady && !app.playing }
+        }
+        assertEquals(attempt, onMain { app.snapshot.getJSONObject("playback").getString("attemptId") })
+        onMain { app.changeQuality("720p") }
+        SystemClock.sleep(400)
+        assertEquals("重复选择当前画质不重建资源", 2, playback.resourceRequests.size)
     }
 
     private fun assertLyricsBeforeFirstLine() {

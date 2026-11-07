@@ -2,7 +2,7 @@
 
 家庭KTV多端基础工程：Flutter Android手机端、Android TV、独立NAS管理前端、Java业务主服务、Python计算节点，以及亲友H5点歌页。亲友入口已调整为**微信扫一扫打开NAS网页**，不再使用小程序。当前已具备曲库管理及多端点唱基础，已增加单管理员登录与可选TOTP二次验证；已支持管理端本地/WebDAV 原始音视频在线播放；已增加电视设备授权、原始媒体直放、聚会队列与亲友 H5 扫码点歌；已支持计算节点转码、全曲库音轨角色及可选离线伴奏分离，真实电视/微信/NAS 验收见验证记录。
 
-完整成功的音视频解码结果由 Java 服务节点保存，可跨播放复用；管理端「曲库 → 歌曲缓存」可查看、删除缓存并配置容量，以及最近使用优先、热门歌曲优先、到期清理或手动清理策略。命中缓存与缓存管理无需计算节点在线；计算节点只保留临时执行产物。正在播放的数据受租约保护，媒体原件保持只读，详见[转码与缓存说明](docs/transcoding.md#任务缓存和恢复)。
+WebDAV 原片按需分块缓存，完整成功的音视频解码结果也由 Java 服务节点保存，可跨播放复用；管理端「曲库 → 歌曲缓存」可查看、删除部分或完整缓存并配置容量，以及最近使用优先、热门歌曲优先、到期清理或手动清理策略。命中缓存与缓存管理无需计算节点在线；计算节点只保留临时执行产物。正在播放的数据受保护，媒体原件保持只读，详见[转码与缓存说明](docs/transcoding.md#任务缓存和恢复)。
 
 管理端「曲库 → 播放记录」将热门排行、逐次播放明细和单曲历史合并在一个入口；「曲库 → 缺歌反馈」支持管理员登记缺歌、跟进处理并关联已补齐的曲库歌曲。本阶段完成后台页面、管理接口和存储，尚未接入手机或 TV 上报，播放记录初始为空，旧播放历史不回填；缺歌登记不会自动下载歌曲。详见[播放记录与缺歌反馈](contracts/song-activity.md)。
 
@@ -15,7 +15,7 @@
 | 业务主服务 | Java21 / Spring Boot 3.5.16 / MyBatis XML / Maven Wrapper 3.9.16 | `services/singverse-java-backend` |
 | 计算节点 | Python 3.12+ / FastAPI 0.121.3 / Uvicorn 0.38.0；媒体探测、转码及可选音轨分析/伴奏分离 | `services/singverse-compute` |
 | 网页前端 | Vue 3 / TypeScript / Vite / Element Plus 管理端 + Vue 亲友点歌页，同一工程构建 | `services/singverse-frontend` |
-| 数据库 | 默认SQLite，MySQL保留可选连接验证 | `compose.yaml`仅开发MySQL |
+| 数据库 | 默认SQLite，MySQL保留可选连接验证 | `infra/docker/compose/compose.yaml`仅开发MySQL |
 
 ```text
 services/
@@ -26,8 +26,8 @@ services/
   singverse-compute/       内部媒体探测、转码与音频计算服务
 contracts/openapi/        业务API约定与计算节点内部探测契约
 database/                 数据库约定
-infra/docker/             应用容器与开发MySQL说明
-compose.app.yaml          前后端应用容器，默认SQLite
+infra/docker/             Compose配置、Bake镜像矩阵与构建忽略规则
+infra/deploy/             NAS部署包模板
 docs/                     架构、开发、验证与research调研
 .github/workflows/        singverse-frontend、singverse-mobile、singverse-tv、singverse-java-backend、singverse-backend
 ```
@@ -90,13 +90,13 @@ java -jar target/singverse-java-backend-0.1.0-SNAPSHOT.jar
 
 管理中心访问 `http://localhost:8080/admin/`，亲友欢迎页 `http://localhost:8080/party/`，健康检查 `http://localhost:8080/api/health`。直接执行Maven也需先构建前端；缺少产物会明确失败。后续在NAS实际部署后，手机必须使用其可达地址，例如 `http://<NAS局域网IP>:8080/`；二维码不能写localhost或容器内部IP。
 
-**当前没有在TV生成二维码，也没有配对/点歌功能。** 微信扫码是确定的后续入口，需Android/iOS微信真机验证导航、安全提示、网络权限和前后台恢复。普通浏览器打开成功不等于微信扫码已验证。
+TV 已提供设备授权与聚会邀请二维码，亲友扫码进入同一 NAS 的 H5 点歌、队列及授权遥控。Android/iOS 微信真机的导航、安全提示、网络权限和前后台恢复仍需单独验收，普通浏览器检查不替代微信结果。
 
 两个入口的页面、脚本与样式随JAR交付；独立admin CI检查前端，Java CI验证H5与管理端HTTP及资源。无需小程序开发者工具、上传或发布流程。compose.yaml提供开发MySQL；compose.app.yaml提供Nginx与Java应用容器，本地运行不代表NAS实机已验收。
 
 ## 数据库
 
-默认SQLite：`SQLITE_PATH`缺省`./data/singverse.db`，相对于服务进程工作目录，必要父目录自动创建；应用启动执行真实`SELECT 1`并通过dbmate迁移账号、媒体来源及解析规则配置表。默认从服务目录启动时数据在`services/singverse-java-backend/data/`。
+默认SQLite：`SQLITE_PATH`缺省`./data/singverse.db`，相对于服务进程工作目录，必要父目录自动创建；应用启动执行真实`SELECT 1`并通过dbmate初始化全部业务表。SQLite/MySQL 各使用一份 `202611070001_initial_schema.sql`，当前按空数据库首次部署，不支持旧迁移链升级。`make db-fresh-check` 可在临时库验证从零建库及回退重建，详见[数据库说明](database/README.md)。默认从服务目录启动时数据在`services/singverse-java-backend/data/`。
 
 ```sh
 (cd services/singverse-java-backend && SQLITE_PATH=/tmp/singverse-dev/app.db ./mvnw spring-boot:run)
@@ -115,7 +115,7 @@ make db-mysql-check
 (cd services/singverse-java-backend && SPRING_PROFILES_ACTIVE=mysql ./mvnw spring-boot:run)
 ```
 
-Spring Boot不会自动读取`.env`；Compose会读取，主机Java必须导出变量。MySQL默认仅绑定`127.0.0.1:3306`，使用命名卷；更改初始化密码不会自动更新已有卷账号。停止使用`docker compose stop mysql`，不自动删除数据卷。
+Spring Boot不会自动读取`.env`；Compose会读取，主机Java必须导出变量。MySQL默认仅绑定`127.0.0.1:3306`，使用命名卷；更改初始化密码不会自动更新已有卷账号。停止使用`docker compose --project-directory . -f infra/docker/compose/compose.yaml stop mysql`，不自动删除数据卷。
 
 首次执行`make compute-setup`并正确配置环境后，`make verify`依次验证手机、NAS管理前端、H5、TV、Java/Python整体联动及SQLite/MySQL。任一步失败返回非零；不会跳过数据库或自动删除卷。
 
@@ -141,13 +141,17 @@ Java 后端业务 SQL 统一使用 MyBatis Mapper XML，仓库后续开发遵守
 
 歌曲分类现支持后台词表维护、人工/批量打标、可配置文本 AI 分类任务、按维度自动应用、审核与历史撤回；模型默认关闭。使用方法与边界见[歌曲分类](docs/song-classification.md)。
 
-本地歌曲扫描支持只读提取常见音视频文件内嵌歌名、歌手、专辑和发行日期，文件标签优先，缺失回退文件名；Docker的独立singverse-compute镜像包含Python/FFmpeg，Java镜像不包含。WebDAV仍仅索引文件名。详见[后端说明](services/singverse-java-backend/README.md)。
+本地与 WebDAV 歌曲支持只读提取常见音视频文件内嵌歌名、歌手、专辑和发行日期，文件标签优先，缺失回退文件名；Java 提供短期授权 Range 回源，compute 不持有曲库路径或 WebDAV 凭据。独立 singverse-compute 镜像包含 Python/FFmpeg，Java 镜像不包含。详见[后端说明](services/singverse-java-backend/README.md)。
 
 歌手库入口为管理端「曲库管理 → 歌手库」：随歌曲自动汇总，首次自动抓图，支持上传头像/背景图；在歌手详情订正歌曲后自动同步，无需维护人物档案。使用与数据设计见 [歌手库说明](docs/artist-library.md)。
 
 共享歌单可在「曲库管理 → 歌单管理」手动或通过 AI 建议创建，并同步显示到 TV「歌单」入口。详见 [歌单说明](docs/playlists.md)。
 
 视频兼容播放、离线版本、工具安装及硬件边界见 [转码说明](docs/transcoding.md)。
+
+TV／手机播放按可用解码器的实际 AVC profile、level 和尺寸能力协商，解码／格式错误可自动尝试一次兼容播放；切歌会取消旧请求，准备轮询与旧会话清理分离。已生成且可寻址的 HLS 时间范围内直接跳转，范围外再按原始时间轴协商；实时转码使用 2 秒目标分段，各轨首片齐备后可播，整曲缓存后台复制。该链路需同步更新 Java、compute、Nginx 和两端 APK。WebDAV 原流仍要求直接 GET／Range，下载跳转或不支持定位的来源需调整配置；真实 NAS 与设备效果见各模块 README 和验证记录。`make nginx-media-check` 可隔离检查全部媒体代理路径的首段流式传输。
+
+WebDAV 原片直放也会按需缓存在 NAS，无需等待整首下载；原片与 HLS 结果共用「曲库 → 歌曲缓存」的容量及清理策略，管理页区分部分缓存和完整缓存。TV 聚会队列在当前歌剩余约 30 秒时预取下一首，优先文件头和尾部索引，再补齐其余内容；排序、撤歌、停止和散场会更新或撤销预取。手机扫码点歌复用同一队列，本机播放器仍为单曲模式。原片预取不依赖 compute，已有未缓存内容继续按需回源。
 
 「设备与服务 → 性能节点配置 → 连接设置」支持扫描局域网计算节点，选择“连接此节点”后由服务端配对、检查双向连接并保存，无需手填连接密钥。同套 Compose 继续使用部署自动连接。独立设备须升级 compute，并将其 HTTP 入口绑定到主服务可达的受限内网地址；默认扫描常用端口，也可指定网段与端口。首次配对信任所在局域网，已配对节点仅允许同一主服务身份恢复连接，密钥不返回浏览器；完整边界见[计算节点说明](services/singverse-compute/README.md)。
 
@@ -176,7 +180,7 @@ COMPUTE_HARDWARE_BACKEND=videotoolbox make compute-run
 
 **优先级：后台保存的选择 > `COMPUTE_HARDWARE_BACKEND` > 默认 `auto`。** 后台选择“遵循部署配置”恢复环境变量的值。环境变量变化需重启 compute；后台保存无需重启。后台选择保存在计算节点缓存卷根目录的 `hardware-settings.json`，重建容器且保留缓存卷时继续生效；更换计算节点后使用新节点自己的设置。
 
-Docker 必须在部署时配置设备、驱动和组权限。Intel/AMD 使用 `compose.compute.dri.yaml`，NVIDIA 使用 `compose.compute.nvidia.yaml`，Rockchip 使用 `compose.compute.rockchip.yaml`；覆盖文件会向容器传入对应 `COMPUTE_HARDWARE_BACKEND`。仅把变量写入根 `.env` 不会自动传入未声明该变量的容器；使用上述覆盖文件或显式增加 Compose environment。后台不能自动透传 GPU、安装驱动或赋予设备权限。
+Docker 必须在部署时配置设备、驱动和组权限。Intel/AMD 使用 `infra/docker/compose/compose.compute.dri.yaml`，NVIDIA 使用 `infra/docker/compose/compose.compute.nvidia.yaml`，Rockchip 使用 `infra/docker/compose/compose.compute.rockchip.yaml`；覆盖文件会向容器传入对应 `COMPUTE_HARDWARE_BACKEND`。仅把变量写入根 `.env` 不会自动传入未声明该变量的容器；使用上述覆盖文件或显式增加 Compose environment。后台不能自动透传 GPU、安装驱动或赋予设备权限。
 
 独立业务节点上传包使用 `make app-package`，包含完整前端、Java 源码和 SQLite 数据库迁移。
 所有部署参数位于包内 Compose，曲库只读挂载解压目录下的 `media/`；数据库与密钥分别持久化到命名卷。
@@ -191,8 +195,8 @@ macOS + Docker Desktop 使用原生 GPU 节点：先确保现有应用已启动�
 
 ```sh
 services/singverse-compute/.venv/bin/python scripts/macos-compute.py start
-docker compose -f compose.app.yaml -f compose.compute.macos.yaml up -d singverse-java-backend singverse-frontend
-docker compose -f compose.app.yaml stop singverse-compute
+docker compose --project-directory . -f infra/docker/compose/compose.app.yaml -f infra/docker/compose/compose.compute.macos.yaml up -d singverse-java-backend singverse-frontend
+docker compose --project-directory . -f infra/docker/compose/compose.app.yaml stop singverse-compute
 SINGVERSE_MACOS_COMPUTE=1 make docker-check
 ```
 
@@ -210,6 +214,6 @@ Mac 原唱／伴奏使用原生 CPU 或 MPS：显式执行 `make compute-audio-s
 
 模型需显式安装；扫描快速分类使用 `make compute-setup compute-fast-audio-setup`，深度识别/伴奏生成另用 `make compute-audio-setup`，设置本地模型路径并重启 compute。Mac 使用原生启动器的 `restart` 加载新代码。固定版本、Compose 可选部署、资源预算和真实模型冒烟命令见 [计算节点 README](services/singverse-compute/README.md#原唱识别与伴奏分离)。真实歌曲效果与手机/TV/NAS 同步尚需验收，不能以合成音冒烟替代。
 
-伴奏管理入口：**曲库 → 原唱与伴奏**，分“歌曲 / 生成任务”。可按状态快速找出待标记原唱、可生成伴奏等歌曲，跨页/全部筛选结果批量生成，持久任务支持进度查看、停止及重试；“设备与服务 → 性能节点配置”统一管理连接、实际硬件、CPU 自动降级及模型下载/导入和试跑。部署CPU、NVIDIA CUDA、AMD ROCm及Mac MPS的方式和当前Intel GPU/RKNN限制见计算节点README；实际只有一个计算节点，不做多节点分配。
+伴奏管理入口：**曲库 → 原唱与伴奏**，分“歌曲 / 生成任务”。可按状态快速找出待标记原唱、可生成伴奏等歌曲，跨页/全部筛选结果批量生成；选择快照在后台每 200 首准备，显示准备进度，完成后确认开始，支持准备取消及失败重试。歌曲列表使用可失效的后台轻量索引，首次准备会提示并自动重试；持久任务支持进度查看、停止及重试；“设备与服务 → 性能节点配置”统一管理连接、实际硬件、CPU 自动降级及模型下载/导入和试跑。部署CPU、NVIDIA CUDA、AMD ROCm及Mac MPS的方式和当前Intel GPU/RKNN限制见计算节点README；实际只有一个计算节点，不做多节点分配。
 
 计算节点现提供 CPU（amd64/arm64）、CUDA、ROCm、OpenVINO 镜像构建目标及正式 release 发布工作流；模型独立下载／离线导入。部署选择见 [compute 说明](services/singverse-compute/README.md)。GPU 和设备效果必须单独验收，RKNN 尚无合格模型。

@@ -17,19 +17,99 @@ const stateNames: Record<string, string> = { IDLE: '已停止', PREPARING: '准�
 const dimensions: Record<string, string> = { LANGUAGE: '语种', DECADE: '年代', GENRE: '风格', MOOD: '情绪', SCENE: '场景', CUSTOM: '自定义' }
 const pending = ref<{ action: string; requestId: string; expectedRevision: number; songId?: string; itemId?: string } | null>(null)
 const queue = computed(() => snapshot.value?.queue.filter(i => ['WAITING', 'HANDOFF', 'PLAYING'].includes(i.status)) ?? [])
-let timer: ReturnType<typeof setTimeout> | undefined, generation = 0, stopped = false
-async function perform(task: () => Promise<void>) { if (busy.value) return; busy.value = true; error.value = ''; try { await task() } catch (e) { error.value = e instanceof Error ? e.message : '连接失败，请重试' } finally { busy.value = false } }
-async function refresh() { const c = credential.value; if (c) snapshot.value = await request<Snapshot>(`sessions/${c.sessionId}/snapshot`, 'GET', undefined, c.token) }
-async function loadSongs() { const id = ++generation; const params = new URLSearchParams({ q: query.value, page: String(page.value), size: '20' }); selected.value.forEach(t => params.append('tagIds', t)); const result = await request<{ items: Song[]; totalElements: number }>(`library/songs?${params}`, 'GET', undefined, credential.value?.token); if (id === generation) { songs.value = result.items; total.value = result.totalElements } }
-async function initialize() { await refresh(); tags.value = await request('library/classification-tags', 'GET', undefined, credential.value?.token); await loadSongs() }
-async function join() { await perform(async () => { const c = await request<Credential>('join', 'POST', { invitation, name: name.value }); credential.value = c; sessionStorage.setItem('singverse-party', JSON.stringify(c)); history.replaceState(null, '', location.pathname); await initialize() }) }
-async function command(action: string, itemId?: string, songId?: string) { if (action === 'NEXT' && !confirm('切换到下一首？电视仍需确认下一位开唱。')) return; await perform(async () => { if (!snapshot.value || !credential.value) return; if (pending.value) throw new Error('上一项操作结果尚未确认，请先核对已点列表'); pending.value = { action, requestId: requestId(), expectedRevision: snapshot.value.revision, ...(itemId ? { itemId } : {}), ...(songId ? { songId } : {}) }; await sendPending() }) }
-async function sendPending() { if (!pending.value || !credential.value) return; try { snapshot.value = await request(`sessions/${credential.value.sessionId}/commands`, 'POST', pending.value, credential.value.token); pending.value = null; notice.value = '操作已确认' } catch (e) { await refresh().catch(() => {}); throw e } }
-function forgetPending() { pending.value = null; notice.value = '已保留当前队列，请核对歌曲后再操作' }
-function leave() { credential.value = null; snapshot.value = null; sessionStorage.removeItem('singverse-party'); notice.value = '已离开，请重新扫描电视二维码' }
-async function poll() { if (stopped) return; try { if (credential.value && !busy.value) await refresh() } catch (e) { if (e instanceof PartyHttpError && e.status === 401) { credential.value = null; snapshot.value = null; sessionStorage.removeItem('singverse-party'); error.value = '参与权限已失效，请重新扫描电视二维码。' } else error.value = '与 NAS 同步失败，操作前请先重试连接。' } finally { if (!stopped) timer = setTimeout(() => { void poll() }, 2500) } }
-onMounted(async () => { await perform(async () => { if (invitation) { preview.value = await request('invitations/preview', 'POST', { invitation }); if (credential.value?.sessionId !== preview.value?.sessionId) return } if (credential.value) await initialize() }); void poll() })
-onUnmounted(() => { stopped = true; clearTimeout(timer) })
+let timer: ReturnType<typeof setTimeout> | undefined, generation = 0, sessionGeneration = 0, snapshotRequest = 0, operation = 0, stopped = false
+let sessionController = new AbortController()
+function current(turn: number) { return !stopped && turn === sessionGeneration }
+function replaceCredential(value: Credential | null) {
+  sessionController.abort(); sessionController = new AbortController(); sessionGeneration++; generation++
+  credential.value = value; snapshot.value = null; songs.value = []; tags.value = []; pending.value = null; selected.value = []; page.value = 0; total.value = 0
+  if (value) sessionStorage.setItem('singverse-party', JSON.stringify(value))
+  else sessionStorage.removeItem('singverse-party')
+}
+async function perform(task: () => Promise<void>) {
+  if (busy.value || stopped) return
+  const turn = ++operation; busy.value = true; error.value = ''
+  try { await task() }
+  catch (e) { if (!stopped && turn === operation) error.value = e instanceof Error ? e.message : '连接失败，请重试' }
+  finally { if (!stopped && turn === operation) busy.value = false }
+}
+async function refresh() {
+  const c = credential.value, turn = sessionGeneration, requestTurn = ++snapshotRequest
+  if (!c) return
+  try {
+    const value = await request<Snapshot>(`sessions/${c.sessionId}/snapshot`, 'GET', undefined, c.token, sessionController.signal)
+    if (current(turn) && requestTurn === snapshotRequest) snapshot.value = value
+  } catch (failed) { if (current(turn) && requestTurn === snapshotRequest) throw failed }
+}
+async function loadSongs() {
+  const id = ++generation, turn = sessionGeneration, c = credential.value
+  if (!c) return
+  const params = new URLSearchParams({ q: query.value, page: String(page.value), size: '20' })
+  selected.value.forEach(t => params.append('tagIds', t))
+  const result = await request<{ items: Song[]; totalElements: number }>(`library/songs?${params}`, 'GET', undefined, c.token, sessionController.signal)
+  if (current(turn) && id === generation) { songs.value = result.items; total.value = result.totalElements }
+}
+async function initialize() {
+  const turn = sessionGeneration, c = credential.value
+  if (!c) return
+  await refresh()
+  if (!current(turn)) return
+  const values = await request<typeof tags.value>('library/classification-tags', 'GET', undefined, c.token, sessionController.signal)
+  if (!current(turn)) return
+  tags.value = values; await loadSongs()
+}
+async function join() {
+  await perform(async () => {
+    const turn = sessionGeneration
+    const c = await request<Credential>('join', 'POST', { invitation, name: name.value }, undefined, sessionController.signal)
+    if (!current(turn)) return
+    replaceCredential(c); history.replaceState(null, '', location.pathname); await initialize()
+  })
+}
+async function command(action: string, itemId?: string, songId?: string) {
+  if (action === 'NEXT' && !confirm('切换到下一首？电视仍需确认下一位开唱。')) return
+  await perform(async () => {
+    if (!snapshot.value || !credential.value) return
+    if (pending.value) throw new Error('上一项操作结果尚未确认，请先核对已点列表')
+    pending.value = { action, requestId: requestId(), expectedRevision: snapshot.value.revision, ...(itemId ? { itemId } : {}), ...(songId ? { songId } : {}) }
+    await sendPending()
+  })
+}
+async function sendPending() {
+  const c = credential.value, command = pending.value, turn = sessionGeneration, requestTurn = ++snapshotRequest
+  if (!command || !c) return
+  try {
+    const value = await request<Snapshot>(`sessions/${c.sessionId}/commands`, 'POST', command, c.token, sessionController.signal)
+    if (current(turn) && requestTurn === snapshotRequest) { snapshot.value = value; pending.value = null; notice.value = '操作已确认' }
+  } catch (e) { if (current(turn)) await refresh().catch(() => {}); throw e }
+}
+function forgetPending() { if (busy.value) return; pending.value = null; notice.value = '已保留当前队列，请核对歌曲后再操作' }
+function leave() { operation++; busy.value = false; replaceCredential(null); notice.value = '已离开，请重新扫描电视二维码' }
+async function poll() {
+  if (stopped) return
+  const turn = sessionGeneration
+  try { if (credential.value && !busy.value) await refresh() }
+  catch (e) {
+    if (current(turn)) {
+      if (e instanceof PartyHttpError && e.status === 401) { replaceCredential(null); error.value = '参与权限已失效，请重新扫描电视二维码。' }
+      else error.value = '与 NAS 同步失败，操作前请先重试连接。'
+    }
+  } finally { if (!stopped) timer = setTimeout(() => { void poll() }, 2500) }
+}
+onMounted(async () => {
+  await perform(async () => {
+    if (invitation) {
+      const turn = sessionGeneration
+      const value = await request<typeof preview.value>('invitations/preview', 'POST', { invitation }, undefined, sessionController.signal)
+      if (!current(turn)) return
+      preview.value = value
+      if (credential.value?.sessionId !== value?.sessionId) { replaceCredential(null); return }
+    }
+    if (credential.value) await initialize()
+  })
+  void poll()
+})
+onUnmounted(() => { stopped = true; operation++; generation++; sessionController.abort(); clearTimeout(timer) })
 </script>
 <template>
   <main class="party-shell">
@@ -54,6 +134,6 @@ onUnmounted(() => { stopped = true; clearTimeout(timer) })
       <footer><button class="text-button" @click="leave">离开本场</button><small>离开不会撤回已点歌曲或结束聚会。</small></footer>
       <nav aria-label="聚会导航"><button v-for="entry in ['点歌', '已点', '遥控']" :key="entry" :class="{ active: tab === entry }" @click="tab = entry">{{ entry }}</button></nav>
     </template>
-    <aside v-if="error || notice || pending" class="feedback" role="status"><p v-if="error">{{ error }}</p><p v-else>{{ notice }}</p><template v-if="pending"><p>结果尚未确认，请先查看已点，避免重复点歌。</p><button :disabled="busy" @click="perform(sendPending)">重试原请求</button><button @click="forgetPending">已核对，关闭此请求</button></template><button v-else @click="error = ''; notice = ''">知道了</button></aside>
+    <aside v-if="error || notice || pending" class="feedback" role="status"><p v-if="error">{{ error }}</p><p v-else>{{ notice }}</p><template v-if="pending"><p>结果尚未确认，请先查看已点，避免重复点歌。</p><button :disabled="busy" @click="perform(sendPending)">重试原请求</button><button :disabled="busy" @click="forgetPending">已核对，关闭此请求</button></template><button v-else @click="error = ''; notice = ''">知道了</button></aside>
   </main>
 </template>

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.node.*;
 import com.mynora.singverse.auth.crypto.AuthCrypto;
 import com.mynora.singverse.media.repository.MediaSongRepository;
+import com.mynora.singverse.media.playbackhistory.PlaybackActivityService;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -19,11 +20,16 @@ public class TvService {
     private final TvMapper db;
     private final ObjectMapper json;
     private final MediaSongRepository songs;
+    private final TvPrefetchService prefetch;
+    private final PlaybackActivityService activity;
 
-    public TvService(TvMapper db, ObjectMapper json, MediaSongRepository songs) {
+    public TvService(TvMapper db, ObjectMapper json, MediaSongRepository songs, TvPrefetchService prefetch,
+            PlaybackActivityService activity) {
         this.db = db;
         this.json = json;
         this.songs = songs;
+        this.prefetch = prefetch;
+        this.activity = activity;
     }
 
     static String id() {
@@ -224,6 +230,8 @@ public class TvService {
         var n = get(id);
         n.put("revoked", true);
         save(n);
+        if (n.has("sessionId")) finishActivity(get(n.path("sessionId").asText()), "INTERRUPTED");
+        prefetch.revoked(n.path("sessionId").asText());
     }
 
     @Transactional
@@ -258,6 +266,7 @@ public class TvService {
         db.lock(sid);
         var n = get(sid);
         check(actor, n);
+        finishActivity(n, "INTERRUPTED");
         for (var q : n.path("queue"))
             if (Set.of("PLAYING", "HANDOFF").contains(q.path("status").asText()))
                 ((ObjectNode) q).put("status", "WAITING");
@@ -265,6 +274,7 @@ public class TvService {
         n.set("commands", json.createArrayNode());
         n.put("queueRevision", n.path("queueRevision").asLong() + 1);
         save(n);
+        prefetch.changed(n, false);
         return publicSnapshot(n, actor);
     }
 
@@ -379,6 +389,7 @@ public class TvService {
                             if (q.path("status").asText().equals("WAITING"))
                                 ((ObjectNode) q).put("status", "CANCELLED");
                     if (action.equals("END")) {
+                        finishActivity(n, "STOPPED");
                         n.put("status", "ENDED").put("acceptingRequests", false);
                         ((ArrayNode) n.path("commands")).removeAll();
                         command(n, "STOP");
@@ -407,6 +418,7 @@ public class TvService {
                                     .contains(n.path("playback").path("state").asText()))
                         throw fail(409, "当前歌曲尚未结束，请先切歌");
                     if (!start) {
+                        finishActivity(n, "SKIPPED");
                         ((ArrayNode) n.path("commands")).removeAll();
                         for (var q : queue)
                             if (Set.of("HANDOFF", "PLAYING").contains(q.path("status").asText()))
@@ -432,7 +444,10 @@ public class TvService {
                                         .put("eventSeq", -1)
                                         .put("positionMs", 0);
                         n.set("playback", play);
-                        if (start) command(n, "LOAD");
+                        if (start) {
+                            startActivity(n, candidate);
+                            command(n, "LOAD");
+                        }
                     } else command(n, "STOP");
                 }
 
@@ -440,12 +455,17 @@ public class TvService {
                     if (!n.has("playback") || !n.path("playback").path("confirmed").asBoolean())
                         throw fail(409, "请先在电视确认开唱");
                     if (action.equals("RESTART")) {
+                        finishActivity(n, "STOPPED");
                         ((ArrayNode) n.path("commands")).removeAll();
                         ((ObjectNode) n.path("playback"))
                                 .put("attemptId", id())
                                 .put("eventSeq", -1)
+                                .put("state", "PREPARING")
                                 .put("positionMs", 0);
+                        ((ObjectNode) n.path("playback")).remove("durationMs");
+                        startActivity(n, null);
                     }
+                    if (action.equals("STOP")) finishActivity(n, "STOPPED");
                     command(n, action);
                 }
                 default -> throw fail(400, "未知操作");
@@ -455,6 +475,7 @@ public class TvService {
         receipts.put(receipt, signature);
         if (receipts.size() > 1000) throw fail(409, "本场操作数量已达上限，请结束后重新开场");
         save(n);
+        prefetch.changed(n, action.equals("STOP"));
         return publicSnapshot(n, actor);
     }
 
@@ -466,6 +487,20 @@ public class TvService {
         commands.add(c);
     }
 
+    private void startActivity(ObjectNode session, JsonNode item) {
+        var playback = session.path("playback");
+        if (item == null)
+            for (var candidate : session.path("queue"))
+                if (candidate.path("id").asText().equals(playback.path("itemId").asText())) item = candidate;
+        String requestedBy = item == null ? "" : item.path("ownerName").asText("");
+        activity.startTv(playback.path("attemptId").asText(), session.path("id").asText(),
+                playback.path("songId").asText(), get(session.path("deviceId").asText()).path("name").asText(""), requestedBy);
+    }
+
+    private void finishActivity(ObjectNode session, String state) {
+        activity.finishTv(session.path("id").asText(), session.path("playback").path("attemptId").asText(), state);
+    }
+
     @Transactional
     public ObjectNode event(ObjectNode actor, String sid, JsonNode event) {
         if (!actor.path("kind").asText().equals("device")) throw fail(403, "仅电视可报告播放");
@@ -474,24 +509,44 @@ public class TvService {
         check(actor, n);
         String ack = event.path("commandId").asText();
         var commands = (ArrayNode) n.path("commands");
+        boolean progress = false;
+        boolean acknowledged = false;
         if (!ack.isEmpty()) {
             int index = -1;
             for (int i = 0; i < commands.size(); i++)
                 if (commands.get(i).path("id").asText().equals(ack)) index = i;
-            if (index >= 0) for (int i = 0; i <= index; i++) commands.remove(0);
+            if (index >= 0) {
+                for (int i = 0; i <= index; i++) commands.remove(0);
+                acknowledged = true;
+            }
         }
         if (event.has("attemptId")) {
             var p = (ObjectNode) n.get("playback");
             if (p == null || !p.path("attemptId").asText().equals(event.path("attemptId").asText()))
                 throw fail(409, "旧播放实例已失效");
             long seq = event.path("eventSeq").asLong(-1);
-            if (seq <= p.path("eventSeq").asLong(-1)) return publicSnapshot(n, actor);
+            if (seq <= p.path("eventSeq").asLong(-1)) {
+                if (acknowledged) {
+                    save(n);
+                    prefetch.changed(n, false, false);
+                }
+                return publicSnapshot(n, actor);
+            }
             String state = text(event, "state", 20);
             if (!Set.of("PREPARING", "BUFFERING", "PLAYING", "PAUSED", "ENDED", "ERROR", "IDLE")
                     .contains(state)) throw fail(400, "播放状态无效");
+            if (event.has("durationMs")) {
+                var duration = event.path("durationMs");
+                if (!duration.isIntegralNumber() || !duration.canConvertToLong()
+                        || duration.asLong() <= 0 || duration.asLong() > TvPrefetchService.MAX_DURATION_MS)
+                    throw fail(400, "播放总时长无效");
+                p.put("durationMs", duration.asLong());
+            }
+            activity.reportTv(sid, p.path("attemptId").asText(), event);
             p.put("state", state)
                     .put("eventSeq", seq)
                     .put("positionMs", Math.max(0, event.path("positionMs").asLong()));
+            progress = true;
             for (var q : n.path("queue"))
                 if (q.path("id").asText().equals(p.path("itemId").asText())) {
                     if (state.equals("PLAYING")) ((ObjectNode) q).put("status", "PLAYING");
@@ -505,6 +560,7 @@ public class TvService {
                 }
         }
         save(n);
+        prefetch.changed(n, false, progress);
         return publicSnapshot(n, actor);
     }
 
@@ -624,45 +680,6 @@ public class TvService {
                         + AuthCrypto.hash(
                                 n.toString() + json.valueToTree(s.metadata()).toString()));
         return n;
-    }
-
-    public Map<String, Object> artists(String keyword, int page, int size, String artistId) {
-        if (page < 0 || size < 1 || size > 100 || keyword.length() > 200)
-            throw fail(400, "分页或搜索参数无效");
-        var grouped = new TreeMap<String, List<ObjectNode>>();
-        for (var row : db.library()) {
-            var song = projection(songs.song(row));
-            for (var credit : song.path("artists")) {
-                String name = credit.asText();
-                if (!name.isBlank())
-                    grouped.computeIfAbsent(name, k -> new ArrayList<>()).add(song);
-            }
-        }
-        var items = new ArrayList<ObjectNode>();
-        for (var entry : grouped.entrySet()) {
-            String key = AuthCrypto.hash(entry.getKey());
-            if (artistId != null) {
-                if (key.equals(artistId)) items.addAll(entry.getValue());
-            } else if (entry.getKey()
-                    .toLowerCase(Locale.ROOT)
-                    .contains(keyword.toLowerCase(Locale.ROOT)))
-                items.add(
-                        json.createObjectNode()
-                                .put("id", key)
-                                .put("name", entry.getKey())
-                                .put("count", entry.getValue().size()));
-        }
-        int from = (int) Math.min(items.size(), (long) page * size),
-                to = Math.min(items.size(), from + size);
-        return Map.of(
-                "items",
-                items.subList(from, to),
-                "page",
-                page,
-                "size",
-                size,
-                "totalElements",
-                items.size());
     }
 
     public String resource(ObjectNode actor, String song) {

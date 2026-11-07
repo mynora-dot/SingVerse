@@ -21,8 +21,8 @@ const preview = ref<Batch>(), starting = ref(false)
 const songsTab = ref<InstanceType<typeof SongsTab>>(), batchesTab = ref<InstanceType<typeof BatchesTab>>()
 const tabButtons = ref<HTMLButtonElement[]>([])
 const readiness = computed(() => evaluate(node.value, nodeError.value))
-const activeBatches = computed(() => batches.value.filter(batch => batch.state === 'QUEUED').length)
-let active = true, timer: ReturnType<typeof setTimeout> | undefined
+const activeBatches = computed(() => batches.value.filter(batch => ['PREPARING', 'QUEUED'].includes(batch.state)).length)
+let active = true, timer: ReturnType<typeof setTimeout> | undefined, batchRequest = 0, previewGeneration = 0
 
 function setup() { void router.push('/system/compute#audio-models') }
 watch(() => route.query.tab, value => { if (value === 'setup') void router.replace('/system/compute#audio-models') }, { immediate: true })
@@ -43,11 +43,13 @@ async function loadNode(refresh = false) {
   catch (failed) { if (active) nodeError.value = failure(failed, '无法连接计算节点') }
 }
 async function loadBatches() {
+  const turn = ++batchRequest
   const value = await authRequest<{ items: Batch[]; totalElements: number }>(`${base}/batches?page=${batchPage.value}`)
-  if (active) { batches.value = value.items; batchTotal.value = value.totalElements }
+  if (active && turn === batchRequest) { batches.value = value.items; batchTotal.value = value.totalElements }
 }
 async function refresh(first = false) {
   const work: Promise<unknown>[] = [loadNode(), loadBatches()]
+  if (preview.value?.state === 'PREPARING' && !starting.value) work.push(loadPreview())
   if (!first) work.push(tab.value === 'songs' ? songsTab.value?.refresh() ?? Promise.resolve() : tab.value === 'tasks' ? batchesTab.value?.refresh() ?? Promise.resolve() : Promise.resolve())
   const results = await Promise.allSettled(work)
   if (!active) return
@@ -55,19 +57,39 @@ async function refresh(first = false) {
   error.value = rejected ? failure(rejected.reason, '读取失败') : ''
 }
 async function poll(first = false) { await refresh(first); if (active) timer = setTimeout(() => { void poll() }, 4000) }
-function changeBatchPage(next: number) { batchPage.value = next; void loadBatches().catch(failed => { error.value = failure(failed) }) }
+function changeBatchPage(next: number) { batchPage.value = next; void loadBatches().catch(failed => { if (active) error.value = failure(failed) }) }
+function showPreview(value: Batch) { previewGeneration++; preview.value = value }
 async function start() {
-  if (!preview.value) return
+  if (!active || starting.value || preview.value?.state !== 'PREVIEW') return
+  const id = preview.value.id, turn = ++previewGeneration
   starting.value = true; error.value = ''
   try {
-    const value = await authRequest<Batch>(`${base}/batches/${encodeURIComponent(preview.value.id)}/submit`, 'POST')
-    if (!active) return
+    const value = await authRequest<Batch>(`${base}/batches/${encodeURIComponent(id)}/submit`, 'POST')
+    if (!active || turn !== previewGeneration) return
     preview.value = undefined; songsTab.value?.clear(); batchPage.value = 0
-    await loadBatches(); focus.value = ''; await nextTick(); focus.value = value.id; navigate('tasks')
+    await loadBatches(); if (!active) return; focus.value = ''; await nextTick(); if (active) { focus.value = value.id; navigate('tasks') }
   } catch (failed) { if (active) error.value = failure(failed, '无法开始生成') }
   finally { if (active) starting.value = false }
 }
-async function closePreview() { preview.value = undefined; await loadBatches().catch(() => undefined) }
+async function closePreview() { if (starting.value) return; previewGeneration++; preview.value = undefined; await loadBatches().catch(() => undefined) }
+async function loadPreview() {
+  const id = preview.value?.id, turn = previewGeneration
+  if (!id) return
+  const value = await authRequest<Batch>(`${base}/batches/${encodeURIComponent(id)}?page=0`)
+  if (active && turn === previewGeneration && preview.value?.id === id) preview.value = value
+}
+async function cancelPreparation() {
+  const id = preview.value?.id
+  if (!active || !id || starting.value) return
+  const turn = ++previewGeneration
+  starting.value = true
+  try {
+    const value = await authRequest<Batch>(`${base}/batches/${encodeURIComponent(id)}/cancel`, 'POST')
+    if (!active || turn !== previewGeneration || preview.value?.id !== id) return
+    preview.value = value; await loadBatches()
+  } catch (failed) { if (active) error.value = failure(failed, '取消准备失败') }
+  finally { if (active) starting.value = false }
+}
 onMounted(() => { void poll(true) })
 onBeforeUnmount(() => { active = false; clearTimeout(timer) })
 </script>
@@ -87,11 +109,11 @@ onBeforeUnmount(() => { active = false; clearTimeout(timer) })
     <ElAlert v-if="error" :title="error" type="error" show-icon :closable="false" role="alert" class="page-error" />
     <section :id="'audio-panel-' + tab" role="tabpanel" :aria-labelledby="'audio-tab-' + tab" class="panel">
       <KeepAlive>
-        <SongsTab v-if="tab === 'songs'" ref="songsTab" :song-id="songId" :readiness="readiness" :backends="node?.backends || []" @preview="preview = $event" @setup="setup()" @show-all="navigate('songs')" />
-        <BatchesTab v-else-if="tab === 'tasks'" ref="batchesTab" :batches="batches" :total="batchTotal" :page="batchPage" :focus="focus" :backends="node?.backends || []" @preview="preview = $event" @page="changeBatchPage" @changed="loadBatches" @songs="navigate('songs')" />
+        <SongsTab v-if="tab === 'songs'" ref="songsTab" :song-id="songId" :readiness="readiness" :backends="node?.backends || []" @preview="showPreview" @setup="setup()" @show-all="navigate('songs')" />
+        <BatchesTab v-else-if="tab === 'tasks'" ref="batchesTab" :batches="batches" :total="batchTotal" :page="batchPage" :focus="focus" :backends="node?.backends || []" @preview="showPreview" @page="changeBatchPage" @changed="loadBatches" @songs="navigate('songs')" />
       </KeepAlive>
     </section>
-    <BatchConfirmDialog :batch="preview" :ready="readiness.ready" :busy="starting" @start="start" @close="closePreview" />
+    <BatchConfirmDialog :batch="preview" :ready="readiness.ready" :busy="starting" @start="start" @close="closePreview" @cancel="cancelPreparation" />
   </main>
 </template>
 

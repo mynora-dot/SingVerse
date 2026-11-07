@@ -72,6 +72,20 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('explicit restart is a new playback intent rather than a seek', (
+    tester,
+  ) async {
+    await player(tester, const Size(390, 844));
+    final restart = find.text('重唱');
+    await tester.ensureVisible(restart);
+    await tester.tap(restart);
+    await tester.pumpAndSettle();
+    expect(native.commands, [
+      {'action': 'restart', 'value': 0},
+      {'action': 'play', 'value': null},
+    ]);
+  });
+
   for (final scenario in [
     (false, const Size(390, 844), 1.0),
     (true, const Size(390, 844), 1.0),

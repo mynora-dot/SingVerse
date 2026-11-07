@@ -12,7 +12,12 @@ class MiniPlayer extends StatelessWidget {
   final AppState state;
   final NavigatorState? navigator;
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: state.performance,
+    builder: (context, _) => _build(context),
+  );
+
+  Widget _build(BuildContext context) {
     if (state.current == null) return const SizedBox.shrink();
     final playbackLabel = switch (state.playbackState) {
       'PREPARING' => '正在准备',

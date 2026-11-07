@@ -48,17 +48,27 @@ class KaraokeEngine(private val context: Context, private val track: () -> Audio
         require(works.root.usableSpace > 64L * 1024 * 1024) { "手机空间不足，无法开始录唱" }
         val mic = microphone()
         val id = UUID.randomUUID().toString()
-        val voice = KaraokePcm.create(works.file(id, "voice.wav"))
-        val backing = KaraokePcm.create(works.backing(id))
+        var voiceFile: RandomAccessFile? = null
+        var backingFile: RandomAccessFile? = null
         meta = JSONObject().put("id", id).put("song", song).put("instanceId", server)
             .put("name", song.optString("title", "我的演唱")).put("createdAt", System.currentTimeMillis())
             .put("settings", settings).put("status", "RECORDING").put("complete", false)
-        works.put(meta)
         takeId = id; error = ""; voiceFrames = 0; backingFrames = 0; audibleFrames = 0
         voiceZeroNs = 0; playbackZeroNs = 0; voiceTimestampAvailable = false; level = 0.0; clipped = false; pending.clear()
-        recorder = mic; startedNs = System.nanoTime()
-        try { mic.start(); require(mic.isRecording) { "麦克风未开始采集" } }
-        catch (e: Exception) { voice.close(); backing.close(); mic.close(); phase = "FAILED"; error = e.message ?: "麦克风启动失败"; meta.put("status", "FAILED").put("interruption", error); works.put(meta); changed(); throw e }
+        startedNs = System.nanoTime()
+        val (voice, backing) = try {
+            val voice = KaraokePcm.create(works.file(id, "voice.wav")).also { voiceFile = it }
+            val backing = KaraokePcm.create(works.backing(id)).also { backingFile = it }
+            works.put(meta)
+            mic.start(); require(mic.isRecording) { "麦克风未开始采集" }
+            Pair(voice, backing)
+        } catch (e: Exception) {
+            runCatching { voiceFile?.close() }; runCatching { backingFile?.close() }; runCatching { mic.close() }
+            recorder = null; phase = "FAILED"; error = e.message ?: "麦克风启动失败"
+            meta.put("status", "FAILED").put("interruption", error)
+            runCatching { works.put(meta) }; changed(); throw e
+        }
+        recorder = mic
         capturing = true; phase = "RECORDING"
         backingWriter = Thread({
             try {
@@ -150,7 +160,10 @@ class KaraokeEngine(private val context: Context, private val track: () -> Audio
         if (!start) { if (phase == "TESTING") { capturing = false; runCatching { recorder?.stop() }; reader?.join(1000); require(reader?.isAlive != true) { "麦克风仍在收尾，请稍后重试" }; phase = "IDLE"; level = 0.0; changed() }; return }
         require(phase !in listOf("RECORDING", "FINALIZING", "RENDERING")) { "录唱中不能重新试音" }
         if (phase == "TESTING") return
-        val mic = microphone(); mic.start(); recorder = mic; capturing = true; phase = "TESTING"; level = 0.0; clipped = false; error = ""
+        val mic = microphone()
+        try { mic.start(); require(mic.isRecording) { "麦克风未开始采集" } }
+        catch (e: Exception) { runCatching { mic.close() }; throw e }
+        recorder = mic; capturing = true; phase = "TESTING"; level = 0.0; clipped = false; error = ""
         reader = Thread({
             val data = ShortArray(960)
             try { while (capturing && phase == "TESTING") {

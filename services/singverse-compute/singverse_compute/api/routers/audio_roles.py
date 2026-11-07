@@ -7,7 +7,6 @@ from ..dependencies import require_internal_auth
 from .transcoding import Input, ID
 from pathlib import Path
 import hashlib
-from ...application.audio_models import MAX_BYTES
 from ...application.audio_catalog import BASELINE, manifest
 from ...core.errors import ComputeError
 
@@ -23,7 +22,7 @@ class Submit(Input):
 
 @router.post('/tasks', status_code=202, description='FAST reads paired explicit role labels first; otherwise compares paired vocal scores on three short dual-track excerpts with optional PANNs Cnn6 (fast-vocal-v2), adding up to three excerpts only for sparse evidence. Missing classifier or ambiguous evidence remains UNKNOWN, with no automatic separation fallback. ANALYZE is explicit deep recognition and uses up to five disjoint windows, first trying two. Task result includes state, reason for UNKNOWN, and evidence with analysisVersion=vocal-activity-v2, vocalRatio pairs, votes, informativeWindows and window activity. Silent intervals abstain; conflicting directions or labels remain UNKNOWN. Ratios are evidence, not probabilities. Existing task identifiers retain idempotency; Java creates a new identifier for explicit re-analysis of an UNKNOWN result.')
 def submit(request: Request, body: Submit):
-    return request.app.state.audio_roles.submit(body.id, None, body.reference, body.mode, body.backend, body.callbackOrigin)
+    return request.app.state.audio_roles.submit(body.id, body.reference, body.mode, body.backend, body.callbackOrigin)
 
 
 @router.get('/models')

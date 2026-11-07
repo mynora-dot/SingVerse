@@ -27,7 +27,7 @@ class TranscodingHttpTest(unittest.TestCase):
         (cls.root/'media').mkdir()
         token = cls.root/'token'
         token.write_text('t'*64)
-        cls.settings = Settings((), token, transcode_root=cls.root/'cache', minimum_free_bytes=0,
+        cls.settings = Settings(token_file=token, transcode_root=cls.root/'cache', minimum_free_bytes=0,
                                 hardware_backend='software')
         cls.source = cls.root/'media'/'测试.mkv'
         subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','testsrc2=s=160x90:r=25:d=2',
@@ -79,7 +79,6 @@ class TranscodingHttpTest(unittest.TestCase):
         negotiated=json.loads(self.request('/negotiate',{'path':str(self.source)})[1])
         self.assertEqual(negotiated['mode'],'TRANSCODE')
     def test_audio_probe_and_fast_read_business_media_without_mounts(self):
-        self.assertEqual(self.app.state.settings.media_roots, ())
         for thread in self.app.state.transcoding.threads:
             thread.join(timeout=10)
         base=self.base.removesuffix('/transcoding')+'/audio-roles/tasks'
@@ -115,6 +114,63 @@ class TranscodingHttpTest(unittest.TestCase):
             self.request('/negotiate', {**body, 'client':{**client, 'family':'android-mobile'}})
         self.assertEqual(caught.exception.code, 422)
         caught.exception.close()
+
+    def test_authenticated_status_does_not_wait_for_a_model_environment_probe(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        audio = self.app.state.audio_roles
+        original = audio.models
+        locked, proceed = threading.Event(), threading.Event()
+        models = SimpleNamespace(environment={'fingerprint':'known'}, lock=threading.RLock(),
+                                 model_valid=Mock(return_value=False), selected=Mock(return_value=None))
+        def probing():
+            with models.lock:
+                locked.set(); proceed.wait(3)
+        holder = threading.Thread(target=probing); holder.start()
+        try:
+            self.assertTrue(locked.wait(1))
+            audio.models = models
+            endpoint = self.base.removesuffix('/transcoding') + '/status'
+            with urlopen(Request(endpoint, headers={'Authorization':'Bearer '+'t'*64}), timeout=1) as response:
+                status = json.load(response)
+            self.assertIn('transcode-hls',status['capabilities'])
+            self.assertNotIn('audio-separation',status['capabilities'])
+            models.selected.assert_not_called()
+        finally:
+            audio.models = original; proceed.set(); holder.join(2)
+
+    def test_negotiate_and_create_reuse_one_real_remote_probe(self):
+        from unittest.mock import patch
+        service = self.app.state.transcoding
+        for thread in service.threads: thread.join(10)
+        grant = self.callback.grant(self.source)
+        identifier = str(uuid.uuid4())
+        with patch.object(service.probe, 'read', wraps=service.probe.read) as probe:
+            self.request('/negotiate', {**grant, 'fingerprint':'same-immutable-source'})
+            self.request('/executions', {**grant, 'id':identifier, 'fingerprint':'same-immutable-source',
+                                        'target':{'mode':'TRANSCODE', 'fmp4':True}})
+            result = self.wait(identifier)
+            self.assertEqual(result['state'], 'SUCCEEDED', result)
+            self.assertTrue(result['ready'])
+            self.assertEqual(probe.call_count, 1, 'The remote input must not be probed again after negotiation')
+
+    def test_compatibility_output_really_uses_baseline_level_without_b_frames_and_aac(self):
+        identifier, _ = self.create(mode='TRANSCODE', codec='h264', profile='baseline', level=31,
+                                    width=1280, height=720, fps=30, fmp4=True)
+        result = self.wait(identifier)
+        self.assertEqual(result['state'], 'SUCCEEDED', result)
+        video = json.loads(subprocess.check_output(['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+            '-show_entries', 'stream=codec_name,profile,level,has_b_frames', '-of', 'json',
+            str(self.root/'cache'/identifier/'stream_0.m3u8')]))['streams'][0]
+        self.assertEqual(video['codec_name'], 'h264')
+        self.assertIn(video['profile'], ('Baseline', 'Constrained Baseline'))
+        self.assertEqual(video['level'], 31)
+        self.assertEqual(video['has_b_frames'], 0)
+        for name in ('audio0', 'audio1'):
+            audio = json.loads(subprocess.check_output(['ffprobe', '-v', 'error', '-select_streams', 'a:0',
+                '-show_entries', 'stream=codec_name', '-of', 'json',
+                str(self.root/'cache'/identifier/f'stream_{name}.m3u8')]))['streams'][0]
+            self.assertEqual(audio['codec_name'], 'aac')
 
     def test_hls_and_offline_multi_audio_readonly(self):
         for purpose in ['REALTIME','OFFLINE']:

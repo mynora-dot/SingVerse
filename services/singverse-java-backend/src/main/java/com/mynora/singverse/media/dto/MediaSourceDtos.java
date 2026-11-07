@@ -19,7 +19,15 @@ public final class MediaSourceDtos {
             boolean passwordConfigured,
             String createdAt,
             String updatedAt, boolean scanEnabled, String scanCron, String nextScanAt,
-            String lastScanAt, String lastScanStatus, String lastScanError) {}
+            String lastScanAt, String lastScanStatus, String lastScanError,
+            @com.fasterxml.jackson.annotation.JsonIgnore String configurationFingerprint) {
+        public Source(String id, String name, String type, String location, String username, String parserProfileId,
+                boolean passwordConfigured, String createdAt, String updatedAt, boolean scanEnabled, String scanCron,
+                String nextScanAt, String lastScanAt, String lastScanStatus, String lastScanError) {
+            this(id, name, type, location, username, parserProfileId, passwordConfigured, createdAt, updatedAt,
+                    scanEnabled, scanCron, nextScanAt, lastScanAt, lastScanStatus, lastScanError, null);
+        }
+    }
 
     public static boolean sameScanConfiguration(Source a, Source b) {
         return java.util.Objects.equals(a.id(), b.id()) && java.util.Objects.equals(a.updatedAt(), b.updatedAt())

@@ -10470,6 +10470,7 @@
           "TV and party"
         ],
         "summary": "TV actual playback event and ordered command acknowledgment",
+        "description": "Bind the reporting clock when a confirmed LOAD starts, before media readiness. PREPARING heartbeats every 15 seconds keep actualPlayedMs at zero and lastActivityAt null; ready media keeps the same clock anchor. An expired activity attempt cannot resume telemetry, but current-attempt ENDED/IDLE still synchronize terminal queue control without reviving history, actual counters, heat, recency or its lease.",
         "operationId": "tv_post_tv_sessions_id_playback_events",
         "security": [
           {
@@ -10498,6 +10499,9 @@
           },
           "409": {
             "description": "Revision conflict or state does not allow operation"
+          },
+          "410": {
+            "description": "Playback activity lease expired; new telemetry requires a new server-owned attempt. Current-attempt ENDED/IDLE can still update terminal queue control without reviving activity history"
           }
         },
         "parameters": [
@@ -10541,6 +10545,48 @@
                   "positionMs": {
                     "type": "integer",
                     "format": "int64"
+                  },
+                  "durationMs": {
+                    "type": "integer",
+                    "format": "int64",
+                    "minimum": 1,
+                    "maximum": 86400000,
+                    "description": "Optional actual total duration in milliseconds on the original song timeline, including an HLS offset. Omit when unknown. Only accepted for the current attempt and a newer eventSeq; used with PLAYING position to prefetch the next WAITING original file within the final 30 seconds."
+                  },
+                  "actualPlayedMs": {
+                    "type": "integer",
+                    "format": "int64",
+                    "minimum": 0,
+                    "maximum": 2592000000,
+                    "description": "Cumulative actual main-media playing wall-clock milliseconds; exclude pause, buffering, preparation and seeks. Optional together for older TV compatibility; no listening time is inferred from positionMs when omitted."
+                  },
+                  "elapsedMs": {
+                    "type": "integer",
+                    "format": "int64",
+                    "minimum": 0,
+                    "maximum": 2592000000,
+                    "description": "Monotonic elapsed wall-clock milliseconds since attempt creation. Counters cannot decrease; actual increments cannot exceed elapsed increments plus 1000ms and elapsed cannot exceed server elapsed plus 5000ms. Optional together for older TV compatibility; no listening time is inferred from positionMs when omitted."
+                  },
+                  "startedAt": {
+                    "type": "integer",
+                    "format": "int64",
+                    "minimum": 0,
+                    "description": "Optional client UTC epoch-millisecond clock anchor for this server-owned attempt. First report binds it; later reports cannot change it. Must not predate the server attempt start by more than 5000ms."
+                  },
+                  "occurredAt": {
+                    "type": "integer",
+                    "format": "int64",
+                    "minimum": 0,
+                    "description": "UTC epoch milliseconds captured with this event, anchored to startedAt plus monotonic elapsedMs. Preserve the sampled value across queues/retries; never replace it with send/receive time. Must agree with startedAt+elapsedMs within 5000ms and not exceed server time by more than 5000ms. Lease expires at the event occurrence time plus 120 seconds."
+                  },
+                  "lastActivityAt": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "minimum": 0,
+                    "description": "UTC epoch milliseconds of the last actual main-media playing activity in this snapshot, or null before playback starts. Advance only on actual playing time or a real resume; freeze during pause/buffering and across queued sends/retries. Recency and 24-hour protection use this occurrence time, not receipt time. Cannot exceed occurredAt (5000ms clock tolerance)."
                   }
                 },
                 "required": []
@@ -11611,44 +11657,6 @@
             "description": "Profile, binding or image changed; refresh before retry"
           }
         }
-      },
-      "post": {
-        "operationId": "createArtist",
-        "summary": "Create a distinct artist; homonymous names are allowed",
-        "tags": [
-          "Artist library"
-        ],
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "X-CSRF-Token",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "410": {
-            "description": "Artists are now derived automatically; correct the song metadata instead"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ArtistSave"
-              }
-            }
-          }
-        },
-        "deprecated": true
       }
     },
     "/api/v1/artists/{id}": {
@@ -11700,52 +11708,6 @@
             "description": "Profile, binding or image changed; refresh before retry"
           }
         }
-      },
-      "put": {
-        "operationId": "updateArtist",
-        "summary": "Update metadata with expected revision; disabling preserves songs and bindings",
-        "tags": [
-          "Artist library"
-        ],
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "X-CSRF-Token",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "410": {
-            "description": "Artists are now derived automatically; correct the song metadata instead"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ArtistSave"
-              }
-            }
-          }
-        },
-        "deprecated": true
       }
     },
     "/api/v1/artists/{id}/category": {
@@ -11892,158 +11854,6 @@
             "description": "Profile, binding or image changed; refresh before retry"
           }
         }
-      }
-    },
-    "/api/v1/artists/credits": {
-      "get": {
-        "operationId": "listArtistCredits",
-        "summary": "List current song-credit occurrences without guessing identities",
-        "tags": [
-          "Artist library"
-        ],
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "maxLength": 200
-            }
-          },
-          {
-            "name": "page",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 1000000
-            }
-          },
-          {
-            "name": "size",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100
-            }
-          },
-          {
-            "name": "unbound",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "default": true
-            }
-          },
-          {
-            "name": "artistId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "items",
-                    "page",
-                    "size",
-                    "totalElements"
-                  ],
-                  "properties": {
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/ArtistCredit"
-                      }
-                    },
-                    "page": {
-                      "type": "integer"
-                    },
-                    "size": {
-                      "type": "integer"
-                    },
-                    "totalElements": {
-                      "type": "integer"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input"
-          },
-          "401": {
-            "description": "Authentication required"
-          },
-          "403": {
-            "description": "Not authorized"
-          },
-          "404": {
-            "description": "Artist or image missing"
-          },
-          "409": {
-            "description": "Profile, binding or image changed; refresh before retry"
-          }
-        }
-      }
-    },
-    "/api/v1/artists/bindings": {
-      "post": {
-        "operationId": "bindArtistCredits",
-        "summary": "Atomically bind or unbind up to 100 explicit current song credits with binding revisions",
-        "tags": [
-          "Artist library"
-        ],
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "X-CSRF-Token",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "410": {
-            "description": "Artists are now derived automatically; correct the song metadata instead"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ArtistBind"
-              }
-            }
-          }
-        },
-        "deprecated": true
       }
     },
     "/api/v1/artists/{id}/images/{kind}": {
@@ -14972,7 +14782,7 @@
         ]
       },
       "head": {
-        "operationId": "readMetadataInput",
+        "operationId": "readMetadataInputHeaders",
         "summary": "读取任务授权媒体范围头部",
         "responses": {
           "400": {
@@ -15960,7 +15770,7 @@
     },
     "/api/v1/audio-processing/songs": {
       "get": {
-        "summary": "Filter songs with current audio roles and separation eligibility",
+        "summary": "Filter a lightweight library snapshot and load current audio details only for the selected page",
         "operationId": "audioProcessingGetSongs",
         "security": [
           {
@@ -15983,6 +15793,24 @@
                     },
                     "totalElements": {
                       "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "size": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "generation": {
+                      "type": "integer",
+                      "format": "int64",
+                      "description": "Published filter snapshot generation"
+                    },
+                    "building": {
+                      "type": "boolean",
+                      "description": "A snapshot is being refreshed. Existing snapshot counts and filters remain usable until replacement."
                     }
                   }
                 }
@@ -16005,7 +15833,15 @@
             "description": "Runtime or model not qualified"
           },
           "503": {
-            "description": "Compute node unavailable"
+            "description": "Initial audio catalog snapshot is still building; retry after one second",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "const": 1
+                }
+              }
+            }
           }
         },
         "parameters": [
@@ -16149,7 +15985,7 @@
     },
     "/api/v1/audio-processing/batches/preview": {
       "post": {
-        "summary": "Create immutable selection snapshot; previews expire after one day",
+        "summary": "Prepare an immutable selection snapshot asynchronously in bounded transactions; previews expire after one day",
         "operationId": "audioProcessingPostBatchesPreview",
         "security": [
           {
@@ -16157,16 +15993,6 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AudioProcessingBatch"
-                }
-              }
-            }
-          },
           "400": {
             "description": "Invalid selection or pagination"
           },
@@ -16183,7 +16009,28 @@
             "description": "Runtime or model not qualified"
           },
           "503": {
-            "description": "Compute node unavailable"
+            "description": "Initial audio catalog snapshot is still building; retry after one second",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "const": 1
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted. Poll batch detail until PREPARING becomes PREVIEW, FAILED or CANCELLED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioProcessingBatch"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Another selection snapshot is being prepared; retry after that preparation finishes"
           }
         },
         "requestBody": {
@@ -16293,7 +16140,7 @@
             "description": "CSRF validation required for mutations"
           },
           "409": {
-            "description": "Node, model or execution state changed"
+            "description": "Batch is still PREPARING, or node, model or execution state changed"
           },
           "422": {
             "description": "Runtime or model not qualified"
@@ -16375,16 +16222,6 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AudioProcessingBatch"
-                }
-              }
-            }
-          },
           "400": {
             "description": "Invalid selection or pagination"
           },
@@ -16401,7 +16238,28 @@
             "description": "Runtime or model not qualified"
           },
           "503": {
-            "description": "Compute node unavailable"
+            "description": "Initial audio catalog snapshot is still building; retry after one second",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "const": 1
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted. Poll batch detail until PREPARING becomes PREVIEW, FAILED or CANCELLED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioProcessingBatch"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Another selection snapshot is being prepared; retry after that preparation finishes"
           }
         },
         "parameters": [
@@ -17352,9 +17210,9 @@
             "sessionCookie": []
           }
         ],
-        "summary": "List complete decoded audio/video caches stored by the Java server",
+        "summary": "List realtime HLS and partial or complete original-file caches stored by Java",
         "operationId": "listSongCache",
-        "description": "Default size 20, maximum 100. Sorted by lastAccessAt descending, then id ascending. Lists complete realtime HLS outputs verified and atomically published to Java-owned persistent storage. Saved offline compatibility versions keep their existing lifecycle. Cache settings, index and per-session leases persist in the business database. Listing, settings, deletion, clearing and authorized cache playback work while compute is offline. No media paths or compute address are exposed.",
+        "description": "Default size 20, maximum 100. Sorted by lastAccessAt descending, then id ascending. Includes verified, atomically published realtime HLS outputs and partial or complete original-file block caches. Original entries use target.mode=ORIGINAL and cachedBytes/sourceBytes/complete; partial entries still require authorized source reads for missing ranges. Saved offline compatibility versions keep their existing lifecycle. Cache settings, index and per-session leases persist in the business database. Listing, settings, deletion, clearing and authorized cache playback work while compute is offline. No media paths or compute address are exposed.",
         "parameters": [
           {
             "name": "page",
@@ -17595,7 +17453,7 @@
             }
           }
         },
-        "description": "Persist server-owned cache capacity and policy in the business database with revision protection. Defaults initialize from Java deployment configuration. No compute connection is required."
+        "description": "Persist server-owned capacity, HYBRID/MANUAL policy and optional integer high/low percentages using revision CAS. The four legacy required fields remain valid; omitted watermarks retain their persisted values. Unknown fields are rejected. Legacy automatic policies normalize to HYBRID. A settings save does not wait for filesystem reclamation."
       }
     },
     "/api/v1/transcoding/cache/{id}": {
@@ -17627,6 +17485,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "confirmRecent",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "Explicitly acknowledge overriding only this entry's recent-play protection. Never overrides pins or active playback/download; unpin the song first."
           }
         ],
         "responses": {
@@ -17714,7 +17581,7 @@
             }
           }
         },
-        "description": "Delete the Java-owned files before removing their database index. Active session leases return 409. No compute connection is required."
+        "description": "Legacy single-entry deletion. Song pin must be removed first. Active playback/download can never be overridden. Recent-play protection requires explicit confirmRecent=true after user confirmation. Filesystem deletion occurs before index removal."
       }
     },
     "/api/v1/transcoding/cache/clear": {
@@ -17727,7 +17594,7 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Clear decoded caches while preserving active playback leases",
+        "summary": "Clear unprotected cache entries (legacy synchronous endpoint)",
         "operationId": "clearSongCache",
         "parameters": [
           {
@@ -17831,7 +17698,7 @@
             }
           }
         },
-        "description": "Clear unleased Java-owned cache files; active playback leases are counted as skipped. No compute connection is required."
+        "description": "Backward-compatible synchronous clear returning removed/skipped. Pins, active playback/download and actual playback within 24 hours are protected. New clients should use background cleanup jobs for progress, cancellation and partial-failure details."
       }
     },
     "/api/v1/compute-node/discovery": {
@@ -17978,7 +17845,7 @@
       "get": {
         "operationId": "listPlaybackHistory",
         "summary": "List persisted playback attempts",
-        "description": "Filters are applied before database pagination. Stable ordering: startedAt descending, id descending. Records are not reconstructed from the queue. No playback reporting or manual record creation endpoint is provided.",
+        "description": "Filters precede database pagination. Stable ordering: startedAt descending, id descending. Records originate from authenticated, server-owned TV/MOBILE/ADMIN actual playback attempts; ADMIN previews protect caches but remain ineffective and absent from popularity counts. Queue positions and media-download hits are not reconstructed as listening time.",
         "security": [
           {
             "sessionCookie": []
@@ -18592,6 +18459,1004 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/transcoding/cache/pins": {
+      "get": {
+        "tags": [
+          "Transcoding"
+        ],
+        "operationId": "songCacheListPins",
+        "summary": "List song pins, including songs without cached variants",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0,
+              "maximum": 1000000,
+              "default": 0
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SongCachePinPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or clock",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Administrator login required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Owner, write token, origin or CSRF rejected",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict, protected cache or expired playback attempt",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "description": "Pins survive cache eviction and protect future variants for the same song ID; no full-file download is implied."
+      }
+    },
+    "/api/v1/transcoding/cache/songs/{songId}/pin": {
+      "put": {
+        "tags": [
+          "Transcoding"
+        ],
+        "operationId": "songCacheSetPin",
+        "summary": "Set a song-level cache pin with revision protection",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "songId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SongCachePinResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or clock",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Administrator login required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Owner, write token, origin or CSRF rejected",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict, protected cache or expired playback attempt",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SongCachePinRequest"
+              }
+            }
+          }
+        },
+        "description": "Song-level pin covers all original/HLS variants and future cache entries. Removing a pin does not remove files or override playback/recent protection. Revision conflict returns 409."
+      }
+    },
+    "/api/v1/transcoding/cache/cleanup-jobs": {
+      "post": {
+        "tags": [
+          "Transcoding"
+        ],
+        "operationId": "songCacheStartCleanup",
+        "summary": "Start bounded asynchronous cache cleanup",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SongCacheCleanupJob"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or clock",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Administrator login required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Owner, write token, origin or CSRF rejected",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict, protected cache or expired playback attempt",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SongCacheCleanupRequest"
+              }
+            }
+          }
+        },
+        "description": "POLICY reclaims toward the configured low watermark; CLEAR removes all unprotected entries; DELETE targets one entry. Batch operations protect song pins, real activity within 24 hours and active playback/download. Work does not block the HTTP request; failures retain safe indexes and completed deletion progress."
+      }
+    },
+    "/api/v1/transcoding/cache/cleanup-jobs/{id}": {
+      "get": {
+        "tags": [
+          "Transcoding"
+        ],
+        "operationId": "songCacheCleanupStatus",
+        "summary": "Read cache cleanup progress and remaining capacity",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SongCacheCleanupJob"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or clock",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Administrator login required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Owner, write token, origin or CSRF rejected",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict, protected cache or expired playback attempt",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transcoding/cache/cleanup-jobs/{id}/cancel": {
+      "post": {
+        "tags": [
+          "Transcoding"
+        ],
+        "operationId": "songCacheCancelCleanup",
+        "summary": "Request cleanup cancellation without waiting for filesystem operations",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SongCacheCleanupJob"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or clock",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Administrator login required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Owner, write token, origin or CSRF rejected",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict, protected cache or expired playback attempt",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "description": "CANCELLING is not final. Already completed deletions and freed byte counts remain in the final result; cancellation never restores removed files."
+      }
+    },
+    "/api/v1/playback-attempts": {
+      "post": {
+        "tags": [
+          "Playback activity"
+        ],
+        "operationId": "createAdminPlaybackAttempt",
+        "summary": "Create a server-owned ADMIN playback activity attempt",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackAttemptGrant"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or clock",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Administrator login required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Owner, write token, origin or CSRF rejected",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict, protected cache or expired playback attempt",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackAttemptRequest"
+              }
+            }
+          }
+        },
+        "description": "Administrator Cookie and CSRF are required. The route fixes client type; request data cannot choose ADMIN/MOBILE or another owner. Actual playing activity protects caches; ADMIN previews never increment effective heat/frequency. Speculative downloads and auxiliary backing players must not create attempts."
+      }
+    },
+    "/api/v1/playback-attempts/{id}/events": {
+      "post": {
+        "tags": [
+          "Playback activity"
+        ],
+        "operationId": "reportAdminPlaybackActivity",
+        "summary": "Report real ADMIN playback clocks",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackActivityResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or clock",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Administrator login required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Owner, write token, origin or CSRF rejected",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Playback attempt has permanently ended (COMPLETED, STOPPED or SKIPPED)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The 120-second playback lease expired; stop this collector until a new explicit playback creates another attempt",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackActivityEvent"
+              }
+            }
+          }
+        },
+        "description": "Attempt ID and random writeToken are issued by Java and bound to the current login session and client type. Duplicate/older sequence cannot replay effects. Actual playback activity refreshes 24-hour protection and recency; paused/buffering heartbeats renew only the 120-second active lease. Original timeline position is not a listening clock. Report the logical main player only, including when it drives a separate backing track. ERROR can recover using a newer event on the same attempt only within 120 seconds of its last occurred event; after that recovery returns 410. COMPLETED/STOPPED/SKIPPED permanently end the attempt. On 410 the client stops this collector without interrupting media playback; a later explicit playback creates a new attempt. Capture occurredAt and lastActivityAt with each snapshot using a fixed UTC/monotonic clock anchor; queued or retried events must retain these values so late delivery cannot refresh recency or leases. Optional timestamp omissions derive occurrence from the accepted anchor and elapsed clock for older clients."
+      }
+    },
+    "/api/v1/mobile/playback-attempts": {
+      "post": {
+        "tags": [
+          "Playback activity"
+        ],
+        "operationId": "createMobilePlaybackAttempt",
+        "summary": "Create a server-owned MOBILE playback activity attempt",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackAttemptGrant"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or clock",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Administrator login required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Owner, write token, origin or CSRF rejected",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict, protected cache or expired playback attempt",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackAttemptRequest"
+              }
+            }
+          }
+        },
+        "description": "Administrator Cookie and CSRF are required. The route fixes client type; request data cannot choose ADMIN/MOBILE or another owner. Actual playing activity protects caches; ADMIN previews never increment effective heat/frequency. Speculative downloads and auxiliary backing players must not create attempts."
+      }
+    },
+    "/api/v1/mobile/playback-attempts/{id}/events": {
+      "post": {
+        "tags": [
+          "Playback activity"
+        ],
+        "operationId": "reportMobilePlaybackActivity",
+        "summary": "Report real MOBILE playback clocks",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackActivityResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or clock",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Administrator login required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Owner, write token, origin or CSRF rejected",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Playback attempt has permanently ended (COMPLETED, STOPPED or SKIPPED)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The 120-second playback lease expired; stop this collector until a new explicit playback creates another attempt",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackActivityEvent"
+              }
+            }
+          }
+        },
+        "description": "Attempt ID and random writeToken are issued by Java and bound to the current login session and client type. Duplicate/older sequence cannot replay effects. Actual playback activity refreshes 24-hour protection and recency; paused/buffering heartbeats renew only the 120-second active lease. Original timeline position is not a listening clock. Report the logical main player only, including when it drives a separate backing track. ERROR can recover using a newer event on the same attempt only within 120 seconds of its last occurred event; after that recovery returns 410. COMPLETED/STOPPED/SKIPPED permanently end the attempt. On 410 the client stops this collector without interrupting media playback; a later explicit playback creates a new attempt. Capture occurredAt and lastActivityAt with each snapshot using a fixed UTC/monotonic clock anchor; queued or retried events must retain these values so late delivery cannot refresh recency or leases. Optional timestamp omissions derive occurrence from the accepted anchor and elapsed clock for older clients."
       }
     }
   },
@@ -22327,6 +23192,13 @@
           "positionMs": {
             "type": "integer",
             "format": "int64"
+          },
+          "durationMs": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 86400000,
+            "description": "Last known actual total duration of the current playback attempt on the original song timeline; omitted until the TV reports a valid duration."
           }
         },
         "required": [
@@ -22638,131 +23510,6 @@
               "UPLOAD",
               "SELECTED"
             ]
-          }
-        }
-      },
-      "ArtistSave": {
-        "type": "object",
-        "required": [
-          "name",
-          "aliases",
-          "type",
-          "biography",
-          "active",
-          "revision"
-        ],
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 120
-          },
-          "aliases": {
-            "type": "array",
-            "maxItems": 20,
-            "items": {
-              "type": "string",
-              "maxLength": 120
-            }
-          },
-          "type": {
-            "enum": [
-              "PERSON",
-              "MALE",
-              "FEMALE",
-              "GROUP",
-              "UNKNOWN"
-            ]
-          },
-          "biography": {
-            "type": "string",
-            "maxLength": 2000
-          },
-          "active": {
-            "type": "boolean"
-          },
-          "revision": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "requestId": {
-            "type": "string",
-            "format": "uuid",
-            "description": "Required for create; serves as stable ID and deduplicates retries with the same initial content"
-          }
-        }
-      },
-      "ArtistCredit": {
-        "type": "object",
-        "required": [
-          "songId",
-          "credit",
-          "title",
-          "revision"
-        ],
-        "properties": {
-          "songId": {
-            "type": "string"
-          },
-          "credit": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          },
-          "revision": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "artistId": {
-            "type": "string"
-          },
-          "artistName": {
-            "type": "string"
-          },
-          "artistActive": {
-            "type": "boolean"
-          }
-        }
-      },
-      "ArtistBind": {
-        "type": "object",
-        "required": [
-          "artistId",
-          "items"
-        ],
-        "properties": {
-          "artistId": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Null explicitly removes bindings; source song credits remain unchanged"
-          },
-          "items": {
-            "type": "array",
-            "minItems": 1,
-            "maxItems": 100,
-            "items": {
-              "type": "object",
-              "required": [
-                "songId",
-                "credit",
-                "revision"
-              ],
-              "properties": {
-                "songId": {
-                  "type": "string"
-                },
-                "credit": {
-                  "type": "string",
-                  "maxLength": 500
-                },
-                "revision": {
-                  "type": "integer",
-                  "minimum": 0
-                }
-              }
-            }
           }
         }
       },
@@ -23081,7 +23828,8 @@
             },
             "type": "object",
             "maxProperties": 32,
-            "title": "Profiles"
+            "title": "Profiles",
+            "description": "Actual decoder profiles for the reported level and size/frame-rate limits. For h264 use ffprobe names such as Constrained Baseline, Baseline, Main and High; MIME support alone does not establish these capabilities."
           },
           "levels": {
             "additionalProperties": {
@@ -23089,7 +23837,8 @@
             },
             "type": "object",
             "maxProperties": 32,
-            "title": "Levels"
+            "title": "Levels",
+            "description": "Actual maximum decoder level paired with the reported profiles. H264 uses ffprobe integer units: 31=3.1, 41=4.1, 9=1b. Explicit H264 profile/level limits also constrain compatibility output dimensions, frame rate and bitrate."
           }
         },
         "additionalProperties": false,
@@ -23110,11 +23859,13 @@
               "720p",
               "480p"
             ],
-            "default": "auto"
+            "default": "auto",
+            "description": "Auto honors reported client limits; an explicit quality applies its additional size/frame-rate/bitrate ceiling."
           },
           "force": {
             "type": "boolean",
-            "default": false
+            "default": false,
+            "description": "Force video encoding and AAC audio in a new HLS execution (H264 unless codec is explicitly selected). Preserves start and selected audio role, bypasses older offline versions; an exactly matching compatible service cache may still be reused."
           },
           "start": {
             "type": "number",
@@ -23842,7 +24593,8 @@
               "openvino"
             ]
           }
-        }
+        },
+        "description": "Selection captures one published audio catalog generation. Media fingerprints are rechecked as each chunk is persisted; changed or deleted media becomes a failed member."
       },
       "AudioProcessingBatch": {
         "type": "object",
@@ -23852,9 +24604,11 @@
           },
           "state": {
             "enum": [
+              "PREPARING",
               "PREVIEW",
               "QUEUED",
               "COMPLETED",
+              "FAILED",
               "CANCELLED"
             ]
           },
@@ -23932,6 +24686,20 @@
           },
           "size": {
             "type": "integer"
+          },
+          "prepared": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Members persisted so far; advances in chunks of at most 200"
+          },
+          "selectionTotal": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of members captured from the selected published filter snapshot"
+          },
+          "error": {
+            "type": "string",
+            "description": "Preparation failure message; empty on success"
           }
         },
         "required": [
@@ -23939,7 +24707,10 @@
           "state",
           "total",
           "counts",
-          "categories"
+          "categories",
+          "prepared",
+          "selectionTotal",
+          "error"
         ]
       },
       "AudioProcessingSong": {
@@ -24183,24 +24954,41 @@
           "policy": {
             "type": "string",
             "enum": [
+              "HYBRID",
+              "MANUAL",
               "LRU",
               "LFU",
-              "TTL",
-              "MANUAL"
+              "TTL"
             ],
-            "description": "Evict least recently used, least frequently reused, expire by age, or explicit administrator deletion only. Active leases are always protected."
+            "description": "HYBRID is the default mixed retention policy; MANUAL disables automatic eviction. Legacy LRU/LFU/TTL writes are accepted as deprecated aliases for HYBRID. Existing automatic policies migrate to HYBRID with a revision increment."
           },
           "ttlHours": {
             "type": "integer",
             "minimum": 1,
             "maximum": 8760,
-            "description": "Retention duration from successful completion for TTL policy, in hours; ignored by LRU, LFU and MANUAL."
+            "description": "Legacy round-trip field, retained for four-field request compatibility; HYBRID and MANUAL ignore it."
           },
           "revision": {
             "type": "integer",
             "format": "int64",
             "minimum": 0,
             "description": "Optimistic concurrency revision. A stale save returns 409."
+          },
+          "highWatermarkPercent": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 2,
+            "maximum": 100,
+            "default": 90,
+            "description": "Integer percentage of the cache budget triggering automatic HYBRID reclamation. Must exceed lowWatermarkPercent. Omission preserves the saved value."
+          },
+          "lowWatermarkPercent": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 99,
+            "default": 75,
+            "description": "Integer target percentage after HYBRID reclamation, below highWatermarkPercent. Protected entries may prevent reaching this target without exhausting usable capacity. Omission preserves the saved value."
           }
         }
       },
@@ -24261,15 +25049,132 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0,
-            "description": "Number of completed-cache reuses; segment reads do not increase this count."
+            "description": "Cache reuse or open count. Realtime HLS counts reuse sessions rather than individual segment reads; original-file entries count cache opens."
           },
           "leased": {
             "type": "boolean",
-            "description": "True while playback holds a lease; manual and automatic eviction skip it."
+            "description": "True while an active playback lease or original-file reader/writer protects this entry from manual and automatic eviction."
           },
           "target": {
             "type": "object",
-            "description": "Cache output parameters, including codec, resolution, tracks, subtitle mode and original timeline start. Media inputs and callback origins are omitted."
+            "description": "Cache parameters. mode=ORIGINAL identifies an unmodified original-file block cache, including partial entries; other modes describe computed media. Media inputs and callback origins are omitted.",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "description": "ORIGINAL for the source file, or an existing transcoding mode."
+              },
+              "sourceBytes": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 1,
+                "description": "Total original-file size; present for mode=ORIGINAL."
+              }
+            }
+          },
+          "cachedBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Optional original-file bytes durably cached in complete blocks. A partial original cache is not a complete song."
+          },
+          "residueBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Optional disk bytes occupied by invalid or pending-cleanup files. Included in actual usageBytes, but excluded from valid bytes/cachedBytes and original-file completeness."
+          },
+          "sourceBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "Optional total original-file size in bytes."
+          },
+          "complete": {
+            "type": "boolean",
+            "description": "Optional original-file completeness flag. False means uncached byte ranges still require the authorized source."
+          },
+          "pinned": {
+            "type": "boolean",
+            "description": "Song-level pin applies to every existing and future cache variant. It never forces a download."
+          },
+          "pinRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "protectionReasons": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "PLAYING",
+                "DOWNLOADING",
+                "PINNED",
+                "RECENT_PLAY",
+                "PREFETCH",
+                "DELETING",
+                "BUILDING"
+              ]
+            }
+          },
+          "lifecycle": {
+            "type": "string",
+            "enum": [
+              "HOT",
+              "WARM",
+              "COLD",
+              "EVICT"
+            ]
+          },
+          "H": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Playback heat adds 0.05 per effective attempt, caps at one, and decays with a 14-day half-life. Increasing effective times aggregate in O(1); late effective events recompute that song chronologically to preserve cap/decay ordering. Prefetch/cache opens never increase heat."
+          },
+          "R": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Recency decayed with a 7-day half-life from actual playing activity, including ADMIN previews."
+          },
+          "F": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "min(1,ln(1+effective plays in the preceding 7x24 hours)/ln(21)). ADMIN previews are excluded."
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "0.4H + 0.4R + 0.2F."
+          },
+          "priority": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Retention priority including the decaying three-day soft retention bonus. Higher values are retained longer; hard protections take precedence."
+          },
+          "playCount7d": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "lastPlayedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Latest actual playback activity; paused/buffering/lease and prefetch do not refresh it."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "DELETING"
+            ]
           }
         }
       },
@@ -24297,7 +25202,7 @@
           "entryCount": {
             "type": "integer",
             "minimum": 0,
-            "description": "Count of complete, verified realtime HLS cache entries in the Java server index."
+            "description": "Count of indexed realtime HLS and partial or complete original-file cache entries in the Java server."
           },
           "items": {
             "type": "array",
@@ -24317,6 +25222,27 @@
           "totalElements": {
             "type": "integer",
             "minimum": 0
+          },
+          "usageReady": {
+            "type": "boolean"
+          },
+          "statisticsReady": {
+            "type": "boolean"
+          },
+          "committedBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "reservedBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "cleanupGeneration": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           }
         }
       },
@@ -24334,7 +25260,7 @@
           "skipped": {
             "type": "integer",
             "minimum": 0,
-            "description": "Entries protected by active playback leases."
+            "description": "Protected entries skipped, including active playback/download, song pins and actual playback within the previous 24 hours."
           }
         }
       },
@@ -24912,6 +25838,441 @@
             "description": "A currently available library song is required for RESOLVED. For other states omit or send null; the association and resolvedAt are cleared."
           }
         }
+      },
+      "SongCachePin": {
+        "type": "object",
+        "properties": {
+          "songId": {
+            "type": "string"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "artist": {
+            "type": "string"
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "hasCache": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "songId",
+          "pinned",
+          "revision"
+        ]
+      },
+      "SongCachePinPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SongCachePin"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "totalElements": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "size",
+          "totalElements"
+        ]
+      },
+      "SongCachePinRequest": {
+        "type": "object",
+        "properties": {
+          "pinned": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "pinned",
+          "revision"
+        ],
+        "additionalProperties": false
+      },
+      "SongCachePinResult": {
+        "type": "object",
+        "properties": {
+          "pinned": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "pinned",
+          "revision"
+        ]
+      },
+      "SongCacheCleanupRequest": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "POLICY",
+              "CLEAR",
+              "DELETE"
+            ]
+          },
+          "entryId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Required only for DELETE mode."
+          },
+          "confirmRecent": {
+            "type": "boolean",
+            "default": false,
+            "description": "DELETE-only explicit recent-play override after user confirmation; never bypasses pin or active download/playback."
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "additionalProperties": false
+      },
+      "SongCacheCleanupJob": {
+        "type": "object",
+        "properties": {
+          "removed": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "freedBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "usageBeforeBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "usageAfterBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "targetBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "shortfallBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "QUEUED",
+              "RUNNING",
+              "CANCELLING",
+              "SUCCEEDED",
+              "PARTIAL",
+              "BLOCKED",
+              "FAILED",
+              "CANCELLED",
+              "INTERRUPTED"
+            ]
+          },
+          "targetReached": {
+            "type": "boolean",
+            "description": "Whether the requested reclaim target was reached; false does not necessarily imply insufficient capacity."
+          },
+          "spaceInsufficient": {
+            "type": "boolean",
+            "description": "True when the effective hard cache/disk capacity remains insufficient after cleanup; separate from targetReached."
+          },
+          "skippedByReason": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "entryId": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              ]
+            },
+            "description": "Sanitized per-entry failures; no server paths or credentials."
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "removed",
+          "skipped",
+          "failed",
+          "freedBytes",
+          "usageBeforeBytes",
+          "usageAfterBytes",
+          "targetBytes",
+          "targetReached",
+          "spaceInsufficient",
+          "shortfallBytes",
+          "skippedByReason",
+          "errors"
+        ]
+      },
+      "PlaybackAttemptRequest": {
+        "type": "object",
+        "properties": {
+          "songId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "deviceName": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "startedAt": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Original client attempt clock anchor as UTC epoch milliseconds. Capture once with the monotonic clock; preserve across create retries. May be at most 24 hours old or 5000ms in the future. Optional for older-client compatibility; omission uses server creation time."
+          }
+        },
+        "required": [
+          "songId"
+        ]
+      },
+      "PlaybackAttemptGrant": {
+        "type": "object",
+        "properties": {
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "writeToken": {
+            "type": "string",
+            "minLength": 43,
+            "maxLength": 43,
+            "description": "Server-issued per-attempt secret bound to this login session and client type; never persist or log it."
+          },
+          "eventSeq": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": -1,
+            "description": "Initial sequence is -1; subsequent reports use strictly increasing nonnegative values."
+          },
+          "leaseSeconds": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "example": 120
+          },
+          "startedAt": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Accepted original attempt clock anchor, as UTC epoch milliseconds; preserve it for subsequent samples."
+          },
+          "serverTime": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Server UTC epoch milliseconds at creation response; may help calibrate a future clock anchor without rewriting already captured snapshots."
+          }
+        },
+        "required": [
+          "attemptId",
+          "writeToken",
+          "eventSeq",
+          "leaseSeconds",
+          "startedAt",
+          "serverTime"
+        ]
+      },
+      "PlaybackActivityEvent": {
+        "type": "object",
+        "properties": {
+          "writeToken": {
+            "type": "string",
+            "minLength": 43,
+            "maxLength": 43
+          },
+          "eventSeq": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "PREPARING",
+              "BUFFERING",
+              "PLAYING",
+              "PAUSED",
+              "COMPLETED",
+              "STOPPED",
+              "SKIPPED",
+              "ERROR"
+            ]
+          },
+          "actualPlayedMs": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "maximum": 2592000000,
+            "description": "Cumulative actual main-media playing wall-clock milliseconds; exclude pause, buffering, preparation and seeks."
+          },
+          "elapsedMs": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "maximum": 2592000000,
+            "description": "Monotonic elapsed wall-clock milliseconds since the original client startedAt anchor, including actual playback before registration completes. Counters cannot decrease; actual increments cannot exceed elapsed increments plus 1000ms; elapsed cannot exceed server time minus the anchor plus 5000ms."
+          },
+          "durationMs": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 86400000,
+            "description": "Optional original-song duration in milliseconds; omit when unknown."
+          },
+          "occurredAt": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "UTC epoch milliseconds captured with this event, anchored to startedAt plus monotonic elapsedMs. Preserve the sampled value across queues/retries; never replace it with send/receive time. Must agree with startedAt+elapsedMs within 5000ms and not exceed server time by more than 5000ms. Lease expires at the event occurrence time plus 120 seconds."
+          },
+          "lastActivityAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0,
+            "description": "UTC epoch milliseconds of the last actual main-media playing activity in this snapshot, or null before playback starts. Advance only on actual playing time or a real resume; freeze during pause/buffering and across queued sends/retries. Recency and 24-hour protection use this occurrence time, not receipt time. Cannot exceed occurredAt (5000ms clock tolerance)."
+          }
+        },
+        "required": [
+          "writeToken",
+          "eventSeq",
+          "state",
+          "actualPlayedMs",
+          "elapsedMs"
+        ]
+      },
+      "PlaybackActivityResult": {
+        "type": "object",
+        "properties": {
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "eventSeq": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "PREPARING",
+              "BUFFERING",
+              "PLAYING",
+              "PAUSED",
+              "COMPLETED",
+              "STOPPED",
+              "SKIPPED",
+              "ERROR"
+            ]
+          },
+          "effective": {
+            "type": "boolean",
+            "description": "Always false for ADMIN previews; MOBILE effective attempts require >=30 seconds actual playback or complete playback of a shorter song. Counted once per attempt."
+          },
+          "leaseSeconds": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "attemptId",
+          "eventSeq",
+          "state",
+          "effective",
+          "leaseSeconds"
+        ]
       }
     }
   }

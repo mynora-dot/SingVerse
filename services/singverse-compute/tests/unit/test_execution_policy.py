@@ -1,10 +1,13 @@
 """Deterministic node policy checks; no real model or GPU required."""
-import json
+import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from callback_source import CallbackTestCase
+from singverse_compute.infrastructure.transcoding.input import remote_input
+
+import json
 import tempfile
-import threading
 from types import SimpleNamespace
-import unittest
 from unittest.mock import Mock, patch
 
 from singverse_compute.application.audio_roles import AudioRoles, AudioTask
@@ -14,7 +17,7 @@ from singverse_compute.infrastructure.transcoding.settings import HardwareSettin
 from singverse_compute.core.errors import ComputeError
 
 
-class ExecutionPolicyTest(unittest.TestCase):
+class ExecutionPolicyTest(CallbackTestCase):
     def backends(self):
         backend = Backends('unused')
         backend._results = [{'backend': name, 'probeAvailable': False, 'codecs': {'h264': {'samplePassed': passed}}}
@@ -86,7 +89,6 @@ class ExecutionPolicyTest(unittest.TestCase):
         from singverse_compute.application.transcoding import Transcoding, Execution
         from singverse_compute.domain.transcoding import Media, Stream, Target
         from singverse_compute.core.config import Settings
-        from singverse_compute.infrastructure.filesystem import RootedMediaPaths
         from singverse_compute.infrastructure.security import InternalAuth
         for enabled, published, message, expected in [(True, False, 'Hardware accelerator execution failed', 2),
                 (False, False, 'Hardware accelerator execution failed', 1),
@@ -94,7 +96,7 @@ class ExecutionPolicyTest(unittest.TestCase):
             with self.subTest(enabled=enabled, published=published, message=message), tempfile.TemporaryDirectory() as folder:
                 root = Path(folder); media = root/'media'; media.mkdir(); source = media/'source.mkv'; source.write_bytes(b'fixture')
                 cache = root/'cache'
-                config = Settings((media,), root/'token', transcode_root=cache, minimum_free_bytes=0)
+                config = Settings(token_file=root/'token', transcode_root=cache, minimum_free_bytes=0)
                 probe = SimpleNamespace(read=lambda *a: Media('mkv', 60, 1000, (Stream('stream:0',0,'video','h264'),)))
                 backends = SimpleNamespace(select=lambda *a, **kw: 'nvenc', detected=lambda: ['nvenc'])
                 auth = InternalAuth(root/'token'); auth.initialize()
@@ -108,9 +110,11 @@ class ExecutionPolicyTest(unittest.TestCase):
                     (directory/'stream_0.m3u8').write_text('#EXTM3U\nstream_0_000000.ts\n#EXT-X-ENDLIST\n')
                     (directory/'stream_0_000000.ts').write_bytes(b'complete fixture')
                     return []
-                service = Transcoding(config, RootedMediaPaths((media,)), auth, probe, SimpleNamespace(execute=encode), backends, None)
+                service = Transcoding(config, auth, probe, SimpleNamespace(execute=encode), backends, remote_input)
                 task = Execution('task', 'signature', Target()); task.cpu_fallback = enabled
-                (cache/'task').mkdir(); service.execute(task, str(source), None)
+                (cache/'task').mkdir()
+                grant = self.callback(source, auth._token())
+                service.execute(task, grant['reference'], grant['callbackOrigin'])
                 self.assertEqual(len(calls), expected)
                 self.assertEqual(task.state, 'SUCCEEDED' if expected == 2 else 'FAILED')
                 if expected == 2:

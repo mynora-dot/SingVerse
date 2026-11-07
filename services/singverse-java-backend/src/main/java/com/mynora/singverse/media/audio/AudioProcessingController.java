@@ -17,6 +17,7 @@ public class AudioProcessingController {
         return service.list(new AudioProcessingService.Filter(title,artist,sourceId,streams,state,songId),page,size);
     }
     @PostMapping("/batches/preview")
+    @ResponseStatus(org.springframework.http.HttpStatus.ACCEPTED)
     public ObjectNode preview(@RequestBody AudioProcessingService.Selection body){return service.preview(body);}
     @GetMapping("/batches")
     public ObjectNode batches(@RequestParam(defaultValue="0")int page,@RequestParam(defaultValue="20")int size){return service.batches(page,size);}
@@ -29,6 +30,7 @@ public class AudioProcessingController {
     @PostMapping("/batches/{id}/items/{song}/cancel")
     public void cancelItem(@PathVariable String id,@PathVariable String song){service.cancelItem(id,song);}
     @PostMapping("/batches/{id}/retry")
+    @ResponseStatus(org.springframework.http.HttpStatus.ACCEPTED)
     public ObjectNode retry(@PathVariable String id,@RequestBody(required=false)JsonNode body){return service.retry(id,body==null?"":body.path("backend").asText(""));}
     @GetMapping("/node")
     public JsonNode node(@RequestParam(defaultValue="false")boolean refresh){return compute.call(compute.connection(),"/internal/v1/audio-roles/models"+(refresh?"?refresh=true":""),"GET",null);}

@@ -47,6 +47,12 @@ public class MediaSongRepository {
                 mapper.search(sourceId, keyword, review, size, (long) page * size, tagGroups, unclassified).stream().map(this::song).toList(),
                 page, size, mapper.searchCount(sourceId, keyword, review, tagGroups, unclassified));
     }
+    public List<Song> batchAfter(String cursor, String sourceId, int limit) {
+        return mapper.batchAfter(cursor, sourceId, limit).stream().map(this::song).toList();
+    }
+    public List<Song> byIds(List<String> ids) {
+        return ids.isEmpty() ? List.of() : mapper.byIds(ids).stream().map(this::song).toList();
+    }
     public long count(String sourceId) { return mapper.count(sourceId); }
     public void delete(String sourceId) { metadata.lock(); metadata.cleanupSource(sourceId); artists.clearSource(sourceId); mapper.delete(sourceId); }
     public void replace(String sourceId, List<Stored> songs) {
@@ -74,29 +80,30 @@ public class MediaSongRepository {
     }
     public Song song(Map<String, Object> row) {
         try {
+            var parsed = json.readValue(row.get("result_json").toString(), FilenameParseResult.class);
             return new Song(row.get("id").toString(), row.get("source_id").toString(), row.get("source_name").toString(),
                     row.get("relative_path").toString(), size(row),
                     (String) row.get("modified_at"), row.get("scanned_at").toString(),
                     row.get("parser_profile_id").toString(), ((Number) row.get("parser_revision")).longValue(),
                     (String) row.get("selected_rule_id"),
-                    json.readValue(row.get("result_json").toString(), FilenameParseResult.class), artistOverride(row,effectiveApplied(row)), new com.mynora.singverse.media.classification.ClassificationDtos.State(
+                    parsed, artistOverride(row,effectiveApplied(row),parsed), new com.mynora.singverse.media.classification.ClassificationDtos.State(
                             row.get("id").toString(), row.get("classification_revision")==null?0:((Number)row.get("classification_revision")).longValue(),
-                            row.get("classification_state")==null?java.util.Map.of():json.readValue(row.get("classification_state").toString(),new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String,com.mynora.singverse.media.classification.ClassificationDtos.Value>>() {})), contentFingerprint(row));
+                            row.get("classification_state")==null?java.util.Map.of():json.readValue(row.get("classification_state").toString(),new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String,com.mynora.singverse.media.classification.ClassificationDtos.Value>>() {})), contentFingerprint(row),
+                    com.mynora.singverse.media.model.PlaybackFingerprint.content(row.get("id").toString(), size(row),
+                            (String) row.get("modified_at"), (String) row.get("content_etag"), row.get("scanned_at").toString()));
         } catch (JsonProcessingException error) {
             throw new IllegalStateException("Stored song result is invalid", error);
         }
     }
-    private com.mynora.singverse.media.metadata.MetadataDtos.Applied artistOverride(Map<String,Object> row, com.mynora.singverse.media.metadata.MetadataDtos.Applied prior) throws JsonProcessingException {
-        var value=artists.override(row.get("source_id").toString(),com.mynora.singverse.auth.crypto.AuthCrypto.hash(row.get("relative_path").toString()));
-        if(value==null)return prior;
-        if(value.get("artists_json")==null){
+    private com.mynora.singverse.media.metadata.MetadataDtos.Applied artistOverride(Map<String,Object> row, com.mynora.singverse.media.metadata.MetadataDtos.Applied prior, FilenameParseResult parsed) throws JsonProcessingException {
+        if(row.get("override_source")==null)return prior;
+        if(row.get("override_artists")==null){
             if(prior==null||!prior.origins().containsKey("artists")||!"MANUAL".equals(prior.origins().get("artists").kind()))return prior;
             var f=new java.util.HashSet<>(prior.fields());f.remove("artists");var o=new java.util.HashMap<>(prior.origins());o.remove("artists");
             return new com.mynora.singverse.media.metadata.MetadataDtos.Applied(prior.track(),f,prior.appliedAt(),prior.stale(),o);
         }
-        var parsed=json.readValue(row.get("result_json").toString(),FilenameParseResult.class);
         var t=prior!=null&&!prior.stale()?prior.track():null;
-        List<String> names=json.readValue(value.get("artists_json").toString(),new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){});
+        List<String> names=json.readValue(row.get("override_artists").toString(),new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){});
         var fields=new java.util.HashSet<String>(t==null?java.util.Set.of():prior.fields());fields.add("artists");
         var origins=new java.util.HashMap<String,com.mynora.singverse.media.metadata.MetadataDtos.Origin>(t==null?java.util.Map.of():prior.origins());
         String now=row.get("scanned_at").toString();origins.put("artists",new com.mynora.singverse.media.metadata.MetadataDtos.Origin(null,null,now,"MANUAL"));

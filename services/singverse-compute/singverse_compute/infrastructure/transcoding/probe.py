@@ -1,5 +1,6 @@
 """Technical probe with restricted protocols and stable source-stream identifiers."""
 import json
+import re
 from ...core.errors import ComputeError
 from ...domain.transcoding import Media, Stream
 from .process import run
@@ -42,9 +43,12 @@ class MediaProbe:
                 if any('DOVI' in d.get('side_data_type', '') for d in s.get('side_data_list', [])):
                     hdr = 'DOVI'
                 index = int(s['index'])
+                raw_depth = int(s.get('bits_per_raw_sample') or 0)
+                pixel_depth = re.search(r'(?:p0?|gray)(9|10|12|14|16)(?:le|be)?$', s.get('pix_fmt', ''))
+                depth = raw_depth if raw_depth > 0 else int(pixel_depth[1]) if pixel_depth else 8
                 streams.append(Stream(f'stream:{index}', index, s['codec_type'], s.get('codec_name', ''),
                     s.get('profile', ''), int(s.get('level', 0)), int(s.get('width', 0)), int(s.get('height', 0)), fps,
-                    int(s.get('bits_per_raw_sample') or (10 if '10' in s.get('pix_fmt', '') else 8)),
+                    depth,
                     int(s.get('channels', 0)), s.get('tags', {}).get('language', 'und'),
                     s.get('tags', {}).get('title', '')[:120], hdr, int(dovi.get('dv_profile',0)),
                     int(dovi.get('dv_bl_signal_compatibility_id',0)),bool(dovi.get('rpu_present_flag',0)) and self._has_dovi_rpu(path, network, index),

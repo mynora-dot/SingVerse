@@ -28,9 +28,12 @@ public class AudioRoleService {
     private String fingerprint(String song) { return MediaSongRepository.fingerprint(songs.get(song)); }
 
     public ObjectNode role(String song) {
-        String current=fingerprint(song);
-        var row=mapper.role(song);
-        var result=json.createObjectNode().put("songId",song).put("fingerprint",current);
+        return view(songs.get(song), mapper.role(song));
+    }
+
+    ObjectNode view(com.mynora.singverse.media.dto.MediaSongDtos.Song song, Map<String,Object> row) {
+        String current=MediaSongRepository.fingerprint(song);
+        var result=json.createObjectNode().put("songId",song.id()).put("fingerprint",current);
         if(row==null || !current.equals(value(row,"fingerprint")))
             return result.put("state","UNKNOWN").put("revision",row==null?0:((Number)row.get("revision")).longValue());
         return result.put("state","CONFIRMED").put("origin",value(row,"origin"))

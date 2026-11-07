@@ -17,7 +17,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-/** Administrator read model. Playback collection is intentionally not wired to any client yet. */
+/** Administrator read model over independently authorized, real playback attempts. */
 @Service
 public class PlaybackHistoryService {
     public record Filter(String pattern, String songId, long from, long until) {}

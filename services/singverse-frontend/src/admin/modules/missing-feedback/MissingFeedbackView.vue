@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { requestId as newRequestId } from '../../../shared/request-id'
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElAlert, ElButton, ElDialog, ElInput, ElMessage, ElPagination, ElTag } from 'element-plus'
 import PageHeader from '../../shared/ui/PageHeader.vue'
@@ -37,7 +38,7 @@ async function load(reset = false) {
 function search() { appliedQuery.value = query.value.trim(); void load(true) }
 function create() {
   if (busy.value || opening.value) return
-  Object.assign(creation, { requestId: crypto.randomUUID(), title: '', artist: '', versionLabel: '', description: '', submittedBy: '' })
+  Object.assign(creation, { requestId: newRequestId(), title: '', artist: '', versionLabel: '', description: '', submittedBy: '' })
   dialogError.value = ''; createOpen.value = true
 }
 async function register() {

@@ -29,7 +29,7 @@ class AudioModelSmokeTest(unittest.TestCase):
             subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'sine=duration=8', '-ac', '2', str(source)], check=True)
             before = hashlib.sha256(source.read_bytes()).hexdigest()
             # This bounded eight-second sample uses a 2 GiB process budget; production defaults remain 4 GiB.
-            app = create_app(Settings((), token, transcode_root=root / 'cache', minimum_free_bytes=0, audio_model_repo=repo, audio_memory_bytes=2*1024**3))
+            app = create_app(Settings(token_file=token, transcode_root=root / 'cache', minimum_free_bytes=0, audio_model_repo=repo, audio_memory_bytes=2*1024**3))
             callback = CallbackSource(media, token.read_text())
             worker = app.state.audio_roles
             try:
@@ -40,7 +40,7 @@ class AudioModelSmokeTest(unittest.TestCase):
                 self.assertEqual(worker.models.operation['state'], 'SUCCEEDED', worker.models.operation)
                 self.assertTrue(worker.available)
                 identifier = str(uuid.uuid4())
-                worker.submit(identifier, None, callback.grant(source)['reference'], 'SEPARATE', callback_origin=callback.origin)
+                worker.submit(identifier, callback.grant(source)['reference'], 'SEPARATE', callback_origin=callback.origin)
                 deadline = time.monotonic() + 240
                 while worker.active and time.monotonic() < deadline:
                     time.sleep(.1)

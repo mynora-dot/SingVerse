@@ -21,31 +21,37 @@ public class AudioJobService {
     private final AudioRoleMapper mapper;
     private final AudioRoleService roles;
     private final MediaSongRepository songs;
-    private final MediaSourceRepository sources;
     private final MediaPlaybackService playback;
     private final TranscodeClient compute;
     private final ObjectMapper json;
     private final Path root;
     private String scanCursor="";
+    private final java.util.concurrent.atomic.AtomicBoolean ticking = new java.util.concurrent.atomic.AtomicBoolean();
+    private final Map<String, InputStream> receiving = new HashMap<>();
     public AudioJobService(AudioRoleMapper mapper,AudioRoleService roles,MediaSongRepository songs,
-            MediaSourceRepository sources,MediaPlaybackService playback,TranscodeClient compute,ObjectMapper json,
+            MediaPlaybackService playback,TranscodeClient compute,ObjectMapper json,
             @Value("${singverse.audio.directory:${AUDIO_DERIVED_PATH:./data/audio-roles}}") String directory) {
-        this.mapper=mapper;this.roles=roles;this.songs=songs;this.sources=sources;this.playback=playback;this.compute=compute;this.json=json;
+        this.mapper=mapper;this.roles=roles;this.songs=songs;this.playback=playback;this.compute=compute;this.json=json;
         root=Path.of(directory).toAbsolutePath().normalize();
     }
     static String text(Map<String,Object> row,String key){return Objects.toString(row.get(key),"");}
     static ResponseStatusException fail(int code,String message){return new ResponseStatusException(HttpStatus.valueOf(code),message);}
     String fingerprint(String song){return MediaSongRepository.fingerprint(songs.get(song));}
-    public ObjectNode status(String song){
-        var result=roles.role(song);
+    public ObjectNode status(String song) {
+        var stored = songs.get(song);
+        return status(stored, mapper.role(song), mapper.forSong(song, MediaSongRepository.fingerprint(stored)));
+    }
+    ObjectNode status(com.mynora.singverse.media.dto.MediaSongDtos.Song song,
+            Map<String,Object> role, List<Map<String,Object>> history) {
+        var result=roles.view(song, role);
         var list=result.putArray("jobs");
-        for(var row:mapper.forSong(song,fingerprint(song))){
+        for(var row:history){
             var view=list.addObject().put("id",text(row,"id")).put("kind",text(row,"kind")).put("state",text(row,"state")).put("error",text(row,"error"));
             try{var data=json.readTree(text(row,"result_json"));view.put("backend",data.path("backend").asText()).put("modelVersion",data.path("modelVersion").asText()).put("fallbackReason",data.path("fallbackReason").asText());if(Set.of("FAST","ANALYZE").contains(text(row,"kind"))){view.put("resultState",data.path("state").asText()).put("reason",data.path("reason").asText());if(data.path("evidence").isObject())view.set("evidence",data.get("evidence"));}if(!result.has("streams") && data.path("streams").isArray())result.set("streams",data.get("streams"));}catch(IOException ignored){}
         }
         if(result.path("streams").size()==1){
             result.put("originalId",result.path("streams").get(0).path("id").asText()).put("state","CONFIRMED").put("origin","SOURCE");
-            for(var row:mapper.forSong(song,fingerprint(song)))if(text(row,"kind").equals("SEPARATE")&&text(row,"state").equals("SUCCEEDED")&&Files.isRegularFile(root.resolve(text(row,"id")+".m4a"))){
+            for(var row:history)if(text(row,"kind").equals("SEPARATE")&&text(row,"state").equals("SUCCEEDED")&&Files.isRegularFile(root.resolve(text(row,"id")+".m4a"))){
                 var resource=result.putObject("backingResource").put("jobId",text(row,"id")).put("mediaType","audio/mp4");
                 try{resource.set("duration",json.readTree(text(row,"result_json")).path("duration"));}catch(IOException ignored){}
                 break;
@@ -87,15 +93,16 @@ public class AudioJobService {
         for(var stream:media.path("streams"))if(stream.path("kind").asText().equals("audio"))streams.add(stream);
         update(id,"SUCCEEDED",probe.toString(),"");roles.verifyImported(song,fp,probe);
     }
-    private ObjectNode input(Map<String,Object> row,Connection connection){
-        var song=songs.get(text(row,"song_id"));var source=sources.get(song.sourceId());
+    private ObjectNode input(Map<String,Object> row){
         var body=json.createObjectNode().put("id",text(row,"id")).put("mode",text(row,"kind"));
         if(!text(row,"backend").isEmpty())body.put("backend",text(row,"backend"));
         body.put("reference",text(row,"id"));
         return body;
     }
     @Scheduled(fixedDelay=3000,initialDelay=6000,scheduler="audioScheduler")
-    public synchronized void tick(){
+    public void tick(){
+        if (!ticking.compareAndSet(false, true)) return;
+        try {
         for(var row:mapper.pending()){
             String id=text(row,"id");
             try{
@@ -107,20 +114,35 @@ public class AudioJobService {
                 if(!current.equals(text(row,"fingerprint"))){invalidate(row,"源媒体已变化");continue;}
                 var connection=compute.connection(text(row,"node_origin"));
                 if(text(row,"state").equals("QUEUED")){
-                    var body=input(row,connection);
+                    var body=input(row);
                     update(id,"RUNNING","{}","");
                     try{compute.call(connection,"/internal/v1/audio-roles/tasks","POST",body);}
                     catch(Exception e){update(id,"QUEUED","{}","等待计算节点");throw e;}
+                    finally {
+                        var latest=mapper.job(id);
+                        // Cancellation can reach compute before the in-flight POST has created its task.
+                        if(latest!=null&&text(latest,"state").equals("CANCELLED"))
+                            try{compute.call(connection,"/internal/v1/audio-roles/tasks/"+id+"/cancel","POST",null);}catch(Exception ignored){}
+                    }
                     break;
                 }
                 var state=compute.call(connection,"/internal/v1/audio-roles/tasks/"+id,"GET",null);
                 String phase=state.path("state").asText();
                 if(phase.equals("SUCCEEDED")){
                     var result=state.path("result");
-                    if(Set.of("FAST","ANALYZE").contains(text(row,"kind")))roles.applySuggestion(text(row,"song_id"),text(row,"fingerprint"),result);
+                    if(Set.of("FAST","ANALYZE").contains(text(row,"kind"))) {
+                        synchronized (this) { checkReceiving(id); roles.applySuggestion(text(row,"song_id"),text(row,"fingerprint"),result); }
+                    }
                     else if(text(row,"kind").equals("SEPARATE"))receive(connection,id,result);
-                    roles.verifyImported(text(row,"song_id"),text(row,"fingerprint"),result);
-                    update(id,"SUCCEEDED",result.toString(),"");
+                    synchronized (this) {
+                        checkReceiving(id);
+                        boolean matches=false;
+                        try{matches=fingerprint(text(row,"song_id")).equals(text(row,"fingerprint"));}
+                        finally{if(!matches&&text(row,"kind").equals("SEPARATE"))Files.deleteIfExists(root.resolve(id+".m4a"));}
+                        if(!matches)throw fail(409,"源媒体已变化");
+                        roles.verifyImported(text(row,"song_id"),text(row,"fingerprint"),result);
+                        update(id,"SUCCEEDED",result.toString(),"");
+                    }
                     if(text(row,"kind").equals("SEPARATE"))try{compute.call(connection,"/internal/v1/audio-roles/tasks/"+id+"/release","POST",null);}catch(Exception ignored){}
 
                 }else if(Set.of("FAILED","CANCELLED").contains(phase))update(id,state.path("error").asText().equals("REALTIME_PREEMPTED")?"FAILED":phase,state.path("result").isObject()?state.path("result").toString():"{}",state.path("error").asText("计算失败")+(state.path("result").path("diagnostic").asText().isBlank()?"":"："+state.path("result").path("diagnostic").asText()));
@@ -133,9 +155,10 @@ public class AudioJobService {
                 if(Set.of(429,502,503).contains(e.getStatusCode().value()))break;
             }catch(Exception e){update(id,text(row,"state"),text(row,"result_json"),"等待计算节点");}
         }
+        } finally { ticking.set(false); }
     }
     @Scheduled(fixedDelay=10000,initialDelay=15000,scheduler="audioScheduler")
-    public synchronized void discover(){
+    public void discover(){
         try {
             var capability=compute.call(compute.connection(),"/internal/v1/status","GET",null);
             if(!capability.path("capabilities").toString().contains("media-probe"))return;
@@ -183,7 +206,15 @@ public class AudioJobService {
             }
         }catch(IOException ignored){/* Try again without changing business state. */}
     }
-    private void update(String id,String state,String result,String error){mapper.updateJob(id,state,result,error,System.currentTimeMillis());}
+    private synchronized void update(String id,String state,String result,String error){
+        var latest=mapper.job(id);
+        if(latest!=null&&text(latest,"state").equals("CANCELLED")&&!state.equals("CANCELLED"))return;
+        mapper.updateJob(id,state,result,error,System.currentTimeMillis());
+    }
+    private void checkReceiving(String id)throws java.io.InterruptedIOException {
+        var latest=mapper.job(id);
+        if(latest!=null&&text(latest,"state").equals("CANCELLED"))throw new java.io.InterruptedIOException("Audio task cancelled");
+    }
     private void receive(Connection connection,String id,JsonNode result)throws IOException{
         if(!result.path("artifact").asText().equals(id+".m4a"))throw fail(422,"伴奏产物无效");
         Files.createDirectories(root);
@@ -191,6 +222,7 @@ public class AudioJobService {
         Path temporary=root.resolve(id+".part");
         var response=compute.artifact(connection,"/internal/v1/audio-roles/tasks/"+id+"/artifact",null);
         try(var in=response.body();var out=Files.newOutputStream(temporary)){
+            synchronized(this){checkReceiving(id);receiving.put(id,in);}
             if(response.statusCode()!=200)throw fail(response.statusCode()==404?422:502,"伴奏读取失败");
             java.security.MessageDigest digest;
             try{digest=java.security.MessageDigest.getInstance("SHA-256");}catch(java.security.NoSuchAlgorithmException impossible){throw new IllegalStateException(impossible);}
@@ -198,11 +230,24 @@ public class AudioJobService {
             while((length=in.read(buffer))!=-1){size+=length;if(size>1024L*1024*1024)throw fail(413,"伴奏超过大小预算");digest.update(buffer,0,length);out.write(buffer,0,length);}
             if(size<1024||size!=result.path("size").asLong(-1)||!java.util.HexFormat.of().formatHex(digest.digest()).equals(result.path("sha256").asText()))throw fail(422,"伴奏校验失败");
         }catch(Exception e){Files.deleteIfExists(temporary);throw e;}
-        Files.move(temporary,root.resolve(id+".m4a"),StandardCopyOption.REPLACE_EXISTING,StandardCopyOption.ATOMIC_MOVE);
+        finally { synchronized(this){receiving.remove(id);} }
+        try {
+            synchronized(this){
+                checkReceiving(id);
+                Files.move(temporary,root.resolve(id+".m4a"),StandardCopyOption.REPLACE_EXISTING,StandardCopyOption.ATOMIC_MOVE);
+            }
+        } finally { Files.deleteIfExists(temporary); }
     }
-    public synchronized void cancel(String song,String id){
-        var row=require(song,id);if(Set.of("SUCCEEDED","FAILED","CANCELLED").contains(text(row,"state")))return;
-        update(id,"CANCELLED","{}","");
+    public void cancel(String song,String id){
+        Map<String,Object> row;
+        InputStream active;
+        synchronized(this){
+            row=require(song,id);if(Set.of("SUCCEEDED","FAILED","CANCELLED").contains(text(row,"state")))return;
+            update(id,"CANCELLED","{}","");
+            active=receiving.remove(id);
+            try{Files.deleteIfExists(root.resolve(id+".m4a"));}catch(IOException ignored){}
+        }
+        if(active!=null)try{active.close();}catch(IOException ignored){}
         if(text(row,"state").equals("RUNNING"))try{compute.call(compute.connection(text(row,"node_origin")),"/internal/v1/audio-roles/tasks/"+id+"/cancel","POST",null);}catch(Exception ignored){}
     }
     Map<String,Object> require(String song,String id){

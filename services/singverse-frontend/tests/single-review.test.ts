@@ -45,6 +45,26 @@ it('候选高分仍需确认，计数排除未变化和缺失字段', async () =
   state.fields.value = []
   await state.apply(); expect(singleReview.apply).not.toHaveBeenCalled()
 })
+it('高相似度候选自动选中但只有确认才应用', async () => {
+  vi.mocked(metadata.settings).mockResolvedValue({ enabled: true, providers: ['QQ'], autoApply: false, threshold: .95 })
+  const state = useSingleSongScrape(); await state.open('song-1')
+  expect(metadata.search).toHaveBeenCalledWith('song-1', '歌名 歌手', ['QQ'])
+  expect(state.selected.value?.id).toBe('candidate'); expect(state.autoSelected.value).toBe(true)
+  expect(singleReview.apply).not.toHaveBeenCalled()
+  await state.apply()
+  expect(singleReview.apply).toHaveBeenCalledWith('song-1', expect.objectContaining({ candidateId: 'candidate', fields: ['album'] }))
+})
+it('批次阈值控制自动选择，同分时可手工改选且不自动提交', async () => {
+  const state = useSingleSongScrape()
+  await state.open('song-1', [candidate], .96)
+  expect(state.selected.value).toBeNull(); expect(state.changed.value).toEqual([])
+  const second = { ...candidate, id: 'second' }
+  await state.open('song-1', [candidate, second], .95)
+  expect(state.selected.value?.id).toBe('candidate'); expect(state.autoSelected.value).toBe(true)
+  state.choose(second)
+  expect(state.selected.value?.id).toBe('second'); expect(state.autoSelected.value).toBe(false)
+  expect(singleReview.apply).not.toHaveBeenCalled()
+})
 it('请求失败保留草稿，安全重试复用提交标识', async () => {
   const state = useSingleSongScrape(); await state.open('song-1'); state.saveEdits({ ...context().values, title: '手工歌名' })
   vi.mocked(singleReview.apply).mockRejectedValueOnce(new Error('连接失败'))

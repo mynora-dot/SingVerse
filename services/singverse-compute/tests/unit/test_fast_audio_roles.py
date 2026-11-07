@@ -1,10 +1,12 @@
 """Fast scan decisions never invoke the optional expensive separation path."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from callback_source import CallbackTestCase
+
 import tempfile
 import threading
-import time
-import unittest
 import uuid
-from pathlib import Path
 from unittest.mock import Mock, PropertyMock, patch
 from singverse_compute.application.fast_audio_roles import classify_labels, classify_scores, FastAudioRoles
 from singverse_compute.application.audio_roles import AudioTask
@@ -12,7 +14,7 @@ from singverse_compute.bootstrap import create_app
 from singverse_compute.core.config import Settings
 
 
-class FastClassificationTest(unittest.TestCase):
+class FastClassificationTest(CallbackTestCase):
     def test_labels_require_an_explicit_pair_and_handle_negation(self):
         self.assertEqual(classify_labels(('No Vocals', 'Vocals'))['original'], 1)
         self.assertEqual(classify_labels(('原唱', '伴奏'))['backing'], 1)
@@ -71,7 +73,7 @@ class FastClassificationTest(unittest.TestCase):
             subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'sine=duration=12',
                 '-f', 'lavfi', '-i', 'sine=frequency=880:duration=12', '-map', '0:a', '-map', '1:a',
                 '-c:a', 'pcm_s16le', str(source)], check=True)
-            app = create_app(Settings((media,), token, transcode_root=root / 'cache', minimum_free_bytes=0))
+            app = create_app(Settings(token_file=token, transcode_root=root / 'cache', minimum_free_bytes=0))
             worker = app.state.audio_roles
             def scores(paths, cancel):
                 import wave
@@ -82,7 +84,7 @@ class FastClassificationTest(unittest.TestCase):
                 return [.8, .05] * 3
             try:
                 with patch.object(FastAudioRoles, 'available', new_callable=PropertyMock, return_value=True), patch.object(worker.fast, 'predict', side_effect=scores), patch.object(worker, '_separate') as separate, patch.object(worker.models, 'selected') as selected:
-                    identifier = str(uuid.uuid4()); worker.submit(identifier, str(source), None, 'FAST')
+                    identifier = str(uuid.uuid4()); self.submit_audio(worker, identifier, source, 'FAST')
                     worker.thread.join(15)
                     result = worker.view(identifier)
                     self.assertEqual(result['state'], 'SUCCEEDED', result)

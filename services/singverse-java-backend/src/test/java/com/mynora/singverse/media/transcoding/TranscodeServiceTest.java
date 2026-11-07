@@ -13,6 +13,9 @@ import com.mynora.singverse.media.repository.MediaSongRepository;
 import com.mynora.singverse.media.repository.MediaSourceRepository;
 import com.mynora.singverse.media.service.MediaPlaybackService;
 import java.net.URI;
+import java.io.*;
+import java.net.http.*;
+import java.nio.file.*;
 import java.util.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -21,6 +24,218 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 class TranscodeServiceTest {
+    @Test void autoUsesReportedLimitsWhileAnExplicitQualityStillCapsThem() {
+        var fixture = new Negotiation();
+        var request = fixture.request(0);
+        ((ObjectNode) request.path("client")).put("max_width", 3840).put("max_height", 2160)
+                .put("max_fps", 60).put("max_bitrate", 40000000);
+        fixture.play(request);
+        var target = fixture.started.path("target");
+        assertThat(target.path("width").asInt()).isEqualTo(3840);
+        assertThat(target.path("height").asInt()).isEqualTo(2160);
+        assertThat(target.path("fps").asDouble()).isEqualTo(60);
+        assertThat(target.path("bitrate").asInt()).isEqualTo(40000000);
+        verify(fixture.compute).call(eq(fixture.connection), eq("/internal/v1/transcoding/negotiate"), eq("POST"),
+                argThat(body -> body.path("client").path("max_width").asInt() == 3840
+                        && !body.path("fingerprint").asText().isBlank()));
+        fixture.play(request.put("quality", "1080p"));
+        assertThat(fixture.started.path("target").path("width").asInt()).isEqualTo(1920);
+        assertThat(fixture.started.path("target").path("fps").asDouble()).isEqualTo(30);
+    }
+
+    @Test void forcedCompatibilityEncodesTheReportedAvcProfileLevelAndKeepsTracksAndOffset() {
+        var fixture = new Negotiation();
+        var request = fixture.request(12.5).put("force", true).put("audio_id", "stream:2");
+        ((ObjectNode) request.path("client")).putObject("profiles").putArray("h264").add("Baseline");
+        ((ObjectNode) request.path("client")).putObject("levels").put("h264", 31);
+        fixture.play(request);
+        var target = fixture.started.path("target");
+        assertThat(target.path("mode").asText()).isEqualTo("TRANSCODE");
+        assertThat(target.path("profile").asText()).isEqualTo("baseline");
+        assertThat(target.path("level").asInt()).isEqualTo(31);
+        assertThat(target.path("width").asInt()).isEqualTo(1280);
+        assertThat(target.path("height").asInt()).isEqualTo(720);
+        assertThat(target.path("fps").asDouble()).isEqualTo(30);
+        assertThat(target.path("audio_id").asText()).isEqualTo("stream:2");
+        assertThat(target.path("start").asDouble()).isEqualTo(12.5);
+        verify(fixture.mapper, never()).versions(anyString(), anyString());
+    }
+
+    @Test void explicitLowAvcLevelLimitsBitrateAndAbsentEvidenceKeepsDefaults() {
+        var fixture = new Negotiation();
+        var request = fixture.request(0).put("force", true);
+        ((ObjectNode) request.path("client")).putObject("profiles").putArray("h264").add("Baseline");
+        ((ObjectNode) request.path("client")).putObject("levels").put("h264", 13);
+        fixture.play(request);
+        var target = fixture.started.path("target");
+        assertThat(target.path("bitrate").asInt()).isEqualTo(768000);
+        int macroblocks = ((target.path("width").asInt() + 15) / 16) * ((target.path("height").asInt() + 15) / 16);
+        assertThat(macroblocks).isLessThanOrEqualTo(396);
+        assertThat(macroblocks * target.path("fps").asDouble()).isLessThanOrEqualTo(11880);
+        ((ObjectNode) request.path("client")).put("max_width", 7680).put("max_height", 2).putObject("levels").put("h264", 10);
+        fixture.play(request); target = fixture.started.path("target");
+        assertThat(((target.path("width").asInt() + 15) / 16) * ((target.path("height").asInt() + 15) / 16)).isLessThanOrEqualTo(99);
+        fixture.play(fixture.request(0));
+        target = fixture.started.path("target");
+        assertThat(target.has("profile")).isFalse(); assertThat(target.has("level")).isFalse();
+        assertThat(target.path("width").asInt()).isEqualTo(1920);
+        assertThat(target.path("bitrate").asInt()).isEqualTo(8000000);
+    }
+
+    @Test void readyLeaseReturnsWhileTheSchedulerIsStillCopyingTheWholeSong() throws Exception {
+        var fixture = new Negotiation();
+        String id = fixture.play(fixture.request(0)).path("id").asText();
+        var row = fixture.rows.get(id); row.put("pipeline_version", "2");
+        var remote = fixture.json.createObjectNode().put("state", "SUCCEEDED").put("ready", true);
+        when(fixture.mapper.pending()).thenReturn(List.of(row));
+        when(fixture.compute.call(fixture.connection, "/internal/v1/transcoding/executions/" + id, "GET", null)).thenReturn(remote);
+        when(fixture.compute.call(fixture.connection, "/internal/v1/transcoding/executions/" + id + "/lease", "POST", null)).thenReturn(remote);
+        var copying = new java.util.concurrent.CountDownLatch(1); var proceed = new java.util.concurrent.CountDownLatch(1);
+        when(fixture.cache.capture(eq(row), anyString(), eq(fixture.connection), any(), any())).thenAnswer(call -> {
+            copying.countDown();
+            if (!proceed.await(5, java.util.concurrent.TimeUnit.SECONDS)) throw new IllegalStateException("Copy was not released");
+            return fixture.json.createObjectNode().put("state", "SUCCEEDED").put("ready", true).put("cacheId", "copied");
+        });
+        var executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            var tick = executor.submit(fixture.service::tick);
+            assertThat(copying.await(2, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            var view = org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(1),
+                    () -> fixture.service.view(id, "admin", "/hls"));
+            assertThat(view.path("status").asText()).isEqualTo("READY");
+            fixture.service.tick(); // A concurrent scheduler invocation does not duplicate transfer.
+            verify(fixture.cache, times(1)).capture(eq(row), anyString(), eq(fixture.connection), any(), any());
+            proceed.countDown(); tick.get(2, java.util.concurrent.TimeUnit.SECONDS);
+        } finally { proceed.countDown(); executor.shutdownNow(); }
+    }
+
+    @Test void offlineVersionsMustMatchTheMeasuredDecoderProfileAndFrameRate(@org.junit.jupiter.api.io.TempDir Path directory) throws Exception {
+        var fixture = new Negotiation(directory.toString());
+        String versionId = UUID.randomUUID().toString(); Files.write(directory.resolve(versionId + ".mp4"), new byte[] {1});
+        var target = fixture.json.createObjectNode().put("codec", "h264").put("width", 1920).put("height", 1080).put("bitrate", 8000000).put("fps", 30);
+        var result = fixture.json.createObjectNode();
+        var video = result.putObject("output").putObject("media").putArray("streams").addObject()
+                .put("kind", "video").put("codec", "h264").put("profile", "High").put("level", 41).put("fps", 30).put("bit_depth", 8);
+        var version = new HashMap<String, Object>(); version.put("id", versionId); version.put("target_json", target.toString()); version.put("result_json", result.toString());
+        when(fixture.mapper.versions(anyString(), anyString())).thenReturn(List.of(version));
+        var request = fixture.request(0);
+        var client = (ObjectNode) request.path("client"); client.putArray("audio").add("aac"); client.putArray("containers").add("mp4");
+        client.putObject("profiles").putArray("h264").add("Baseline"); client.putObject("levels").put("h264", 41);
+        assertThat(fixture.play(request).path("mode").asText()).isEqualTo("HLS");
+        video.put("profile", "Baseline").put("fps", 60); version.put("result_json", result.toString());
+        assertThat(fixture.play(request).path("mode").asText()).isEqualTo("HLS");
+        video.put("fps", 30).put("profile", "Constrained Baseline"); version.put("result_json", result.toString());
+        assertThat(fixture.play(request).path("mode").asText()).isEqualTo("VERSION");
+        client.putObject("profiles").putArray("h264").add("Constrained Baseline");
+        video.put("profile", "Baseline"); version.put("result_json", result.toString());
+        assertThat(fixture.play(request).path("mode").asText()).isEqualTo("HLS");
+        client.putObject("profiles").putArray("h264").add("High");
+        video.put("profile", "Constrained High"); version.put("result_json", result.toString());
+        assertThat(fixture.play(request).path("mode").asText()).isEqualTo("VERSION");
+        for (String field : List.of("fps", "bit_depth")) {
+            var measured = video.remove(field); version.put("result_json", result.toString());
+            assertThat(fixture.play(request).path("mode").asText()).isEqualTo("HLS");
+            video.put(field, 0); version.put("result_json", result.toString());
+            assertThat(fixture.play(request).path("mode").asText()).isEqualTo("HLS");
+            video.set(field, measured);
+        }
+    }
+
+    @Test void cancellingAnOfflineDownloadClosesItsBodyAndRemovesThePartialFile(@org.junit.jupiter.api.io.TempDir Path directory) throws Exception {
+        var fixture = new Negotiation();
+        String id = fixture.play(fixture.request(0)).path("id").asText();
+        var row = fixture.rows.get(id); row.put("purpose", "OFFLINE"); row.put("state", "RUNNING"); row.put("pipeline_version", "2");
+        var service = new TranscodeService(fixture.mapper, fixture.compute, fixture.songs, fixture.sources,
+                mock(MediaPlaybackService.class), fixture.json, directory.toString());
+        ReflectionTestUtils.setField(service, "cache", fixture.cache);
+        when(fixture.mapper.pending()).thenReturn(List.of(row));
+        var result = fixture.json.createObjectNode().put("state", "SUCCEEDED");
+        result.putObject("output").put("size", 1024).put("sha256", "unused");
+        when(fixture.compute.call(fixture.connection, "/internal/v1/transcoding/executions/" + id, "GET", null)).thenReturn(result);
+        var reading = new java.util.concurrent.CountDownLatch(1); var closed = new java.util.concurrent.CountDownLatch(1);
+        var input = new InputStream() {
+            @Override public int read() throws IOException { return read(new byte[1], 0, 1); }
+            @Override public int read(byte[] bytes, int offset, int length) throws IOException {
+                reading.countDown();
+                try { if (!closed.await(5, java.util.concurrent.TimeUnit.SECONDS)) throw new IOException("Body was not closed"); }
+                catch (InterruptedException error) { Thread.currentThread().interrupt(); throw new InterruptedIOException(); }
+                throw new IOException("Body closed");
+            }
+            @Override public void close() { closed.countDown(); }
+        };
+        @SuppressWarnings("unchecked") HttpResponse<InputStream> response = mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(200); when(response.body()).thenReturn(input);
+        when(fixture.compute.artifact(fixture.connection, "/internal/v1/transcoding/executions/" + id + "/artifacts/output.mp4", null)).thenReturn(response);
+        // Model the SQL guard that prevents a late worker update from reviving a cancellation.
+        when(fixture.mapper.update(eq(id), anyString(), anyString(), anyString(), anyLong())).thenAnswer(call -> {
+            if (row.get("state").equals("CANCELLED")) return 0;
+            row.put("state", call.getArgument(1)); row.put("result_json", call.getArgument(2)); return 1;
+        });
+        var executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            var work = executor.submit(service::tick);
+            assertThat(reading.await(3, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(2), () -> service.cancel(id, "admin"));
+            work.get(3, java.util.concurrent.TimeUnit.SECONDS);
+            assertThat(row).containsEntry("state", "CANCELLED");
+            assertThat(closed.getCount()).isZero();
+            assertThat(directory.resolve(id + ".partial")).doesNotExist();
+            assertThat(directory.resolve(id + ".mp4")).doesNotExist();
+            verify(fixture.compute, never()).call(fixture.connection, "/internal/v1/transcoding/executions/" + id + "/acknowledge", "POST", null);
+        } finally { input.close(); executor.shutdownNow(); }
+    }
+
+    @Test void cancellationRemainsLocalWhenTheComputeNodeIsOffline() {
+        var fixture = new Negotiation();
+        String id = fixture.play(fixture.request(0)).path("id").asText();
+        when(fixture.compute.call(fixture.connection, "/internal/v1/transcoding/executions/" + id + "/cancel", "POST", null))
+                .thenThrow(new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE));
+        fixture.service.cancel(id, "admin");
+        assertThat(fixture.rows.get(id)).containsEntry("state", "CANCELLED");
+        verify(fixture.cache).cancelCapture(id); verify(fixture.cache).release(id);
+        verify(fixture.compute, never()).call(fixture.connection, "/internal/v1/transcoding/executions/" + id, "GET", null);
+    }
+
+    @Test void cancellationDuringAnOfflineSubmissionIsRepeatedAfterRemoteAcceptance() {
+        var fixture = new Negotiation();
+        String id = fixture.play(fixture.request(0)).path("id").asText();
+        var row = fixture.rows.get(id); row.put("purpose", "OFFLINE"); row.put("state", "QUEUED"); row.put("pipeline_version", "2");
+        when(fixture.mapper.pending()).thenReturn(List.of(row));
+        when(fixture.mapper.update(eq(id), anyString(), anyString(), anyString(), anyLong())).thenAnswer(call -> {
+            if (row.get("state").equals("CANCELLED")) return 0;
+            row.put("state", call.getArgument(1)); row.put("result_json", call.getArgument(2)); return 1;
+        });
+        when(fixture.compute.call(eq(fixture.connection), eq("/internal/v1/transcoding/executions"), eq("POST"), any()))
+                .thenAnswer(call -> { fixture.service.cancel(id, "admin"); return fixture.json.createObjectNode().put("state", "RUNNING"); });
+        fixture.service.tick();
+        assertThat(row).containsEntry("state", "CANCELLED");
+        verify(fixture.compute, times(2)).call(fixture.connection, "/internal/v1/transcoding/executions/" + id + "/cancel", "POST", null);
+    }
+
+    @Test void anOfflinePublicationFailureRemovesItsPartialFile(@org.junit.jupiter.api.io.TempDir Path directory) throws Exception {
+        var fixture = new Negotiation();
+        String id = fixture.play(fixture.request(0)).path("id").asText();
+        var row = fixture.rows.get(id); row.put("purpose", "OFFLINE"); row.put("state", "RUNNING"); row.put("pipeline_version", "2");
+        var service = new TranscodeService(fixture.mapper, fixture.compute, fixture.songs, fixture.sources,
+                mock(MediaPlaybackService.class), fixture.json, directory.toString());
+        ReflectionTestUtils.setField(service, "cache", fixture.cache);
+        when(fixture.mapper.pending()).thenReturn(List.of(row));
+        byte[] content = new byte[1024];
+        var result = fixture.json.createObjectNode().put("state", "SUCCEEDED");
+        result.putObject("output").put("size", content.length).put("sha256", HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(content)));
+        when(fixture.compute.call(fixture.connection, "/internal/v1/transcoding/executions/" + id, "GET", null)).thenReturn(result);
+        @SuppressWarnings("unchecked") HttpResponse<InputStream> response = mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(200); when(response.body()).thenReturn(new ByteArrayInputStream(content));
+        when(response.headers()).thenReturn(HttpHeaders.of(Map.of("Content-Length", List.of("1024")), (a, b) -> true));
+        when(fixture.compute.artifact(fixture.connection, "/internal/v1/transcoding/executions/" + id + "/artifacts/output.mp4", null)).thenReturn(response);
+        Files.createDirectory(directory.resolve(id + ".mp4"));
+        Files.writeString(directory.resolve(id + ".mp4").resolve("keep"), "unrelated directory");
+        service.tick();
+        assertThat(row).containsEntry("state", "FAILED");
+        assertThat(directory.resolve(id + ".partial")).doesNotExist();
+        assertThat(directory.resolve(id + ".mp4").resolve("keep")).hasContent("unrelated directory");
+        verify(fixture.compute, never()).call(fixture.connection, "/internal/v1/transcoding/executions/" + id + "/acknowledge", "POST", null);
+    }
     @Test void seekPrefersWholeSongCacheOverExactPartialCacheAndCreatesIndependentSessions() throws Exception {
         var fixture = new Negotiation();
         var request = fixture.request(100.21576);
@@ -144,8 +359,9 @@ class TranscodeServiceTest {
         final Map<String, ObjectNode> entries = new HashMap<>(), leases = new HashMap<>();
         final TranscodeService service;
         ObjectNode started;
-        Negotiation() {
-            service = new TranscodeService(mapper, compute, songs, sources, mock(MediaPlaybackService.class), json, "./unused-test-transcoding");
+        Negotiation() { this("./unused-test-transcoding"); }
+        Negotiation(String directory) {
+            service = new TranscodeService(mapper, compute, songs, sources, mock(MediaPlaybackService.class), json, directory);
             ReflectionTestUtils.setField(service, "cache", cache);
             ReflectionTestUtils.setField(service, "audioJobs", mock(com.mynora.singverse.media.audio.AudioJobService.class));
             ReflectionTestUtils.setField(cache, "json", json);
@@ -216,8 +432,7 @@ class TranscodeServiceTest {
                 null, null, null, null, "fixture-content-fingerprint");
         var source = new Source(sourceId, "fixture", "LOCAL", "/fixture/media", "", "fixture-profile",
                 false, "2026-11-05T00:00:00Z", "2026-11-05T00:00:00Z", false, "", null, null, "", "");
-        String fingerprint = AuthCrypto.hash(MediaSongRepository.fingerprint(song)
-                + ":" + source.updatedAt() + ":" + source.location());
+        String fingerprint = com.mynora.singverse.media.model.PlaybackFingerprint.of(song, source);
         when(songs.get(songId)).thenReturn(song);
         when(sources.get(sourceId)).thenReturn(source);
         when(mapper.find(session)).thenReturn(Map.of(

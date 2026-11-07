@@ -45,8 +45,9 @@ def main():
         files[str(path.relative_to(ROOT))] = path.read_bytes()
     for path in sorted(compute.glob('requirements*.lock')):
         files[str(path.relative_to(ROOT))] = path.read_bytes()
-    for relative in ['services/singverse-compute/Dockerfile', '.dockerignore', 'scripts/convert-rknn-audio.py']:
+    for relative in ['services/singverse-compute/Dockerfile', 'scripts/convert-rknn-audio.py']:
         files[relative] = (ROOT/relative).read_bytes()
+    files['.dockerignore'] = (ROOT/'infra/docker/build/.dockerignore').read_bytes()
     files['models/uvr-mdxnet-9482/UVR_MDXNET_9482.onnx'] = args.model.read_bytes()
     files['SHA256SUMS'] = ''.join(f'{hashlib.sha256(data).hexdigest()}  {name}\n' for name, data in sorted(files.items())).encode()
     args.output.parent.mkdir(parents=True, exist_ok=True)

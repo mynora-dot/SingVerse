@@ -20,14 +20,21 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 class NasFailure(val status: Int, message: String, val retryAfter: String = "") : Exception(message)
+internal data class NasConnection(val origin: String, val generation: Long)
 
 /** Native-only cookie store, never shared with android.webkit.CookieManager. */
-class NasTransport private constructor(context: Context) {
+class NasTransport internal constructor(context: Context) {
     private val preferences = context.getSharedPreferences("nas-session", Context.MODE_PRIVATE)
     private val jar = CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER)
     private val client = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
         .connectTimeout(10, TimeUnit.SECONDS).readTimeout(45, TimeUnit.SECONDS).build()
     @Volatile var origin = ""; private set
+    private var generation = 0L
+    private fun session() = synchronized(this) { NasConnection(origin, generation) }
+    internal fun connectionIdentity(): NasConnection = session()
+    private fun checkSession(session: NasConnection) {
+        if (session.origin != origin || session.generation != generation) throw NasFailure(409, "NAS 连接已切换")
+    }
 
     init {
         val saved = preferences.getString("sealed", null)
@@ -47,11 +54,11 @@ class NasTransport private constructor(context: Context) {
 
     @Synchronized fun configure(value: String): String {
         val next = normalize(value)
-        if (next != origin) { jar.cookieStore.removeAll(); origin = next; persist() }
+        if (next != origin) { generation++; jar.cookieStore.removeAll(); origin = next; persist() }
         return origin
     }
 
-    @Synchronized fun forget() { jar.cookieStore.removeAll(); persist() }
+    @Synchronized fun forget() { generation++; jar.cookieStore.removeAll(); persist() }
 
     private fun key(): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -83,32 +90,58 @@ class NasTransport private constructor(context: Context) {
         checkResource(origin, url)
     }
 
-    @Synchronized private fun accept(url: String, response: Response) {
-        jar.put(URI(url), mapOf("Set-Cookie" to response.headers.values("Set-Cookie")))
-        persist()
+    @Synchronized private fun accept(session: NasConnection, url: String, response: Response) {
+        checkSession(session)
+        val headers = response.headers.values("Set-Cookie")
+        if (headers.isEmpty()) return
+        val before = jar.cookieStore.cookies.map { listOf(it.name, it.value, it.domain, it.path, it.secure) }
+        jar.put(URI(url), mapOf("Set-Cookie" to headers))
+        val after = jar.cookieStore.cookies.map { listOf(it.name, it.value, it.domain, it.path, it.secure) }
+        if (before != after) persist()
     }
 
-    @Synchronized fun request(path: String, method: String = "GET", body: String? = null): String {
-        val url = resolve(path)
-        val csrf = if (method !in listOf("GET", "HEAD")) JSONObject(request("/api/v1/auth/csrf")).getString("token") else null
-        val builder = Request.Builder().url(url).header("Accept", "application/json").header("Cookie", cookieHeader(url))
+    fun request(path: String, method: String = "GET", body: String? = null): String = request(session(), path, method, body, null)
+
+    private fun request(session: NasConnection, path: String, method: String, body: String?, scope: NasRequestScope?): String {
+        synchronized(this) { checkSession(session) }
+        val csrf = if (method !in listOf("GET", "HEAD"))
+            JSONObject(request(session, "/api/v1/auth/csrf", "GET", null, scope)).getString("token") else null
+        val url = session.origin + path
+        val cookie = synchronized(this) {
+            checkSession(session)
+            checkResource(session.origin, url)
+            jar.get(URI(url), emptyMap())["Cookie"]?.joinToString("; ") ?: ""
+        }
+        val builder = Request.Builder().url(url).header("Accept", "application/json").header("Cookie", cookie)
         if (csrf != null) builder.header("X-CSRF-Token", csrf)
         builder.method(method, if (method in listOf("GET", "HEAD")) null else (body ?: "").toRequestBody("application/json".toMediaType()))
-        client.newCall(builder.build()).execute().use { response ->
-            accept(url, response)
-            val bytes = read(response, 4 * 1024 * 1024)
-            return bytes.toString(Charsets.UTF_8).ifBlank { "null" }
-        }
+        val call = client.newCall(builder.build())
+        scope?.attach(call)
+        try { return call.execute().use { response ->
+            accept(session, url, response)
+            val bytes = try { read(response, 4 * 1024 * 1024) }
+                finally { synchronized(this) { checkSession(session) } }
+            bytes.toString(Charsets.UTF_8).ifBlank { "null" }
+        } } finally { scope?.detach(call) }
     }
 
-    @Synchronized fun scopedRequest(expectedOrigin: String, path: String, method: String = "GET", body: String? = null): String {
-        if (origin != expectedOrigin) throw NasFailure(409, "NAS 连接已切换")
-        return request(path, method, body)
+    fun scopedRequest(expectedOrigin: String, path: String, method: String = "GET", body: String? = null, scope: NasRequestScope? = null): String {
+        val session = session()
+        if (session.origin != expectedOrigin) throw NasFailure(409, "NAS 连接已切换")
+        return request(session, path, method, body, scope)
     }
+
+    internal fun scopedRequest(connection: NasConnection, path: String, method: String, body: String?, scope: NasRequestScope): String =
+        request(connection, path, method, body, scope)
 
     fun bytes(path: String): ByteArray {
-        val url = resolve(path)
-        return client.newCall(Request.Builder().url(url).header("Cookie", cookieHeader(url)).build()).execute().use { read(it, 8 * 1024 * 1024) }
+        val session = session()
+        val url = session.origin + path
+        val cookie = synchronized(this) { checkSession(session); checkResource(session.origin, url); cookieHeader(url) }
+        return client.newCall(Request.Builder().url(url).header("Cookie", cookie).build()).execute().use {
+            try { read(it, 8 * 1024 * 1024) }
+            finally { synchronized(this) { checkSession(session) } }
+        }
     }
 
     fun resolve(path: String): String {

@@ -1,11 +1,11 @@
 """Fixed FFmpeg templates. No request can supply command or filter fragments."""
-from dataclasses import asdict
-from pathlib import Path
 from .backends import VIDEO_ENCODERS
 from .process import run
 from .probe import FORMATS
 from .pipelines import PipelineSelector, software_filters, dimensions
 from ...core.errors import ComputeError
+
+HLS_SEGMENT_SECONDS = 2
 
 class Encoder:
     def __init__(self, executable, probe, backends, threads=2, memory_limit=1024**3):
@@ -69,11 +69,21 @@ class Encoder:
                 else:
                     command += ['-vf',','.join(filters)]
                 command += ['-b:v',str(target.bitrate), '-maxrate',str(target.bitrate),
-                            '-bufsize',str(target.bitrate*2), '-force_key_frames','expr:gte(t,n_forced*4)']
+                            '-bufsize',str(target.bitrate if target.codec == 'h264' and target.level else target.bitrate*2),
+                            '-force_key_frames',f'expr:gte(t,n_forced*{HLS_SEGMENT_SECONDS if target.purpose == "REALTIME" else 4})']
                 if backend == 'software':
                     command += ['-preset','8' if target.codec == 'av1' else 'veryfast']
                 if target.codec == 'hevc':
                     command += ['-tag:v','hvc1']
+                if target.codec == 'h264':
+                    if target.profile:
+                        command += ['-profile:v', target.profile]
+                    if target.level:
+                        command += ['-level:v', '1b' if target.level == 9 else f'{target.level // 10}.{target.level % 10}', '-refs', '1']
+                    if target.profile == 'baseline':
+                        command += ['-bf', '0']
+                        if backend == 'software':
+                            command += ['-coder', '0']
         copy_audio = target.mode == 'REMUX'
         command += ['-c:a','copy' if copy_audio else 'aac']
         if not copy_audio:
@@ -95,7 +105,7 @@ class Encoder:
             streams = ['v:0,agroup:audio' if audios else 'v:0'] if video else []
             streams += [f'a:{i},agroup:audio,name:audio{i}' + (',default:yes' if i == 0 else '') for i in range(len(audios))]
             extension = 'm4s' if target.fmp4 else 'ts'
-            command += ['-f','hls', '-hls_time','4', '-hls_list_size','0', '-hls_playlist_type','event',
+            command += ['-f','hls', '-hls_time',str(HLS_SEGMENT_SECONDS if target.mode != 'REMUX' else 4), '-hls_list_size','0', '-hls_playlist_type','event',
                         '-hls_segment_type','fmp4' if target.fmp4 else 'mpegts',
                         '-hls_flags','temp_file', '-master_pl_name','master.m3u8',
                         '-var_stream_map',' '.join(streams), '-hls_segment_filename',str(directory / f'stream_%v_%06d.{extension}')]

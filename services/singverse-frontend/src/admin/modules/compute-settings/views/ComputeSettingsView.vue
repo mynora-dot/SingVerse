@@ -268,7 +268,7 @@ onBeforeUnmount(() => { active = false; currentGeneration++; draftGeneration++; 
         <template #footer><div class="editor-actions"><ElButton v-if="draft.mode !== 'DISABLED' && !draft.clearToken" text :disabled="busy" @click="testDraft">仅测试连接</ElButton><span class="action-spacer" /><ElButton :disabled="busy" @click="cancel">取消</ElButton><ElButton type="primary" :loading="busy" :disabled="!dirty" @click="save()">保存设置</ElButton></div></template>
       </ElDrawer>
       <ElDialog v-model="helpVisible" title="获取连接信息" width="min(560px, 92vw)" append-to-body :close-on-click-modal="false">
-        <div class="setup-help"><p>填写主服务可访问的计算设备地址。内网可用 HTTP，公网需用 HTTPS；独立部署默认端口为 18090。</p><p>在计算设备上执行以下命令获取密钥：</p><code>docker compose -f compose.compute.yaml exec -T singverse-compute cat /run/singverse-compute/token</code></div>
+        <div class="setup-help"><p>填写主服务可访问的计算设备地址。内网可用 HTTP，公网需用 HTTPS；独立部署默认端口为 18090。</p><p>在计算设备上执行以下命令获取密钥：</p><code>docker compose --project-directory . -f infra/docker/compose/compose.compute.yaml exec -T singverse-compute cat /run/singverse-compute/token</code></div>
         <template #footer><ElButton @click="helpVisible = false">关闭</ElButton></template>
       </ElDialog>
       <section class="task-settings" aria-label="功能设置">

@@ -29,7 +29,9 @@ SPRING_PROFILES_ACTIVE=mysql ./mvnw spring-boot:run
 
 默认SQLite文件`./data/singverse.db`相对进程工作目录；SQLITE_PATH覆盖并自动建父目录，单连接池启动SELECT 1。mysql Profile通过MYSQL_HOST/PORT/DATABASE/USER/PASSWORD配置，密码必填，不回退SQLite。Spring不自动读取.env。
 
-业务授权、扫描编排与唯一业务数据库写入由 Java 负责，FFmpeg 等媒体处理由独立 Python 服务执行。管理员 `/api/v1/compute-node` 读取/保存单个活动节点配置，`POST /api/v1/compute-node/test` 测试草稿而不保存。AUTO 从部署的 `COMPUTE_NODE_URL`、`COMPUTE_AUTH_TOKEN_FILE` 读取连接；MANUAL 使用数据库加密凭据与路径映射；DISABLED 停止新调用。节点不属于 Actuator 健康依赖，不在 Java 启动时连通检查。测试请求 2 秒连接、4 秒响应超时、64 KiB 响应上限，保持 TLS 验证且不跟随重定向；HTTP 限本机/受限内网，禁止链路本地等地址。接口只返回 hasToken；更改地址须重填或明确清除凭据。SQLite/MySQL 配置迁移与 MyBatis XML 同步。每次扫描固定连接快照，后续修改只影响新扫描。`make backend-check` 验证真实 Python 生命周期及主服务健康隔离。
+SQLite/MySQL 均面向首次从空库部署，分别使用 [`202611070001_initial_schema.sql`](../../database/migrations/sqlite/202611070001_initial_schema.sql) 和 [MySQL 同名初始化脚本](../../database/migrations/mysql/202611070001_initial_schema.sql)。脚本直接定义完整业务表、约束、索引及种子数据；Java 启动前由 dbmate 应用，失败即停止，不提供旧版数据库升级路径。缓存初始策略为 HYBRID、revision 为 0，高/低水位为 90%/75%；播放统计初始为 `ready=1/phase=READY`，空库无需历史回填。根 `make db-fresh-check` 使用隔离 SQLite 验证建库、重复迁移及 down/up 重建；真实连接与业务验证分别使用 `make db-sqlite-check`、`make db-mysql-check`。完整规则见[数据库策略](../../docs/database-strategy.md)。
+
+业务授权、扫描编排与唯一业务数据库写入由 Java 负责，FFmpeg 等媒体处理由独立 Python 服务执行。管理员 `/api/v1/compute-node` 读取/保存单个活动节点配置，`POST /api/v1/compute-node/test` 测试草稿而不保存。AUTO 从部署的 `COMPUTE_NODE_URL`、`COMPUTE_AUTH_TOKEN_FILE` 读取连接；MANUAL 使用数据库加密凭据与路径映射；DISABLED 停止新调用。节点不属于 Actuator 健康依赖，不在 Java 启动时连通检查。测试请求 2 秒连接、4 秒响应超时、64 KiB 响应上限，保持 TLS 验证且不跟随重定向；HTTP 限本机/受限内网，禁止链路本地等地址。接口只返回 hasToken；更改地址须重填或明确清除凭据。SQLite/MySQL 初始化脚本定义配置表，业务读写使用 MyBatis XML。每次扫描固定连接快照，后续修改只影响新扫描。`make backend-check` 验证真实 Python 生命周期及主服务健康隔离。
 
 性能节点支持 `POST /api/v1/compute-node/discovery` 扫描局域网、`POST /api/v1/compute-node/pair` 选择发现结果并连接，无需在浏览器填写密钥；两者均受管理员会话和 CSRF 保护。扫描采用 HTTP 单播，优先 NAS 业务回源所在私网 `/24`，再检查已有节点和 Java 私网网卡，最多 3 个网段、768 个主机、32 并发、每请求 500 毫秒、总计 10 秒、32 个结果，默认端口 18090/8090；可指定 RFC1918 IPv4 `/24`～`/32` 及单个端口，本机回环只允许单点 `/32`。Docker 桥接网络不能推断宿主机所有网段时，可填写 Java 可达的 NAS 私网网段。发现返回固定 IP 和有效期 2 分钟的 opaque 标识，配对不接受任意地址，不访问公网或链路本地，不跟随重定向。
 
@@ -39,11 +41,11 @@ mysql-check是Maven测试Profile，执行MySqlConnectionIT；普通测试独立�
 
 ## Nginx与API前缀
 
-[nginx/nginx.conf](nginx/nginx.conf)用于Nginx部署和Docker打包：对外管理入口为根路径，点歌H5为 `/party/`，所有 `/api` 命名空间请求原路径转发到后端。当前健康端点为 `/api/health`，后续业务使用 `/api/v1`；健康响应保持Actuator原生格式。静态产物复制、Docker内部服务名和部署检查见[Nginx说明](nginx/README.md)。已提供[联合Dockerfile](Dockerfile)与[应用Compose](../../compose.app.yaml)，从仓库根执行 `make docker-up` 后访问 http://localhost:18080/ 。SQLite保存在独立命名卷；运行和检查见[Docker说明](../../docs/docker.md)。NAS实机尚未验收。
+[nginx/nginx.conf](nginx/nginx.conf)用于Nginx部署和Docker打包：对外管理入口为根路径，点歌H5为 `/party/`，所有 `/api` 命名空间请求原路径转发到后端。当前健康端点为 `/api/health`，后续业务使用 `/api/v1`；健康响应保持Actuator原生格式。静态产物复制、Docker内部服务名和部署检查见[Nginx说明](nginx/README.md)。已提供[联合Dockerfile](Dockerfile)与[应用Compose](../../infra/docker/compose/compose.app.yaml)，从仓库根执行 `make docker-up` 后访问 http://localhost:18080/ 。SQLite保存在独立命名卷；运行和检查见[Docker说明](../../docs/docker.md)。NAS实机尚未验收。
 
 ## 媒体来源配置
 
-新增受管理员会话和 CSRF 保护的 `/api/v1/media-sources` CRUD。本地目录保存时检查服务可见绝对路径及目录读取；WebDAV 仅校验配置并加密保存密码，不发起远端请求。新增 SQLite/MySQL dbmate 迁移，密码复用主密钥并使用独立 AAD。主密钥备份现在也涉及媒体源凭据；详见[媒体库管理](../../docs/media-library.md)。现已支持本地目录文件名扫描及索引保存；WebDAV 已支持十万首级后台文件名扫描，媒体处理任务尚未实现。
+新增受管理员会话和 CSRF 保护的 `/api/v1/media-sources` CRUD。本地目录保存时检查服务可见绝对路径及目录读取；WebDAV 仅校验配置并加密保存密码，不发起远端请求。SQLite/MySQL 初始化脚本定义媒体来源表，密码复用主密钥并使用独立 AAD。主密钥备份现在也涉及媒体源凭据；详见[媒体库管理](../../docs/media-library.md)。现已支持本地目录文件名扫描及索引保存；WebDAV 已支持十万首级后台文件名扫描、授权回源标签读取及媒体计算编排。
 
 ## 包组织与依赖约定
 
@@ -74,7 +76,7 @@ com.mynora.singverse/
     web/              管理与亲友入口静态托管
 ```
 
-媒体来源按 `controller → service → repository` 调用，控制器不处理 SQL、路径校验或加密。DTO 只描述 HTTP 数据，不暴露数据库行或密码。媒体仓储使用自己的 JdbcTemplate，不通过账号仓储读写媒体表；显式依赖 `DatabaseInitializer` 保证先完成迁移。数据库锁随该基础设施 Bean 的销毁释放；账号初始化和本机恢复继续归认证模块。
+媒体来源按 `controller → service → repository` 调用，控制器不处理 SQL、路径校验或加密。DTO 只描述 HTTP 数据，不暴露数据库行或密码。媒体仓储通过所属 Mapper 和 MyBatis XML 读写媒体表，不通过账号仓储；显式依赖 `DatabaseInitializer` 保证先完成迁移。数据库锁随该基础设施 Bean 的销毁释放；账号初始化和本机恢复继续归认证模块。
 
 认证模块本次保留既有事务、SQL 与安全行为，`AuthStore` 封装存储实例，以方法访问支持 Spring 仓储代理；未将现有认证逻辑改写为新的领域模型。公共加密仍由既有认证主密钥管理。新增功能应落入相应业务模块，不把业务类堆进根包或基础设施包，也不预建空接口、空模块或独立 Maven 子工程。
 
@@ -166,7 +168,7 @@ cd services/singverse-java-backend
 
 “曲库 → 解析规则”维护单条模板/RE2 正则；“解析方案”引用定义并维护启停、顺序和文本预览。规则修改影响所有引用方案，删除被引用规则返回 409 和 referencedBy；默认方案不能删除，其他方案可复制/改名/删除。
 
-存储沿用 `filename_parser_config` 表。rules_json 在首次成功修改时升级为 schemaVersion=2（definitions + profiles），GET 只投影旧数组，不写库；全局 revision 保护全部修改和引用竞争，不修改已应用 SQL 迁移。旧 `/rules` 读写投影默认方案，省略规则不会删除其他方案依赖；旧 `/preview` 草稿及单参数纯解析行为保持。
+存储使用初始化脚本定义的 `filename_parser_config` 表。rules_json 在首次成功修改时升级为 schemaVersion=2（definitions + profiles），GET 只投影旧数组，不写库；全局 revision 保护全部修改和引用竞争。旧 `/rules` 读写投影默认方案，省略规则不会删除其他方案依赖；旧 `/preview` 草稿及单参数纯解析行为保持。
 
 新增 `/api/v1/filename-parser/rule-definitions`、`/profiles` CRUD 与 `/profiles/preview`，复用管理员会话和 CSRF，原规则引擎及 RE2/J 1.8 不变。方案预览展开稳定引用形成不可变 FilenameRuleSet；媒体来源已关联解析方案，并通过独立本地扫描服务提取及保存歌曲元数据。使用、数据格式、接口与限制见[规则与方案说明](../../docs/filename-rules.md)。
 
@@ -178,7 +180,7 @@ cd services/singverse-java-backend
 
 媒体来源 DTO 增加 `parserProfileId`，方案解析使用 `FilenameParserConfigService.savedProfile` 的不可变快照。`MediaScanService` 提供有界本地目录遍历，`MediaSongRepository` / `MediaSongMapper.xml` 持久化解析结果；`POST /api/v1/media-sources/{id}/scan` 触发，`GET /api/v1/media-sources/{id}/songs` 分页查询。SQLite 默认测试覆盖完整流程；`mysql-check` 同时包含 `MySqlMediaScanIT`，需真实测试库方可验收。限制与事务语义详见[媒体库管理](../../docs/media-library.md)。
 
-歌曲管理由 `MediaSongController` / `MediaSongService` 提供 `GET /api/v1/media-songs`，分页查询所有扫描索引，可按来源、文件名、复核状态筛选；列表 SQL 与计数共用 `MediaSongMapper.xml` 的绑定参数条件，查询在同一事务中执行。`202610280003` 回填复核标志并建索引，已有扫描歌曲无需重扫即可显示。
+歌曲管理由 `MediaSongController` / `MediaSongService` 提供 `GET /api/v1/media-songs`，分页查询所有扫描索引，可按来源、文件名、复核状态筛选；列表 SQL 与计数共用 `MediaSongMapper.xml` 的绑定参数条件，查询在同一事务中执行。初始化脚本直接定义复核标志及查询索引，空库歌曲由扫描写入。
 
 ## WebDAV 后台文件名扫描
 
@@ -188,7 +190,7 @@ cd services/singverse-java-backend
 
 ## 歌曲元数据刮削
 
-`media.metadata` 提供网易云/QQ/酷狗元数据适配、持久化批次、候选审核和独立确认覆盖层；`MetadataMapper.xml` 负责业务 SQL。功能及自动写入默认关闭，支持单曲、选中及全库批次，暂停/续跑/终止、失败重试和重启恢复。数据库迁移 `202610280004`；封面缓存可用 `METADATA_CACHE_PATH` 配置。实现边界、启用及写入规则见[元数据刮削](../../docs/metadata-scraping.md)。
+`media.metadata` 提供网易云/QQ/酷狗元数据适配、持久化批次、候选审核和独立确认覆盖层；`MetadataMapper.xml` 负责业务 SQL。功能及自动写入默认关闭，支持单曲、选中及全库批次，暂停/续跑/终止、失败重试和重启恢复。表结构包含在 `202611070001_initial_schema.sql`；封面缓存可用 `METADATA_CACHE_PATH` 配置。实现边界、启用及写入规则见[元数据刮削](../../docs/metadata-scraping.md)。
 
 文件标签及技术探测字段（包括仅有时长）不算已确认的平台元数据，不阻止批次匹配及补齐封面、专辑等缺失字段；文件字段仍优先保留。历史记录若因“查询期间歌曲已确认”误标为已确认应用，可在批次中重新匹配；后端仅在当前没有有效确认元数据时允许恢复，已终止批次仍需新建批次。全部歌曲与原唱/伴奏列表复用同一份已保存结果，候选预览图片不代表封面已经应用。
 
@@ -202,7 +204,7 @@ cd services/singverse-java-backend
 
 批量工作台已统一整体进度：total/completed 均包含跳过项，新批次持久化跳过明细，旧批次仅汇总并提示。新增批次内搜索/排序、可信度审核提示及按状态操作，自动写入和限流规则不变。接口兼容说明及统计定义见[批量工作台](../../docs/batch-metadata-workbench.md)。
 
-歌曲分类接口 `/api/v1/classification` 使用独立的持久化任务与 MyBatis XML，支持兼容 Chat Completions 的 JSON Schema 模型、分类锁定/审核/撤回和歌曲标签筛选。SQLite/MySQL 自动迁移；配置默认关闭。详见[分类说明](../../docs/song-classification.md)。
+歌曲分类接口 `/api/v1/classification` 使用独立的持久化任务与 MyBatis XML，支持兼容 Chat Completions 的 JSON Schema 模型、分类锁定/审核/撤回和歌曲标签筛选。SQLite/MySQL 初始化脚本定义分类表；配置默认关闭。详见[分类说明](../../docs/song-classification.md)。
 
 
 ## 歌曲位置与本地目录选择
@@ -216,9 +218,9 @@ cd services/singverse-java-backend
 
 歌曲列表行内操作统一为按钮，新增“在线播放”，在带原生控件的视频弹窗中播放当前歌曲。关闭弹窗或离开页面移除 video 元素以停止读取；错误时可重新加载。
 
-`GET /api/v1/media-songs/{id}/video` 与 HEAD 复用管理员 Cookie 会话，未登录返回 401，不提供公开媒体 URL。支持单段 Range（起止、开放结束、后缀范围），本地响应 200/206/416 和 Content-Length/Content-Range；非法范围或多范围返回 400。所有流响应禁止缓存。本地解析真实路径并限制在来源目录内，失效文件或越界符号链接返回 404。
+`GET /api/v1/media-songs/{id}/video` 与 HEAD 复用管理员 Cookie 会话，未登录返回 401，不提供公开媒体 URL。支持单段 Range（起止、开放结束、后缀范围），本地响应 200/206/416 和 Content-Length/Content-Range；非法范围或多范围返回 400。流响应发送 HTTP `private, no-store`，避免浏览器与公共代理缓存；Java 内部受控的持久原片缓存独立管理。本地解析真实路径并限制在来源目录内，失效文件或越界符号链接返回 404。
 
-WebDAV 使用保存的地址和加密凭据在服务端发起 GET/HEAD，转发 Range，不把凭据或远端地址返回浏览器。采用 10 秒连接、30 秒读取空闲超时，流式传输，不落盘、不完整缓冲；连接随响应结束/客户端断开清理。上游忽略 Range 时保持 200，拖动能力取决于上游；不跟随 3xx（返回 502），需要支持直接读取的 WebDAV 服务，OpenList 等返回下载跳转的配置需调整，否则暂不能播放。认证/读取错误返回不含远端细节的 502。
+WebDAV 使用保存的地址和加密凭据在服务端发起 GET/HEAD，转发 Range，不把凭据或远端地址返回浏览器。采用 10 秒连接、30 秒读取空闲超时，流式传输、不在内存完整缓冲；可将完整原片块持久写入 Java 独立缓存，缓存不可用时继续回源；连接随响应结束/客户端断开清理。上游忽略从零开始的 Range 时仍可返回 200；GET 忽略非零或后缀 Range 时立即返回 502，避免播放器反复下载并跳过整段前缀。206 响应须与请求的起止、总长及 Content-Length 一致，非 identity 编码响应拒绝交给播放器；不跟随 3xx（返回 502），需要支持直接读取的 WebDAV 服务，OpenList 等返回下载跳转的配置需调整，否则暂不能播放。认证/读取错误返回不含远端细节的 502。
 
 原始音视频接口继续只读直放；管理端和 TV 已通过 Java 协商 compute 转码或离线兼容版本，不因预览创建电视会话。浏览器能否解码取决于容器与视频/音频编码，MP4/WebM 也不保证所有编码都能播放，MKV/AVI 等可能不可播放。Nginx 对视频接口关闭 proxy_buffering/proxy_cache，避免视频临时文件与额外等待；代理读取空闲超时为 60 秒。真实 NAS、WebDAV 提供者、浏览器编码兼容性仍须单独验收。
 
@@ -232,22 +234,24 @@ WebDAV 使用保存的地址和加密凭据在服务端发起 GET/HEAD，转发 
 
 ## 共享 AI 服务
 
-`com.mynora.singverse.ai` 管理模型/搜索协议适配、服务配置、密钥、测试和功能绑定，公开管理员专用 `/api/v1/ai`。业务 SQL 位于 `mappers/ai/AiMapper.xml`，SQLite/MySQL 迁移为 `202610290001_ai_settings.sql`。歌曲分类通过绑定读取模型，保留原配置接口兼容适配及任务快照；业务输入、结果校验、审核和应用仍属于 classification 模块。
+`com.mynora.singverse.ai` 管理模型/搜索协议适配、服务配置、密钥、测试和功能绑定，公开管理员专用 `/api/v1/ai`。业务 SQL 位于 `mappers/ai/AiMapper.xml`，SQLite/MySQL 表结构包含在 `202611070001_initial_schema.sql`。歌曲分类通过绑定读取模型，保留原配置接口兼容适配及任务快照；业务输入、结果校验、审核和应用仍属于 classification 模块。
 
 外部 HTTP 请求由 Java 发起，不依赖 Python 或前端直连厂商。服务地址与密钥保护、协议边界、迁移及通用搜索契约见 [AI 设置](../../docs/ai-settings.md)。分类仅复用模型服务，本次不使用搜索或增加聊天能力。
 
 
-`assistant` 功能配置复用 `/api/v1/ai/features/assistant`，保存 enabled/displayMode/petId；新迁移同时覆盖 SQLite/MySQL。仅保存展示设置，不接受模型/搜索绑定，不暂停分类任务，不新增聊天或工具执行 API。
+`assistant` 功能配置复用 `/api/v1/ai/features/assistant`，保存 enabled/displayMode/petId；SQLite/MySQL 初始化脚本直接定义对应字段与默认关闭的功能配置。仅保存展示设置，不接受模型/搜索绑定，不暂停分类任务，不新增聊天或工具执行 API。
 
 ## 本地扫描内嵌标签
 
 Java通过 `infrastructure.compute.MediaTagsClient` 请求独立计算服务，不安装或启动FFmpeg/Python。配置 `COMPUTE_NODE_URL` 与只读内部凭据文件 `COMPUTE_AUTH_TOKEN_FILE`；媒体路径必须同时挂载到计算服务的白名单内。Compose默认已连接内部服务，未配置/离线时保留文件名回退。
 
-文件非空歌名/歌手/专辑/发行日期优先，其他字段沿用有效人工/平台结果，再回退文件名。快照保存在media_song.embedded_tags_json，SQLite/MySQL同步迁移；origins.kind=FILE标记文件来源，审核应用保留这些字段。原文件不修改，原始文件名解析证据保留；重新扫描读取新标签，移除标签不保留旧FILE来源字段。WebDAV不下载媒体。详见计算服务README。
+文件非空歌名/歌手/专辑/发行日期优先，其他字段沿用有效人工/平台结果，再回退文件名。快照保存在初始化脚本定义的 media_song.embedded_tags_json；origins.kind=FILE标记文件来源，审核应用保留这些字段。原文件不修改，原始文件名解析证据保留；重新扫描读取新标签，移除标签不保留旧FILE来源字段。WebDAV 标签读取通过有界回源探测，不下载整首用于标签扫描；实际播放和队列预取可写入独立原片缓存。详见计算服务README。
 
 ## 电视与聚会
 
-`tv` 模块使用独立 Bearer 身份，保留管理员 Cookie/CSRF。设备授权、参与者、邀请、命令和单电视聚会聚合持久化在 `tv_record`，SQL 位于 `mappers/tv/TvMapper.xml`；并发修改先获取数据库写锁，再用修订号 CAS 保存。SQLite/MySQL 迁移为 `202610290005_tv_party.sql`。聚会操作幂等，播放遥测使用独立 eventSeq；下一首必须由电视确认交接。
+`tv` 模块使用独立 Bearer 身份，保留管理员 Cookie/CSRF。设备授权、参与者、邀请、命令和单电视聚会聚合持久化在 `tv_record`，SQL 位于 `mappers/tv/TvMapper.xml`；并发修改先获取数据库写锁，再用修订号 CAS 保存。SQLite/MySQL 表结构包含在 `202611070001_initial_schema.sql`。聚会操作幂等，播放遥测使用独立 eventSeq；下一首必须由电视确认交接。
+
+TV 现有播放事件可选上报原歌曲时间轴 `durationMs`（1～86400000，未知省略）。`TvPrefetchService` 仅在当前已确认实例实际 PLAYING、有效进度进入最后 30 秒时，提交队列事务后预取第一首 WAITING 的 WebDAV 原片；不会建立下一首播放实例或占用 compute 转码并发。同一实例、同一下一首只登记一次，不因每条进度重复创建预取；扫码 H5 排序/撤回同样重算目标，NEXT、STOP、END、recover、设备撤销使旧引用失效，STOP 无须等 IDLE。进度超过 30 秒未续报也停止预取；缓存失败不影响播放、队列和原有交接确认。原片缓存按实际完整块发布，部分缓存不作为完整歌曲，沿用现有受权 Range 媒体和缓存管理接口；手机单曲不新增队列。 后台暂态失败总共最多尝试 3 次，前两次失败后分别等待 5 秒、10 秒；稳定的参数、权限、素材变化或容量错误停止。新前台请求优先 2 秒，之后前台媒体连接仍打开时预取限为 256KiB/s，前台连接结束后恢复常速；前台优先暂停不计失败。
 
 设备播放复用 MediaPlaybackService，继续只读本地文件与代理 WebDAV，支持 Range；另通过 compute 协商实时 HLS 与离线兼容版本。只读曲库投影裁剪路径及管理信息，分类复用正式标签，歌手精确署名聚合在服务端完成。详见[TV 设计与边界](../../docs/tv-development-design.md)及[OpenAPI](../../contracts/openapi/README.md)。
 
@@ -265,19 +269,19 @@ TV/亲友只读曲库支持有效元数据、拼音全拼/首字母及已解析�
 
 ### 分类封面持久化
 
-新增SQLite/MySQL迁移202610290006_classification_covers，classification_tag_cover单表原子保存规范化JPEG和SHA-256版本，备份业务数据库即包含分类封面，不写用户媒体目录。SQL位于ClassificationMapper.xml，列表仅联查版本，不读取图片BLOB。管理员GET/PUT/DELETE `/api/v1/classification/tags/{id}/cover`；写入需Cookie+CSRF和当前封面版本（首次上传为空），独立于标签revision，冲突409。PUT multipart字段file/version，JPEG/PNG最多2,000,000字节、单边最多4096px，规范化最长边1280pxJPEG，不信任文件名/MIME声明，不接受SVG或远程URL。
+SQLite/MySQL 初始化脚本定义 classification_tag_cover，单表原子保存规范化JPEG和SHA-256版本，备份业务数据库即包含分类封面，不写用户媒体目录。SQL位于ClassificationMapper.xml，列表仅联查版本，不读取图片BLOB。管理员GET/PUT/DELETE `/api/v1/classification/tags/{id}/cover`；写入需Cookie+CSRF和当前封面版本（首次上传为空），独立于标签revision，冲突409。PUT multipart字段file/version，JPEG/PNG最多2,000,000字节、单边最多4096px，规范化最长边1280pxJPEG，不信任文件名/MIME声明，不接受SVG或远程URL。
 
 TV/有效参与者GET `/api/v1/tv/library/classification-tags/{id}/cover`只读启用标签，未上传/已移除/已停用返回404，未授权401。正式标签投影含coverPath/coverVersion，图片响应no-store/nosniff。无转码任务或Python变更。
 
 ## 自动歌手库
 
-扫描后按歌曲有效署名自动生成，不再人工建档/关联。管理端歌手详情可打开歌曲编辑器订正歌手，NAS 覆盖值优先于文件标签并在重新扫描后保留；恢复扫描值需确认。首次后台从网易云/QQ 核对歌曲并取真实歌手头像，失败有限重试，无可靠匹配保留占位。上传图片优先，移除后暂停自动补图。TV 自动展示同步结果和受权图片，保留返回焦点。迁移 `202610290008`，新增接口、来源与状态见 OpenAPI 和 [自动歌手库说明](../../docs/artist-library.md)。
+扫描后按歌曲有效署名自动生成，不再人工建档/关联。管理端歌手详情可打开歌曲编辑器订正歌手，NAS 覆盖值优先于文件标签并在重新扫描后保留；恢复扫描值需确认。首次后台从网易云/QQ 核对歌曲并取真实歌手头像，失败有限重试，无可靠匹配保留占位。上传图片优先，移除后暂停自动补图。TV 自动展示同步结果和受权图片，保留返回焦点。表结构包含在 `202611070001_initial_schema.sql`，接口、来源与状态见 OpenAPI 和 [自动歌手库说明](../../docs/artist-library.md)。
 
-歌手图片补图迁移 `202611010001` 将头像/背景状态分开，并接入 TheAudioDB 与可选 Fanart.tv。Fanart.tv 个人密钥在管理页「图片来源设置」中加密保存；后台只在核对歌手身份与关联歌曲后自动用图，歧义候选由管理员确认。外部图片仍由 Java 下载、校验并通过 NAS 鉴权接口读取。
+初始化脚本为歌手头像/背景分别定义补图状态，图片来源接入 TheAudioDB 与可选 Fanart.tv。Fanart.tv 个人密钥在管理页「图片来源设置」中加密保存；后台只在核对歌手身份与关联歌曲后自动用图，歧义候选由管理员确认。外部图片仍由 Java 下载、校验并通过 NAS 鉴权接口读取。
 
 ## 共享歌单与 AI 建议
 
-管理员 `/api/v1/playlists` 分页/新建，`/{id}` 读取/编辑/删除，`/generate` 仅生成建议预览；TV `/api/v1/tv/library/playlists`、`/{id}`、`/{id}/songs` 只读。UUID 创建去重，revision 编辑/删除保护；已移除歌曲保留引用并在 TV 跳过。迁移 `202610300001`，SQL 见 `mappers/playlist/PlaylistMapper.xml`。复用 AI 模型配置与多协议客户端，不额外建立 AI 功能绑定或服务；只传候选标题/歌手/分类/ID，不传路径、凭据和媒体，返回曲库外 ID 拒绝采用。细节见 [歌单说明](../../docs/playlists.md)。
+管理员 `/api/v1/playlists` 分页/新建，`/{id}` 读取/编辑/删除，`/generate` 仅生成建议预览；TV `/api/v1/tv/library/playlists`、`/{id}`、`/{id}/songs` 只读。UUID 创建去重，revision 编辑/删除保护；已移除歌曲保留引用并在 TV 跳过。表结构包含在 `202611070001_initial_schema.sql`，SQL 见 `mappers/playlist/PlaylistMapper.xml`。复用 AI 模型配置与多协议客户端，不额外建立 AI 功能绑定或服务；只传候选标题/歌手/分类/ID，不传路径、凭据和媒体，返回曲库外 ID 拒绝采用。细节见 [歌单说明](../../docs/playlists.md)。
 
 ## 手机原生曲库只读接口
 
@@ -291,7 +295,7 @@ WebDAV 扫描现在按“来源＋相对路径”增量合并，扫描完成即�
 
 缺失文件在至少间隔 30 分钟的两次完整成功扫描确认后下架，缓存和关联保留 30 天；保留期内原路径恢复时复用缓存。失败、取消、超限不推进删除。来源突然为空时保留索引，两次空扫描确认后须在“整理与分享”中明确确认全部下架。原件始终只读。更换来源根地址会隔离旧索引与缓存；移动/改名按新路径处理，不猜测跨路径内容相同。
 
-已有来源默认关闭内容提取。在媒体库卡片“整理与分享”中启用后，已索引歌曲逐步排队补齐；支持暂停/继续、访问组合并及私有下载代理来源白名单。歌曲详情显示提取覆盖状态、技术信息、内嵌封面和歌词；列表可批量刷新或深度提取。大小、mtime、ETag 变化只提示可能变化，不自动读取；同路径覆盖文件需手动刷新。文件版本指纹在普通目录属性更新时保持稳定，保留已确认信息和衍生版本的兼容性。
+已有来源默认关闭内容提取。在媒体库卡片“整理与分享”中启用后，已索引歌曲逐步排队补齐；支持暂停/继续、访问组合并及私有下载代理来源白名单。歌曲详情显示提取覆盖状态、技术信息、内嵌封面和歌词；列表可批量刷新或深度提取。大小、mtime、ETag 变化只提示元数据可能变化，不自动读取；同路径覆盖文件需手动刷新元数据。元数据及音轨角色的确认指纹在普通目录属性更新时保持稳定；播放、原片缓存、实时 HLS 和离线兼容版本另按当前扫描观察到的大小、mtime、ETag 校验内容身份，实际变化后旧播放产物不能继续命中。
 
 Java 编排、持久化任务和共享限流；compute 从任务授权的 `/api/v1/internal/metadata-input/{id}` 获取有界 Range，不获得 WebDAV 凭据或任意外部 URL。新内部接口仅接受节点 Bearer 与活动任务引用。需要 compute 的 `media-remote-tags` 能力；Java 随任务传入 `callbackOrigin`，本地标签扫描也复用此回源接口。读取同一会话使用强 ETag 条件请求；长度、版本、范围或授权变化时丢弃不稳定结果。
 
@@ -301,7 +305,7 @@ Java 编排、持久化任务和共享限流；compute 从任务授权的 `/api/
 
 可选部署参数：`WEBDAV_METADATA_PATH` / `singverse.webdav.metadata-path`（默认 `./data/metadata/webdav`，独立于原件保存封面和歌词）；`singverse.webdav.metadata-worker-enabled`（默认 true，来源仍需单独启用）；`singverse.webdav.request-interval-ms`（默认 2000，测试可设为零，生产不建议降低）。Docker/Compose 固定为 `/data/metadata/webdav`，复用持久命名卷保存衍生资源。内嵌封面复用现有图片校验，按内容哈希存储；歌词保留原有文本及时间格式，不进行截图、OCR、联网刮削或播放器逐字渲染。
 
-API：管理员 GET/PUT `/api/v1/media-sources/{id}/embedded-metadata`；POST 同路径 `/confirm-empty`；GET `/api/v1/media-songs/{id}/embedded-metadata` 及 `/cover`；POST `/api/v1/media-songs/embedded-metadata/refresh` 接收 `{songIds, deep}`（最多 100 首）。所有管理员写请求要求会话和 CSRF，接口细节见 OpenAPI。SQLite/MySQL 使用 `202610310001_webdav_metadata.sql`；所有业务持久化 SQL 位于 MyBatis XML。重启延后恢复未完成提取，已完成结果不重做；进程在读取完成但提交前崩溃时，无法保证严格只读取一次。
+API：管理员 GET/PUT `/api/v1/media-sources/{id}/embedded-metadata`；POST 同路径 `/confirm-empty`；GET `/api/v1/media-songs/{id}/embedded-metadata` 及 `/cover`；POST `/api/v1/media-songs/embedded-metadata/refresh` 接收 `{songIds, deep}`（最多 100 首）。所有管理员写请求要求会话和 CSRF，接口细节见 OpenAPI。SQLite/MySQL 表结构包含在 `202611070001_initial_schema.sql`；所有业务持久化 SQL 位于 MyBatis XML。重启延后恢复未完成提取，已完成结果不重做；进程在读取完成但提交前崩溃时，无法保证严格只读取一次。
 
 验证入口：`make java-backend-test`、`make compute-check`、`make frontend-check`、前端 `npm test`；可用真实隔离 MySQL 时执行 `make db-mysql-check`。WebDAV 专项测试包含十万首扫描、删除恢复、空库确认、重复扫描零媒体请求、刷新代次、内部鉴权、版本与请求预算。模拟 OpenList/网盘不能替代供应商真实验收。
 
@@ -329,13 +333,13 @@ API：管理员 GET/PUT `/api/v1/media-sources/{id}/embedded-metadata`；POST �
 
 选中上次成功快照可增量导出。新快照仍保存完整索引，仅将新增或改变条目写入分包；缺失路径输出独立 advisoryOnly 删除提示，接收方不会自动下架歌曲。无变化时分包数为零。尚未提取内嵌信息的歌曲使用文件名解析信息作为共享回退，明确标记 evidence=FILENAME，避免为分享触发整库网盘读取。导入结果仍标为 SHARED、未经本地媒体验证。
 
-迁移 202610310002_webdav_share_jobs.sql 同时支持 SQLite/MySQL；API 为 /api/v1/media-sources/{id}/embedded-metadata/share-jobs（创建）、/latest、/{jobId}、/{jobId}/resume、/{jobId}/download、/{jobId}/index、/{jobId}/parts/{part}、/{jobId}/deletions/{part}。导入支持持久检查点，不保留旧版单包导出接口。
+SQLite/MySQL 初始化脚本定义分享任务与检查点表；API 为 /api/v1/media-sources/{id}/embedded-metadata/share-jobs（创建）、/latest、/{jobId}、/{jobId}/resume、/{jobId}/download、/{jobId}/index、/{jobId}/parts/{part}、/{jobId}/deletions/{part}。导入支持持久检查点，不保留旧版单包导出接口。
 
 ## 全曲库共享音轨角色
 
 原唱/伴奏任务的 `SUCCEEDED` 仅代表执行完成，`resultState` 才是识别结论。完成但不确定的 FAST/ANALYZE 可显式重新提交，新任务保留旧历史；活动任务及已明确识别的结果仍复用。音轨状态响应透传 `reason`、`evidence`，兼容没有这些字段的旧记录。扫描后台先 PROBE，再为未确认的双轨歌曲安排 FAST（标签优先、短片段分类），不再自动安排 ANALYZE 深度分离。已有不确定深度历史也可获得一次快速识别；FAST 不确定结果不循环重试，FAST_MODEL_MISSING 且节点新增分类器能力时自动再试一次；节点宣布 `audio-role-fast-v2` 后，旧版本 UNKNOWN 也可自动补跑一次，最新 v2 UNKNOWN 不循环重试。快速结果不覆盖任何已确认标记；人工及共享标记继续由修订/指纹规则保护。
 
-迁移 `202611010002_audio_roles.sql` 保存角色、修订号、素材指纹、离线任务及待核对的分享声明。扫描产生的歌曲由后台游标异步探测，双音轨使用快速识别；无分类器时仅依赖明确的成对音轨标签，不确定则保留待标记。单音轨只由管理员在歌曲详情按需生成伴奏。原件不改写；Java 用 MyBatis XML 保存业务结果、校验下载的 SHA-256/体积并原子保存独立衍生文件。配置 `AUDIO_DERIVED_PATH`（默认 `./data/audio-roles`），必须独立于原媒体，Compose 已指向持久卷。
+初始化脚本定义音轨角色、修订号、素材指纹、离线任务及待核对的分享声明。扫描产生的歌曲由后台游标异步探测，双音轨使用快速识别；无分类器时仅依赖明确的成对音轨标签，不确定则保留待标记。单音轨只由管理员在歌曲详情按需生成伴奏。原件不改写；Java 用 MyBatis XML 保存业务结果、校验下载的 SHA-256/体积并原子保存独立衍生文件。配置 `AUDIO_DERIVED_PATH`（默认 `./data/audio-roles`），必须独立于原媒体，Compose 已指向持久卷。
 
 `GET/PUT /api/v1/media-songs/{song}/audio-roles` 查询/纠正；提交修订号及两条不同且已探测的源 stream ID。MANUAL 优先于 AUTO；旧素材结果失效，修订号竞争返回 409。`POST .../audio-jobs` 提交任务，`POST .../audio-jobs/{id}/cancel` 取消。亲友及 TV 对应路径为 `/api/v1/{party|tv}/audio-roles/songs/{song}`，使用已加入聚会的 Bearer；亲友可纠正但不能提交分离任务。管理员写入继承 Cookie/CSRF 规则。
 
@@ -345,9 +349,9 @@ WebDAV version 2 分享索引的 `audioRoles` 仅含源轨映射、轨道描述�
 
 ### 原唱与伴奏管理中心
 
-管理员 `/api/v1/audio-processing` 提供歌曲筛选、批次快照/提交/详情/取消/失败项重试，以及当前节点和模型操作代理。迁移 `202611010003_audio_processing.sql` 新增批次/成员及任务后端字段，全部业务SQL保留MyBatis XML。预览快照保存24小时；提交幂等、媒体变化失效、未知音轨先探测后分流，取消不删除已完成音频。批次成员分页，整体取消同步停止所拥有的分离任务，复用的公共探测不因取消批次被终止。生成环境未就绪时不能提交批次。
+管理员 `/api/v1/audio-processing` 提供歌曲筛选、批次快照/提交/详情/取消/失败项重试，以及当前节点和模型操作代理。初始化脚本直接定义批次/成员及任务后端字段，全部业务SQL保留MyBatis XML。预览快照保存24小时。创建接口返回 202 和 PREPARING，固定选中歌曲及指纹，每 200 条短事务准备成员，返回 prepared/selectionTotal/error；完成进入 PREVIEW 后才可提交，准备中提交返回 409。支持中途取消，重启后未完成准备标为 FAILED。提交幂等、媒体变化失效、未知音轨先探测后分流，取消不删除已完成音频。批次成员分页，整体取消同步停止所拥有的分离任务，复用的公共探测不因取消批次被终止。生成环境未就绪时不能提交批次。
 
-离线模型通过 `/model/import?model=htdemucs|htdemucs-openvino` 的 `application/octet-stream` 流式转发；省略参数兼容基准模型。Java 和 compute 按固定清单限制基准权重 100MiB、OpenVINO 双文件 ZIP 128MiB，Nginx 只为该路径放宽至 128MiB 及相应超时。未知模型拒绝，下载代理同样仅接受固定模型 ID。任务结果保存实际后端、模型摘要、构建与环境身份，OpenVINO 不会隐式回退 CPU。管理员会话及CSRF继续生效，客户端不能直连compute。模型管理以实际当前节点为准；旧任务保留原节点绑定，切换连接不会把旧任务重复发给新节点。节点离线保持待核对，配置变化明确失败供重试。列表和全部筛选快照目前使用分段遍历核对有效歌曲信息/素材指纹，超大曲库需专门压测，不宣称已实现数据库索引化全文筛选。
+离线模型通过 `/model/import?model=htdemucs|htdemucs-openvino` 的 `application/octet-stream` 流式转发；省略参数兼容基准模型。Java 和 compute 按固定清单限制基准权重 100MiB、OpenVINO 双文件 ZIP 128MiB，Nginx 只为该路径放宽至 128MiB 及相应超时。未知模型拒绝，下载代理同样仅接受固定模型 ID。任务结果保存实际后端、模型摘要、构建与环境身份，OpenVINO 不会隐式回退 CPU。管理员会话及CSRF继续生效，客户端不能直连compute。模型管理以实际当前节点为准；旧任务保留原节点绑定，切换连接不会把旧任务重复发给新节点。节点离线保持待核对，配置变化明确失败供重试。歌曲列表改用后台轻量快照筛选，批量关联角色和任务，每 200 首重建；完整详情仅加载当前页。首次未就绪返回 503 和 Retry-After，已有快照重建期间可读，并返回 generation/building；这不是数据库全文索引。
 
 扫描识别任务新增 `FAST`，仍由 Java 授权代理、MyBatis XML 持久化与 compute 执行；沿用既有 kind 文本字段，无新增数据库迁移。节点状态透传 `fastClassifier`，固定模型下载/ZIP 导入 ID 为 `panns-cnn6`，上限 32MiB。深度识别 `ANALYZE` 与伴奏生成 `SEPARATE` 的硬件优先/CPU 降级策略保持既有规则。
 
@@ -361,20 +365,30 @@ WebDAV version 2 分享索引的 `audioRoles` 仅含源轨映射、轨道描述�
 
 ## 电视首页个性化
 
-管理员`GET/PUT /api/v1/admin/tv-settings`配置全局首页文案、自动轮播与5–60秒间隔；`POST /banners?revision=...`上传、`DELETE /banners/{id}?revision=...`移除、`GET /banners/{id}/image`读取图片（上述后缀均相对此管理路径）。最多8张，排序/启停和设置在单事务内保存，写入均校验全局revision。沿用管理员Cookie与CSRF，不能以设备Bearer写入。新MyBatis XML及SQLite/MySQL迁移`202611050001`保存配置、排序和归一JPEG字节；不存外部图片URL、不增加文件目录或环境变量。数据库备份同时包含首页图片。
+管理员`GET/PUT /api/v1/admin/tv-settings`配置全局首页文案、自动轮播与5–60秒间隔；`POST /banners?revision=...`上传、`DELETE /banners/{id}?revision=...`移除、`GET /banners/{id}/image`读取图片（上述后缀均相对此管理路径）。最多8张，排序/启停和设置在单事务内保存，写入均校验全局revision。沿用管理员Cookie与CSRF，不能以设备Bearer写入。MyBatis XML及SQLite/MySQL初始化脚本保存配置、排序和归一JPEG字节；不存外部图片URL、不增加文件目录或环境变量。数据库备份同时包含首页图片。
 
 TV首页兼容新增`appearance`和最多4个真实`featuredPlaylists`；`GET /api/v1/tv/home/banners/{id}/image`显式要求电视device身份且图片启用，亲友不可读取。上传复用`UploadedImage`的2MB/JPEG/PNG/4096px限制和1280px归一，返回受权同源路径、不公开文件系统。并发修改返回409；停用或移除后TV图片返回404。契约见根`contracts/openapi/singverse.openapi.json`，SQLite随机端口集成测试见`TvHttpTest`。
 
 
-## 歌曲解码缓存
+## 歌曲缓存（HLS 与原片）
 
-实时 HLS 音视频缓存由 Java 服务节点持久保存，compute 只负责解码和短期执行产物。Java 下载 compute 已完成的整包清单，逐项校验长度、SHA-256 和 HLS 引用后原子发布；未完成或校验失败的文件不进入可播放索引。完成接收后再确认释放 compute 临时产物。缓存文件、媒体原件和离线兼容成品分别管理；不向客户端返回服务器路径或计算节点地址。
+实时 HLS 与 WebDAV 原片缓存共用 Java 服务节点的持久目录、容量设置和清理入口。原片按完整块校验发布，未完成整曲也能复用已缓存范围；剩余范围继续受权回源，不修改原片或触发转码。实时 HLS 的 compute 节点只负责解码和短期执行产物。Java 下载 compute 已完成的整包清单，逐项校验长度、SHA-256 和 HLS 引用后原子发布；未完成或校验失败的文件不进入可播放索引。完成接收后再确认释放 compute 临时产物。缓存文件、媒体原件和离线兼容成品分别管理；不向客户端返回服务器路径或计算节点地址。
 
-管理员 `GET /api/v1/transcoding/cache?page=0&size=20` 查看服务端完整实时缓存，默认 20 条、最大 100 条，按最近访问时间倒序及 ID 升序。条目包含当前有效歌名、歌手、音频/视频类型、大小、生成/访问时间、命中次数及播放占用状态；歌曲下架仍可按缓存 ID 清理。容量摘要统计 Java 缓存目录的实际占用，可包含接收中的临时文件，因此可能大于完整条目合计。离线兼容成品继续在原歌曲播放设置中独立管理。
+无变化的 WebDAV 重扫不改变播放身份，不重复下载完整原片，也不结束活动 HLS 或使离线兼容版本失效。来源身份只包含类型、根地址、账号和加密凭据的摘要，不包含扫描更新时间、名称或解析方案；真实地址或凭据变化仍隔离旧缓存与活动资源。身份不完整（缺大小，或同时缺 mtime/ETag）时将扫描代次计入播放指纹，重扫后保守重新回源。目录变化以成功扫描发布为准，不为每次缓存命中额外向源发送 HEAD；字节未变但远端版本标记变化同样视为新内容。元数据补全、时长和音轨角色编辑不会改变原片身份；内部摘要字段不进入 HTTP JSON。新指纹版本启用后旧格式播放产物需重新生成，旧缓存仍按原有容量与保护规则清理。
 
-缓存设置、索引和独立会话租约通过 MyBatis XML 保存在业务数据库，SQLite/MySQL 迁移为 `202611050002_song_cache.sql`。`PUT /cache/settings` 保存完整 `maxBytes/policy/ttlHours/revision`，路径相对上述管理接口；容量 64MiB–1PiB、保留时间 1–8760 小时，旧 revision 返回 409。默认容量 10GiB、策略 LRU；内置最近使用优先保留 LRU、热门优先保留 LFU、生成后到期 TTL、手动清理 MANUAL。TTL 从生成完成时计算，LRU/LFU 不使用到期时间；MANUAL 容量不足拒绝新解码任务，但仍允许缓存命中。
+管理员 `GET /api/v1/transcoding/cache?page=0&size=20` 查看服务端完整实时 HLS 和部分/完整原片缓存，默认 20 条、最大 100 条，按最近访问时间倒序及 ID 升序。条目包含当前有效歌名、歌手、音频/视频类型（`mediaType=VIDEO|AUDIO`）、已缓存大小、生成/访问时间、命中次数及播放占用状态；`target.mode=ORIGINAL` 的条目还含 `cachedBytes/sourceBytes/complete`，部分原片不会冒充完整歌曲。歌曲下架仍可按缓存 ID 清理。容量摘要统计 Java 缓存目录的实际占用，可包含接收中的临时文件，因此可能大于已发布条目合计。离线兼容成品继续在原歌曲播放设置中独立管理。
 
-`DELETE /cache/{id}` 删除单项，播放租约冲突返回 409；`POST /cache/clear` 清理未占用缓存并返回 removed/skipped。任何策略都保护活动播放租约，删除文件失败保留索引供重试。每次命中创建独立授权会话，关闭其中一次播放只释放自己的租约；重启后完整缓存继续保留，未续租的会话到期释放。源指纹或输出参数变化不会复用不匹配的结果。缓存管理、命中读取和清理均不依赖 compute 在线，客户端仍通过 Java 同源受权播放接口读取。
+原片条目的 `bytes/cachedBytes` 只表示校验有效的块；不可播放但仍占磁盘的文件另以 `residueBytes` 持久记账，同样占用配额和参与清理大小排序。截断块不会继续作为命中返回，未成功删除或替换前也不会提前释放其占用。重启在后台按条目核对文件与账目，启动核对期间播放直接回源，播放线程不递归扫描或删除缓存目录。
+
+空库缓存默认使用 HYBRID、revision 为 0，LRU/LFU/TTL 策略写入仍作为 HYBRID 弃用别名；MANUAL 保留。`ttlHours` 继续往返但不再自动到期删除。默认高/低水位为配置容量的 90%/75%，`highWatermarkPercent/lowWatermarkPercent` 支持整数 `1 ≤ low < high ≤ 100`；旧四字段 `maxBytes/policy/ttlHours/revision` 请求仍有效，省略水位时保留当前值。容量仍为 64MiB–1PiB，旧 revision 返回 409。容量不足只停止新增持久缓存：原片继续回源，兼容播放继续使用 compute 当前产物，MANUAL 同样不阻断播放。
+
+淘汰依据真实播放事实而非 HTTP `hits/last_access_at`：`Score=0.4H+0.4R+0.2F`，H 每次有效播放增加 0.05、上限 1、14 天半衰，R 为 7 天半衰的最近实际播放分数，F 为最近 7 天有效播放次数的对数归一化。优先删除分数低的歌曲；最近 24 小时硬保护，24～72 小时逐渐减弱的软保护，生命周期 HOT/WARM/COLD/EVICT 只作解释及同分排序。管理员试听只提供实际使用和近期保护，不增加热门次数；TV/手机累计实际播放 30 秒或完整播完不足 30 秒短曲后幂等计一次。暂停、缓冲、seek、缓存获取及预取不计实播时长；完整单曲循环新一轮使用新实例，A–B 练唱保留实例。协议见 [`contracts/song-activity.md`](../../contracts/song-activity.md)。
+
+活动读者、120 秒歌曲级播放占用/缓存租约、正在下载、歌曲固定和仍有效的队列下一首目标均为硬保护。固定作用于该歌曲的全部现有及未来缓存，不触发下载；不把本地收藏或独立离线版本转换为固定。`PUT /cache/songs/{songId}/pin` 使用独立 revision；`GET /cache/pins` 查询固定列表。批量清理遵守全部保护；单项删除须先取消固定，显式 `confirmRecent=true` 可覆盖近期保护，始终不能覆盖播放、下载和预取。
+
+新增 `POST /cache/cleanup-jobs` 返回 202，模式为 POLICY/CLEAR/DELETE；`GET /cache/cleanup-jobs/{id}` 查看进度，`POST /cache/cleanup-jobs/{id}/cancel` 取消。结果包含实际释放字节、跳过原因、失败项、是否达到低水位及实际容量缺口。旧 `POST /cache/clear` 和 `DELETE /cache/{id}` 复用同一后台流程并保持兼容；全局锁及播放线程不执行递归删除。任务合并，受保护内容不足时结束并默认冷却 60 秒。文件先认领为 DELETING，再原子改名到 token 隔离目录，删除文件后才清除数据库索引；失败保留日志与重试时间，重启恢复各阶段。未知目录与符号链接不作为普通缓存删除。
+
+SQLite/MySQL 的 `202611070001_initial_schema.sql` 直接定义水位、歌曲固定/播放派生聚合、幂等播放实例、有效历史计次时间、删除状态及任务日志。空库统计为 `ready=1/phase=READY`；运行中若统计未就绪，后台每批 200 条准备并按有效时间重建聚合，普通淘汰暂停，播放继续。原片使用最多 32MiB 滚动预留，空间较少时仅保存可容纳的完整块；下一首预取因容量不足等待清理代次后重试，HLS 接收也按清理代次和退避去重。完整规则和核心代码入口见 [`contracts/song-cache.md`](../../contracts/song-cache.md)。
 
 非零播放起点优先复用同歌曲、素材指纹、输出参数及终端能力的零起点整曲缓存，命中后不会重复生成后半段。返回 `offset` 仍为缓存本身的原时间轴偏移（整曲为 0），客户端使用 `max(0, 请求起点 - offset)` 定位媒体；不能把请求起点当作返回偏移。没有可用整曲缓存时才匹配相同起点的局部缓存或按原请求执行转码，局部缓存不会冒充整曲；已有不同起点的缓存不自动删除。
 
@@ -384,10 +398,10 @@ TV首页兼容新增`appearance`和最多4个真实`featuredPlaylists`；`GET /a
 | `SINGVERSE_SONG_CACHE_BYTES` | `10737418240`（10GiB），首次初始化预算，后续以管理员保存的数据库配置为准 |
 | `SINGVERSE_SONG_CACHE_MINIMUM_FREE_BYTES` | `2147483648`（2GiB），接收新缓存时保留的磁盘空间 |
 
-应用 Compose 和业务独立部署 Compose 均使用 `/data/transcoding/cache`，复用 Java 的 `singverse-data` 持久卷；原生自定义目录时，备份或迁移须同时保留业务数据库和该目录。compute 的 `COMPUTE_TRANSCODE_ROOT` / `COMPUTE_CACHE_BYTES` 仅限制执行临时目录，不是歌曲缓存的配置入口。新增行为测试见 `SongCacheServiceTest`、`AuthHttpTest` 与 `TranscodeIntegrationIT`。
+应用 Compose 和业务独立部署 Compose 均使用 `/data/transcoding/cache`，复用 Java 的 `singverse-data` 持久卷；原生自定义目录时，备份或迁移须同时保留业务数据库和该目录。compute 的 `COMPUTE_TRANSCODE_ROOT` / `COMPUTE_CACHE_BYTES` 仅限制执行临时目录，不是歌曲缓存的配置入口。新增行为测试见 `CacheEvictionPolicyTest`、`SongCacheServiceTest`、`SongCacheHttpTest`、`CacheScaleTest`、`PlaybackActivityServiceTest` 和 `TranscodeIntegrationIT`。
 
 ## 播放记录与缺歌反馈
 
-管理员 `GET /api/v1/playback-history`、`/popular` 和 `/summary` 分别读取逐次播放记录、按有效播放聚合的歌曲排行和汇总。共享 `q/period/songId` 过滤，明细与排行在数据库分页；歌曲、来源、设备及点歌人使用播放时快照，删除歌曲不删除历史。SQLite/MySQL 迁移 `202611060001_playback_history.sql` 创建独立历史表。本阶段没有新增上报或手工写入播放记录接口，也不从聚会队列回填历史，初始查询为空。
+管理员 `GET /api/v1/playback-history`、`/popular` 和 `/summary` 分别读取逐次播放记录、按有效播放聚合的歌曲排行和汇总。共享 `q/period/songId` 过滤，明细与排行在数据库分页；歌曲、来源、设备及点歌人使用播放时快照，删除歌曲不删除历史。SQLite/MySQL 初始化脚本定义历史、播放实例和派生聚合表。管理端、TV 和手机的实际播放事件按实例去重采集，预取与聚会排队不计为播放；不提供手工写入历史接口，空库历史为空。上报与有效播放口径见[功能与契约说明](../../contracts/song-activity.md)。
 
-`/api/v1/missing-song-feedback` 提供管理员登记与分页查询，`/{id}` 支持查询及带 revision 的处理状态更新。创建使用稳定 requestId 去重，原始反馈只读；标记已补齐必须关联现存曲库歌曲，重开清除关联和补齐时间。迁移 `202611060002_missing_song_feedback.sql` 保存反馈，所有业务 SQL 在 MyBatis XML，写接口继续要求管理员 Cookie 与 CSRF。没有手机/TV 上报或自动下载接口，详见[功能与契约说明](../../contracts/song-activity.md)。
+`/api/v1/missing-song-feedback` 提供管理员登记与分页查询，`/{id}` 支持查询及带 revision 的处理状态更新。创建使用稳定 requestId 去重，原始反馈只读；标记已补齐必须关联现存曲库歌曲，重开清除关联和补齐时间。初始化脚本定义反馈表，所有业务 SQL 在 MyBatis XML，写接口继续要求管理员 Cookie 与 CSRF。没有手机/TV 反馈上报或自动下载接口，详见[功能与契约说明](../../contracts/song-activity.md)。

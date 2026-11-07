@@ -4,20 +4,23 @@ import { ElButton } from 'element-plus'
 import type Hls from 'hls.js'
 import type { AudioStream } from '../../audio-processing/api'
 import { playback, type Resource } from '../../transcoding/playback'
+import { AdminPlaybackActivity } from '../../transcoding/activity'
 
 const props = defineProps<{ songId: string; streams: AudioStream[] }>()
 const player = ref<HTMLAudioElement>(), selected = ref(''), loading = ref(false), error = ref(''), notice = ref('')
 let generation = 0, resource: Resource | undefined, hls: Hls | undefined
 let heartbeat: ReturnType<typeof setInterval> | undefined
+let activity: AdminPlaybackActivity | undefined
 function release() {
+  activity?.transition('PREPARING')
   clearInterval(heartbeat); hls?.destroy(); hls = undefined
   const element = player.value
   if (element?.hasAttribute('src')) { element.pause(); element.removeAttribute('src'); element.load() }
   if (resource?.id) void playback.cancel(resource.id).catch(() => {})
   resource = undefined
 }
-function stop() { generation++; release(); selected.value = ''; loading.value = false }
-function failed(message: string) { stop(); error.value = message }
+function stop() { activity?.transition('STOPPED'); activity = undefined; generation++; release(); selected.value = ''; loading.value = false }
+function failed(message: string) { activity?.transition('ERROR'); stop(); error.value = message }
 async function preview(id: string) {
   const position = (resource?.offset ?? 0) + (player.value?.currentTime ?? 0)
   const turn = ++generation
@@ -65,6 +68,15 @@ async function preview(id: string) {
   } catch (e) { if (turn === generation) failed(e instanceof Error ? e.message : '试听失败') }
   finally { if (turn === generation) loading.value = false }
 }
+function reportPlaying() {
+  const element = player.value
+  if (!selected.value || loading.value || !resource || !element || element.paused || element.seeking) return
+  if (!activity || activity.closed) activity = new AdminPlaybackActivity(props.songId)
+  const duration = Number.isFinite(element.duration) && element.duration > 0 ? (element.duration + (resource.offset ?? 0)) * 1000 : undefined
+  activity.transition('PLAYING', duration)
+}
+function ended() { activity?.transition('COMPLETED') }
+function seeked() { if (player.value && !player.value.paused && player.value.readyState >= 3) reportPlaying() }
 watch(() => props.songId, () => { stop(); error.value = ''; notice.value = '' })
 onBeforeUnmount(stop)
 </script>
@@ -77,7 +89,7 @@ onBeforeUnmount(stop)
     </div>
     <p v-if="loading" role="status">正在准备音轨…</p>
     <p v-if="error" role="alert">{{ error }}</p><p v-if="notice" role="status">{{ notice }}</p>
-    <audio v-show="selected && !loading" ref="player" controls preload="none" :aria-label="'试听音轨 ' + (streams.findIndex(stream => stream.id === selected) + 1)" @error="selected && failed('音轨解码失败，请重新试听')" />
+    <audio v-show="selected && !loading" ref="player" controls preload="none" :aria-label="'试听音轨 ' + (streams.findIndex(stream => stream.id === selected) + 1)" @playing="reportPlaying" @pause="activity?.transition('PAUSED')" @waiting="activity?.transition('BUFFERING')" @seeking="activity?.transition('BUFFERING')" @seeked="seeked" @ended="ended" @error="selected && failed('音轨解码失败，请重新试听')" />
     <p>切换音轨会从当前时间继续试听，不会更改原唱标记。</p>
   </section>
 </template>

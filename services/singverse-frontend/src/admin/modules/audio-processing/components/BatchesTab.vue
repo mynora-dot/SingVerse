@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onActivated, onBeforeUnmount, onDeactivated, ref, watch } from 'vue'
 import { ElAlert, ElButton, ElDrawer, ElEmpty, ElPagination, ElProgress, ElTag } from 'element-plus'
 import { authRequest } from '../../../core/auth/api'
 import { confirmDanger } from '../../../shared/ui/confirm'
@@ -10,8 +10,11 @@ const props = defineProps<{ batches: Batch[]; total: number; page: number; focus
 const emit = defineEmits<{ preview: [batch: Batch]; page: [page: number]; changed: []; songs: [] }>()
 const itemSize = 50
 const current = ref<Batch>(), itemPage = ref(0), busy = ref(false), error = ref('')
+let active = true, visible = true, sequence = 0
 function headline(batch: Batch) { return `${batch.total} 首歌曲` }
 function summary(batch: Batch) {
+  if (batch.state === 'PREPARING') return `正在准备 ${batch.prepared || 0} / ${batch.selectionTotal ?? batch.total} 首歌曲`
+  if (batch.state === 'FAILED') return batch.error || '准备失败，请重新选择歌曲'
   const c = batch.counts, parts = [`已生成 ${c.SUCCEEDED || 0}`]
   if (c.SKIPPED) parts.push(`跳过 ${c.SKIPPED}`)
   if (c.FAILED) parts.push(`失败 ${c.FAILED}`)
@@ -22,33 +25,45 @@ function summary(batch: Batch) {
 }
 function itemState(item: BatchItem) { return item.state === 'PROCESSING' && item.job_state === 'QUEUED' ? '排队中' : itemStates[item.state] || item.state }
 async function run(task: () => Promise<unknown>) {
+  if (!active || !visible || busy.value) return
+  sequence++
   busy.value = true; error.value = ''
-  try { await task() } catch (failed) { error.value = failure(failed) } finally { busy.value = false }
+  try { await task() } catch (failed) { if (active) error.value = failure(failed) } finally { if (active) busy.value = false }
 }
 async function loadCurrent() {
-  if (!current.value) return
-  const id = current.value.id, page = itemPage.value
+  if (!active || !visible || !current.value) return
+  const id = current.value.id, page = itemPage.value, turn = ++sequence
   const value = await authRequest<Batch>(`${base}/batches/${encodeURIComponent(id)}?page=${page}`)
-  if (current.value?.id === id && itemPage.value === page) current.value = value
+  if (active && visible && turn === sequence && current.value?.id === id && itemPage.value === page) current.value = value
 }
 function open(batch: Batch) { current.value = batch; itemPage.value = 0; void run(loadCurrent) }
 function itemsPage(next: number) { itemPage.value = next; void run(loadCurrent) }
 async function cancelBatch(batch: Batch) {
-  const queued = batch.state === 'QUEUED'
-  if (queued && !await confirmDanger('停止这次生成？', '还没开始的歌曲不再处理，正在生成的会被中止；已经生成好的伴奏会保留。', '停止生成', '继续生成')) return
-  await run(async () => { await authRequest(`${base}/batches/${encodeURIComponent(batch.id)}/cancel`, 'POST'); emit('changed'); await loadCurrent() })
+  await run(async () => {
+    if (batch.state === 'QUEUED' && !await confirmDanger('停止这次生成？', '还没开始的歌曲不再处理，正在生成的会被中止；已经生成好的伴奏会保留。', '停止生成', '继续生成')) return
+    if (!active || !visible) return
+    await authRequest(`${base}/batches/${encodeURIComponent(batch.id)}/cancel`, 'POST')
+    if (active && visible) { emit('changed'); await loadCurrent() }
+  })
 }
 async function cancelItem(item: BatchItem) {
   if (!current.value) return
   const id = current.value.id
-  if (item.state === 'PROCESSING' && !await confirmDanger('停止生成这首歌？', `“${item.title}”正在生成的伴奏会被中止，之后可以重新生成。`, '停止这首', '继续')) return
-  await run(async () => { await authRequest(`${base}/batches/${encodeURIComponent(id)}/items/${encodeURIComponent(item.song_id)}/cancel`, 'POST'); emit('changed'); await loadCurrent() })
+  await run(async () => {
+    if (item.state === 'PROCESSING' && !await confirmDanger('停止生成这首歌？', `“${item.title}”正在生成的伴奏会被中止，之后可以重新生成。`, '停止这首', '继续')) return
+    if (!active || !visible) return
+    await authRequest(`${base}/batches/${encodeURIComponent(id)}/items/${encodeURIComponent(item.song_id)}/cancel`, 'POST')
+    if (active && visible) { emit('changed'); await loadCurrent() }
+  })
 }
 function retry(batch: Batch, backend = '') {
-  return run(async () => emit('preview', await authRequest<Batch>(`${base}/batches/${encodeURIComponent(batch.id)}/retry`, 'POST', { backend })))
+  return run(async () => { const value = await authRequest<Batch>(`${base}/batches/${encodeURIComponent(batch.id)}/retry`, 'POST', { backend }); if (active && visible) emit('preview', value) })
 }
+onActivated(() => { visible = true; if (current.value) void run(loadCurrent) })
+onDeactivated(() => { visible = false; sequence++ })
+onBeforeUnmount(() => { active = false; sequence++ })
 watch(() => props.focus, id => { if (id) open(props.batches.find(item => item.id === id) ?? { id, state: 'QUEUED', backend: '', total: 0, counts: {}, categories: {} }) }, { immediate: true })
-defineExpose({ refresh: loadCurrent })
+defineExpose({ refresh: () => busy.value ? Promise.resolve() : loadCurrent() })
 </script>
 
 <template>
@@ -66,7 +81,7 @@ defineExpose({ refresh: loadCurrent })
           <ElButton v-if="batch.state === 'PREVIEW'" type="primary" size="small" :disabled="busy" @click="emit('preview', batch)">确认开始</ElButton>
           <ElButton v-if="batch.counts.FAILED" size="small" :disabled="busy" @click="retry(batch)">重试失败的歌曲</ElButton>
           <ElButton size="small" @click="open(batch)">查看详情</ElButton>
-          <ElButton v-if="batch.state === 'QUEUED'" size="small" type="danger" plain :disabled="busy" @click="cancelBatch(batch)">停止</ElButton>
+          <ElButton v-if="['PREPARING', 'QUEUED'].includes(batch.state)" size="small" type="danger" plain :disabled="busy" @click="cancelBatch(batch)">停止</ElButton>
           <ElButton v-if="batch.state === 'PREVIEW'" size="small" link :disabled="busy" @click="cancelBatch(batch)">放弃</ElButton>
         </div>
       </li>

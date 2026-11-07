@@ -68,9 +68,9 @@ export function streamLabel(stream: AudioStream, position: number) {
 
 export const jobKinds: Record<string, string> = { PROBE: '读取音轨', FAST: '快速识别原唱/伴奏', ANALYZE: '深度识别原唱/伴奏', SEPARATE: '生成伴奏' }
 export const jobStates: Record<string, string> = { QUEUED: '排队中', RUNNING: '进行中', SUCCEEDED: '已完成', FAILED: '失败', CANCELLED: '已取消' }
-export const batchStates: Record<string, string> = { PREVIEW: '待确认', QUEUED: '进行中', COMPLETED: '已结束', CANCELLED: '已取消' }
+export const batchStates: Record<string, string> = { PREPARING: '准备中', FAILED: '准备失败', PREVIEW: '待确认', QUEUED: '进行中', COMPLETED: '已结束', CANCELLED: '已取消' }
 export const itemStates: Record<string, string> = { PENDING: '等待中', PROBING: '读取音轨', PROCESSING: '生成中', SUCCEEDED: '已完成', SKIPPED: '已跳过', FAILED: '失败', CANCELLED: '已取消' }
-export const batchTones: Record<string, Tone> = { PREVIEW: 'warning', QUEUED: 'primary', COMPLETED: 'success', CANCELLED: 'info' }
+export const batchTones: Record<string, Tone> = { PREPARING: 'primary', FAILED: 'danger', PREVIEW: 'warning', QUEUED: 'primary', COMPLETED: 'success', CANCELLED: 'info' }
 export const itemTones: Record<string, Tone> = { PENDING: 'info', PROBING: 'primary', PROCESSING: 'primary', SUCCEEDED: 'success', SKIPPED: 'info', FAILED: 'danger', CANCELLED: 'info' }
 export const backendStates: Record<string, string> = { AVAILABLE: '可用', UNVERIFIED: '待试跑', FAILED: '试跑失败', TESTING: '试跑中', IMAGE_MISSING: '当前镜像未包含', RUNTIME_MISSING: '缺少运行环境', MODEL_MISSING: '缺少模型或固定版本依赖', MODEL_UNSUPPORTED: '当前模型未适配' }
 export const operationStates: Record<string, string> = { IDLE: '空闲', DOWNLOADING: '下载中', IMPORTING: '导入中', VERIFYING: '校验中', TESTING: '试跑中', SUCCEEDED: '已完成', FAILED: '失败', CANCELLED: '已取消' }
@@ -85,6 +85,7 @@ export const modelNames: Record<string, { name: string; hint: string }> = {
 
 /** 批次进度：已完成/跳过/失败/取消都算处理完毕。 */
 export function batchProgress(batch: Batch) {
+  if (batch.state === 'PREPARING') return { done: batch.prepared || 0, pending: Math.max(0, (batch.selectionTotal || 0) - (batch.prepared || 0)), percent: batch.selectionTotal ? Math.round((batch.prepared || 0) / batch.selectionTotal * 100) : 0 }
   const c = batch.counts, done = (c.SUCCEEDED || 0) + (c.SKIPPED || 0) + (c.FAILED || 0) + (c.CANCELLED || 0)
   return { done, pending: (c.PENDING || 0) + (c.PROBING || 0) + (c.PROCESSING || 0), percent: batch.total ? Math.round(done / batch.total * 100) : 0 }
 }

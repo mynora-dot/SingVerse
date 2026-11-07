@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { requestId as newRequestId } from '../../../../shared/request-id'
 import { onMounted, ref } from 'vue'
 import { ElAlert, ElButton, ElCheckbox, ElDialog, ElMessage, ElMessageBox, ElTag } from 'element-plus'
 import { classification } from '../api/classification'
@@ -29,7 +30,7 @@ async function save() {
     for (let i = 0; i < states.value.length; i++) {
       const current = states.value[i]!, dimensions = Object.fromEntries(selected.value.map(dim => [dim, values.value[dim] ?? []]))
       const body = JSON.stringify({ revision: current.revision, dimensions, lockedDimensions: locked.value.filter(dim => selected.value.includes(dim)) })
-      let attempt = attempts.get(current.songId); if (!attempt || attempt.body !== body) { attempt = { body, id: crypto.randomUUID() }; attempts.set(current.songId, attempt) }
+      let attempt = attempts.get(current.songId); if (!attempt || attempt.body !== body) { attempt = { body, id: newRequestId() }; attempts.set(current.songId, attempt) }
       try { states.value[i] = await classification.change(current.songId, { ...JSON.parse(body), requestId: attempt.id }); succeeded++ }
       catch (e) { error.value += `${current.songId}：${e instanceof Error ? e.message : '保存失败'}；` }
     }
@@ -40,7 +41,7 @@ async function save() {
 async function undo(h: History) {
   try { await ElMessageBox.confirm('仅在分类和锁定状态没有后续变化时撤回。原媒体和刮削信息不会修改。', '撤回此次分类') } catch { return }
   busy.value = true; error.value = ''
-  try { states.value[0] = await classification.undo(h.id, crypto.randomUUID(), states.value[0]!.revision); await loadHistory(); emit('changed'); ElMessage.success('分类已撤回') }
+  try { states.value[0] = await classification.undo(h.id, newRequestId(), states.value[0]!.revision); await loadHistory(); emit('changed'); ElMessage.success('分类已撤回') }
   catch (e) { error.value = e instanceof Error ? e.message : '撤回失败' } finally { busy.value = false }
 }
 onMounted(load)

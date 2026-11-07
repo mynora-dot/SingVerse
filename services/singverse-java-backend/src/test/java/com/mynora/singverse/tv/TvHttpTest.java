@@ -27,6 +27,11 @@ class TvHttpTest {
     static void properties(DynamicPropertyRegistry p) {
         p.add("singverse.sqlite.path", () -> temp.resolve("tv.db").toString());
         p.add("singverse.auth.key-file", () -> temp.resolve("auth.key").toString());
+        p.add("singverse.metadata.cache-path", () -> temp.resolve("covers").toString());
+        p.add("singverse.webdav.metadata-path", () -> temp.resolve("webdav").toString());
+        p.add("singverse.transcoding.directory", () -> temp.resolve("versions").toString());
+        p.add("singverse.transcoding.cache-directory", () -> temp.resolve("cache").toString());
+        p.add("singverse.audio.directory", () -> temp.resolve("audio").toString());
         p.add("singverse.classification.worker-enabled", () -> false);
     }
 
@@ -484,6 +489,28 @@ class TvHttpTest {
                         token,
                         false);
         assertThat(playing.path("queue").get(0).path("status").asText()).isEqualTo("PLAYING");
+        String loadCommand = start.path("commands").get(0).path("id").asText();
+        var activityBeforeDuplicate = fixture.queryForMap(
+                "SELECT event_seq,actual_played_ms,elapsed_ms,last_activity_at,lease_until FROM playback_attempt WHERE id=?",
+                attempt);
+        var historyBeforeDuplicate = fixture.queryForMap(
+                "SELECT played_ms,effective_at,last_activity_at FROM playback_history WHERE attempt_id=?",
+                attempt);
+        var duplicateAck = ok(guest, base + "/playback-events", "POST",
+                Map.of("attemptId", attempt, "commandId", loadCommand, "eventSeq", 1,
+                        "state", "PLAYING", "positionMs", 9999,
+                        "actualPlayedMs", 30_000, "elapsedMs", 30_000), token, false);
+        assertThat(duplicateAck.path("commands").size()).isZero();
+        assertThat(duplicateAck.path("playback").path("positionMs").asLong()).isEqualTo(100);
+        var afterAck = ok(guest, base + "/snapshot", "GET", null, token, false);
+        assertThat(afterAck.path("commands").size()).isZero();
+        assertThat(afterAck.path("stateRevision").asLong()).isGreaterThan(playing.path("stateRevision").asLong());
+        assertThat(fixture.queryForMap(
+                "SELECT event_seq,actual_played_ms,elapsed_ms,last_activity_at,lease_until FROM playback_attempt WHERE id=?",
+                attempt)).isEqualTo(activityBeforeDuplicate);
+        assertThat(fixture.queryForMap(
+                "SELECT played_ms,effective_at,last_activity_at FROM playback_history WHERE attempt_id=?",
+                attempt)).isEqualTo(historyBeforeDuplicate);
         var stale =
                 ok(
                         guest,

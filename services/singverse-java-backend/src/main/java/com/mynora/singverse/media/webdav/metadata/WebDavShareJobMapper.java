@@ -11,7 +11,6 @@ List<Map<String,Object>> find(Map<String,Object> args);
 List<Map<String,Object>> latest(Map<String,Object> args);
 List<Map<String,Object>> pending(Map<String,Object> args);
 List<Map<String,Object>> page(Map<String,Object> args);
-List<Map<String,Object>> baseEntry(Map<String,Object> args);
 List<Map<String,Object>> deleted(Map<String,Object> args);
 int progress(Map<String,Object> args);
 List<Map<String,Object>> asset(Map<String,Object> args);

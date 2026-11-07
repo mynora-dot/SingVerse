@@ -16,7 +16,8 @@ public interface AudioRoleMapper {
     List<Map<String,Object>> pending();
     List<String> candidates(@Param("cursor") String cursor);
     List<Map<String,Object>> forSong(@Param("song") String song,@Param("fingerprint") String fingerprint);
-    List<Map<String,Object>> queuedAnalyze();
+    List<Map<String,Object>> rolesForSongs(@org.apache.ibatis.annotations.Param("ids") java.util.List<String> ids);
+    List<Map<String,Object>> jobsForSongs(@org.apache.ibatis.annotations.Param("songs") java.util.List<java.util.Map<String,String>> songs);
     int insertJob(@Param("row") Map<String,Object> row);
     int updateJob(@Param("id") String id,@Param("state") String state,@Param("result") String result,@Param("error") String error,@Param("now") long now);
 }

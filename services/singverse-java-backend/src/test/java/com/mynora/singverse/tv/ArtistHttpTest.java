@@ -25,6 +25,11 @@ class ArtistHttpTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry p) {
+        p.add("singverse.transcoding.cache-directory", () -> temp.resolve("cache").toString());
+        p.add("singverse.transcoding.directory", () -> temp.resolve("versions").toString());
+        p.add("singverse.audio.directory", () -> temp.resolve("audio").toString());
+        p.add("singverse.metadata.cache-path", () -> temp.resolve("covers").toString());
+        p.add("singverse.webdav.metadata-path", () -> temp.resolve("webdav").toString());
         p.add("singverse.sqlite.path", () -> temp.resolve("artists.db").toString());
         p.add("singverse.auth.key-file", () -> temp.resolve("auth.key").toString());
         p.add("singverse.classification.worker-enabled", () -> false);
@@ -176,7 +181,7 @@ class ArtistHttpTest {
                                 id,
                                 source,
                                 file,
-                                id,
+                                com.mynora.singverse.auth.crypto.AuthCrypto.hash(file),
                                 10L,
                                 "2026-10-29T00:00:00Z",
                                 "2026-10-29T00:00:00Z",
@@ -207,41 +212,8 @@ class ArtistHttpTest {
                 revision);
     }
 
-    JsonNode create(String name) throws Exception {
-        var r =
-                req(
-                        admin,
-                        "/api/v1/artists",
-                        "POST",
-                        input(UUID.randomUUID().toString(), name, 0, true),
-                        null,
-                        true);
-        assertThat(r.statusCode()).withFailMessage(r.body()).isEqualTo(201);
-        return json.readTree(r.body());
-    }
-
     Map<String, Object> credit(String song, String name, long revision) {
         return Map.of("songId", song, "credit", name, "revision", revision);
-    }
-
-    JsonNode bind(String artist, List<Map<String, Object>> items) throws Exception {
-        return ok(
-                admin,
-                "/api/v1/artists/bindings",
-                "POST",
-                new com.mynora.singverse.media.artist.ArtistDtos.Bind(
-                        artist,
-                        items.stream()
-                                .map(
-                                        i ->
-                                                new com.mynora.singverse.media.artist.ArtistDtos
-                                                        .Credit(
-                                                        i.get("songId").toString(),
-                                                        i.get("credit").toString(),
-                                                        ((Number) i.get("revision")).longValue()))
-                                .toList()),
-                null,
-                true);
     }
 
     @Test
@@ -261,7 +233,7 @@ class ArtistHttpTest {
                                         null,
                                         true)
                                 .statusCode())
-                .isEqualTo(410);
+                .isIn(404,405);
         assertThat(
                         req(
                                         admin,
@@ -275,7 +247,7 @@ class ArtistHttpTest {
                                         null,
                                         true)
                                 .statusCode())
-                .isEqualTo(410);
+                .isIn(404,405);
         var review = ok(admin, "/api/v1/metadata/songs/" + a + "/review", "GET", null, null, false);
         var edits =
                 Map.of(

@@ -20,7 +20,9 @@ const rows = ref<AudioRow[]>([]), total = ref(0), page = ref(0), loaded = ref(fa
 const selected = reactive(new Set<string>()), all = ref(false), preferred = ref('')
 const sources = ref<{ id: string; name: string }[]>([]), error = ref(''), sourcesError = ref('')
 const editor = ref<AudioRow>(), opened = ref('')
-let active = true, sequence = 0
+let active = true, visible = true, sequence = 0
+let retryTimer: ReturnType<typeof setTimeout> | undefined
+const indexPreparing = ref(false), indexBuilding = ref(false)
 const available = computed(() => props.backends.filter(item => item.state === 'AVAILABLE' && item.id !== 'cpu'))
 watch(available, items => { if (!items.some(item => item.id === preferred.value)) preferred.value = '' })
 const coverErrors = reactive(new Set<string>())
@@ -47,11 +49,18 @@ function action(row: AudioRow) {
   return 'detail'
 }
 async function loadRows() {
+  clearTimeout(retryTimer)
   const turn = ++sequence; loading.value = true
   try {
-    const value = await authRequest<{ items: AudioRow[]; totalElements: number }>(`${base}/songs?${query(applied.value, page.value, pageSize.value)}`, 'GET', undefined, 60000)
-    if (active && turn === sequence) { total.value = value.totalElements; const last = Math.max(0, Math.ceil(total.value / pageSize.value) - 1); if (page.value > last) { page.value = last; void loadRows(); return } rows.value = value.items; loaded.value = true; error.value = '' }
-  } catch (failed) { if (active && turn === sequence) error.value = failure(failed, '读取歌曲失败') }
+    const value = await authRequest<{ items: AudioRow[]; totalElements: number; building?: boolean }>(`${base}/songs?${query(applied.value, page.value, pageSize.value)}`, 'GET', undefined, 60000)
+    if (active && turn === sequence) { indexPreparing.value = false; indexBuilding.value = !!value.building; total.value = value.totalElements; const last = Math.max(0, Math.ceil(total.value / pageSize.value) - 1); if (page.value > last) { page.value = last; void loadRows(); return } rows.value = value.items; loaded.value = true; error.value = '' }
+  } catch (failed) {
+    if (active && turn === sequence) {
+      indexPreparing.value = typeof failed === 'object' && failed !== null && 'status' in failed && failed.status === 503
+      error.value = indexPreparing.value ? '' : failure(failed, '读取歌曲失败')
+      if (indexPreparing.value && visible) retryTimer = setTimeout(() => { void loadRows() }, 1000)
+    }
+  }
   finally { if (active && turn === sequence) loading.value = false }
 }
 function search() { applied.value = { ...filter }; page.value = 0; selected.clear(); all.value = false; void loadRows() }
@@ -89,9 +98,9 @@ watch(rows, value => {
 onMounted(() => { void loadSources(); void loadRows() })
 // KeepAlive 首次挂载也会触发 activated；只在切回页签时刷新。
 let activations = 0
-onActivated(() => { if (activations++) void loadRows() })
-onDeactivated(() => { editor.value = undefined })
-onBeforeUnmount(() => { active = false; sequence++ })
+onActivated(() => { visible = true; if (activations++) void loadRows() })
+onDeactivated(() => { visible = false; clearTimeout(retryTimer); editor.value = undefined })
+onBeforeUnmount(() => { active = false; sequence++; clearTimeout(retryTimer) })
 defineExpose({ refresh: loadRows, clear })
 </script>
 
@@ -133,6 +142,8 @@ defineExpose({ refresh: loadRows, clear })
       <ElButton type="primary" :loading="busy" :disabled="busy || !readiness.ready || !selectedCount || loading" @click="makePreview()">为所选歌曲生成伴奏</ElButton>
     </div>
 
+    <p v-if="indexPreparing" role="status">正在准备歌曲列表，稍后自动重试…</p>
+    <p v-else-if="indexBuilding" role="status">正在更新歌曲状态…</p>
     <ElAlert v-if="error" :title="error" type="error" show-icon :closable="false" class="list-error"><ElButton link @click="loadRows">重试</ElButton></ElAlert>
     <ElSkeleton v-if="loading && !loaded" :rows="5" animated aria-label="正在读取歌曲" />
     <ElEmpty v-else-if="loaded && !rows.length" :description="filtered ? '没有符合条件的歌曲' : '曲库里还没有歌曲'"><ElButton v-if="filtered" @click="reset">清除筛选</ElButton></ElEmpty>

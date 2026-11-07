@@ -23,9 +23,13 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("sqlite")
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
 class MetadataHttpTest {
     @TempDir static Path temp;
     @DynamicPropertySource static void properties(DynamicPropertyRegistry properties) {
+        properties.add("singverse.transcoding.cache-directory", () -> temp.resolve("cache").toString());
+        properties.add("singverse.transcoding.directory", () -> temp.resolve("versions").toString());
+        properties.add("singverse.audio.directory", () -> temp.resolve("audio").toString());
         properties.add("singverse.sqlite.path", () -> temp.resolve("metadata.db").toString());
         properties.add("singverse.auth.key-file", () -> temp.resolve("auth.key").toString());
         properties.add("singverse.metadata.cache-path", () -> temp.resolve("covers").toString());

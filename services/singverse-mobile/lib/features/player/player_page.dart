@@ -149,7 +149,7 @@ class _PlayerPageState extends State<PlayerPage> {
     super.initState();
     reviewed = widget.state.takeId;
     if (widget.state.recording) recordedTake = widget.state.takeId;
-    widget.state.addListener(watch);
+    widget.state.performance.addListener(watch);
     if (widget.song != null) {
       opening = true;
       unawaited(prepare());
@@ -166,7 +166,7 @@ class _PlayerPageState extends State<PlayerPage> {
     if (widget.state.nativeEnabled) {
       unawaited(widget.state.command('subtitleInset', .08));
     }
-    widget.state.removeListener(watch);
+    widget.state.performance.removeListener(watch);
     if (forcedLandscape) {
       unawaited(
         SystemChrome.setPreferredOrientations(DeviceOrientation.values),
@@ -175,7 +175,7 @@ class _PlayerPageState extends State<PlayerPage> {
     super.dispose();
   }
 
-  Future<void> prepare({bool compatible = false}) async {
+  Future<void> prepare({bool compatible = false, bool retry = false}) async {
     final song = widget.song ?? widget.state.current;
     if (song == null) return;
     if (mounted) {
@@ -188,6 +188,7 @@ class _PlayerPageState extends State<PlayerPage> {
       await widget.state.play(
         song,
         force: compatible,
+        reuseAttempt: retry,
         start: (song.data['positionMs'] as num? ?? 0).toInt(),
       );
       if (mounted) await loadLyrics(widget.state.current ?? song);
@@ -514,7 +515,7 @@ class _PlayerPageState extends State<PlayerPage> {
       isScrollControlled: true,
       useSafeArea: true,
       builder: (context) => ListenableBuilder(
-        listenable: widget.state,
+        listenable: widget.state.performance,
         builder: (context, _) => SingleChildScrollView(
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -1014,7 +1015,7 @@ class _PlayerPageState extends State<PlayerPage> {
             ready && !state.taking
                 ? () => uiTask(context, () async {
                     await state.command(
-                      'seek',
+                      'restart',
                       state.rangeB > state.rangeA ? state.rangeA : 0,
                     );
                     await state.command('play');
@@ -1188,13 +1189,13 @@ class _PlayerPageState extends State<PlayerPage> {
                       await openConnection(context, state);
                       if (!mounted || !state.authenticated) return;
                     }
-                    await prepare();
+                    await prepare(retry: true);
                   },
                   child: Text(state.authenticated ? '重试播放' : '登录后重试'),
                 ),
                 if (state.authenticated)
                   TextButton(
-                    onPressed: () => prepare(compatible: true),
+                    onPressed: () => prepare(compatible: true, retry: true),
                     child: const Text('兼容播放'),
                   ),
               ],
@@ -1501,7 +1502,7 @@ class _PlayerPageState extends State<PlayerPage> {
     data: singVerseTheme(Brightness.dark, senior: widget.state.senior),
     child: Builder(
       builder: (context) => ListenableBuilder(
-        listenable: widget.state,
+        listenable: widget.state.performance,
         builder: (context, _) {
           final state = widget.state;
           final song = opening || openError != null

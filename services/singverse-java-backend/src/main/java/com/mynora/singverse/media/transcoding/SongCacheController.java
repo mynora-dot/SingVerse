@@ -26,12 +26,28 @@ public class SongCacheController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable String id) {
-        service.delete(id);
+    public void delete(@PathVariable String id, @RequestParam(defaultValue = "false") boolean confirmRecent) {
+        service.delete(id, confirmRecent);
     }
 
     @PostMapping("/clear")
     public Object clear() {
         return service.clear();
     }
+
+    @GetMapping("/pins")
+    public Object pins(@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) { return service.pins(page, size); }
+
+    @PutMapping("/songs/{songId}/pin")
+    public Object pin(@PathVariable String songId, @RequestBody JsonNode body) { return service.pin(songId, body); }
+
+    @PostMapping("/cleanup-jobs")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public Object cleanup(@RequestBody JsonNode body) { return service.cleanupJob(body); }
+
+    @GetMapping("/cleanup-jobs/{id}")
+    public Object job(@PathVariable String id) { return service.job(id); }
+
+    @PostMapping("/cleanup-jobs/{id}/cancel")
+    public Object cancel(@PathVariable String id) { return service.cancelJob(id); }
 }

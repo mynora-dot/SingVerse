@@ -19,15 +19,22 @@ public class TranscodeClient {
     private ComputeCallback callback;
     private final ComputeNodeSettings settings;
     private final ObjectMapper json;
+    private final Duration bodyIdleTimeout;
     private final HttpClient http =
             HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(3))
                     .followRedirects(HttpClient.Redirect.NEVER)
                     .build();
 
+    @org.springframework.beans.factory.annotation.Autowired
     public TranscodeClient(ComputeNodeSettings settings, ObjectMapper json) {
+        this(settings, json, Duration.ofSeconds(30));
+    }
+
+    TranscodeClient(ComputeNodeSettings settings, ObjectMapper json, Duration bodyIdleTimeout) {
         this.settings = settings;
         this.json = json;
+        this.bodyIdleTimeout = bodyIdleTimeout;
     }
 
     public Connection connection() {
@@ -133,7 +140,9 @@ public class TranscodeClient {
                 if (!range.matches("bytes=(?:[0-9]+-[0-9]*|-[0-9]+)")) throw fail(400, "无效的字节范围");
                 builder.header("Range", range);
             }
-            var r = http.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
+            var r = http.send(builder.build(), info -> HttpResponse.BodySubscribers.mapping(
+                    HttpResponse.BodySubscribers.ofInputStream(),
+                    input -> (InputStream) new ProgressTimeoutInputStream(input, bodyIdleTimeout)));
             if (r.statusCode() != 200 && r.statusCode() != 206 && r.statusCode() != 416) {
                 r.body().close();
                 throw fail(502, "转码产物暂时不可读取");

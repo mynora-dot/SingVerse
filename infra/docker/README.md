@@ -1,20 +1,24 @@
-# Docker入口
+# Docker 配置入口
 
-[compose.app.yaml](../../compose.app.yaml)启动Nginx前端与Java后端，默认使用独立SQLite命名卷。从仓库根执行 `make docker-up`，访问 http://localhost:18080/ 。构建、检查、日志、停止及局域网访问见[Docker说明](../../docs/docker.md)。
+所有仓库内命令均从仓库根执行。使用 `--project-directory .` 保持根 `.env`、构建上下文、相对挂载路径和开发 MySQL 项目名与迁移前一致；Make 入口已包含该参数。
 
-## 开发MySQL
+| 目录 | 内容 |
+|---|---|
+| [compose/](compose/) | `compose.app.yaml` 应用栈、`compose.yaml` 开发 MySQL、`compose.compute.yaml` 独立计算节点及硬件、音频运行时、HTTPS 覆盖配置 |
+| [build/](build/) | `docker-bake.hcl` 计算镜像矩阵、`.dockerignore` 源码白名单 |
+| [../deploy/](../deploy/) | NAS 应用和 RK3566 等部署包模板 |
 
-根[compose.yaml](../../compose.yaml)独立提供MySQL8.4、命名卷、应用账号SQL健康检查和仅回环端口。应用Docker命令不操作该项目。Python骨架继续使用 `make compute-run`，暂未提供计算节点镜像或GPU映射。
-
-首次配置时按.env.example建立本地.env并修改密码占位值，已有.env不要覆盖。从仓库根执行：
+Dockerfile 保留在各服务目录。两个服务的 `Dockerfile.dockerignore` 通过相对符号链接共用 `build/.dockerignore`，因此从仓库根构建时仍应用源码白名单。打包脚本将该规则复制为部署包根 `.dockerignore`。
 
 ```sh
+make docker-up
+make docker-check
+make docker-down
+# 独立开发 MySQL（首次按根 .env.example 配置，保留已有 .env）
 make db-mysql-up
-set -a
-. ./.env
-set +a
-make db-mysql-check
-docker compose stop mysql
+docker compose --project-directory . -f infra/docker/compose/compose.yaml stop mysql
+# 计算镜像矩阵
+make compute-images
 ```
 
-检查从宿主连接，MYSQL_HOST使用127.0.0.1；容器内部服务名仅用于同网络进程。停止保留命名卷，不擅自执行down -v。修改初始化密码不会更新已初始化卷的账号；切换数据库不迁移数据。NAS、GPU和跨架构验收仍需实际设备。
+应用默认使用 SQLite，MySQL 为独立开发项目。停止保留命名卷，不加 `-v`；修改初始化密码不会更新已有卷账号。应用、计算节点、硬件与局域网访问详见 [Docker 说明](../../docs/docker.md) 和 [compute README](../../services/singverse-compute/README.md)。

@@ -30,8 +30,9 @@
 - Java 打包前需构建完整前端；根 Make 目标自动处理，直接 Maven 前执行 `make frontend-build`。缺少产物必须失败。保留 npm 锁文件，使用 `npm ci`；产物保持独立于 Java 类型，生产无需 Node 进程。
 - 当前健康为 `/api/health`，保留 Actuator 原生响应且不公开数据库详情。新业务 API 使用 `/api/v1`，遵循 [API 约定](contracts/openapi/README.md)；账号契约在 `contracts/openapi/singverse.openapi.json`，只为真实功能扩展接口。
 - Java 数据访问统一使用 MyBatis；所有业务查询及写入 SQL 必须显式写在 `services/singverse-java-backend/src/main/resources/mappers/**/*.xml`，Mapper 接口只声明方法与参数。禁止在 Java 中拼接/内联业务 SQL、使用 `JdbcTemplate` 执行业务 SQL，或使用 MyBatis SQL 注解、Provider 隐藏 SQL。参数使用 `#{}` 绑定，禁止用 `${}` 拼接外部输入；事务继续由 Spring 管理。此规则适用于整个仓库后续新增与修改的 Java 业务持久化代码。dbmate 的 DDL/数据迁移保留在 `database/migrations/`；连接池健康探针及隔离测试的数据准备/独立断言允许使用固定 JDBC SQL，不得借此绕过业务 XML 规则。
-- 默认 SQLite，路径相对服务工作目录，保留父目录创建与单连接池；MySQL 为可选 Profile，两者互斥，失败不静默回退。切换不迁移数据，连接成功不代表业务兼容；账号表已使用 `database/migrations/` 的 dbmate SQL 迁移，见 [数据库策略](docs/database-strategy.md)。
-- `compose.app.yaml` 为 Nginx + Java + SQLite 卷，`compose.yaml` 独立提供开发 MySQL。Dockerfile 与 Nginx 配置归 Java 后端目录；运行及端口见 [docs/docker.md](docs/docker.md)。Spring Boot 不自动加载根 `.env`。
+- 默认 SQLite，路径相对服务工作目录，保留父目录创建与单连接池；MySQL 为可选 Profile，两者互斥，失败不静默回退。切换不迁移数据，连接成功不代表业务兼容。当前两种数据库各以 `database/migrations/{sqlite,mysql}/202611070001_initial_schema.sql` 从空库初始化，不提供旧迁移链升级路径；后续在此基线上新增迁移，不修改已部署的基线。见[数据库说明](database/README.md)及[数据库策略](docs/database-strategy.md)。
+- `infra/docker/compose/compose.app.yaml` 为 Nginx + Java + SQLite 卷，`infra/docker/compose/compose.yaml` 独立提供开发 MySQL。现有 Dockerfile 位于对应服务目录，现有 Nginx 配置位于 Java 后端目录；运行及端口见 [docs/docker.md](docs/docker.md)。Spring Boot 不自动加载根 `.env`。
+- 后续新增 Docker 相关文件统一放在 `infra/` 下分类管理，不再散放于仓库根目录或应用工程：Compose 主配置及覆盖文件放 `infra/docker/compose/`，Dockerfile、Bake、构建忽略规则及其他构建配置放 `infra/docker/build/`，部署包模板放 `infra/deploy/`，Docker 专用脚本及配套资源也归入 `infra/` 对应分类。已有文件需要迁移时同步更新 Makefile、CI、脚本与文档引用，并验证构建上下文、根 `.env` 读取、相对挂载路径、项目名及命名卷保持预期；Makefile 和 CI 工作流保留标准位置并引用 `infra/` 中的文件。
 
 - 单管理员，初始登录账号 `admin`（可修改），初始密码 `admin` 仅提示修改，不做多账号；MFA 为 RFC6238 TOTP。会话、PHC 哈希、密钥格式与本机恢复见 [认证说明](docs/authentication.md)，不得引入 Java 序列化凭据或网络重置后门。
 
@@ -52,7 +53,7 @@
 | 前端/H5 | `make frontend-check`；托管与资源 `make web-check` |
 | Java | `make java-backend-test` |
 | Python / Java-Python 联动 | 首次 `make compute-setup`；`make compute-check` / `make backend-check` |
-| SQLite / MySQL | `make db-sqlite-check` / 配置真实 MySQL 后 `make db-mysql-up db-mysql-check` |
+| SQLite / MySQL | `make db-fresh-check`；`make db-sqlite-check` / 配置真实隔离 MySQL 后 `make db-mysql-check` |
 | 手机 / TV | `make mobile-check`，平台构建 `make mobile-build` / `make tv-build` |
 | Docker | `make docker-up`、`make docker-check`；停止用 `make docker-down`，保留数据卷 |
 

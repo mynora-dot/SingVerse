@@ -1,8 +1,12 @@
 """Opt-in fixed classifier smoke; synthetic inputs do not measure singing accuracy."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from callback_source import CallbackTestCase
+
 import os
 import hashlib
 import uuid
-from pathlib import Path
 import subprocess
 import tempfile
 import threading
@@ -13,7 +17,7 @@ from singverse_compute.core.config import Settings
 
 
 @unittest.skipUnless(os.environ.get('SINGVERSE_TEST_FAST_MODEL_REPO'), 'Explicit local fast classifier required')
-class FastClassifierSmokeTest(unittest.TestCase):
+class FastClassifierSmokeTest(CallbackTestCase):
     def test_fixed_weights_cached_worker_and_silence(self):
         repo = Path(os.environ['SINGVERSE_TEST_FAST_MODEL_REPO'])
         with tempfile.TemporaryDirectory() as temporary:
@@ -25,7 +29,7 @@ class FastClassifierSmokeTest(unittest.TestCase):
                 path = root / (name + '.wav')
                 subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', signal, '-t', '6', '-ac', '1', '-ar', '32000', str(path)], check=True)
                 samples.append(path)
-            worker = create_app(Settings((media,), token, transcode_root=root / 'cache', audio_model_repo=repo,
+            worker = create_app(Settings(token_file=token, transcode_root=root / 'cache', audio_model_repo=repo,
                 minimum_free_bytes=0, audio_memory_bytes=2*1024**3)).state.audio_roles
             try:
                 self.assertTrue(worker.fast.available)
@@ -48,7 +52,7 @@ class FastClassifierSmokeTest(unittest.TestCase):
                     '-c:a', 'pcm_s16le', str(source)], check=True)
                 digest = hashlib.sha256(source.read_bytes()).hexdigest()
                 identifier = str(uuid.uuid4()); start = time.monotonic()
-                worker.submit(identifier, str(source), None, 'FAST'); worker.thread.join(30)
+                self.submit_audio(worker, identifier, source, 'FAST'); worker.thread.join(30)
                 result = worker.view(identifier)
                 self.assertEqual(result['state'], 'SUCCEEDED', result)
                 self.assertEqual(result['result']['state'], 'UNKNOWN', result)

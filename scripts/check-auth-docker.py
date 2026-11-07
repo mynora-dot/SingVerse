@@ -20,7 +20,7 @@ from urllib.request import HTTPCookieProcessor, Request, build_opener
 
 root = Path(__file__).resolve().parents[1]
 project = "singverse-auth-check-" + uuid.uuid4().hex[:10]
-command = ["docker", "compose", "-f", str(root / "compose.app.yaml"), "-p", project]
+command = ["docker", "compose", "--project-directory", str(root), "-f", str(root / "infra/docker/compose/compose.app.yaml"), "-p", project]
 env = dict(os.environ, SINGVERSE_HTTP_PORT="0", SINGVERSE_HTTP_BIND="127.0.0.1",
            SINGVERSE_PUBLIC_ORIGIN="", SINGVERSE_TRUSTED_PROXIES="")
 

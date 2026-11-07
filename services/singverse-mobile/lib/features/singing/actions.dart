@@ -108,7 +108,7 @@ Future<void> singingSettings(BuildContext context, AppState state) =>
       isScrollControlled: true,
       useSafeArea: true,
       builder: (context) => ListenableBuilder(
-        listenable: state,
+        listenable: state.performance,
         builder: (context, _) => SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
           child: Column(
@@ -216,7 +216,7 @@ Future<void> audioSettings(
   isScrollControlled: true,
   useSafeArea: true,
   builder: (context) => ListenableBuilder(
-    listenable: state,
+    listenable: state.performance,
     builder: (context, _) {
       final audio = state.tracks.where((t) => t['type'] == 'audio').toList();
       final selected = audio.where((t) => t['selected'] == true).firstOrNull;
@@ -504,7 +504,7 @@ class _MicrophoneTestState extends State<_MicrophoneTest> {
   });
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: widget.state,
+    listenable: widget.state.performance,
     builder: (context, _) => SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(

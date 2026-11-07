@@ -4,9 +4,20 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from singverse_compute.infrastructure.media.ffprobe import normalize, probe
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from callback_source import CallbackTestCase
+from singverse_compute.infrastructure.media.ffprobe import normalize
+from singverse_compute.infrastructure.media.remote_tags import RangeFile, extract
+from singverse_compute.infrastructure.transcoding.process import run
+from singverse_compute.core.errors import ComputeError
 
-class LocalTagsTest(unittest.TestCase):
+class RemoteTagsAdapterTest(CallbackTestCase):
+    def probe(self, path, executable='ffprobe'):
+        grant = self.callback(path, 'fixture-token')
+        with RangeFile(grant['callbackOrigin'], grant['reference'], 'fixture-token', path.name, path.stat().st_size) as source:
+            return extract(source, executable, 'ffmpeg', 1024**3)['tags']
+
     def test_priority_and_missing(self):
         self.assertEqual(normalize({'format': {'tags': {'TITLE': '文件歌名'}}, 'streams': [{'tags': {'title': '流歌名', 'ARTIST': '甲;乙'}}]}),
                          {'title': '文件歌名', 'artists': ['甲','乙'], 'album': None, 'releaseDate': None})
@@ -21,28 +32,24 @@ class LocalTagsTest(unittest.TestCase):
                     command += ['-metadata','title=文件内歌名','-metadata','artist=文件内歌手','-metadata','album=文件内专辑','-metadata','date=2020-03-04',str(path)]
                     subprocess.run(command, check=True)
                     digest = hashlib.sha256(path.read_bytes()).digest()
-                    tags = probe(path)
+                    tags = self.probe(path)
                     self.assertEqual(tags['title'], '文件内歌名'); self.assertEqual(tags['artists'], ['文件内歌手'])
                     self.assertEqual(tags['album'], '文件内专辑'); self.assertEqual(tags['releaseDate'], '2020-03-04')
                     self.assertEqual(hashlib.sha256(path.read_bytes()).digest(), digest)
     def test_reader_bounds_timeout_and_large_output(self):
-        with tempfile.TemporaryDirectory() as folder:
-            media = Path(folder) / 'input.mp3'; media.write_bytes(b'fixture')
-            fake = Path(folder) / 'ffprobe'
-            fake.write_text('#!/usr/bin/env python3\nimport sys\nsys.stdout.write("x" * 400000)\n')
-            fake.chmod(0o700)
-            self.assertEqual(probe(media, str(fake)), {})
-            fake.write_text('#!/usr/bin/env python3\nimport time\ntime.sleep(10)\n')
-            self.assertEqual(probe(media, str(fake)), {})
+        import sys
+        for command, timeout in (([sys.executable, '-c', 'import sys; sys.stdout.write("x" * 400000)'], 3),
+                                 ([sys.executable, '-c', 'import time; time.sleep(10)'], .1)):
+            with self.assertRaises(ComputeError):
+                run(command, timeout=timeout, limit=262144)
 
     def test_bad_file_missing_tool_and_no_tags(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / 'broken.flac'; path.write_bytes(b'not audio')
-            self.assertFalse(probe(path).get('title'))
-            self.assertEqual(probe(path, '/missing/ffprobe'), {})
-            self.assertEqual(probe('relative.mp3'), {})
+            self.assertFalse(self.probe(path).get('title'))
+            self.assertEqual(self.probe(path, '/missing/ffprobe'), {})
             empty = Path(folder) / 'empty.wav'
             subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=duration=0.1',str(empty)],check=True)
-            self.assertIsNone(probe(empty)['title'])
+            self.assertFalse(self.probe(empty).get('title'))
 
 if __name__ == '__main__': unittest.main()

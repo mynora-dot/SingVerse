@@ -99,6 +99,7 @@ class AudioModels:
         self.repo = audio.repo
         self.root = audio.root / 'models' if audio.root else None
         self.lock = threading.RLock()
+        self.manifest_lock = threading.RLock()
         self.cancel = threading.Event()
         self.thread = None
         self.startup_thread = None
@@ -141,7 +142,8 @@ class AudioModels:
                 accelerators.cache_clear()
                 from ..infrastructure.transcoding.process import run
                 try:
-                    self.environment = json.loads(run([sys.executable, '-c', PROBE], timeout=30, limit=65536))
+                    self.environment = json.loads(run([sys.executable, '-c', PROBE], timeout=30, limit=65536,
+                                                      memory_limit=self.audio.settings.audio_memory_bytes))
                 except Exception:
                     self.environment = {'devices': {}, 'versions': {}, 'error': 'RUNTIME_MISSING_OR_INCOMPATIBLE'}
                 hardware = []
@@ -234,9 +236,10 @@ class AudioModels:
             item['detected'] = item['id'] != 'cpu' and (bool(item.get('device')) or item['id'] in physical)
         return values
 
-    def selected(self):
-        available = {item['id'] for item in self.entries() if item['state'] == 'AVAILABLE'}
-        hardware = any(item.get('detected') for item in self.entries())
+    def selected(self, entries=None):
+        entries = self.entries() if entries is None else entries
+        available = {item['id'] for item in entries if item['state'] == 'AVAILABLE'}
+        hardware = any(item.get('detected') for item in entries)
         selection = 'auto' if self.selection == 'cpu' and hardware else self.selection
         fallback = getattr(self.audio.transcoding.backends, 'cpu_fallback', True)
         choices = ('cuda', 'rocm', 'openvino', 'rknn', 'mps') if selection == 'auto' else (selection,)
@@ -246,6 +249,7 @@ class AudioModels:
 
     def status(self, refresh=False):
         self.probe(refresh)
+        entries = self.entries()
         free = shutil.disk_usage(self.root).free if self.root else 0
         memory = memory_available()
         return {'environment': self.environment, 'memoryAvailableBytes': memory, 'diskFreeBytes': free,
@@ -254,7 +258,7 @@ class AudioModels:
                 'model': {'id': 'htdemucs', 'version': '955717e8', 'filename': NAME, 'sha256': DIGEST, 'size': MODEL_BYTES, 'maxBytes': MAX_BYTES,
                           'downloadUrl': URL, 'installed': self.weights_valid(), 'runtimeReady': self.audio.runtime_available, 'writable': self.writable()},
                 'startupCheck': dict(self.startup_check),
-                'cpuFallback': getattr(self.audio.transcoding.backends, 'cpu_fallback', True), 'selection': self.selection, 'selected': self.selected(), 'backends': self.entries(), 'operation': dict(self.operation),
+                'cpuFallback': getattr(self.audio.transcoding.backends, 'cpu_fallback', True), 'selection': self.selection, 'selected': self.selected(entries), 'backends': entries, 'operation': dict(self.operation),
                 'fastClassifier': {**self.model_status(FAST), 'ready': bool(getattr(self.audio, 'fast', None) and self.audio.fast.available)},
                 'models': [self.model_status(key) for key in MODELS if key != FAST], 'build': build_info(), 'deployment': self.deployment(),
                 'instructions': {'openvino': 'make compute-audio-openvino-setup', 'cpu': 'make compute-setup compute-audio-setup',
@@ -267,9 +271,23 @@ class AudioModels:
 
     def inference_digest(self, model_id):
         if model_id == RKNN:
-            from ..infrastructure.rknn_audio import local_manifest
-            return local_manifest(self.model_path(RKNN))[1]
+            return self.rknn_manifest()[1]
         return model_digest(model_id)
+
+    def rknn_manifest(self):
+        """Hash installed weights once per file identity; execution validates them again."""
+        from ..infrastructure.rknn_audio import local_manifest
+        path = self.model_path(RKNN)
+        if path is None:
+            raise ValueError('RKNN model repository is not configured')
+        # Missing optional weights must not wait behind a long environment probe.
+        stamps = tuple((item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns, item.st_ctime_ns)
+                       for item in ((path / name).stat() for name in ('manifest.json', 'uvr.rknn')))
+        with self.manifest_lock:
+            if getattr(self, '_rknn_stamp', None) != stamps:
+                value = local_manifest(path)
+                self._rknn_value, self._rknn_stamp = value, stamps
+            return self._rknn_value
 
     def model_valid(self, model_id):
         if model_id == RKNN:
@@ -316,7 +334,7 @@ class AudioModels:
         for backend in ('cpu', 'cuda', 'rocm', 'openvino'):
             suffix = f' -f compose.audio-{backend}.yaml'
             profiles.append({'backend': backend, 'image': f'singverse-compute:<版本>-{backend}',
-                             'command': f'COMPUTE_AUDIO_RUNTIME={backend} docker compose -f compose.compute.yaml{suffix} up -d --build',
+                             'command': f'COMPUTE_AUDIO_RUNTIME={backend} docker compose --project-directory . -f infra/docker/compose/compose.compute.yaml{suffix} up -d --build',
                              'included': includes_backend(backend), 'requiresRedeploy': variant not in ('native', backend)})
         return {'profiles': profiles, 'note': '在实际节点执行部署；镜像架构由Docker选择，GPU后端需显式配置。宿主驱动不由网页安装。'}
 
@@ -590,7 +608,8 @@ class AudioModels:
         if backend in ('cuda', 'rocm'):
             from ..infrastructure.transcoding.process import run
             try:
-                free = int(run([sys.executable, '-c', 'import torch; print(torch.cuda.mem_get_info()[0])'], timeout=30, limit=4096))
+                free = int(run([sys.executable, '-c', 'import torch; print(torch.cuda.mem_get_info()[0])'], timeout=30, limit=4096,
+                               memory_limit=self.audio.settings.audio_memory_bytes))
             except Exception as error:
                 raise ComputeError(422, 'GPU free memory cannot be determined') from error
             if free < 2*1024**3:

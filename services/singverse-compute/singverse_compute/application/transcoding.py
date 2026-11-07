@@ -1,16 +1,18 @@
 """Instance-owned execution registry; Java owns business queues and durable task intent."""
-from contextlib import nullcontext
+from contextlib import contextmanager
+from collections import OrderedDict
 from dataclasses import asdict, dataclass, field, replace
-from pathlib import Path
 import hashlib
 import json
+import os
+import stat
 import re
 import shutil
 import threading
 import time
 from ..core.errors import ComputeError
 from ..domain.transcoding import Target
-from .transcode_artifacts import ARTIFACT, completed_hls, export_hls
+from .transcode_artifacts import ARTIFACT, completed_hls, export_hls, ready_hls
 
 @dataclass
 class Execution:
@@ -30,6 +32,10 @@ class Execution:
     output: dict = field(default_factory=dict)
     pipeline: dict = field(default_factory=dict)
     released: bool = False
+    released_at: float = 0
+    exports: int = 0
+    deleting: bool = False
+    hls_ready: bool = False
     cancel: threading.Event = field(default_factory=threading.Event)
 
     def view(self):
@@ -41,19 +47,24 @@ class Execution:
                 'released':self.released}
 
 class Transcoding:
-    def __init__(self, settings, paths, auth, probe, encoder, backends, remote):
-        self.settings, self.paths, self.auth = settings, paths, auth
+    def __init__(self, settings, auth, probe, encoder, backends, remote):
+        self.settings, self.auth = settings, auth
         self.probe, self.encoder, self.backends, self.remote = probe, encoder, backends, remote
         self.root = settings.transcode_root
         self.tasks = {}
         self.lock = threading.RLock()
+        self.collection_lock = threading.Lock()
+        self.storage_lock = threading.Lock()
+        self.storage_dirty = threading.Event()
+        self.storage_dirty.set()
+        self.usage_bytes = 0
+        self.usage_at = 0
         self.closed = threading.Event()
         self.threads = []
         self.realtime_reserved_until = 0
         self.probe_slots = threading.BoundedSemaphore(settings.media_concurrency)
+        self.probes = OrderedDict()
         if self.root:
-            if any(self.root.is_relative_to(r) or r.is_relative_to(self.root) for r in settings.media_roots):
-                raise ValueError('Transcode directory must be separate from media roots')
             self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
             for file in self.root.glob('*/execution.json'):
                 try:
@@ -71,6 +82,7 @@ class Transcoding:
                     task.pipeline = record.get('pipeline', {})
                     task.finished = record.get('finished',0) or time.time()
                     task.released = record.get('released', False)
+                    task.released_at = record.get('releasedAt', task.finished if task.released else 0)
                     self.tasks[task.id] = task
                 except (OSError, ValueError, KeyError, TypeError):
                     continue
@@ -79,64 +91,92 @@ class Transcoding:
     def available(self):
         return bool(self.root and self.auth.available and shutil.which(self.settings.ffmpeg) and shutil.which(self.settings.ffprobe))
 
-    def input(self, path, reference, callback_origin=None):
-        if path:
-            return nullcontext((str(self.paths.resolve(path)), False))
+    @contextmanager
+    def input(self, reference, callback_origin, resource='transcode-input'):
         if not reference or not callback_origin:
             raise ComputeError(503, 'Remote media input is not configured')
-        from contextlib import contextmanager
-        @contextmanager
-        def gateway():
-            with self.remote(callback_origin, reference, self.auth._token()) as url:
-                yield url, True
-        return gateway()
+        with self.remote(callback_origin, reference, self.auth._token(), resource) as url:
+            yield url, True
 
-    def inspect(self, path, reference, callback_origin=None):
+    def inspect(self, reference, callback_origin, fingerprint=None):
         if not self.available:
             raise ComputeError(503, 'Transcoding unavailable')
         if not self.probe_slots.acquire(blocking=False):
             raise ComputeError(429, 'Media probe busy')
         try:
-            with self.input(path, reference, callback_origin) as (source, network):
-                return self.probe.read(source, network)
+            with self.input(reference, callback_origin) as (source, network):
+                media = self.probe.read(source, network)
+            if fingerprint:
+                with self.lock:
+                    self.probes[(reference, callback_origin, fingerprint)] = (time.monotonic(), media)
+                    self.probes.move_to_end((reference, callback_origin, fingerprint))
+                    while len(self.probes) > 128:
+                        self.probes.popitem(last=False)
+            return media
         finally:
             self.probe_slots.release()
 
     def save(self, task):
-        record = {**task.view(), 'signature':task.signature, 'target':asdict(task.target), 'finished':task.finished}
+        record = {**task.view(), 'signature':task.signature, 'target':asdict(task.target), 'finished':task.finished, 'releasedAt':task.released_at}
         directory = self.root / task.id
         temp = directory / 'execution.tmp'
         temp.write_text(json.dumps(record), encoding='utf-8')
         temp.replace(directory / 'execution.json')
 
-    def usage(self):
-        total = 0
-        for directory in self.root.iterdir():
-            if not directory.is_dir() or directory.is_symlink():
-                continue
-            for path in directory.iterdir():
-                try:
-                    if path.is_file() and not path.is_symlink():
-                        total += path.stat().st_size
-                except FileNotFoundError:
-                    pass  # FFmpeg atomically replaces temporary manifests while an execution runs.
-        return total
+    def usage(self, refresh=False):
+        # Disk scans never hold the scheduling lock. Coalesce concurrent callers and
+        # reuse accounting until files change or an active encoder needs sampling.
+        with self.storage_lock:
+            with self.lock:
+                active = any(t.state in ('ACCEPTED', 'RUNNING') for t in self.tasks.values())
+            if not refresh and not self.storage_dirty.is_set() and (not active or time.monotonic() - self.usage_at < 5):
+                return self.usage_bytes
+            self.storage_dirty.clear()
+            total = 0
+            try:
+                with os.scandir(self.root) as directories:
+                    for directory in directories:
+                        if not directory.is_dir(follow_symlinks=False):
+                            continue
+                        try:
+                            with os.scandir(directory.path) as entries:
+                                for entry in entries:
+                                    try:
+                                        info = entry.stat(follow_symlinks=False)
+                                        if stat.S_ISREG(info.st_mode):
+                                            total += info.st_size
+                                    except FileNotFoundError:
+                                        pass  # FFmpeg replaces manifests atomically.
+                        except FileNotFoundError:
+                            pass  # Another task may finish artifact release during accounting.
+            except OSError:
+                self.storage_dirty.set()
+                raise
+            self.usage_bytes, self.usage_at = total, time.monotonic()
+            return total
 
-    def create(self, identifier, path, reference, fingerprint, target, callback_origin=None):
+    def create(self, identifier, reference, fingerprint, target, callback_origin):
         if not self.available:
             raise ComputeError(503, 'Transcoding unavailable')
         # Input seeking plus stream-copy may expose frames preceding the requested time.
         # Decode nonzero starts accurately so returned original-timeline offsets remain valid for lyrics.
         if target.start > 0 and target.mode != 'TRANSCODE':
             target = replace(target, mode='TRANSCODE')
-        signature = hashlib.sha256(json.dumps(['2', path, reference, callback_origin, fingerprint, asdict(target)], sort_keys=True).encode()).hexdigest()
+        signature = hashlib.sha256(json.dumps(['3', reference, callback_origin, fingerprint, asdict(target)], sort_keys=True).encode()).hexdigest()
         with self.lock:
             prior = self.tasks.get(identifier)
             if prior:
                 if prior.signature != signature:
                     raise ComputeError(409, 'Execution ID already used for another input')
                 return self.view(identifier)
-            self.collect()
+        usage, free = self.collect()
+        with self.lock:
+            # Another request may have created the same execution during disk IO.
+            prior = self.tasks.get(identifier)
+            if prior:
+                if prior.signature != signature:
+                    raise ComputeError(409, 'Execution ID already used for another input')
+                return self.view(identifier)
             if target.purpose == 'OFFLINE' and time.monotonic() < self.realtime_reserved_until:
                 raise ComputeError(429, 'Capacity reserved for realtime playback')
             active = [t for t in self.tasks.values() if t.state in ('ACCEPTED','RUNNING')]
@@ -153,7 +193,7 @@ class Transcoding:
                     self.realtime_reserved_until = time.monotonic() + 5
                     audio.preempt()
                 raise ComputeError(429, 'Offline audio worker stopping; retry playback')
-            if self.usage() >= self.settings.cache_bytes or shutil.disk_usage(self.root).free < self.settings.minimum_free_bytes:
+            if usage >= self.settings.cache_bytes or free < self.settings.minimum_free_bytes:
                 raise ComputeError(507, 'Transcode storage budget exhausted')
             task = Execution(identifier, signature, target)
             task.cpu_fallback = getattr(self.backends, 'cpu_fallback', True)
@@ -162,19 +202,23 @@ class Transcoding:
             directory.mkdir(exist_ok=False)
             self.tasks[identifier] = task
             self.save(task)
-            thread = threading.Thread(target=self.execute, args=(task,path,reference,callback_origin), daemon=True)
+            self.storage_dirty.set()
+            thread = threading.Thread(target=self.execute, args=(task,reference,callback_origin,fingerprint), daemon=True)
             self.threads = [t for t in self.threads if t.is_alive()]
             self.threads.append(thread)
             thread.start()
             return task.view()
 
-    def execute(self, task, path, reference, callback_origin=None):
+    def execute(self, task, reference, callback_origin, fingerprint=None):
         directory = self.root / task.id
         try:
             task.state = 'RUNNING'
-            with self.input(path, reference, callback_origin) as (source, network):
-                before = Path(source).stat() if not network else None
-                media = self.probe.read(source, network)
+            with self.lock:
+                prior_probe = self.probes.pop((reference, callback_origin, fingerprint), None)
+            with self.input(reference, callback_origin) as (source, network):
+                # The snapshot is private to this authorized reference and immutable source
+                # fingerprint. FFmpeg still opens the fresh authenticated input itself.
+                media = prior_probe[1] if prior_probe and time.monotonic() - prior_probe[0] < 60 else self.probe.read(source, network)
                 if media.duration and task.target.start >= media.duration:
                     raise ComputeError(422, 'Start position exceeds media duration')
                 selected = [s for s in media.streams if s.kind == 'video'][:1] + [s for s in media.streams if s.kind == 'audio' and (not task.target.audio_id or s.id == task.target.audio_id)]
@@ -211,8 +255,6 @@ class Transcoding:
                             raise
                         task.fallback_reason = 'ACCELERATOR_EXECUTION_FAILED'
                         backend = 'software'
-                if before and (before.st_size, before.st_mtime_ns) != (Path(source).stat().st_size, Path(source).stat().st_mtime_ns):
-                    raise ComputeError(409, 'Source changed during execution')
                 if task.target.purpose == 'OFFLINE':
                     output = directory / 'output.mp4'
                     digest = hashlib.sha256()
@@ -233,6 +275,7 @@ class Transcoding:
             with self.lock:
                 task.state = 'CANCELLED' if outcome == 'SUCCEEDED' and task.cancel.is_set() else outcome
                 task.finished = time.time()
+                self.storage_dirty.set()
                 self.save(task)
                 if task.state in ('FAILED','CANCELLED'):
                     for artifact in directory.iterdir():
@@ -243,6 +286,8 @@ class Transcoding:
         task = self.tasks.get(identifier)
         if task is None:
             raise ComputeError(404, 'Execution not found')
+        if task.deleting:
+            raise ComputeError(409, 'Execution artifacts are being released')
         return task
 
     def view(self, identifier):
@@ -251,8 +296,10 @@ class Transcoding:
             result = task.view()
             if task.target.purpose == 'REALTIME':
                 directory = self.root / identifier
-                manifest = directory / 'master.m3u8'
-                result['ready'] = not task.released and task.state not in ('FAILED', 'CANCELLED') and manifest.is_file() and any(directory.glob('stream_*_000000.*'))
+                active = not task.released and not task.cancel.is_set() and task.state not in ('FAILED', 'CANCELLED')
+                if active and not task.hls_ready:
+                    task.hls_ready = ready_hls(directory)
+                result['ready'] = active and task.hls_ready
             return result
 
     def renew(self, identifier):
@@ -281,41 +328,72 @@ class Transcoding:
             raise ComputeError(404, 'Artifact not ready')
         return path
 
+    def delete_directory(self, identifier):
+        directory = self.root / identifier
+        if directory.is_symlink():
+            directory.unlink()
+        else:
+            try:
+                shutil.rmtree(directory)
+            except FileNotFoundError:
+                pass
+        self.storage_dirty.set()
+
     def remove(self, identifier):
         with self.lock:
             task = self.get(identifier)
-            if task.state in ('ACCEPTED','RUNNING'):
+            if task.state in ('ACCEPTED', 'RUNNING'):
                 task.cancel.set()
                 raise ComputeError(409, 'Cancel execution before deleting artifacts')
-            if time.time() - task.renewed < self.settings.lease_seconds:
+            if task.exports or time.time() - task.renewed < self.settings.lease_seconds:
                 raise ComputeError(409, 'Artifacts currently leased')
-            shutil.rmtree(self.root / identifier)
-            del self.tasks[identifier]
+            task.deleting = True
+        try:
+            self.delete_directory(identifier)
+            with self.lock:
+                del self.tasks[identifier]
+        finally:
+            with self.lock:
+                task.deleting = False
 
     def collect(self):
         if not self.root:
-            return
-        with self.lock:
-            usage = self.usage()
-            free = shutil.disk_usage(self.root).free
-            for identifier, task in list(self.tasks.items()):
-                now = time.time()
-                if task.state in ('ACCEPTED','RUNNING'):
-                    if task.target.purpose == 'REALTIME' and now-task.renewed > self.settings.lease_seconds:
-                        task.cancel.set()
-                    if usage > self.settings.cache_bytes or free < self.settings.minimum_free_bytes:
-                        task.error = 'STORAGE_BUDGET_EXHAUSTED'
-                        task.cancel.set()
-                elif task.target.purpose == 'REALTIME' and now-max(task.finished, task.renewed) > self.settings.retention_seconds:
-                    directory = self.root / identifier
-                    if directory.is_symlink():
-                        directory.unlink()
-                    else:
-                        try:
-                            shutil.rmtree(directory)
-                        except FileNotFoundError:
-                            pass
-                    del self.tasks[identifier]
+            return 0, 0
+        usage, free = self.usage(), shutil.disk_usage(self.root).free
+        if not self.collection_lock.acquire(blocking=False):
+            return usage, free
+        try:
+            expired = []
+            now = time.time()
+            with self.lock:
+                for identifier, task in list(self.tasks.items()):
+                    if task.deleting or task.exports:
+                        continue
+                    if task.state in ('ACCEPTED', 'RUNNING'):
+                        if task.target.purpose == 'REALTIME' and now - task.renewed > self.settings.lease_seconds:
+                            task.cancel.set()
+                        if usage > self.settings.cache_bytes or free < self.settings.minimum_free_bytes:
+                            task.error = 'STORAGE_BUDGET_EXHAUSTED'
+                            task.cancel.set()
+                    elif (task.target.purpose == 'REALTIME' and now - max(task.finished, task.renewed) > self.settings.retention_seconds
+                          or task.target.purpose == 'OFFLINE' and (task.released or task.state in ('FAILED', 'CANCELLED'))
+                          and now - (task.released_at or task.finished) > 7 * 86400):
+                        task.deleting = True
+                        expired.append((identifier, task))
+            try:
+                for identifier, task in expired:
+                    self.delete_directory(identifier)
+                    with self.lock:
+                        self.tasks.pop(identifier, None)
+            finally:
+                with self.lock:
+                    for _, task in expired:
+                        task.deleting = False
+            if expired:
+                usage, free = self.usage(), shutil.disk_usage(self.root).free
+            return usage, free
+        finally:
+            self.collection_lock.release()
 
     def export(self, identifier):
         with self.lock:
@@ -325,18 +403,32 @@ class Transcoding:
             if task.state != 'SUCCEEDED' or task.target.purpose != 'REALTIME':
                 raise ComputeError(409, 'Only completed realtime HLS outputs may be exported')
             task.renewed = time.time()
-            try:
-                exported = export_hls(self.root / identifier)
+            task.exports += 1
+        try:
+            exported = export_hls(self.root / identifier)
+            with self.lock:
+                if task.state != 'SUCCEEDED' or task.released:
+                    raise ComputeError(409, 'Execution changed during export')
                 task.renewed = time.time()
-                return exported
-            except (OSError, UnicodeError) as error:
-                raise ComputeError(409, 'Execution artifacts are incomplete or unreadable') from error
+            return exported
+        except (OSError, UnicodeError) as error:
+            raise ComputeError(409, 'Execution artifacts are incomplete or unreadable') from error
+        finally:
+            with self.lock:
+                task.exports -= 1
 
     def acknowledge(self, identifier):
         with self.lock:
             task = self.get(identifier)
             if task.state != 'SUCCEEDED':
                 raise ComputeError(409, 'Only completed outputs may be acknowledged')
+            if task.exports:
+                raise ComputeError(409, 'Execution export is still active')
+            if task.released:
+                self.save(task)  # Retry a release whose prior persistence failed.
+                return task.view()
+            task.deleting = True
+        try:
             directory = self.root / identifier
             if directory.is_symlink():
                 raise ComputeError(409, 'Execution artifact directory is invalid')
@@ -346,9 +438,15 @@ class Transcoding:
                         path.unlink()
             except OSError as error:
                 raise ComputeError(500, 'Execution artifacts could not be released') from error
-            task.released = True
-            self.save(task)
-            return task.view()
+            with self.lock:
+                task.released = True
+                task.released_at = time.time()
+                self.save(task)
+                return task.view()
+        finally:
+            self.storage_dirty.set()
+            with self.lock:
+                task.deleting = False
 
     def start(self):
         def maintain():
@@ -366,7 +464,9 @@ class Transcoding:
 
     def close(self):
         self.closed.set()
-        for task in self.tasks.values():
+        with self.lock:
+            tasks = list(self.tasks.values())
+        for task in tasks:
             task.cancel.set()
         for thread in self.threads:
             thread.join(timeout=8)

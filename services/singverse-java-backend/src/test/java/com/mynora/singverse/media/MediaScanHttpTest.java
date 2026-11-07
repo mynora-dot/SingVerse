@@ -18,6 +18,7 @@ import org.springframework.test.context.*;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("sqlite")
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
 class MediaScanHttpTest {
     @TempDir static Path temp;
     static com.sun.net.httpserver.HttpServer computeStub;
@@ -65,6 +66,11 @@ class MediaScanHttpTest {
         registry.add("singverse.sqlite.path", () -> temp.resolve("scan.db").toString());
         registry.add("singverse.auth.key-file", () -> temp.resolve("master.key").toString());
         registry.add("singverse.webdav.metadata-path", () -> temp.resolve("derived").toString());
+        registry.add("singverse.metadata.cache-path", () -> temp.resolve("covers").toString());
+        registry.add("singverse.transcoding.directory", () -> temp.resolve("versions").toString());
+        registry.add("singverse.transcoding.cache-directory", () -> temp.resolve("cache").toString());
+        registry.add("singverse.transcoding.cache-minimum-free-bytes", () -> 0);
+        registry.add("singverse.audio.directory", () -> temp.resolve("audio").toString());
     }
     @LocalServerPort int port;
     @Autowired JdbcTemplate db;
@@ -131,9 +137,18 @@ class MediaScanHttpTest {
         var songs=body(request(source+"/songs","GET",null,false)).path("items");
         for(var song:songs){boolean dual=song.path("relativePath").asText().startsWith("双轨");var probe=json.createObjectNode().put("duration",90);var streams=probe.putArray("streams");streams.addObject().put("kind","audio").put("id","stream:0");if(dual)streams.addObject().put("kind","audio").put("id","stream:1");audioJobs.observe(song.path("id").asText(),probe);}
         String sourceId=source.substring(source.lastIndexOf('/')+1),base="/api/v1/audio-processing";
-        var filtered=body(request(base+"/songs?streams=1&sourceId="+sourceId,"GET",null,false));assertThat(filtered.path("totalElements").asLong()).isEqualTo(1);
-        var previewResponse=request(base+"/batches/preview","POST",Map.of("all",true,"filter",Map.of("sourceId",sourceId)),true);assertThat(previewResponse.statusCode()).withFailMessage(previewResponse.body()).isEqualTo(200);
-        var preview=body(previewResponse);String id=preview.path("id").asText();assertThat(preview.path("total").asLong()).isEqualTo(2);assertThat(preview.at("/categories/ELIGIBLE").asInt()).isEqualTo(1);assertThat(preview.at("/categories/INAPPLICABLE").asInt()).isEqualTo(1);
+        org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(5)).untilAsserted(()->{
+            var filtered=request(base+"/songs?streams=1&sourceId="+sourceId,"GET",null,false);
+            assertThat(filtered.statusCode()).isEqualTo(200);
+            assertThat(body(filtered).path("totalElements").asLong()).isEqualTo(1);
+        });
+        var previewResponse=request(base+"/batches/preview","POST",Map.of("all",true,"filter",Map.of("sourceId",sourceId)),true);assertThat(previewResponse.statusCode()).withFailMessage(previewResponse.body()).isEqualTo(202);
+        String id=body(previewResponse).path("id").asText();
+        org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(5)).untilAsserted(()->{
+            var preview=body(request(base+"/batches/"+id,"GET",null,false));
+            assertThat(preview.path("state").asText()).isEqualTo("PREVIEW");
+            assertThat(preview.path("total").asLong()).isEqualTo(2);assertThat(preview.at("/categories/ELIGIBLE").asInt()).isEqualTo(1);assertThat(preview.at("/categories/INAPPLICABLE").asInt()).isEqualTo(1);
+        });
         Files.writeString(directory.resolve("新增-歌手.wav"),"fixture");assertThat(request(source+"/scan","POST",null,true).statusCode()).isEqualTo(200);
         assertThat(body(request(base+"/batches/"+id,"GET",null,false)).path("total").asLong()).isEqualTo(2);
         for(int attempt=0;attempt<2;attempt++)assertThat(request(base+"/batches/"+id+"/submit","POST",null,true).statusCode()).isEqualTo(200);
@@ -287,8 +302,10 @@ class MediaScanHttpTest {
         var seenPath = new java.util.concurrent.atomic.AtomicReference<String>();
         var seenAuth = new java.util.concurrent.atomic.AtomicReference<String>();
         var seenRange = new java.util.concurrent.atomic.AtomicReference<String>();
+        var sourceRequests = new java.util.concurrent.atomic.AtomicInteger();
         var followed = new java.util.concurrent.atomic.AtomicInteger();
         server.createContext("/dav/", exchange -> {
+            sourceRequests.incrementAndGet();
             seenPath.set(exchange.getRequestURI().getPath());
             seenAuth.set(exchange.getRequestHeaders().getFirst("Authorization"));
             seenRange.set(exchange.getRequestHeaders().getFirst("Range"));
@@ -302,8 +319,13 @@ class MediaScanHttpTest {
                 exchange.sendResponseHeaders(206, 4); exchange.getResponseBody().write("2345".getBytes());
             } else {
                 exchange.getResponseHeaders().set("Accept-Ranges", "bytes");
-                if (seenRange.get() != null) exchange.getResponseHeaders().set("Content-Range", "bytes 2-5/10");
-                byte[] bytes = (seenRange.get() == null ? "0123456789" : "2345").getBytes();
+                int start = 0, end = 9;
+                if (seenRange.get() != null) {
+                    var range = seenRange.get().substring(6).split("-", -1);
+                    start = Integer.parseInt(range[0]); if (!range[1].isEmpty()) end = Math.min(9, Integer.parseInt(range[1]));
+                    exchange.getResponseHeaders().set("Content-Range", "bytes " + start + "-" + end + "/10");
+                }
+                byte[] bytes = "0123456789".substring(start, end + 1).getBytes();
                 exchange.sendResponseHeaders(seenRange.get() == null ? 200 : 206, bytes.length);
                 exchange.getResponseBody().write(bytes);
             }
@@ -316,11 +338,13 @@ class MediaScanHttpTest {
             assertThat(source.statusCode()).isEqualTo(201);
             db.update("UPDATE media_song SET source_id=?, relative_path=? WHERE id=?", body(source).path("id").asText(), "子目录/歌手 - 歌名 #1%.mp4", id);
             assertThat(video(id, null, "GET").body()).isEqualTo("0123456789");
+            int fetched = sourceRequests.get();
             var partial = video(id, "bytes=2-5", "GET");
             assertThat(partial.statusCode()).isEqualTo(206);
             assertThat(partial.body()).isEqualTo("2345");
             assertThat(partial.headers().firstValue("Content-Range").orElseThrow()).isEqualTo("bytes 2-5/10");
-            assertThat(seenRange.get()).isEqualTo("bytes=2-5");
+            assertThat(sourceRequests.get()).isEqualTo(fetched); // The complete original copy serves subsequent ranges locally.
+            assertThat(seenRange.get()).isEqualTo("bytes=0-9");
             assertThat(seenPath.get()).isEqualTo("/dav/子目录/歌手 - 歌名 #1%.mp4");
             assertThat(seenAuth.get()).isEqualTo("Basic " + Base64.getEncoder().encodeToString("reader:test-password".getBytes()));
             for (var audio : Map.of("MP3", "audio/mpeg", "FLAC", "audio/flac", "WAV", "audio/wav", "M4A", "audio/mp4", "OPUS", "audio/ogg").entrySet()) {
@@ -328,6 +352,7 @@ class MediaScanHttpTest {
                 var streamed = video(id, "bytes=2-5", "GET");
                 assertThat(streamed.statusCode()).isEqualTo(206);
                 assertThat(streamed.body()).isEqualTo("2345");
+                assertThat(seenRange.get()).isEqualTo("bytes=2-5");
                 assertThat(streamed.headers().firstValue("Content-Type").orElseThrow()).isEqualTo(audio.getValue());
             }
             mode.set(1);

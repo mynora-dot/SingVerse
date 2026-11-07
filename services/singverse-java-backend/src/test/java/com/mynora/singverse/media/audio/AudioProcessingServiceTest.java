@@ -17,9 +17,14 @@ class AudioProcessingServiceTest {
     final MediaSongRepository songs=mock(MediaSongRepository.class);
     final TranscodeClient compute=mock(TranscodeClient.class);
     final ObjectMapper json=new ObjectMapper();
-    final AudioProcessingService service=new AudioProcessingService(mapper,roles,jobs,songs,compute,json);
+    final AudioCatalog catalog=mock(AudioCatalog.class);
+    final org.springframework.transaction.PlatformTransactionManager transactions=mock(org.springframework.transaction.PlatformTransactionManager.class);
+    final AudioProcessingService service=new AudioProcessingService(mapper,roles,jobs,songs,compute,json,catalog,transactions);
+    @AfterEach void close(){service.close();}
     Map<String,Object> item(String state,String job){var row=new HashMap<String,Object>();row.put("batch_id","batch");row.put("batch_state","QUEUED");row.put("song_id","song");row.put("fingerprint","current");row.put("state",state);row.put("job_id",job);row.put("backend","cpu");return row;}
     @BeforeEach void init(){
+        when(transactions.getTransaction(any())).thenAnswer(call->new org.springframework.transaction.support.SimpleTransactionStatus());
+        when(mapper.lockPreparing(anyString(),anyLong())).thenReturn(1);
         var song=mock(Song.class);when(song.contentFingerprint()).thenReturn("current");when(songs.get("song")).thenReturn(song);
         when(mapper.batch(anyString())).thenAnswer(call->Map.of("id",call.getArgument(0),"state","PREVIEW","backend","","created_at",1L));
     }
@@ -50,20 +55,22 @@ class AudioProcessingServiceTest {
         var song=songs.get("song");when(song.id()).thenReturn("song");when(song.sourceId()).thenReturn("source");when(song.sourceName()).thenReturn("media");when(song.relativePath()).thenReturn("song.wav");
         var parsed=mock(com.mynora.singverse.media.filename.FilenameParseResult.class);when(parsed.title()).thenReturn("测试");when(parsed.artists()).thenReturn(List.of("歌手"));when(song.result()).thenReturn(parsed);
         when(jobs.status("song")).thenReturn((com.fasterxml.jackson.databind.node.ObjectNode)json.readTree("{\"backingResource\":{},\"jobs\":[]}"));
+        var summary=new AudioCatalog.Summary("song","source","测试",List.of("歌手"),"current",1,"CONFIRMED","READY",false);
+        when(catalog.current()).thenReturn(new AudioCatalog.Snapshot(List.of(summary),Map.of("song",summary),1,1));
+        when(songs.byIds(List.of("song"))).thenReturn(List.of(song));
         service.preview(new AudioProcessingService.Selection(null,List.of("song","song"),false,"openvino"));
-        verify(mapper).insertBatch(anyString(),eq("openvino"),anyLong());
-        @SuppressWarnings("unchecked") ArgumentCaptor<Map<String,Object>> captured=ArgumentCaptor.forClass(Map.class);verify(mapper,times(1)).insertItem(captured.capture());assertThat(captured.getValue()).containsEntry("state","SKIPPED").containsEntry("fingerprint","current").containsEntry("category","READY");
+        verify(mapper).insertBatch(anyString(),eq("openvino"),anyLong(),eq(1));
+        @SuppressWarnings("unchecked") ArgumentCaptor<List<Map<String,Object>>> captured=ArgumentCaptor.forClass(List.class);
+        verify(mapper,timeout(2000)).insertItems(captured.capture());
+        assertThat(captured.getValue()).hasSize(1);
+        assertThat(captured.getValue().getFirst()).containsEntry("state","SKIPPED").containsEntry("fingerprint","current").containsEntry("category","READY");
     }
-    @Test void unconfirmedFilterOnlyMatchesDualStreamsWithoutConfirmedRoles()throws Exception{
+    @Test void unconfirmedFilterOnlyMatchesDualStreamsWithoutConfirmedRoles(){
         var filter=new AudioProcessingService.Filter("","",null,null,"UNCONFIRMED",null);
-        var pending=(com.fasterxml.jackson.databind.node.ObjectNode)json.readTree("{\"title\":\"\",\"artists\":[],\"category\":\"INAPPLICABLE\",\"audio\":{\"state\":\"UNKNOWN\",\"streams\":[{\"id\":\"stream:1\"},{\"id\":\"stream:2\"}],\"jobs\":[]}}");
-        assertThat(service.matches(pending,filter)).isTrue();
-        ((com.fasterxml.jackson.databind.node.ObjectNode)pending.get("audio")).put("state","CONFIRMED");
-        assertThat(service.matches(pending,filter)).isFalse();
-        var single=(com.fasterxml.jackson.databind.node.ObjectNode)json.readTree("{\"title\":\"\",\"artists\":[],\"category\":\"ELIGIBLE\",\"audio\":{\"state\":\"CONFIRMED\",\"streams\":[{\"id\":\"stream:1\"}],\"jobs\":[]}}");
-        assertThat(service.matches(single,filter)).isFalse();
-        var unprobed=(com.fasterxml.jackson.databind.node.ObjectNode)json.readTree("{\"title\":\"\",\"artists\":[],\"category\":\"UNPROBED\",\"audio\":{\"state\":\"UNKNOWN\",\"jobs\":[]}}");
-        assertThat(service.matches(unprobed,filter)).isFalse();
+        assertThat(new AudioCatalog.Summary("song","source","",List.of(),"fp",2,"UNKNOWN","INAPPLICABLE",false).matches(filter)).isTrue();
+        assertThat(new AudioCatalog.Summary("song","source","",List.of(),"fp",2,"CONFIRMED","INAPPLICABLE",false).matches(filter)).isFalse();
+        assertThat(new AudioCatalog.Summary("song","source","",List.of(),"fp",1,"CONFIRMED","ELIGIBLE",false).matches(filter)).isFalse();
+        assertThat(new AudioCatalog.Summary("song","source","",List.of(),"fp",null,"UNKNOWN","UNPROBED",false).matches(filter)).isFalse();
     }
     @Test void startRequiresQualifiedBackendAndResubmissionDoesNotCreateJobs(){
         when(compute.call(any(),eq("/internal/v1/audio-roles/models"),eq("GET"),isNull())).thenReturn(json.createObjectNode().putNull("selected"));
@@ -77,13 +84,13 @@ class AudioProcessingServiceTest {
         var parsed=mock(com.mynora.singverse.media.filename.FilenameParseResult.class);
         when(parsed.title()).thenReturn("测试");when(parsed.artists()).thenReturn(List.of("歌手"));when(song.result()).thenReturn(parsed);
         when(jobs.status("song")).thenReturn(json.createObjectNode());when(song.id()).thenReturn("song");
-        assertThat(service.row(song).path("coverAvailable").asBoolean()).isFalse();
+        assertThat(service.row(song,json.createObjectNode()).path("coverAvailable").asBoolean()).isFalse();
         var metadata=mock(com.mynora.singverse.media.metadata.MetadataDtos.Applied.class);
         var track=mock(com.mynora.singverse.media.metadata.ExternalTrack.class);
         when(song.metadata()).thenReturn(metadata);when(metadata.fields()).thenReturn(Set.of("cover"));when(metadata.track()).thenReturn(track);when(track.coverUrl()).thenReturn("asset:cover");
-        assertThat(service.row(song).path("coverAvailable").asBoolean()).isTrue();
+        assertThat(service.row(song,json.createObjectNode()).path("coverAvailable").asBoolean()).isTrue();
         when(metadata.stale()).thenReturn(true);
-        assertThat(service.row(song).path("coverAvailable").asBoolean()).isFalse();
+        assertThat(service.row(song,json.createObjectNode()).path("coverAvailable").asBoolean()).isFalse();
         verify(jobs,never()).submit(anyString(),anyString());
     }
     @Test void hardwarePresenceRejectsManualCpuAtBatchStart() throws Exception {
@@ -91,6 +98,36 @@ class AudioProcessingServiceTest {
         when(compute.call(any(),eq("/internal/v1/audio-roles/models"),eq("GET"),isNull())).thenReturn(json.readTree("{\"selected\":\"cpu\",\"backends\":[{\"id\":\"cuda\",\"detected\":true,\"state\":\"UNVERIFIED\"}]}"));
         assertThatThrownBy(()->service.start("batch")).hasMessageContaining("CPU 仅用于自动降级");
         verify(mapper,never()).start(anyString(),anyLong());
+    }
+
+    @Test void preparationIsChunkedAndMaterialChangesAreRecordedWithoutSubmittingJobs() {
+        var selected=new ArrayList<AudioCatalog.Summary>();
+        for(int index=0;index<401;index++)selected.add(new AudioCatalog.Summary("song-"+index,"source","歌曲",List.of(),"current",null,"UNKNOWN","UNPROBED",false));
+        when(songs.byIds(anyList())).thenAnswer(call->{
+            List<String> ids=call.getArgument(0);return ids.stream().map(id->{
+                var song=mock(Song.class);when(song.id()).thenReturn(id);when(song.contentFingerprint()).thenReturn(id.equals("song-0")?"changed":"current");return song;
+            }).toList();
+        });
+        service.prepare("batch",selected);
+        @SuppressWarnings("unchecked") ArgumentCaptor<List<Map<String,Object>>> chunks=ArgumentCaptor.forClass(List.class);
+        verify(mapper,times(3)).insertItems(chunks.capture());
+        assertThat(chunks.getAllValues()).extracting(List::size).containsExactly(200,200,1);
+        assertThat(chunks.getAllValues().getFirst().getFirst()).containsEntry("state","FAILED");
+        verify(transactions,times(3)).getTransaction(any());verify(mapper).ready(eq("batch"),anyLong());
+        verify(jobs,never()).submit(anyString(),anyString());
+    }
+    @Test void preparingBatchCannotStartAndCancelledPreparationStopsBeforeTheNextChunk() {
+        when(mapper.batch("batch")).thenReturn(Map.of("id","batch","state","PREPARING","backend","","created_at",1L));
+        assertThatThrownBy(()->service.start("batch")).hasMessageContaining("准备中");
+        when(mapper.lockPreparing(eq("batch"),anyLong())).thenReturn(0);
+        service.prepare("batch",List.of(new AudioCatalog.Summary("song","source","歌曲",List.of(),"current",null,"UNKNOWN","UNPROBED",false)));
+        verify(mapper,never()).insertItems(anyList());verify(mapper,never()).ready(anyString(),anyLong());
+    }
+    @Test void cancellingAPreviewDoesNotScanEverySnapshotMember() {
+        service.cancel("batch");
+        verify(mapper).items("batch",50,0);
+        verify(mapper,never()).items(eq("batch"),eq(100),anyLong());
+        verify(jobs,never()).cancel(anyString(),anyString());
     }
 
 }

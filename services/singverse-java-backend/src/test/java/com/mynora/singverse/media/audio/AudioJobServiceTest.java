@@ -30,7 +30,7 @@ class AudioJobServiceTest {
         var song=mock(Song.class);when(song.contentFingerprint()).thenReturn(fingerprint);when(songs.get("song")).thenReturn(song);
         when(compute.connection("node")).thenReturn(connection);
         when(mapper.pending()).thenReturn(List.of(Map.of("id",id,"song_id","song","kind","SEPARATE","state","RUNNING","fingerprint","current","node_origin","node","result_json","{}")));
-        return new AudioJobService(mapper,mock(AudioRoleService.class),songs,mock(MediaSourceRepository.class),mock(MediaPlaybackService.class),compute,json,root.toString());
+        return new AudioJobService(mapper,mock(AudioRoleService.class),songs,mock(MediaPlaybackService.class),compute,json,root.toString());
     }
     @Test void replacementCancelsRemoteWorkAndInvalidatesOldTask() {
         var service=service("replacement");service.tick();
@@ -54,6 +54,84 @@ class AudioJobServiceTest {
         verify(mapper).updateJob(eq(id),eq("FAILED"),eq("{}"),anyString(),anyLong());
         assertThat(Files.exists(root.resolve(id+".m4a"))).isFalse();assertThat(Files.exists(root.resolve(id+".part"))).isFalse();
     }
+    @Test void cancellingAStalledDownloadClosesItsBodyAndDoesNotResurrectTheJob() throws Exception {
+        var service=service("current");
+        var current=new java.util.concurrent.atomic.AtomicReference<Map<String,Object>>(new HashMap<>(mapper.pending().getFirst()));
+        when(mapper.job(id)).thenAnswer(call->new HashMap<>(current.get()));
+        doAnswer(call->{var next=new HashMap<>(current.get());next.put("state",call.getArgument(1));current.set(next);return null;})
+                .when(mapper).updateJob(eq(id),anyString(),anyString(),anyString(),anyLong());
+        var result=json.createObjectNode().put("artifact",id+".m4a").put("size",1024).put("sha256","unused");
+        var state=json.createObjectNode().put("state","SUCCEEDED");state.set("result",result);
+        when(compute.call(connection,"/internal/v1/audio-roles/tasks/"+id,"GET",null)).thenReturn(state);
+        var reading=new java.util.concurrent.CountDownLatch(1);
+        var closed=new java.util.concurrent.CountDownLatch(1);
+        var input=new InputStream(){
+            @Override public int read()throws IOException {return read(new byte[1],0,1);}
+            @Override public int read(byte[] bytes,int offset,int length)throws IOException {
+                reading.countDown();
+                try{if(!closed.await(5,java.util.concurrent.TimeUnit.SECONDS))throw new IOException("Test did not close body");}
+                catch(InterruptedException error){Thread.currentThread().interrupt();throw new InterruptedIOException();}
+                throw new IOException("Body closed");
+            }
+            @Override public void close(){closed.countDown();}
+        };
+        @SuppressWarnings("unchecked") HttpResponse<InputStream> response=mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(200);when(response.body()).thenReturn(input);
+        when(compute.artifact(connection,"/internal/v1/audio-roles/tasks/"+id+"/artifact",null)).thenReturn(response);
+        var executor=java.util.concurrent.Executors.newSingleThreadExecutor();
+        try{
+            var work=executor.submit(service::tick);
+            assertThat(reading.await(5,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(3),()->service.cancel("song",id));
+            work.get(5,java.util.concurrent.TimeUnit.SECONDS);
+            assertThat(current.get().get("state")).isEqualTo("CANCELLED");
+            verify(mapper,never()).updateJob(eq(id),eq("SUCCEEDED"),anyString(),anyString(),anyLong());
+            assertThat(Files.exists(root.resolve(id+".part"))).isFalse();
+            assertThat(Files.exists(root.resolve(id+".m4a"))).isFalse();
+        }finally{input.close();executor.shutdownNow();}
+    }
+    @Test void cancellingWhileSubmissionIsInFlightCancelsAgainAfterRemoteAcceptance() {
+        var service=service("current");
+        var queued=new HashMap<>(mapper.pending().getFirst());queued.put("state","QUEUED");
+        when(mapper.pending()).thenReturn(List.of(queued));
+        var current=new java.util.concurrent.atomic.AtomicReference<Map<String,Object>>(queued);
+        when(mapper.job(id)).thenAnswer(call->new HashMap<>(current.get()));
+        doAnswer(call->{var next=new HashMap<>(current.get());next.put("state",call.getArgument(1));current.set(next);return null;})
+                .when(mapper).updateJob(eq(id),anyString(),anyString(),anyString(),anyLong());
+        when(compute.call(eq(connection),eq("/internal/v1/audio-roles/tasks"),eq("POST"),any()))
+                .thenAnswer(call->{service.cancel("song",id);return json.createObjectNode().put("state","QUEUED");});
+        service.tick();
+        assertThat(current.get().get("state")).isEqualTo("CANCELLED");
+        verify(songs,times(1)).get("song");
+        verify(compute).call(eq(connection),eq("/internal/v1/audio-roles/tasks"),eq("POST"),argThat(body ->
+                id.equals(body.path("id").asText()) && id.equals(body.path("reference").asText())
+                        && "SEPARATE".equals(body.path("mode").asText())));
+        verify(compute,times(2)).call(connection,"/internal/v1/audio-roles/tasks/"+id+"/cancel","POST",null);
+    }
+    @Test void sourceReplacementDuringDownloadRemovesTheCompletedDerivative() throws Exception {
+        var service=service("current");
+        var song=songs.get("song");
+        byte[] content=new byte[1024];
+        String digest=java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(content));
+        var result=json.createObjectNode().put("artifact",id+".m4a").put("size",content.length).put("sha256",digest);
+        var state=json.createObjectNode().put("state","SUCCEEDED");state.set("result",result);
+        when(compute.call(connection,"/internal/v1/audio-roles/tasks/"+id,"GET",null)).thenReturn(state);
+        var input=new ByteArrayInputStream(content){
+            @Override public synchronized int read(byte[] bytes,int offset,int length){
+                int count=super.read(bytes,offset,length);
+                if(count<0)when(song.contentFingerprint()).thenReturn("replacement");
+                return count;
+            }
+        };
+        @SuppressWarnings("unchecked") HttpResponse<InputStream> response=mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(200);when(response.body()).thenReturn(input);
+        when(compute.artifact(connection,"/internal/v1/audio-roles/tasks/"+id+"/artifact",null)).thenReturn(response);
+        service.tick();
+        verify(mapper).updateJob(eq(id),eq("FAILED"),eq("{}"),anyString(),anyLong());
+        verify(mapper,never()).updateJob(eq(id),eq("SUCCEEDED"),anyString(),anyString(),anyLong());
+        assertThat(Files.exists(root.resolve(id+".part"))).isFalse();
+        assertThat(Files.exists(root.resolve(id+".m4a"))).isFalse();
+    }
     @Test void unknownAnalysisCanBeResubmittedButActiveAndConfidentResultsAreReused() {
         var service=service("current");when(compute.connection()).thenReturn(connection);when(connection.origin()).thenReturn(java.net.URI.create("http://compute:8000"));
         var prior=new HashMap<String,Object>();prior.put("id",id);prior.put("kind","ANALYZE");prior.put("state","SUCCEEDED");prior.put("result_json","{\"state\":\"UNKNOWN\"}");
@@ -68,8 +146,8 @@ class AudioJobServiceTest {
     }
     @Test void statusExposesUnknownReasonAndEvidenceForOldAndNewAnalyses() {
         var service=service("current");
-        var roleService=mock(AudioRoleService.class);when(roleService.role("song")).thenReturn(json.createObjectNode().put("state","UNKNOWN"));
-        service=new AudioJobService(mapper,roleService,songs,mock(MediaSourceRepository.class),mock(MediaPlaybackService.class),compute,json,root.toString());
+        var roleService=mock(AudioRoleService.class);when(roleService.view(any(),nullable(Map.class))).thenReturn(json.createObjectNode().put("state","UNKNOWN"));
+        service=new AudioJobService(mapper,roleService,songs,mock(MediaPlaybackService.class),compute,json,root.toString());
         when(mapper.forSong("song","current")).thenReturn(List.of(Map.of("id",id,"kind","ANALYZE","state","SUCCEEDED","result_json","{\"state\":\"UNKNOWN\",\"reason\":\"CONFLICTING_WINDOWS\",\"evidence\":{\"analysisVersion\":\"vocal-activity-v2\",\"vocalRatio\":[[0.6,0.01],[0.01,0.6]]}}")));
         var result=service.status("song");
         assertThat(result.at("/jobs/0/resultState").asText()).isEqualTo("UNKNOWN");
@@ -96,7 +174,7 @@ class AudioJobServiceTest {
         when(compute.call(connection,"/internal/v1/status","GET",null)).thenReturn(json.readTree("{\"capabilities\":[\"media-probe\",\"audio-role-fast\"]}"));
         when(mapper.candidates(anyString())).thenReturn(List.of("song"));
         var roles=mock(AudioRoleService.class);when(roles.role("song")).thenReturn(json.createObjectNode().put("state","CONFIRMED"));
-        var service=new AudioJobService(mapper,roles,songs,mock(MediaSourceRepository.class),mock(MediaPlaybackService.class),compute,json,root.toString());
+        var service=new AudioJobService(mapper,roles,songs,mock(MediaPlaybackService.class),compute,json,root.toString());
         when(mapper.forSong("song","current")).thenReturn(List.of(Map.of("kind","PROBE","state","SUCCEEDED","result_json","{\"streams\":[{},{}]}")));
         service.discover();verify(mapper,never()).insertJob(any());
         when(mapper.forSong("song","current")).thenReturn(List.of());

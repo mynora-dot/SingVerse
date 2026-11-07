@@ -21,7 +21,14 @@ object KaraokePcm {
             out.seek(0); out.write(b.array())
         }
     }
-    fun create(file: File) = RandomAccessFile(file, "rw").apply { setLength(44); seek(44) }
+    fun create(file: File): RandomAccessFile {
+        val output = RandomAccessFile(file, "rw")
+        try { output.setLength(44); output.seek(44); return output }
+        catch (failure: Exception) {
+            try { output.close() } catch (closing: Exception) { failure.addSuppressed(closing) }
+            throw failure
+        }
+    }
     fun frames(file: File, channels: Int) = ((file.length() - 44).coerceAtLeast(0) / (channels * 2))
     fun offsetFrames(voiceZeroNs: Long, playbackZeroNs: Long) = ((voiceZeroNs - playbackZeroNs) * RATE / 1_000_000_000L)
     fun mix(backing: Int, voice: Int, backingGain: Double, voiceGain: Double): Short {

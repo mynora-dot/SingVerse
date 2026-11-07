@@ -5,18 +5,14 @@ from io import RawIOBase
 import base64
 import json
 import secrets
-import socket
-import ipaddress
 import threading
 import time
 from functools import lru_cache
 from urllib.request import Request, build_opener
 from urllib.error import HTTPError
-from urllib.parse import urlsplit
 from ..transcoding.input import NoRedirect
 from ..transcoding.process import run
 from .ffprobe import normalize
-from ...core.errors import ComputeError
 
 BLOCK = 1024 * 1024
 FORMATS = 'mp3,flac,ogg,wav,mov,matroska,webm,avi,asf,mpeg,mpegts,aac,ape,aiff'
@@ -147,7 +143,7 @@ def loopback(source):
             except (ReadStopped, OSError): self.close_connection = True
     server = ThreadingHTTPServer(('127.0.0.1',0), Handler)
     server.daemon_threads = True
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=.02), daemon=True)
     thread.start()
     try: yield f'http://127.0.0.1:{server.server_port}{route}'
     finally:

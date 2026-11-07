@@ -17,48 +17,63 @@ let appliedScan = ''
 const scannedPending = computed(() => data.value.pending.find(p => p.id === scanned.value?.id))
 const devices = computed(() => [...data.value.devices].sort((a, b) => Number(a.revoked) - Number(b.revoked)))
 const activeCount = computed(() => data.value.devices.filter(device => !device.revoked).length)
-let timer: ReturnType<typeof setInterval> | undefined
+let timer: ReturnType<typeof setTimeout> | undefined, active = true, loading = false, generation = 0
 const message = (e: unknown, fallback: string) => e instanceof Error ? e.message : fallback
 const expiry = (value: string) => new Date(value).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
 
 async function load(manual = false) {
+  if (!active || loading || busy.value) return
+  clearTimeout(timer)
+  loading = true
+  const turn = generation
   if (manual) refreshing.value = true
   try {
-    data.value = await authRequest('/api/v1/admin/tv-devices'); loadError.value = ''; loaded.value = true
+    const result = await authRequest<typeof data.value>('/api/v1/admin/tv-devices')
+    if (!active || turn !== generation) return
+    data.value = result; loadError.value = ''; loaded.value = true
     scanned.value = readApprovalLink(window.location.hash)
     if (scannedPending.value && scanned.value && appliedScan !== `${scanned.value.id}:${scanned.value.code}`) {
       codes.value[scanned.value.id] = scanned.value.code
       appliedScan = `${scanned.value.id}:${scanned.value.code}`
     }
   }
-  catch (e) { loadError.value = message(e, '加载失败') }
-  finally { refreshing.value = false }
+  catch (e) { if (active && turn === generation) loadError.value = message(e, '加载失败') }
+  finally { loading = false; if (active) { refreshing.value = false; if (turn !== generation && !busy.value) void load(); else schedule() } }
 }
+function schedule() { clearTimeout(timer); if (active) timer = setTimeout(() => { if (busy.value) schedule(); else void load() }, 5000) }
+function invalidateLoad() { generation++; clearTimeout(timer) }
 async function approve(p: Pending) {
-  if (busy.value) return
+  if (!active || busy.value) return
   if (!/^\d{6}$/.test(codes.value[p.id] ?? '')) { actionError.value = '请输入电视上显示的六位数字授权码'; return }
   busy.value = true; actionError.value = ''
+  invalidateLoad()
   try {
     await authRequest(`/api/v1/admin/device-authorizations/${p.id}/approve`, 'POST', { code: codes.value[p.id] })
+    if (!active) return
     delete codes.value[p.id]
     ElMessage.success(`已批准「${p.name}」，电视将自动完成连接`)
-    await load()
-  } catch (e) { actionError.value = message(e, '批准失败') } finally { busy.value = false }
+  } catch (e) { if (active) actionError.value = message(e, '批准失败') } finally { busy.value = false; if (active) void load() }
 }
 async function deny(p: Pending) {
-  if (busy.value) return
+  if (!active || busy.value) return
   busy.value = true; actionError.value = ''
-  try { await authRequest(`/api/v1/admin/device-authorizations/${p.id}`, 'DELETE'); delete codes.value[p.id]; ElMessage.success(`已拒绝「${p.name}」的申请`); await load() }
-  catch (e) { actionError.value = message(e, '拒绝失败') } finally { busy.value = false }
+  invalidateLoad()
+  try { await authRequest(`/api/v1/admin/device-authorizations/${p.id}`, 'DELETE'); if (!active) return; delete codes.value[p.id]; ElMessage.success(`已拒绝「${p.name}」的申请`) }
+  catch (e) { if (active) actionError.value = message(e, '拒绝失败') } finally { busy.value = false; if (active) void load() }
 }
 async function revoke(d: Device) {
-  if (busy.value || !await confirmDanger('撤销电视访问', `撤销后「${d.name}」将立即无法访问曲库，需要在电视上重新申请授权。`, '撤销访问', '保留')) return
-  busy.value = true; actionError.value = ''
-  try { await authRequest(`/api/v1/admin/tv-devices/${d.id}`, 'DELETE'); ElMessage.success(`已撤销「${d.name}」的访问`); await load() }
-  catch (e) { actionError.value = message(e, '撤销失败') } finally { busy.value = false }
+  if (!active || busy.value) return
+  busy.value = true
+  try {
+    if (!await confirmDanger('撤销电视访问', `撤销后「${d.name}」将立即无法访问曲库，需要在电视上重新申请授权。`, '撤销访问', '保留') || !active) return
+    actionError.value = ''; invalidateLoad()
+    await authRequest(`/api/v1/admin/tv-devices/${d.id}`, 'DELETE')
+    if (active) ElMessage.success(`已撤销「${d.name}」的访问`)
+  } catch (e) { if (active) actionError.value = message(e, '撤销失败') }
+  finally { busy.value = false; if (active) void load() }
 }
-onMounted(() => { void load(); timer = setInterval(() => { if (!busy.value) void load() }, 5000) })
-onUnmounted(() => clearInterval(timer))
+onMounted(() => { void load() })
+onUnmounted(() => { active = false; generation++; clearTimeout(timer) })
 </script>
 <template>
   <section class="tv-devices">

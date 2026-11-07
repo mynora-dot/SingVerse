@@ -25,9 +25,16 @@ internal class TvPlaybackFixture(videoBytes: ByteArray) {
     @Volatile var heldEndedResponse: String? = null
         private set
     private val endedResponseGate = CountDownLatch(1)
+    @Volatile var holdResourceResponse = false
+    @Volatile var holdResourceReadiness = false
+    @Volatile var heldResourceResponse: String? = null
+        private set
+    private val resourceResponseGate = CountDownLatch(1)
     val resourceRequests = CopyOnWriteArrayList<JSONObject>()
     val unconfirmedResourceRequests = CopyOnWriteArrayList<JSONObject>()
     val playbackEvents = CopyOnWriteArrayList<JSONObject>()
+    val expiredActivityAttempts = ConcurrentHashMap.newKeySet<String>()
+    val rejectedActivityEvents = CopyOnWriteArrayList<JSONObject>()
     private val mediaBytes = mapOf(
         AUDIO_URL to (wave() to "audio/wav"),
         VIDEO_URL to (videoBytes to "video/mp4")
@@ -37,6 +44,7 @@ internal class TvPlaybackFixture(videoBytes: ByteArray) {
     private var current: JSONObject? = null
     private var revision = 1L
     private var lastEvent = -1L
+    private var preparingResource: JSONObject? = null
 
     fun media(path: String): Pair<ByteArray, String>? = mediaBytes[path]
         ?: if (path == GENERATED_BACKING_URL) mediaBytes[AUDIO_URL] else null
@@ -51,13 +59,19 @@ internal class TvPlaybackFixture(videoBytes: ByteArray) {
             heldEndedResponse = response
             check(endedResponseGate.await(30, TimeUnit.SECONDS)) { "测试ENDED响应未释放" }
         }
+        if (holdResourceResponse && path == "/api/v1/tv/playback-resources") {
+            heldResourceResponse = response
+            check(resourceResponseGate.await(30, TimeUnit.SECONDS)) { "测试资源响应未释放" }
+        }
     }
 
     fun releaseNextResponse() { nextResponseGate.countDown() }
     fun releaseEndedResponse() { endedResponseGate.countDown() }
+    fun releaseResourceResponse() { resourceResponseGate.countDown() }
 
     /** Simulates another authorized controller; the app learns this state through real HTTP refresh. */
     @Synchronized fun remoteNext() { next(); revision++ }
+    @Synchronized fun remotePause() { enqueue("PAUSE"); revision++ }
 
     @Synchronized fun snapshot(): JSONObject = TvUiFixture.snapshot()
         .put("queue", JSONArray(queue.map { JSONObject(it.toString()) }))
@@ -70,11 +84,28 @@ internal class TvPlaybackFixture(videoBytes: ByteArray) {
         path == "/api/v1/tv/playback-resources" -> {
             resourceRequests.add(JSONObject(body.toString()))
             if (current?.optBoolean("confirmed") != true) unconfirmedResourceRequests.add(JSONObject(body.toString()))
-            resource(body.getString("songId"), body.optString("audioRole")).toString()
+            val ready = resource(body.getString("songId"), body.optString("audioRole"))
+            if (holdResourceReadiness) {
+                preparingResource = ready
+                JSONObject(ready.toString()).put("id", "fixture-preparing")
+                    .put("status", "PREPARING").put("state", "RUNNING").toString()
+            } else ready.toString()
         }
+        path == "/api/v1/tv/transcoding/fixture-preparing" -> JSONObject(checkNotNull(preparingResource).toString())
+            .put("id", "fixture-preparing").also {
+                if (holdResourceReadiness) it.put("status", "PREPARING").put("state", "RUNNING")
+            }.toString()
         path.endsWith("/playback-events") -> {
             playbackEvents.add(JSONObject(body.toString()))
-            if (body.has("commandId")) commands.removeAll { it.optString("id") == body.getString("commandId") }
+            if (body.optString("attemptId") in expiredActivityAttempts &&
+                body.optString("state") !in listOf("ENDED", "IDLE")) {
+                rejectedActivityEvents.add(JSONObject(body.toString()))
+                throw TvFixtureHttpException(410, "播放报告租约已到期")
+            }
+            if (body.has("commandId")) {
+                val index = commands.indexOfFirst { it.optString("id") == body.getString("commandId") }
+                if (index >= 0) repeat(index + 1) { commands.removeAt(0) }
+            }
             val play = current
             if (play != null && body.optString("attemptId") == play.optString("attemptId") && body.optLong("eventSeq", -1) > lastEvent) {
                 lastEvent = body.getLong("eventSeq")

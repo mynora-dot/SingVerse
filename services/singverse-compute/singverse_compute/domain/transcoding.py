@@ -58,6 +58,8 @@ class Target:
     mode: str = 'TRANSCODE'
     purpose: str = 'REALTIME'
     codec: str = 'h264'
+    profile: str = ''
+    level: int = 0
     width: int = 1920
     height: int = 1080
     bitrate: int = 8000000
@@ -76,14 +78,24 @@ class Plan:
     reasons: tuple[str, ...]
 
 
+def profile_supported(profile, profiles):
+    # Constrained bitstreams use a subset of their parent profile's tools.
+    parent = {'Constrained Baseline':'Baseline', 'Constrained High':'High'}.get(profile)
+    return profile in profiles or bool(parent and parent in profiles)
+
+
+def level_rank(codec, level):
+    return 10.5 if codec == 'h264' and level == 9 else level
+
+
 def decide(media: Media, client: Client, burn_subtitle: bool = False) -> Plan:
     video = next((s for s in media.streams if s.kind == 'video'), None)
     audio = [s for s in media.streams if s.kind == 'audio']
     reasons = []
     if video:
         checks = {'VIDEO_CODEC': video.codec not in client.video,
-                  'VIDEO_PROFILE': bool(client.profiles.get(video.codec)) and video.profile not in client.profiles[video.codec],
-                  'VIDEO_LEVEL': video.level > client.levels.get(video.codec, 999),
+                  'VIDEO_PROFILE': bool(client.profiles.get(video.codec)) and not profile_supported(video.profile, client.profiles[video.codec]),
+                  'VIDEO_LEVEL': (bool(client.levels.get(video.codec)) and video.level <= 0) or level_rank(video.codec, video.level) > level_rank(video.codec, client.levels.get(video.codec, 999)),
                   'RESOLUTION': video.width > client.max_width or video.height > client.max_height,
                   'FRAMERATE': video.fps > client.max_fps,
                   'BIT_DEPTH': video.bit_depth > client.max_bit_depth,

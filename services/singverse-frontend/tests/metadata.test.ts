@@ -4,13 +4,12 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import MetadataScrapeView from '../src/admin/modules/metadata/views/MetadataScrapeView.vue'
-import MetadataMatchDialog from '../src/admin/modules/metadata/components/MetadataMatchDialog.vue'
 import SingleSongScrapeDialog from '../src/admin/modules/metadata/components/SingleSongScrapeDialog.vue'
 import { metadata } from '../src/admin/modules/metadata/api/metadata'
 import { media } from '../src/admin/modules/media-library/api/media'
 import { singleReview } from '../src/admin/modules/metadata/api/single-review'
 import type { MetadataBatch, MetadataCandidate } from '../src/admin/modules/metadata/types'
-vi.mock('../src/admin/modules/metadata/api/metadata', () => ({ metadata: Object.fromEntries(['settings', 'saveSettings', 'latest', 'batch', 'start', 'pause', 'resume', 'cancel', 'retry', 'search', 'apply', 'applyItem', 'candidateCover'].map(name => [name, vi.fn()])) }))
+vi.mock('../src/admin/modules/metadata/api/metadata', () => ({ metadata: Object.fromEntries(['settings', 'saveSettings', 'latest', 'batch', 'start', 'pause', 'resume', 'cancel', 'retry', 'search', 'candidateCover'].map(name => [name, vi.fn()])) }))
 vi.mock('../src/admin/modules/media-library/api/media', () => ({ media: { list: vi.fn() } }))
 vi.mock('../src/admin/modules/metadata/api/single-review', () => ({ singleReview: { load: vi.fn(), apply: vi.fn(), applyBatch: vi.fn() } }))
 let wrapper: VueWrapper
@@ -86,17 +85,7 @@ it('暂停、继续和离开页面停止轮询', async () => {
   await vi.advanceTimersByTimeAsync(6000)
   expect(metadata.batch).toHaveBeenCalledTimes(calls)
 })
-it('高相似度候选自动选中，但必须确认才应用', async () => {
-  wrapper = mount(MetadataMatchDialog, { props: { songId: 'song-1', title: '晴天', artists: ['周杰伦'] }, global: { stubs: { teleport: true } } })
-  await flushPromises()
-  expect(metadata.search).toHaveBeenCalledWith('song-1', '晴天 周杰伦', ['NETEASE'])
-  expect(metadata.apply).not.toHaveBeenCalled()
-  expect((button('确认应用元数据').element as HTMLButtonElement).disabled).toBe(false)
-  expect((wrapper.get('input[type=radio]').element as HTMLInputElement).checked).toBe(true)
-  await button('确认应用元数据').trigger('click'); await flushPromises()
-  expect(metadata.apply).toHaveBeenCalledWith('song-1', 'candidate-1', expect.arrayContaining(['title', 'artists', 'album']))
-  expect(wrapper.emitted('applied')).toHaveLength(1)
-})
+
 it('批次审核复用单曲编辑工作区及批次候选', async () => {
   const item = { id: 'item-1', songId: 'song-1', title: '晴天', artists: ['周杰伦'], status: 'REVIEW' as const, candidates: [candidate], error: null, updatedAt: '', confidence: 'HIGH' as const }
   vi.mocked(metadata.latest).mockResolvedValue({ ...batch('COMPLETED'), completed: 1, pending: 0, review: 1, items: [item] })
@@ -153,7 +142,7 @@ it('5% 候选明确显示无可信匹配和核对入口，不能误呈现为高�
   expect(button('核对候选')).toBeDefined()
   expect(button('重新匹配')).toBeDefined()
   expect(wrapper.get('.batch-song-table').text()).not.toContain('审核候选')
-  expect(metadata.apply).not.toHaveBeenCalled()
+  expect(singleReview.apply).not.toHaveBeenCalled()
 })
 it('状态快捷筛选、歌手搜索和排序提交给后端，而不是只过滤当前页', async () => {
   vi.mocked(metadata.latest).mockResolvedValue(batch('COMPLETED'))
@@ -200,23 +189,8 @@ it('重新进入指定批次恢复后端状态与筛选结果', async () => {
   expect(metadata.start).not.toHaveBeenCalled()
 })
 
-it('批次使用自身阈值，未达到阈值不会自动选择', async () => {
-  wrapper = mount(MetadataMatchDialog, { props: { songId: 'song-1', title: '晴天', artists: [], initialCandidates: [candidate], autoSelectThreshold: .96 }, global: { stubs: { teleport: true } } })
-  await flushPromises()
-  expect((wrapper.get('input[type=radio]').element as HTMLInputElement).checked).toBe(false)
-  expect((button('确认应用元数据').element as HTMLButtonElement).disabled).toBe(true)
-  expect(metadata.apply).not.toHaveBeenCalled()
-})
-it('同分高相似度自动选中首项并提示接近候选，允许手工改选', async () => {
-  wrapper = mount(MetadataMatchDialog, { props: { songId: 'song-1', title: '晴天', artists: [], initialCandidates: [candidate, { ...candidate, id: 'second' }] }, global: { stubs: { teleport: true } } })
-  await flushPromises()
-  expect((wrapper.findAll('input[type=radio]')[0]!.element as HTMLInputElement).checked).toBe(true)
-  expect(wrapper.text()).toContain('还有接近候选')
-  await wrapper.findAll('input[type=radio]')[1]!.setValue(true)
-  expect((wrapper.findAll('input[type=radio]')[1]!.element as HTMLInputElement).checked).toBe(true)
-  expect(metadata.apply).not.toHaveBeenCalled()
-  expect(metadata.applyItem).not.toHaveBeenCalled()
-})
+
+
 
 it('95% 同分候选展示高相似度及接近候选提示，不误标为低可信', async () => {
   vi.mocked(metadata.latest).mockResolvedValue({ ...batch('COMPLETED'), completed: 1, pending: 0, review: 1, items: [{ id: 'item-1', songId: 'song-1', title: '晴天', artists: ['周杰伦'], status: 'REVIEW', candidates: [candidate, { ...candidate, id: 'second' }], error: null, updatedAt: '', confidence: 'LOW' }] })
@@ -224,5 +198,5 @@ it('95% 同分候选展示高相似度及接近候选提示，不误标为低可
   expect(wrapper.get('.batch-song-table').text()).toContain('高相似度 · 待确认')
   expect(wrapper.get('.batch-song-table').text()).toContain('多个接近候选')
   expect(wrapper.get('.batch-song-table').text()).not.toContain('未达到高相似度阈值')
-  expect(metadata.applyItem).not.toHaveBeenCalled()
+  expect(singleReview.applyBatch).not.toHaveBeenCalled()
 })

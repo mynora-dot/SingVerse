@@ -43,10 +43,6 @@ public class ArtistService {
         return mapper.list().stream().map(this::profile).toList();
     }
 
-    public List<Map<String, Object>> bindings() {
-        return mapper.bindings();
-    }
-
     private Map<String, Object> required(String id) {
         var row = mapper.find(id);
         if (row == null) throw fail(404, "歌手不存在");
@@ -101,14 +97,6 @@ public class ArtistService {
         return n;
     }
 
-    private String encode(Object value) {
-        try {
-            return json.writeValueAsString(value);
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
     public static String name(String value) {
         return java.text.Normalizer.normalize(value.strip(), java.text.Normalizer.Form.NFKC)
                 .strip();
@@ -132,54 +120,13 @@ public class ArtistService {
                     mapper.lock();
                     var found = mapper.byName(key);
                     if (found != null) return profile(found);
-                    var legacy =
-                            mapper.legacy().stream()
-                                    .filter(
-                                            r ->
-                                                    r.get("name_key") == null
-                                                            && name(r.get("name").toString())
-                                                                    .equals(name))
-                                    .sorted(
-                                            java.util.Comparator.comparing(
-                                                    r -> r.get("id").toString()))
-                                    .toList();
-                    String id;
-                    if (!legacy.isEmpty()) {
-                        id =
-                                legacy.stream()
-                                        .filter(
-                                                r ->
-                                                        r.get("portrait_version") != null
-                                                                || r.get("background_version")
-                                                                        != null)
-                                        .findFirst()
-                                        .orElse(legacy.getFirst())
-                                        .get("id")
-                                        .toString();
-                    } else {
-                        id =
-                                UUID.nameUUIDFromBytes(
-                                                ("artist:" + key)
-                                                        .getBytes(
-                                                                java.nio.charset.StandardCharsets
-                                                                        .UTF_8))
-                                        .toString();
-                        mapper.insert(
-                                id,
-                                new ArtistDtos.Save(id, name, List.of(), "UNKNOWN", "", true, 0),
-                                "[]",
-                                key,
-                                Instant.now().toString());
-                    }
-                    mapper.adopt(id, key);
+                    String id = UUID.nameUUIDFromBytes(("artist:" + key)
+                            .getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+                    mapper.insert(id, name, key, Instant.now().toString());
                     mapper.ensureFetch(id, "PORTRAIT");
                     mapper.ensureFetch(id, "BACKGROUND");
                     return get(id);
                 });
-    }
-
-    public ObjectNode save(String id, ArtistDtos.Save input) {
-        throw fail(410, "歌手库已改为从歌曲自动生成，请在歌曲中订正歌手信息");
     }
 
     public ObjectNode category(String id, String type, long revision) {
@@ -190,10 +137,6 @@ public class ArtistService {
             events.publishEvent(new ArtistDtos.Changed());
             return get(id);
         });
-    }
-
-    public void bind(ArtistDtos.Bind input) {
-        throw fail(410, "无需手动关联，请在歌曲中订正歌手信息");
     }
 
     public void retry(String id) {

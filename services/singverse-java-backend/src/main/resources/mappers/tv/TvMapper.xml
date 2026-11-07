@@ -9,11 +9,8 @@
 <update id="lock">UPDATE tv_record SET revision=revision WHERE id=#{id}</update>
 <delete id="delete">DELETE FROM tv_record WHERE id=#{id}</delete>
 <select id="library" resultType="map">
- SELECT cls.state_json AS classification_state, cls.revision AS classification_revision, song.*, source.name AS source_name,
- meta.track_json AS metadata_track, meta.fields_json AS metadata_fields, meta.applied_at AS metadata_applied_at,
- meta.origins_json AS metadata_origins, meta.fingerprint AS metadata_fingerprint
- FROM media_song song JOIN media_source source ON source.id=song.source_id
- LEFT JOIN song_metadata meta ON meta.song_id=song.id
- LEFT JOIN classification_song cls ON cls.song_id=song.id ORDER BY song.id
+ SELECT <include refid="com.mynora.singverse.media.repository.MediaSongMapper.columns"/>
+ FROM media_song song <include refid="com.mynora.singverse.media.repository.MediaSongMapper.joins"/>
+ ORDER BY song.id
 </select>
 </mapper>

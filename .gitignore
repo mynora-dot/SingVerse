@@ -101,6 +101,9 @@ credentials.json
 secrets/
 .run/
 
+# Local implementation records (referenced only from ignored docs/)
+/contracts/song-cache-implementation.md
+
 # Temporary work, generated deployment bundles and local media/model outputs
 .tmp/
 /tmp/

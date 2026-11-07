@@ -25,6 +25,9 @@ public class TranscodeService {
     @org.springframework.beans.factory.annotation.Autowired private com.mynora.singverse.media.audio.AudioJobService audioJobs;
     @org.springframework.beans.factory.annotation.Autowired private SongCacheService cache;
     private final Set<String> caching = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private record CacheRetry(long generation, long at) {}
+    private final Map<String, CacheRetry> cacheRetries = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String, InputStream> downloading = new HashMap<>();
     private final TranscodeMapper mapper;
     private final TranscodeClient compute;
     private final MediaSongRepository songs;
@@ -80,21 +83,11 @@ public class TranscodeService {
     }
 
     private String fingerprint(com.mynora.singverse.media.dto.MediaSongDtos.Song song) {
-        var source = sources.get(song.sourceId());
-        return com.mynora.singverse.auth.crypto.AuthCrypto.hash(
-                MediaSongRepository.fingerprint(song)
-                        + ":"
-                        + source.updatedAt()
-                        + ":"
-                        + source.location());
+        return com.mynora.singverse.media.model.PlaybackFingerprint.of(song, sources.get(song.sourceId()));
     }
 
-    private ObjectNode input(String id, String songId, Connection c) {
-        var song = songs.get(songId);
-        var source = sources.get(song.sourceId());
-        var node = json.createObjectNode();
-        node.put("reference", id);
-        return node;
+    private ObjectNode input(String id) {
+        return json.createObjectNode().put("reference", id);
     }
 
     private static boolean contains(JsonNode values, String value) {
@@ -126,6 +119,11 @@ public class TranscodeService {
                 || start > 86400
                 || purpose.equals("OFFLINE") && start != 0) throw fail(400, "播放位置无效");
         var client = body.path("client");
+        if (quality.equals("auto") && purpose.equals("REALTIME")) {
+            width = Math.max(2, Math.min(7680, client.path("max_width").asInt(width)));
+            height = Math.max(2, Math.min(4320, client.path("max_height").asInt(height)));
+            bitrate = Math.max(64000, Math.min(100000000, client.path("max_bitrate").asInt(bitrate)));
+        }
         String codec = body.path("codec").asText("h264");
         if (!List.of("h264", "hevc", "av1").contains(codec)) throw fail(400, "未知视频编码");
         if (purpose.equals("REALTIME")
@@ -142,7 +140,8 @@ public class TranscodeService {
                         .put("height", height)
                         .put("bitrate", bitrate)
                         .put("audio_bitrate", 192000)
-                        .put("fps", 30)
+                        .put("fps", quality.equals("auto") && purpose.equals("REALTIME")
+                                ? Math.max(1, Math.min(120, client.path("max_fps").asDouble(30))) : 30)
                         .put("start", start)
                         .put("fmp4", client.path("fmp4").asBoolean(false));
         if (!client.isMissingNode()) {
@@ -154,8 +153,9 @@ public class TranscodeService {
             target.put(
                     "bitrate",
                     Math.max(64000, Math.min(bitrate, client.path("max_bitrate").asInt(bitrate))));
-            target.put("fps", Math.max(1, Math.min(30, client.path("max_fps").asDouble(30))));
+            target.put("fps", Math.max(1, Math.min(target.path("fps").asDouble(), client.path("max_fps").asDouble(30))));
         }
+        if (codec.equals("h264")) constrainAvc(target, client);
         for (String key : List.of("audio_id", "subtitle_id"))
             if (body.hasNonNull(key)) {
                 if (!body.path(key).asText().matches("stream:[0-9]{1,3}"))
@@ -166,6 +166,51 @@ public class TranscodeService {
         return target;
     }
 
+    /** Use explicit decoder evidence; omitted profile/level keeps the existing encoder defaults. */
+    private static void constrainAvc(ObjectNode target, JsonNode client) {
+        var profiles = client.path("profiles").path("h264");
+        String profile = contains(profiles, "High") ? "high" : contains(profiles, "Main") ? "main"
+                : contains(profiles, "Baseline") || contains(profiles, "Constrained Baseline") ? "baseline" : "";
+        if (!profile.isEmpty()) target.put("profile", profile);
+        int level = client.path("levels").path("h264").asInt();
+        // H.264 MaxFS, MaxMBPS and baseline/main MaxBR, indexed by ffprobe's level units.
+        int[] limits = switch (level) {
+            case 9 -> new int[] {99,1485,128000};
+            case 10 -> new int[] {99,1485,64000};
+            case 11 -> new int[] {396,3000,192000};
+            case 12 -> new int[] {396,6000,384000};
+            case 13 -> new int[] {396,11880,768000};
+            case 20 -> new int[] {396,11880,2000000};
+            case 21 -> new int[] {792,19800,4000000};
+            case 22 -> new int[] {1620,20250,4000000};
+            case 30 -> new int[] {1620,40500,10000000};
+            case 31 -> new int[] {3600,108000,14000000};
+            case 32 -> new int[] {5120,216000,20000000};
+            case 40 -> new int[] {8192,245760,20000000};
+            case 41 -> new int[] {8192,245760,50000000};
+            case 42 -> new int[] {8704,522240,50000000};
+            case 50 -> new int[] {22080,589824,135000000};
+            case 51 -> new int[] {36864,983040,240000000};
+            case 52 -> new int[] {36864,2073600,240000000};
+            case 60 -> new int[] {139264,4177920,240000000};
+            case 61 -> new int[] {139264,8355840,480000000};
+            case 62 -> new int[] {139264,16711680,800000000};
+            default -> null;
+        };
+        if (limits == null) return;
+        target.put("level", level);
+        int width = target.path("width").asInt(), height = target.path("height").asInt();
+        if ((long) ((width + 15) / 16) * ((height + 15) / 16) > limits[0]) {
+            width = Math.max(2, Math.min(width, Math.min(limits[0] * 16, (int) Math.sqrt(limits[0] * (double) width / height) * 16)));
+            height = Math.max(2, Math.min(height, limits[0] / ((width + 15) / 16) * 16));
+            target.put("width", width).put("height", height);
+        }
+        int macroblocks = ((width + 15) / 16) * ((height + 15) / 16);
+        target.put("fps", Math.min(target.path("fps").asDouble(), limits[1] / (double) macroblocks));
+        long bitrate = Math.round(limits[2] * (profile.equals("high") ? 1.25 : 1));
+        target.put("bitrate", Math.min(target.path("bitrate").asLong(), bitrate));
+    }
+
     private String insert(
             String songId, String owner, String purpose, JsonNode target, Connection connection) {
         return insert(UUID.randomUUID().toString(), songId, owner, purpose, target, connection);
@@ -174,7 +219,7 @@ public class TranscodeService {
     private String insert(String id,
             String songId, String owner, String purpose, JsonNode target, Connection connection) {
         var song = songs.get(songId);
-        var source = input(id, songId, connection);
+        var source = input(id);
         var row = new HashMap<String, Object>();
         row.put("id", id);
         row.put("song_id", songId);
@@ -247,7 +292,7 @@ public class TranscodeService {
             }
         }
         ObjectNode cachedVersion = null;
-        for (var version : mapper.versions(songId, fingerprint(song))) {
+        if (!body.path("force").asBoolean(false)) for (var version : mapper.versions(songId, mediaFingerprint)) {
             if (body.hasNonNull("audio_id")
                     || body.hasNonNull("subtitle_id")
                     || body.path("burn_subtitle").asBoolean()) break;
@@ -258,7 +303,8 @@ public class TranscodeService {
                             && contains(client.path("containers"), "mp4")
                             && t.path("width").asInt() <= selected.path("width").asInt()
                             && t.path("height").asInt() <= selected.path("height").asInt()
-                            && t.path("bitrate").asInt() <= selected.path("bitrate").asInt();
+                            && t.path("bitrate").asInt() <= selected.path("bitrate").asInt()
+                            && versionVideoCompatible(t, decode(version.get("result_json")), client, selected);
             if (compatible && Files.isRegularFile(directory.resolve(str(version, "id") + ".mp4"))) {
                 // Each device receives its own authorized lease, rather than another device's
                 // session ID.
@@ -292,6 +338,7 @@ public class TranscodeService {
                     .put("max_bitrate", selected.path("bitrate").asInt())
                     .put("max_fps", selected.path("fps").asDouble());
             request.set("client", effectiveClient);
+            request.put("fingerprint", mediaFingerprint);
             request.put("burn_subtitle", body.path("burn_subtitle").asBoolean(false));
             var plan =
                     compute.call(connection, "/internal/v1/transcoding/negotiate", "POST", request);
@@ -387,6 +434,38 @@ public class TranscodeService {
         }
     }
 
+    private static boolean versionVideoCompatible(JsonNode target, JsonNode result, JsonNode client, JsonNode selected) {
+        String targetCodec = target.path("codec").asText("h264");
+        boolean measuredRequired = client.path("profiles").has(targetCodec)
+                || client.path("levels").has(targetCodec)
+                || client.hasNonNull("max_fps") || client.hasNonNull("max_bit_depth");
+        JsonNode video = null;
+        for (var stream : result.path("output").path("media").path("streams"))
+            if (stream.path("kind").asText().equals("video")) { video = stream; break; }
+        if (video == null) {
+            // Older outputs without measured decoder constraints cannot establish
+            // compatibility for a terminal explicitly reporting profile/level limits.
+            return !measuredRequired
+                    && target.path("fps").asDouble(30) <= selected.path("fps").asDouble();
+        }
+        if (measuredRequired && (video.path("fps").asDouble() <= 0 || video.path("bit_depth").asInt() <= 0))
+            return false;
+        String codec = video.path("codec").asText();
+        var profiles = client.path("profiles").path(codec);
+        int level = client.path("levels").path(codec).asInt();
+        String profile = video.path("profile").asText();
+        boolean profileSupported = contains(profiles, profile)
+                || profile.equals("Constrained Baseline") && contains(profiles, "Baseline")
+                || profile.equals("Constrained High") && contains(profiles, "High");
+        return (!profiles.isArray() || profiles.isEmpty() || profileSupported)
+                && (level == 0 || video.path("level").asInt() > 0
+                        && avcLevelRank(video.path("level").asInt()) <= avcLevelRank(level))
+                && video.path("fps").asDouble() <= selected.path("fps").asDouble()
+                && video.path("bit_depth").asInt(8) <= client.path("max_bit_depth").asInt(8);
+    }
+
+    private static double avcLevelRank(int level) { return level == 9 ? 10.5 : level; }
+
     private ObjectNode direct(String url, String reason) {
         return json.createObjectNode()
                 .put("mode", "DIRECT")
@@ -417,7 +496,8 @@ public class TranscodeService {
                 var remote = compute.call(compute.connection(str(row, "node_origin")),
                         "/internal/v1/transcoding/executions/" + execution(row) + "/lease", "POST", null);
                 merged.setAll((ObjectNode) remote);
-                merged = cacheCompleted(row, merged);
+                // The scheduler transfers completed media. Playback leases must never
+                // wait for a whole-song cache download before exposing ready segments.
             }
             result = merged;
             mapper.renew(id, now());
@@ -452,20 +532,28 @@ public class TranscodeService {
     /** Publish verified HLS on the service node before releasing compute's temporary output. */
     private ObjectNode cacheCompleted(Map<String, Object> row, ObjectNode execution) {
         String id = str(row, "id");
+        var retry = cacheRetries.get(id);
+        if (retry != null && retry.generation() == cache.cleanupGeneration() && now() < retry.at()) return execution;
         if (!str(row, "purpose").equals("REALTIME") || execution.hasNonNull("cacheId")
                 || !execution.path("state").asText().equals("SUCCEEDED")
                 || execution.path("cacheKey").asText().isBlank() || !caching.add(id)) return execution;
         try {
             var connection = compute.connection(str(row, "node_origin"));
-            var saved = cache.capture(row, execution.path("cacheKey").asText(), connection, execution);
+            var saved = cache.capture(row, execution.path("cacheKey").asText(), connection, execution, () -> {
+                var latest = mapper.find(id);
+                return latest != null && Set.of("STARTING", "RUNNING").contains(str(latest, "state"));
+            });
             saved.put("id", id).put("cacheKey", execution.path("cacheKey").asText()).put("cacheHit", false)
                     .put("computeReleased", false);
             if (mapper.saveActiveCache(id, saved.toString(), now()) != 1) cache.release(id);
             acknowledgeCached(row, saved);
+            cacheRetries.remove(id);
             return saved;
         } catch (RuntimeException error) {
             // A failed cache transfer must not interrupt the current temporary playback.
             org.slf4j.LoggerFactory.getLogger(TranscodeService.class).warn("Song cache transfer deferred for execution {}", id);
+            cacheRetries.put(id, new CacheRetry(cache.cleanupGeneration(), now() + 30_000));
+            if (cacheRetries.size() > 1024) cacheRetries.entrySet().removeIf(entry -> entry.getValue().at() < now());
             return execution;
         } finally {
             caching.remove(id);
@@ -558,39 +646,27 @@ public class TranscodeService {
         return result;
     }
 
-    public synchronized void cancel(String id, String owner) {
-        var row = require(id, owner);
-        var result = (ObjectNode) decode(row.get("result_json"));
-        if (str(row, "purpose").equals("REALTIME") && !result.hasNonNull("cacheId")) {
-            var local = cache.renew(id);
-            if (local != null) {
-                result.setAll(local);
-            } else {
-                try {
-                    var remote = compute.call(compute.connection(str(row, "node_origin")),
-                            "/internal/v1/transcoding/executions/" + execution(row), "GET", null);
-                    result.setAll((ObjectNode) remote);
-                    result = cacheCompleted(row, result);
-                } catch (org.springframework.web.server.ResponseStatusException unavailable) {
-                    // Cancellation still releases local ownership when a node is unavailable.
-                }
+    public void cancel(String id, String owner) {
+        Map<String, Object> row;
+        InputStream active;
+        synchronized (this) {
+            row = require(id, owner);
+            mapper.update(id, "CANCELLED", str(row, "result_json"), "", now());
+            active = downloading.remove(id);
+        }
+        cache.cancelCapture(id);
+        cache.release(id);
+        if (active != null) try { active.close(); } catch (IOException ignored) { /* Download removes its partial file. */ }
+        if (!str(row, "node_origin").isBlank() && !decode(row.get("result_json")).path("computeReleased").asBoolean()) {
+            try { cancelRemote(row, compute.connection(str(row, "node_origin"))); }
+            catch (RuntimeException unavailable) {
+                org.slf4j.LoggerFactory.getLogger(TranscodeService.class).warn("Compute cancellation deferred for execution {}", execution(row));
             }
         }
-        if (result.hasNonNull("cacheId")) {
-            cache.release(id);
-            mapper.update(id, "CANCELLED", result.toString(), "", now());
-            return;
-        }
-        if (str(row, "state").equals("QUEUED")) {
-            mapper.update(id, "CANCELLED", "{}", "", now());
-            return;
-        }
-        compute.call(
-                compute.connection(str(row, "node_origin")),
-                "/internal/v1/transcoding/executions/" + execution(row) + "/cancel",
-                "POST",
-                null);
-        mapper.update(id, "CANCELLED", str(row, "result_json"), "", now());
+    }
+
+    private void cancelRemote(Map<String, Object> row, Connection connection) {
+        compute.call(connection, "/internal/v1/transcoding/executions/" + execution(row) + "/cancel", "POST", null);
     }
 
     public synchronized void delete(String id) {
@@ -741,12 +817,16 @@ public class TranscodeService {
                         var body = (ObjectNode) decode(row.get("input_json"));
                         body.put("id", execution(row)).put("fingerprint", str(row, "fingerprint"));
                         body.set("target", decode(row.get("target_json")));
-                        result =
-                                compute.call(
+                        try { result = compute.call(
                                         connection,
                                         "/internal/v1/transcoding/executions",
                                         "POST",
-                                        body);
+                                        body); }
+                        finally {
+                            var latest = mapper.find(id);
+                            if (latest != null && str(latest, "state").equals("CANCELLED"))
+                                try { cancelRemote(row, connection); } catch (RuntimeException ignored) {}
+                        }
                     } else
                         result =
                                 compute.call(
@@ -806,6 +886,8 @@ public class TranscodeService {
                         null);
         try (var input = remote.body();
                 var output = Files.newOutputStream(temp)) {
+            synchronized (this) { checkDownload(row); downloading.put(id, input); }
+            if (remote.statusCode() != 200) throw new IOException("Unexpected artifact response");
             java.security.MessageDigest digest;
             try {
                 digest = java.security.MessageDigest.getInstance("SHA-256");
@@ -831,10 +913,22 @@ public class TranscodeService {
                             .formatHex(digest.digest())
                             .equals(result.path("output").path("sha256").asText()))
                 throw new IOException("Incomplete artifact");
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException error) {
             Files.deleteIfExists(temp);
-            throw e;
-        }
-        Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE);
+            throw error;
+        } finally { synchronized (this) { downloading.remove(id); } }
+        try {
+            synchronized (this) {
+                checkDownload(row);
+                if (!str(row, "fingerprint").equals(fingerprint(songs.get(str(row, "song_id")))))
+                    throw fail(409, "源媒体已变化");
+                Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE);
+            }
+        } finally { Files.deleteIfExists(temp); }
+    }
+    private void checkDownload(Map<String, Object> row) throws InterruptedIOException {
+        var latest = mapper.find(str(row, "id"));
+        if (latest == null || Set.of("CANCELLED", "DELETING").contains(str(latest, "state"))
+                || !execution(latest).equals(execution(row))) throw new InterruptedIOException("Transcode download cancelled");
     }
 }

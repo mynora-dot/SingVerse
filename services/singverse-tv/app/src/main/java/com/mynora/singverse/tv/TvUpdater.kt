@@ -18,9 +18,10 @@ class TvUpdater(private val context: Context, private val client: TvClient) {
         require(release.getString("url") == "/api/v1/tv/releases/apk")
         val size=release.getLong("size");require(size in 1..268435456)
         val directory=File(context.cacheDir,"updates").apply { mkdirs() };val file=File(directory,"singverse-tv.apk")
-        val connection=URI(client.base+"/api/v1/tv/releases/apk").toURL().openConnection() as HttpURLConnection
+        val (address, credential) = client.credentials()
+        val connection=URI(address+"/api/v1/tv/releases/apk").toURL().openConnection() as HttpURLConnection
         try {
-            connection.connectTimeout=5000;connection.readTimeout=15000;connection.instanceFollowRedirects=false;connection.setRequestProperty("Authorization","Bearer ${client.token}")
+            connection.connectTimeout=5000;connection.readTimeout=15000;connection.instanceFollowRedirects=false;connection.setRequestProperty("Authorization","Bearer $credential")
             require(connection.responseCode==200){"无法读取升级包"};val hash=MessageDigest.getInstance("SHA-256");var length=0L
             connection.inputStream.use { input -> file.outputStream().use { output -> val bytes=ByteArray(65536);while(true){val n=input.read(bytes);if(n<0)break;length+=n;require(length<=size){"升级包大小异常"};hash.update(bytes,0,n);output.write(bytes,0,n)} } }
             require(length==size && hash.digest().joinToString(""){"%02x".format(it)}==release.getString("sha256")){"升级包校验失败"}

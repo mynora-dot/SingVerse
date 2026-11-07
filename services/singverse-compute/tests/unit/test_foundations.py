@@ -6,15 +6,12 @@ import unittest
 from singverse_compute.core.config import Settings
 from singverse_compute.core.errors import ComputeError
 from singverse_compute.core.logging import JsonFormatter
-from singverse_compute.domain.media_tags import MediaTags
 from singverse_compute.infrastructure.security import InternalAuth
-from singverse_compute.infrastructure.filesystem import RootedMediaPaths
-from singverse_compute.application.media_tags import MediaTagService
 from unittest.mock import patch
 
 class FoundationTest(unittest.TestCase):
     def test_relative_deployment_paths_rejected(self):
-        with patch.dict('os.environ', {'COMPUTE_MEDIA_ROOTS':'relative'}):
+        with patch.dict('os.environ', {'COMPUTE_AUTH_TOKEN_FILE':'relative'}):
             with self.assertRaises(ValueError): Settings.from_env()
 
     def test_token_initialization_private_and_stable(self):
@@ -34,21 +31,24 @@ class FoundationTest(unittest.TestCase):
             with self.assertRaises(ComputeError): auth.authorize('Bearer wrong')
             with self.assertRaises(ComputeError): auth.authorize('Bearer 无效凭据')
 
-    def test_worker_failure_releases_capacity_and_outside_path_never_reads(self):
-        class Reader:
-            available = True
-            calls = 0
-            def read(self, path):
-                self.calls += 1
-                if self.calls == 1: raise RuntimeError('fixture worker failure')
-                return MediaTags(title='test')
+    def test_remote_reader_failure_releases_instance_capacity(self):
+        from types import SimpleNamespace
+        from singverse_compute.bootstrap import create_app
+        from singverse_compute.api.routers.remote_tags import Input, remote_tags
         with tempfile.TemporaryDirectory() as folder:
-            path = Path(folder)/'media.mp3'; path.write_bytes(b'fixture')
-            reader=Reader(); service=MediaTagService(RootedMediaPaths((Path(folder),)),reader,1)
-            with self.assertRaises(ComputeError): service.read('/not/allowed.mp3')
-            self.assertEqual(reader.calls,0)
-            with self.assertRaises(RuntimeError): service.read(str(path))
-            self.assertEqual(service.read(str(path)).title,'test')
+            app = create_app(Settings(token_file=Path(folder) / 'token'))
+            other = create_app(Settings(token_file=Path(folder) / 'other-token'))
+            body = Input(callbackOrigin='http://127.0.0.1', reference='11111111-1111-1111-1111-111111111111', filename='song.mp3')
+            request = SimpleNamespace(app=app)
+            with patch('singverse_compute.api.routers.remote_tags.extract', side_effect=[RuntimeError('fixture failure'), {'state': 'EMPTY'}]):
+                with self.assertRaises(RuntimeError): remote_tags(body, request)
+                self.assertEqual(remote_tags(body, request)['state'], 'EMPTY')
+            app.state.remote_tag_slots.acquire()
+            try:
+                self.assertTrue(other.state.remote_tag_slots.acquire(blocking=False))
+                other.state.remote_tag_slots.release()
+            finally:
+                app.state.remote_tag_slots.release()
 
     def test_json_log_whitelists_request_context(self):
         record=logging.makeLogRecord({'name':'singverse_compute.http','msg':'request.complete','levelname':'INFO',

@@ -48,12 +48,6 @@ public class ArtistController {
         return artists.category(id, input.type(), input.revision());
     }
 
-    @PostMapping("")
-    @ResponseStatus(HttpStatus.CREATED)
-    public ObjectNode create(@RequestBody ArtistDtos.Save input) {
-        return artists.save(null, input);
-    }
-
     @GetMapping("/{id}")
     public ObjectNode get(@PathVariable String id) {
         var profile = artists.get(id);
@@ -67,33 +61,12 @@ public class ArtistController {
         return profile;
     }
 
-    @PutMapping("/{id}")
-    public ObjectNode update(@PathVariable String id, @RequestBody ArtistDtos.Save input) {
-        return artists.save(id, input);
-    }
-
     @GetMapping("/{id}/songs")
     public Map<String, Object> songs(
             @PathVariable String id,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         return library.adminArtistSongs(id, page, size);
-    }
-
-    @GetMapping("/credits")
-    public Map<String, Object> credits(
-            @RequestParam(defaultValue = "") String q,
-            @RequestParam(defaultValue = "true") boolean unbound,
-            @RequestParam(required = false) String artistId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return library.credits(q, unbound, artistId, page, size);
-    }
-
-    @PostMapping("/bindings")
-    public Map<String, Boolean> bind(@RequestBody ArtistDtos.Bind input) {
-        artists.bind(input);
-        return Map.of("success", true);
     }
 
     @PostMapping("/{id}/images/retry")

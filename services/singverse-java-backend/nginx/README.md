@@ -39,6 +39,8 @@ COPY services/singverse-frontend/dist/ /usr/share/nginx/html/
 HTTP/HTTPS代理scheme通过proxy-scheme.conf显式区分；HTTPS外层部署使用根compose.https.yaml覆盖，不信任请求自带的scheme。认证与TLS入口说明见[认证文档](../../../docs/authentication.md)。
 
 
-音视频原流接口 `/api/v1/media-songs/{id}/video` 使用专用 location，保留 Range/HEAD 并关闭 proxy_buffering、proxy_cache，读取空闲超时 60 秒；同源会话鉴权由 Java 执行，不暴露 WebDAV 凭据。
+管理端／手机原流 `/api/v1/media-songs/{id}/video`、TV 原流 `/api/v1/tv/media/{id}`、两端生成伴奏、HLS 清单／分片、离线版本及内部转码／音轨回源共用媒体流规则，保留 Range/HEAD 并关闭 proxy_buffering、proxy_cache，读取空闲超时 60 秒；鉴权由 Java 执行，不暴露 WebDAV 凭据。升级播放链路时须同步更新并重载 Nginx 配置。
+
+`make nginx-media-check` 使用本机已有 `nginx:stable-alpine` 与 `node:22-bookworm-slim` 镜像验证实际代理；不拉取镜像，不启动业务应用，不挂载数据库、媒体或凭据。测试创建独立网络及仅绑定回环的随机端口，检查十条媒体路径的 GET/HEAD/Range，并在上游剩余正文被门禁阻塞时断言首段已到达客户端，结束后删除测试容器和网络。镜像名称可用 `python3 scripts/check-nginx-media.py --nginx-image <本地镜像> --backend-image <本地镜像>` 覆盖。
 
 电视封面上传 `/api/v1/admin/tv-settings/banners` 复用图片上传专用 3m 请求体限制（应用校验单张2MB），查询参数 `revision` 不影响匹配；其他普通接口继续使用16k。升级电视设置上传功能时须同步更新并重新加载 Nginx 配置，不能只更新 Java 或前端。多选上传由前端逐张提交，不增加单次请求体上限。

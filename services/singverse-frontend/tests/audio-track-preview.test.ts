@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import AudioTrackPreview from '../src/admin/modules/song-management/components/AudioTrackPreview.vue'
 import { playback } from '../src/admin/modules/transcoding/playback'
+import { adminActivity } from '../src/admin/modules/transcoding/activity'
 import { mockMediaElements } from './media-element-mocks'
 const adapter = vi.hoisted(() => ({ load: vi.fn(), attach: vi.fn(), destroy: vi.fn(), on: vi.fn() }))
 vi.mock('hls.js', () => ({ default: class {
@@ -21,6 +22,8 @@ beforeEach(() => {
   vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('probably')
   vi.mocked(playback.start).mockResolvedValue({ id: 'session1', mode: 'HLS', status: 'READY', offset: 0, url: '/first.m3u8' })
   vi.mocked(playback.cancel).mockResolvedValue(undefined)
+  vi.spyOn(adminActivity, 'create').mockResolvedValue({ attemptId: 'attempt', writeToken: 'write-token', eventSeq: -1, leaseSeconds: 120, startedAt: Date.now(), serverTime: Date.now() })
+  vi.spyOn(adminActivity, 'event').mockResolvedValue(undefined)
 })
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; vi.restoreAllMocks(); vi.useRealTimers() })
 it('未标记也能指定音轨试听，切换时保留时间且释放旧会话', async () => {
@@ -93,4 +96,24 @@ it('等待中的会话可停止，失败时释放会话', async () => {
   await vi.advanceTimersByTimeAsync(500); await flushPromises()
   expect(wrapper.get('[role="alert"]').text()).toContain('源文件无法读取')
   expect(playback.cancel).toHaveBeenCalledWith('pending')
+})
+it('独立原始音轨只在真正播放时登记保护，切轨复用一次试听并在关闭时停止', async () => {
+  wrapper = mount(AudioTrackPreview, { props: { songId: 'song', streams } })
+  await wrapper.findAll('button')[0]!.trigger('click'); await flushPromises()
+  expect(adminActivity.create).not.toHaveBeenCalled()
+  const audio = wrapper.get('audio')
+  Object.defineProperty(audio.element, 'duration', { configurable: true, value: 180 })
+  await audio.trigger('loadedmetadata'); await audio.trigger('playing'); await flushPromises()
+  expect(adminActivity.create).toHaveBeenCalledExactlyOnceWith('song', expect.any(Number))
+  expect(adminActivity.event).toHaveBeenLastCalledWith('attempt', expect.objectContaining({ state: 'PLAYING', durationMs: 180000, actualPlayedMs: 0 }))
+  await vi.advanceTimersByTimeAsync(1200)
+  await audio.trigger('waiting'); await flushPromises()
+  expect(adminActivity.event).toHaveBeenLastCalledWith('attempt', expect.objectContaining({ state: 'BUFFERING', actualPlayedMs: 1200 }))
+  vi.mocked(playback.start).mockResolvedValue({ id: 'session2', mode: 'HLS', status: 'READY', offset: 0, url: '/second.m3u8' })
+  await wrapper.findAll('button')[1]!.trigger('click'); await flushPromises()
+  await audio.trigger('loadedmetadata'); await audio.trigger('playing'); await flushPromises()
+  expect(adminActivity.create).toHaveBeenCalledTimes(1)
+  wrapper.unmount(); wrapper = undefined; await flushPromises()
+  expect(adminActivity.event).toHaveBeenLastCalledWith('attempt', expect.objectContaining({ state: 'STOPPED' }))
+  expect(vi.getTimerCount()).toBe(0)
 })

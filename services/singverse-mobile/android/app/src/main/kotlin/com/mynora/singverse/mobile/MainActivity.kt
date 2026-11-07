@@ -18,9 +18,15 @@ import io.flutter.plugin.common.*
 import io.flutter.plugin.platform.*
 import org.json.JSONObject
 import java.util.concurrent.Executors
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.RejectedExecutionException
 
 class MainActivity : FlutterActivity() {
     private val worker = Executors.newSingleThreadExecutor()
+    private val artworkWorker = ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS, ArrayBlockingQueue<Runnable>(32))
+    private val exportWorker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     private val videoViews = mutableSetOf<PlayerView>()
     private var subtitleInset = .08f
@@ -52,7 +58,8 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(engine)
         val transport = NasTransport.get(this)
         MethodChannel(engine.dartExecutor.binaryMessenger, "singverse/nas").setMethodCallHandler { call, result ->
-            worker.execute {
+            val executor = if (call.method == "bytes") artworkWorker else worker
+            try { executor.execute {
                 try {
                     val value: Any? = when (call.method) {
                         "restore" -> transport.origin
@@ -67,7 +74,7 @@ class MainActivity : FlutterActivity() {
                 } catch (e: Exception) {
                     main.post { result.error(if (e is NasFailure) "${e.status}" else "network", if (e is NasFailure) e.message else "连接 NAS 失败，请检查地址和网络", if (e is NasFailure) e.retryAfter else null) }
                 }
-            }
+            } } catch (_: RejectedExecutionException) { result.error("busy", "封面请求繁忙，请稍后重试", null) }
         }
         EventChannel(engine.dartExecutor.binaryMessenger, "singverse/playback-events").setStreamHandler(object : EventChannel.StreamHandler {
             override fun onListen(arguments: Any?, sink: EventChannel.EventSink) {
@@ -83,7 +90,7 @@ class MainActivity : FlutterActivity() {
                     "open" -> {
                         service.open(JSONObject(call.argument<String>("song")!!), call.argument<String>("instanceId")!!,
                             call.argument<Number>("positionMs")?.toLong() ?: 0, call.argument<Boolean>("force") ?: false,
-                            call.argument<Boolean>("autoplay") ?: true)
+                            call.argument<Boolean>("autoplay") ?: true, reuseAttempt = call.argument<Boolean>("reuseAttempt") ?: false)
                         videoViews.forEach { it.player = service.player }; result.success(null)
                     }
                     "command" -> {
@@ -168,7 +175,7 @@ class MainActivity : FlutterActivity() {
             val uri = data?.data
             if (resultCode != RESULT_OK || uri == null) { result.success(false); return }
             val id = exportingId
-            worker.execute {
+            exportWorker.execute {
                 try {
                     val file = PlaybackService.current!!.karaoke.works.playable(id)
                     contentResolver.openOutputStream(uri, "w").use { output -> requireNotNull(output); file.inputStream().use { it.copyTo(output) } }
@@ -181,6 +188,6 @@ class MainActivity : FlutterActivity() {
     override fun onStop() { PlaybackService.current?.karaoke?.testMicrophone(false); videoViews.forEach { it.player = null }; super.onStop() }
     override fun onDestroy() {
         events = null; PlaybackService.listener = null
-        worker.shutdown(); super.onDestroy()
+        worker.shutdown(); artworkWorker.shutdownNow(); exportWorker.shutdown(); super.onDestroy()
     }
 }

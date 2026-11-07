@@ -7,6 +7,7 @@ import type { MediaSong } from '../../media-library/types'
 import { accompanimentUrl, type AudioRoles } from '../../audio-processing/api'
 import { songTitle } from '../../metadata/utils'
 import { playback, type Resource, type OfflineTask, type SourceTrack } from '../../transcoding/playback'
+import { AdminPlaybackActivity } from '../../transcoding/activity'
 
 const props = defineProps<{ song: MediaSong | null }>()
 const emit = defineEmits<{ close: [] }>()
@@ -19,6 +20,7 @@ const resource = ref<Resource | null>(null), position = ref(0), tracks = ref<Sou
 const tasks = ref<OfflineTask[]>([])
 let generation = 0, songGeneration = 0, waitingForBacking = false, hls: Hls | undefined, timer: ReturnType<typeof setInterval> | undefined
 let compatibilityRetried = false
+let activity: AdminPlaybackActivity | undefined
 let activeMedia: { element: HTMLMediaElement; turn: number; compatible: boolean; resumePlayback: boolean } | undefined
 const currentTasks = computed(() => tasks.value.filter(t => t.songId === props.song?.id))
 const backingAvailable = computed(() => !!roles.value?.backingResource || (roles.value?.state === 'CONFIRMED' && !!roles.value.backingId))
@@ -30,6 +32,7 @@ function formatTime(value: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 function release() {
+  activity?.transition('PREPARING')
   // Invalidate callbacks before load()/destroy() can queue abort and error events.
   activeMedia = undefined
   hls?.destroy(); hls = undefined; clearInterval(timer); timer = undefined
@@ -39,7 +42,7 @@ function release() {
   if (resource.value?.id) void playback.cancel(resource.value.id).catch(() => {})
   resource.value = null; playing.value = false; buffering.value = false; waitingForBacking = false
 }
-function mediaFailed(reason: string) { ++generation; failed.value = true; loading.value = false; message.value = reason; release() }
+function mediaFailed(reason: string) { activity?.transition('ERROR'); ++generation; failed.value = true; loading.value = false; message.value = reason; release() }
 function decodeFailed(reason: string, turn: number) {
   const active = activeMedia
   if (!active || active.turn !== turn || turn !== generation || loading.value) return
@@ -79,10 +82,11 @@ function updatePosition() {
   if (Number.isFinite(element.duration) && !sourceDuration.value) sourceDuration.value = element.duration + (resource.value?.offset ?? 0)
   syncBacking()
 }
-function pause() { waitingForBacking = false; mediaElement.value?.pause(); backingElement.value?.pause(); playing.value = false; buffering.value = false }
+function pause() { activity?.transition('PAUSED'); waitingForBacking = false; mediaElement.value?.pause(); backingElement.value?.pause(); playing.value = false; buffering.value = false }
 function onPause(event: Event) {
   if (event.target !== mediaElement.value || loading.value || mediaElement.value?.error) return
   backingElement.value?.pause()
+  activity?.transition(waitingForBacking ? 'BUFFERING' : 'PAUSED')
   if (!waitingForBacking) playing.value = false
 }
 function backingWaiting() {
@@ -101,8 +105,18 @@ async function playBacking() {
   try { await backing.play() }
   catch { if (turn === generation && backing === backingElement.value) { pause(); notice.value = '伴奏未能播放，请点击播放重试' } }
 }
-function onPlaying() { buffering.value = false; playing.value = true; void playBacking() }
-function onWaiting() { buffering.value = true; backingElement.value?.pause() }
+function onPlaying(event?: Event) {
+  if (event && event.currentTarget !== mediaElement.value) return
+  buffering.value = false; playing.value = true; void playBacking()
+  const element = mediaElement.value
+  if (!props.song || !activeMedia || element !== activeMedia.element || activeMedia.turn !== generation || element.paused || element.seeking) return
+  if (!activity || activity.closed) activity = new AdminPlaybackActivity(props.song.id)
+  activity.transition('PLAYING', sourceDuration.value > 0 ? sourceDuration.value * 1000 : undefined)
+}
+function onEnded(event: Event) { if (event.currentTarget !== mediaElement.value) return; activity?.transition('COMPLETED'); pause() }
+function onSeeking(event: Event) { if (event.currentTarget !== mediaElement.value) return; activity?.transition('BUFFERING'); backingElement.value?.pause() }
+function onSeeked() { syncBacking(); void playBacking(); if (mediaElement.value && !mediaElement.value.paused && mediaElement.value.readyState >= 3) onPlaying() }
+function onWaiting(event: Event) { if (event.currentTarget !== mediaElement.value) return; activity?.transition('BUFFERING'); buffering.value = true; backingElement.value?.pause() }
 async function resume() {
   const element = mediaElement.value, turn = generation; if (!element) return
   try { await element.play() }
@@ -231,12 +245,13 @@ async function fullscreen() {
 }
 watch([volume, muted], applyVolume)
 watch(() => props.song?.id, () => {
+  activity?.transition('STOPPED'); activity = undefined
   ++generation; ++songGeneration; loading.value = false; release()
   quality.value = 'auto'; encoding.value = 'auto'; role.value = 'original'; subtitleId.value = ''; tracks.value = []; roles.value = undefined
   sourceDuration.value = 0; position.value = 0; tasks.value = []; notice.value = ''; settingsOpen.value = false
   if (props.song) { void start(false, 0, false); void loadRoles(songGeneration); void refreshTasks(songGeneration) }
 }, { immediate: true })
-onBeforeUnmount(() => { ++generation; ++songGeneration; release() })
+onBeforeUnmount(() => { activity?.transition('STOPPED'); activity = undefined; ++generation; ++songGeneration; release() })
 </script>
 
 <template>
@@ -245,7 +260,7 @@ onBeforeUnmount(() => { ++generation; ++songGeneration; release() })
     <section v-if="song" ref="playerElement" class="song-player" :class="{ 'is-video': !isAudio }" aria-label="歌曲播放器">
       <div class="media-stage" :class="{ 'is-audio': isAudio }">
         <component :is="isAudio ? 'audio' : 'video'" v-if="!failed && !loading" :key="generation" ref="mediaElement" :class="isAudio ? 'song-audio' : 'song-video'" :playsinline="!isAudio" preload="metadata"
-          @timeupdate="updatePosition" @loadedmetadata="updatePosition" @play="playing = true" @playing="onPlaying" @pause="onPause" @ended="pause" @waiting="onWaiting" @seeking="backingElement?.pause()" @seeked="syncBacking(); playBacking()" @ratechange="syncBacking" @error="onMediaError">
+          @timeupdate="updatePosition" @loadedmetadata="updatePosition" @play="playing = true" @playing="onPlaying" @pause="onPause" @ended="onEnded" @waiting="onWaiting" @seeking="onSeeking" @seeked="onSeeked" @ratechange="syncBacking" @error="onMediaError">
           <track v-if="resource?.subtitleUrl" kind="subtitles" :src="resource.subtitleUrl" label="字幕" default />当前浏览器不支持此媒体播放。
         </component>
         <audio v-if="!failed && !loading && resource?.backingUrl" :key="generation" ref="backingElement" class="backing-audio" :src="resource.backingUrl" preload="auto" aria-label="独立伴奏" @loadedmetadata="syncBacking" @canplay="backingReady" @waiting="backingWaiting" @error="onBackingError" />

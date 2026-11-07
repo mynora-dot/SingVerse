@@ -72,6 +72,85 @@ it('全部筛选结果绑定已应用的筛选，编辑未提交条件不会改�
   await button('为所选歌曲生成伴奏').trigger('click'); await flushPromises()
   expect(authRequest).toHaveBeenCalledWith('/api/v1/audio-processing/batches/preview', 'POST', expect.objectContaining({ all: true, filter: expect.objectContaining({ title: '', streams: null }) }), 120000)
 })
+it('后台准备显示进度，准备完成前不能提交，完成后等待明确确认', async () => {
+  const previous = vi.mocked(authRequest).getMockImplementation()!
+  vi.mocked(authRequest).mockImplementation(async (...args) => {
+    if (args[0].endsWith('/batches/preview')) return { ...preview, state: 'PREPARING', prepared: 200, selectionTotal: 1000 } as never
+    if (args[0].endsWith('/batches/batch?page=0')) return preview as never
+    return previous(...args)
+  })
+  await open(); await wrapper!.get('input[aria-label="选择a"]').setValue(true)
+  await button('为所选歌曲生成伴奏').trigger('click'); await flushPromises()
+  expect(wrapper!.get('[role="dialog"]').text()).toContain('200 / 1000')
+  expect(button('开始生成').attributes('disabled')).toBeDefined()
+  expect(requested('/submit')).toBe(false)
+  await vi.advanceTimersByTimeAsync(4000); await flushPromises()
+  expect(button('开始生成').attributes('disabled')).toBeUndefined()
+  expect(requested('/submit')).toBe(false)
+})
+it('准备中可取消且取消后不能提交', async () => {
+  const previous = vi.mocked(authRequest).getMockImplementation()!
+  vi.mocked(authRequest).mockImplementation(async (...args) => {
+    if (args[0].endsWith('/batches/preview')) return { ...preview, state: 'PREPARING', prepared: 0, selectionTotal: 2 } as never
+    if (args[0].endsWith('/cancel')) return { ...preview, state: 'CANCELLED' } as never
+    return previous(...args)
+  })
+  await open(); await wrapper!.get('input[aria-label="选择a"]').setValue(true)
+  await button('为所选歌曲生成伴奏').trigger('click'); await flushPromises()
+  await button('取消准备').trigger('click'); await flushPromises()
+  expect(authRequest).toHaveBeenCalledWith('/api/v1/audio-processing/batches/batch/cancel', 'POST')
+  expect(wrapper!.get('[role="dialog"]').text()).toContain('已取消准备')
+  expect(button('开始生成').attributes('disabled')).toBeDefined()
+})
+it('取消准备后迟到的预览轮询不能恢复开始按钮', async () => {
+  const previous = vi.mocked(authRequest).getMockImplementation()!
+  let resolvePreview!: (value: unknown) => void
+  vi.mocked(authRequest).mockImplementation((...args) => {
+    if (args[0].endsWith('/batches/preview')) return Promise.resolve({ ...preview, state: 'PREPARING' }) as never
+    if (args[0].endsWith('/batches/batch?page=0')) return new Promise(done => { resolvePreview = done }) as never
+    if (args[0].endsWith('/cancel')) return Promise.resolve({ ...preview, state: 'CANCELLED' }) as never
+    return previous(...args)
+  })
+  await open(); await wrapper!.get('input[aria-label="选择a"]').setValue(true)
+  await button('为所选歌曲生成伴奏').trigger('click'); await flushPromises()
+  await vi.advanceTimersByTimeAsync(4000)
+  await button('取消准备').trigger('click'); await flushPromises()
+  resolvePreview(preview); await flushPromises()
+  expect(wrapper!.get('[role="dialog"]').text()).toContain('已取消准备')
+  expect(button('开始生成').attributes('disabled')).toBeDefined()
+})
+it('索引503重试在KeepAlive切换页签后停止，返回歌曲页再恢复', async () => {
+  const previous = vi.mocked(authRequest).getMockImplementation()!
+  let building = true
+  vi.mocked(authRequest).mockImplementation(async (...args) => {
+    if (args[0].includes('/songs?') && building) throw Object.assign(new Error('Index building'), { status: 503 })
+    return previous(...args)
+  })
+  await open()
+  await wrapper!.get('#audio-tab-tasks').trigger('click'); await flushPromises()
+  const calls = vi.mocked(authRequest).mock.calls.filter(([path]) => path.includes('/songs?')).length
+  await vi.advanceTimersByTimeAsync(9000); await flushPromises()
+  expect(vi.mocked(authRequest).mock.calls.filter(([path]) => path.includes('/songs?'))).toHaveLength(calls)
+  building = false
+  await wrapper!.get('#audio-tab-songs').trigger('click'); await flushPromises()
+  expect(wrapper!.findAll('.song-row')).toHaveLength(2)
+})
+it('首次索引准备返回503时自动重试，离开后停止重试', async () => {
+  const previous = vi.mocked(authRequest).getMockImplementation()!
+  let building = true
+  vi.mocked(authRequest).mockImplementation(async (...args) => {
+    if (args[0].includes('/songs?') && building) throw Object.assign(new Error('Index building'), { status: 503 })
+    return previous(...args)
+  })
+  await open()
+  expect(wrapper!.text()).toContain('正在准备歌曲列表')
+  building = false; await vi.advanceTimersByTimeAsync(1000); await flushPromises()
+  expect(wrapper!.findAll('.song-row')).toHaveLength(2)
+  wrapper!.unmount(); wrapper = undefined
+  const count = vi.mocked(authRequest).mock.calls.length
+  await vi.advanceTimersByTimeAsync(10000)
+  expect(authRequest).toHaveBeenCalledTimes(count)
+})
 it('应用新筛选会清除旧选择', async () => {
   await open(); await wrapper!.find('input[aria-label="选择a"]').setValue(true)
   expect(wrapper!.text()).toContain('已选 1 首')
@@ -127,6 +206,18 @@ it('停止进行中的任务需要确认，取消确认则不发送请求', asyn
   await button('停止').trigger('click'); await flushPromises()
   expect(authRequest).toHaveBeenCalledWith('/api/v1/audio-processing/batches/batch/cancel', 'POST')
 })
+it('停止任务确认期间阻止重复提交，离页后不发送停止请求', async () => {
+  router.route.query = { tab: 'tasks' }; await open()
+  let confirm!: (approved: boolean) => void
+  vi.mocked(confirmDanger).mockImplementationOnce(() => new Promise(done => { confirm = done }))
+  const stop = button('停止')
+  await stop.trigger('click')
+  expect(stop.attributes('disabled')).toBeDefined()
+  await stop.trigger('click'); expect(confirmDanger).toHaveBeenCalledTimes(1)
+  wrapper!.unmount(); wrapper = undefined
+  confirm(true); await flushPromises()
+  expect(requested('/batches/batch/cancel')).toBe(false)
+})
 it('没有合格后端时禁止生成，并引导到节点与模型下载模型', async () => {
   ready = false; await open()
   expect(button('为所选歌曲生成伴奏').attributes('disabled')).toBeDefined()
@@ -155,7 +246,7 @@ it('隐藏部署信息，OpenVINO模型下载使用独立清单', async () => {
   vi.mocked(authRequest).mockImplementation(async (...args) => {
     if (args[0].includes('/node')) return { ...node(),
       build: { version: '0.1.0', revision: 'abc123', variant: 'cpu', runtimeLock: 'runtime-digest' },
-      deployment: { note: '镜像架构由Docker选择', profiles: [{ backend: 'openvino', image: 'singverse-compute:0.1.0-openvino', command: 'docker compose example', included: false }] },
+      deployment: { note: '镜像架构由Docker选择', profiles: [{ backend: 'openvino', image: 'singverse-compute:0.1.0-openvino', command: 'docker compose --project-directory . example', included: false }] },
       models: [{ ...node().model, id: 'htdemucs', version: 'baseline' }, { id: 'htdemucs-openvino', version: 'fixed-revision', installed: false, writable: true, maxBytes: 128*1024**2, files: [{ name: 'htdemucs_fwd.xml', url: 'https://example.test/model.xml', sha256: 'expected', size: 1 }] }],
       backends: [{ id: 'cpu', state: 'AVAILABLE' }, { id: 'openvino', detected: true, state: 'IMAGE_MISSING', reason: '当前镜像未包含此推理后端' }]
     } as never

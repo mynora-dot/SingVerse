@@ -62,3 +62,28 @@ class ComputeHttpTest(unittest.TestCase):
     contract = Path(__file__).resolve().parents[4] / "contracts/openapi/compute-internal.openapi.json"
     with urlopen(self.base + "/openapi.json", timeout=2) as response:
       self.assertEqual(json.load(response), json.loads(contract.read_text(encoding="utf-8")))
+
+  def test_slow_capability_probe_does_not_block_process_health(self):
+    from unittest.mock import patch, PropertyMock
+    from singverse_compute.application.audio_roles import AudioRoles
+    entered, proceed = threading.Event(), threading.Event()
+    errors = []
+    def slow_probe():
+      entered.set()
+      proceed.wait(3)
+      return False
+    def capability_request():
+      try:
+        with urlopen(self.base + '/internal/v1/capabilities', timeout=4) as response:
+          self.assertEqual(response.status, 200)
+      except BaseException as error: errors.append(error)
+    with patch.object(AudioRoles, 'available', new_callable=PropertyMock, side_effect=slow_probe):
+      worker = threading.Thread(target=capability_request)
+      worker.start()
+      try:
+        self.assertTrue(entered.wait(1))
+        with urlopen(self.base + '/health', timeout=1) as response:
+          self.assertEqual(json.load(response), {'status': 'UP'})
+      finally:
+        proceed.set(); worker.join(4)
+    self.assertFalse(errors, errors)

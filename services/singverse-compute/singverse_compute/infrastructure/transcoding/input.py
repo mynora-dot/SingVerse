@@ -75,7 +75,7 @@ def remote_input(origin, reference, token, resource='transcode-input'):
                 self.close_connection = True
     server = ThreadingHTTPServer(('127.0.0.1', 0), Reader)
     server.daemon_threads = True
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=.02), daemon=True)
     thread.start()
     try:
         try:

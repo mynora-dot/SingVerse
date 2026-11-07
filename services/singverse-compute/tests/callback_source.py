@@ -3,6 +3,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import threading
 import uuid
+import unittest
 
 class CallbackSource:
     def __init__(self, root, token):
@@ -40,10 +41,31 @@ class CallbackSource:
                     except (BrokenPipeError, ConnectionResetError): pass
         self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
         self.origin = f'http://127.0.0.1:{self.server.server_port}'
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True); self.thread.start()
+        self.thread = threading.Thread(target=lambda: self.server.serve_forever(poll_interval=.02), daemon=True); self.thread.start()
     def grant(self, file):
         reference = str(uuid.uuid5(uuid.NAMESPACE_URL, str(file)))
         self.grants[reference] = file
         return {'reference': reference, 'callbackOrigin': self.origin}
     def close(self):
         self.server.shutdown(); self.server.server_close(); self.thread.join(2)
+
+
+class CallbackTestCase(unittest.TestCase):
+    """Exercise production reference inputs while keeping fixture media business-owned."""
+    def callback(self, source, token):
+        source = Path(source)
+        callbacks = getattr(self, '_callbacks', {})
+        key = (source.parent, token)
+        if key not in callbacks:
+            callbacks[key] = CallbackSource(source.parent, token)
+            self.addCleanup(callbacks[key].close)
+            self._callbacks = callbacks
+        return callbacks[key].grant(source)
+
+    def submit_audio(self, worker, identifier, source, mode, backend=None):
+        grant = self.callback(source, worker.transcoding.auth._token())
+        return worker.submit(identifier, grant['reference'], mode, backend, grant['callbackOrigin'])
+
+    def create_transcode(self, service, identifier, source, fingerprint, target):
+        grant = self.callback(source, service.auth._token())
+        return service.create(identifier, grant['reference'], fingerprint, target, grant['callbackOrigin'])

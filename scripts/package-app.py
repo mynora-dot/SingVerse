@@ -14,7 +14,7 @@ def contents():
     files = {
         'docker-compose.yaml': (ROOT/'infra/deploy/app/docker-compose.yaml').read_bytes(),
         '部署说明.md': (ROOT/'infra/deploy/app/README.md').read_bytes(),
-        '.dockerignore': (ROOT/'.dockerignore').read_bytes(),
+        '.dockerignore': (ROOT/'infra/docker/build/.dockerignore').read_bytes(),
     }
     trees = (
         'services/singverse-frontend/src/', 'services/singverse-frontend/admin/',
@@ -29,13 +29,20 @@ def contents():
         'services/singverse-java-backend/'+name for name in
         ('Dockerfile', 'mvnw', 'pom.xml', 'nginx/nginx.conf', 'nginx/proxy-scheme.conf')
     } | {
-        'scripts/setup-dbmate.sh', 'contracts/openapi/auth-test-vectors.json',
+        'scripts/setup-dbmate.sh', 'scripts/check-database-baseline.py', 'database/README.md',
+        'database/migrations/sqlite/202611070001_initial_schema.sql',
+        'database/migrations/mysql/202611070001_initial_schema.sql',
+        'contracts/openapi/auth-test-vectors.json',
         'contracts/openapi/singverse.openapi.json',
     }
-    tracked = subprocess.check_output(['git', 'ls-files', '-z'], cwd=ROOT).decode().split('\0')
-    for name in tracked:
+    sources = subprocess.check_output(
+        ['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], cwd=ROOT,
+    ).decode().split('\0')
+    for name in sources:
         if name and (name in exact or name.startswith(trees)):
             path = ROOT/name
+            if not path.exists() and not path.is_symlink():
+                continue  # Removed migrations and source files must not enter a fresh deployment.
             if not path.is_file() or path.is_symlink():
                 raise ValueError(f'Expected regular source file: {name}')
             files[name] = path.read_bytes()

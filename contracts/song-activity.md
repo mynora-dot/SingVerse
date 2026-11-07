@@ -1,6 +1,6 @@
 # 播放记录与缺歌反馈
 
-本阶段提供后台管理页面、管理员 API 和数据库存储。手机、TV、亲友 H5 和后台试听均未接入新的播放或缺歌上报；既有聚会状态和手机本机最近播放不会回填成历史记录。播放历史表初始为空，页面按真实查询结果展示空状态。
+后台播放记录接收 TV、手机本机播放和管理员试听的真实活动；亲友 H5 点歌由实际执行播放的 TV 上报，不重复计次。既有聚会状态、手机本机最近播放和缓存命中不会回填成历史。缺歌反馈仍由管理员登记，客户端不自动写入。
 
 ## 管理入口
 
@@ -9,7 +9,7 @@
 | 热门排行、播放明细与单曲历史 | 曲库 → 播放记录 | `#/library/playback-history` |
 | 登记和处理缺歌 | 曲库 → 缺歌反馈 | `#/library/missing-feedback` |
 
-Nginx 根路径与 Java `/admin/` 托管均沿用现有约定，API 请求仅访问同源 Java `/api/v1`。所有接口使用管理员 Cookie；缺歌写入另需当前 CSRF token，设备或亲友 Bearer 不授予管理权限。
+Nginx 根路径与 Java `/admin/` 托管均沿用现有约定，API 请求仅访问同源 Java `/api/v1`。管理查询、缺歌反馈和后台试听使用管理员 Cookie，写入另需当前 CSRF token；TV 活动沿用设备 Bearer，设备或亲友 Bearer 不授予管理权限。
 
 ## 播放记录
 
@@ -20,11 +20,25 @@ Nginx 根路径与 Java `/admin/` 托管均沿用现有约定，API 请求仅访
 - 明细按开始时间倒序、ID 倒序排列，保留短暂播放、失败和中断。
 - 热门按有效播放次数倒序、最近播放时间倒序、歌曲 ID 升序排列，只展示有效次数大于零的歌曲。后台试听 `ADMIN` 不参与排行的任何次数、最近时间或歌曲快照选择。
 - 非后台试听的记录，实际播放至少 30 秒即计为有效；之后失败、切歌或中断不改变这一次有效计数。歌曲时长不足 30 秒时，须自然结束且实播不少于该歌曲时长。未知时长不能套用短曲规则。
-- `playedMs` 表示实际播放时长，暂停、缓冲和拖动进度不能被当成实播时长。本阶段只读持久字段，没有新增时长采集实现。
+- `playedMs` 表示实际播放时长。客户端仅累计主媒体实际播放的单调墙钟时间，暂停、缓冲和拖动进度不增加实播时长；伴奏与主媒体同时播放也只计一次。服务端不从 `positionMs` 或资源租约推断实播。
 - 汇总包含全部播放尝试数、有效播放次数、有效播放歌曲数和全部实播时长。后台试听始终不计入有效次数，其余记录按上述实播阈值判断；所有记录的尝试数和已实际播放的时长仍参与对应总数。
 - `COMPLETED` 代表自然结束结果，不代表用户听完了所有片段；排行中的自然结束次数不能作为收听覆盖率使用。
 
-播放状态为 `PLAYING`、`COMPLETED`、`SKIPPED`、`STOPPED`、`ERROR`、`INTERRUPTED`。本阶段没有向管理员开放创建、修改或删除播放记录的接口，不写入演示记录，也不借用缓存命中次数生成热门榜。
+历史结果为 `PLAYING`、`COMPLETED`、`SKIPPED`、`STOPPED`、`ERROR`、`INTERRUPTED`。暂停和缓冲保留在活动实例中，不把暂停单独当成结束结果；120 秒没有活动心跳的实例标为 `INTERRUPTED`。历史仍不提供任意创建、修改或删除接口，受鉴权的活动上报由服务端写入真实记录。
+
+## 活动实例与缓存保护
+
+管理员与手机先创建播放实例，提交一次确定的 UTC 毫秒起点 `startedAt`，携带服务端返回的 `attemptId` 和随机 `writeToken` 上报递增 `eventSeq`；响应另含接受的 `startedAt` 和当前 `serverTime`。两类路由分别固定为 `ADMIN`、`MOBILE`，令牌绑定创建时的登录会话，不能跨登录或客户端类型使用。事件包含 `state`、累计 `actualPlayedMs`、自原始起点开始的单调 `elapsedMs`，以及可选原歌曲总时长 `durationMs`。注册完成前真实播放的时长保留，不因注册重试重置起点。两个时钟都须非负单调，实播增量不得大于墙钟增量加 1 秒；累计上限 30 天，歌曲总时长为 1 毫秒至 24 小时。
+
+每条快照携带 UTC 毫秒 `occurredAt`（采样时间）和 `lastActivityAt`（实际播放窗口最后推进时间；未开始可为 null）。`occurredAt` 由最初 UTC 起点加单调 elapsed 推导，与起点的误差须在 5 秒内；未来容忍 5 秒，创建起点最多回溯 24 小时。暂停和缓冲冻结 `lastActivityAt`，真实恢复播放可立即推进。排队和重试必须保留原快照日期，不能替换成发送时间；服务端按发生时间更新 R、24 小时保护和活动租约，迟到事件不会延长近期保护。旧客户端可省略时间戳，由服务端按已绑定起点与 elapsed 推导发生时间。
+
+状态接受 `PREPARING`、`BUFFERING`、`PLAYING`、`PAUSED`、`COMPLETED`、`STOPPED`、`SKIPPED`、`ERROR`。首次实际播放建立历史与最近播放保护，后续仅实播累计增长更新最近播放时间；暂停、缓冲和仅续租不刷新 24 小时保护。普通 `ERROR` 可在最后一次事件发生后的 120 秒恢复窗口内，由同一实例递增事件恢复；窗口到期返回 410，不能无限复活旧实例。`COMPLETED`、`STOPPED`、`SKIPPED` 后拒绝继续写入；租约到期返回 410，客户端停止旧实例采集，下一次明确播放重新创建实例。
+
+后台视频预览与独立原始音轨试听在主媒体实际 `playing` 时创建实例，播放约每 5 秒上报，暂停约每 15 秒仅续租；重建播放源、切原伴或音轨保留同一逻辑试听实例，关闭或换歌结束旧实例。单独生成伴奏试听不重复创建记录。后台试听更新最近活动并保护缓存，不计有效播放或 H/F 热度。有效播放由服务端按上述 30 秒或短曲完整规则每实例至多计一次；H 每次增加 0.05 并限幅至 1，再按 14 天半衰期衰减。普通递增有效事件以 O(1) 增量处理；若有效发生时间早于同歌聚合时间，则按该歌曲有效事件的发生时间顺序重新折叠，保证饱和与衰减结果不依赖到达顺序。预取、缓存读取、后台探测和资源租约均不算播放。
+
+TV 沿用当前设备的 `playback-events` 接口，新增可选成对时钟 `actualPlayedMs`、`elapsedMs` 及 `startedAt/occurredAt/lastActivityAt`，仅当前有效 `attemptId` 的递增事件被接受；客户端起点首次绑定后不能改变，旧端未提供时钟时不以播放位置补造有效播放。确认 LOAD 后立即绑定固定时钟起点，准备中约每15秒上报 PREPARING（actual为0、无lastActivityAt），媒体就绪不重置起点。`ENDED` 映射为 `COMPLETED`，`IDLE` 映射为 `STOPPED`；活动租约已过期时，当前 TV 实例仍可用 ENDED/IDLE 同步队列终态，活动历史保持 INTERRUPTED，不补写实播、H/R/有效次数或续租。单曲播放与当前聚会队列共享同一实际播放尝试，H5 不另行发送计数。
+
+同一请求可以组合 `commandId` 确认与播放事件；重复或乱序的 `eventSeq` 不更新播放状态、计次或租约，但有效的命令确认仍会持久保存，后续会话读取不会重新出现已确认命令。
 
 ## 缺歌反馈
 
@@ -48,6 +62,11 @@ Nginx 根路径与 Java `/admin/` 托管均沿用现有约定，API 请求仅访
 | `GET /api/v1/playback-history` | 分页读取播放尝试 |
 | `GET /api/v1/playback-history/popular` | 分页读取有效播放排行 |
 | `GET /api/v1/playback-history/summary` | 读取同筛选条件的汇总 |
+| `POST /api/v1/playback-attempts` | 管理员创建后台试听活动实例 |
+| `POST /api/v1/playback-attempts/{attemptId}/events` | 管理员上报真实试听活动 |
+| `POST /api/v1/mobile/playback-attempts` | 手机创建本机播放活动实例 |
+| `POST /api/v1/mobile/playback-attempts/{attemptId}/events` | 手机上报真实播放活动 |
+| `POST /api/v1/tv/sessions/{id}/playback-events` | TV 上报当前有效播放尝试的状态与实播时钟 |
 | `GET /api/v1/missing-song-feedback` | 分页读取缺歌反馈 |
 | `POST /api/v1/missing-song-feedback` | 管理员登记缺歌 |
 | `GET /api/v1/missing-song-feedback/{id}` | 读取原始反馈与处理结果 |
@@ -55,10 +74,10 @@ Nginx 根路径与 Java `/admin/` 托管均沿用现有约定，API 请求仅访
 
 列表默认 `page=0,size=20`，最大页大小 100。过滤和排序在数据库分页前执行，明细与汇总保持同一统计口径。完整字段、长度、默认值、空值和错误状态见 [OpenAPI](openapi/singverse.openapi.json) 与 [API 说明](openapi/README.md)。
 
-Java 是唯一业务写入方，SQL 位于 MyBatis XML。SQLite/MySQL 对应迁移为 `202611060001_playback_history.sql`、`202611060002_missing_song_feedback.sql`；这些表随业务数据库一并备份，不增加 Python 任务、Redis 或消息队列，也没有新增环境变量。
+Java 是唯一业务写入方，SQL 位于 MyBatis XML。播放记录、缺歌反馈和播放活动统计随业务数据库一并备份，迁移以 `database/migrations/` 为准；不增加 Python 任务、Redis 或消息队列，也没有新增环境变量。
 
 ## 检查入口与当前限制
 
 前端使用 `make frontend-check` 和该工程的 `npm test`，Java 使用 `make java-backend-test`，SQLite 迁移与连接使用 `make db-sqlite-check`；MySQL 检查需要实际配置的 MySQL 实例。命令说明以 [根目录运行说明](../README.md#环境与命令) 与 `make help` 为准，这些入口不表示已经在本次环境全部通过。
 
-没有客户端上报时，新增播放不会出现在这些统计中。手机、TV、微信与 NAS 真机的上报和一致性验收属于后续接入范围，当前后台页面或隔离数据库测试不能代替这些验收。
+没有实际客户端上报时，新增播放不会出现在统计中。自动化页面、受控 HTTP 和隔离数据库测试不能代替手机、TV、微信与 NAS 真机的一致性验收；实际验证范围以本次验证记录为准。

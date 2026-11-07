@@ -1,9 +1,9 @@
 name: singverse-java-backend
 on:
   push:
-    paths: ['services/singverse-java-backend/**', 'services/singverse-frontend/**', '.github/workflows/singverse-java-backend.yml', 'compose.yaml', '.env.example', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh', 'infra/**', '.editorconfig', '.gitignore']
+    paths: ['services/singverse-java-backend/**', 'services/singverse-frontend/**', '.github/workflows/singverse-java-backend.yml', 'infra/docker/compose/compose.yaml', '.env.example', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh', 'scripts/check-database-baseline.py', 'infra/**', '.editorconfig', '.gitignore']
   pull_request:
-    paths: ['services/singverse-java-backend/**', 'services/singverse-frontend/**', '.github/workflows/singverse-java-backend.yml', 'compose.yaml', '.env.example', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh', 'infra/**', '.editorconfig', '.gitignore']
+    paths: ['services/singverse-java-backend/**', 'services/singverse-frontend/**', '.github/workflows/singverse-java-backend.yml', 'infra/docker/compose/compose.yaml', '.env.example', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh', 'scripts/check-database-baseline.py', 'infra/**', '.editorconfig', '.gitignore']
   workflow_dispatch:
 permissions:
   contents: read
@@ -57,6 +57,8 @@ jobs:
           nginx -t
       - name: Install database migration tool
         run: make -C "${{ github.workspace }}" dbmate-setup
+      - name: Verify fresh database baseline
+        run: make -C "${{ github.workspace }}" db-fresh-check
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

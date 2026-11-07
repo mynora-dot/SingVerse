@@ -59,10 +59,30 @@ public class WebDavShareService {
     }
     @Transactional(rollbackFor=Exception.class)
     public Map<String,Integer> importBundle(String sourceId,byte[] bytes)throws IOException {
+        return importBundle(sourceId,bytes,true,null);
+    }
+    /** The receipt initialization transaction prepares the existing source once per part. */
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY,rollbackFor=Exception.class)
+    void prepareImport(String sourceId,String expectedBinding) {
+        profiles.lockBindings();
+        var source=importSource(sourceId,expectedBinding);
+        metadata.prepare(source);
+    }
+    /** Called only within the receipt chunk transaction; source/profile locks remain per chunk. */
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY,rollbackFor=Exception.class)
+    Map<String,Integer> importPreparedBundle(String sourceId,byte[] bytes,String expectedBinding)throws IOException {
+        return importBundle(sourceId,bytes,false,expectedBinding);
+    }
+    private com.mynora.singverse.media.dto.MediaSourceDtos.Source importSource(String sourceId,String expectedBinding) {
         var source=sources.get(sourceId);if(!source.type().equals("WEBDAV"))throw failure(400,"仅支持 WebDAV 来源");
+        if(expectedBinding!=null&&!binding(source).equals(expectedBinding))throw failure(409,"Source root changed during import");
+        return source;
+    }
+    private Map<String,Integer> importBundle(String sourceId,byte[] bytes,boolean prepare,String expectedBinding)throws IOException {
         if(bytes.length>LIMIT)throw failure(413,"索引包最多 32 MiB");
         var document=readManifest(bytes);
-        profiles.lockBindings();var profile=profiles.savedProfile(source.parserProfileId());metadata.prepare(source);
+        profiles.lockBindings();var source=importSource(sourceId,expectedBinding);var profile=profiles.savedProfile(source.parserProfileId());
+        if(prepare)metadata.prepare(source);
         var seen=new HashSet<String>();int added=0,skipped=0;
         for(var item:document.path("entries")){
             String path=item.path("path").asText();validatePath(path);if(!seen.add(path)||!KtvFilenameParser.supportsMediaFilename(path))throw failure(400,"歌曲路径重复或格式不支持");

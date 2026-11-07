@@ -36,6 +36,11 @@ class PlaybackHistoryServiceTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry properties) {
+        properties.add("singverse.transcoding.cache-directory", () -> root.resolve("cache").toString());
+        properties.add("singverse.transcoding.directory", () -> root.resolve("versions").toString());
+        properties.add("singverse.audio.directory", () -> root.resolve("audio").toString());
+        properties.add("singverse.metadata.cache-path", () -> root.resolve("covers").toString());
+        properties.add("singverse.webdav.metadata-path", () -> root.resolve("webdav").toString());
         properties.add("singverse.sqlite.path", () -> root.resolve("playback-history.db").toString());
         properties.add("singverse.auth.key-file", () -> root.resolve("auth.key").toString());
         properties.add("singverse.classification.worker-enabled", () -> false);

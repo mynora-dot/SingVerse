@@ -63,8 +63,15 @@ public class LibraryChangeInterceptor implements Interceptor {
                         && !id.endsWith(".lock")
                         && !id.contains("Settings")
                         && !id.contains("settings"))
-                || id.contains("ArtistMapper.insertOverride"))
+                || id.contains("ArtistMapper.insertOverride") || id.contains("ArtistMapper.deleteOverride"))
             events.publishEvent(new ArtistDtos.Changed());
+        boolean progressOnly = id.endsWith("AudioRoleMapper.updateJob")
+                && parameter instanceof java.util.Map<?,?> values
+                && "RUNNING".equals(values.get("state"));
+        if (id.contains("AudioRoleMapper.") && !progressOnly || id.endsWith("WebDavMetadataMapper.applyTags")
+                || id.endsWith("WebDavMetadataMapper.insertSongs") || id.endsWith("WebDavMetadataMapper.removeArchivedSongs")
+                || id.endsWith("WebDavMetadataMapper.refresh"))
+            events.publishEvent(new com.mynora.singverse.media.audio.AudioCatalog.Changed());
         return result;
     }
 }

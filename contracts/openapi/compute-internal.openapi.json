@@ -2255,6 +2255,19 @@
             ],
             "title": "Reference"
           },
+          "fingerprint": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fingerprint"
+          },
           "client": {
             "$ref": "#/components/schemas/ClientInput"
           },
@@ -2430,6 +2443,45 @@
             ],
             "title": "Codec",
             "default": "h264"
+          },
+          "profile": {
+            "type": "string",
+            "enum": [
+              "",
+              "baseline",
+              "main",
+              "high"
+            ],
+            "title": "Profile",
+            "default": ""
+          },
+          "level": {
+            "type": "integer",
+            "enum": [
+              0,
+              9,
+              10,
+              11,
+              12,
+              13,
+              20,
+              21,
+              22,
+              30,
+              31,
+              32,
+              40,
+              41,
+              42,
+              50,
+              51,
+              52,
+              60,
+              61,
+              62
+            ],
+            "title": "Level",
+            "default": 0
           },
           "width": {
             "type": "integer",

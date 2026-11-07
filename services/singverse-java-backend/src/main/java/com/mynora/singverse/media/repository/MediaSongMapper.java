@@ -10,6 +10,9 @@ public interface MediaSongMapper {
     List<Map<String, Object>> list(@Param("sourceId") String sourceId,
             @Param("limit") int limit, @Param("offset") long offset);
     List<Map<String, Object>> find(@Param("id") String id);
+    List<Map<String, Object>> batchAfter(@Param("cursor") String cursor,
+            @Param("sourceId") String sourceId, @Param("limit") int limit);
+    List<Map<String, Object>> byIds(@Param("ids") List<String> ids);
     long count(@Param("sourceId") String sourceId);
     List<Map<String, Object>> search(@Param("sourceId") String sourceId, @Param("keyword") String keyword,
             @Param("review") Integer review, @Param("limit") int limit, @Param("offset") long offset,

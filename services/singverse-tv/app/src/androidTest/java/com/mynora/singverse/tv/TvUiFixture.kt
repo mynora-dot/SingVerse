@@ -97,13 +97,13 @@ internal class TvUiFixture(private val playback: TvPlaybackFixture? = null) : Au
                 val bytes = if (media != null) media.first else if (coverNumber != null) covers.getValue(coverNumber)
                     else try {
                         val rejection = if (adding) rejectNextAdd.getAndSet(0) else 0
-                        if (rejection > 0) throw FixtureHttpException(rejection, "测试：本场已暂停接单")
+                        if (rejection > 0) throw TvFixtureHttpException(rejection, "测试：本场已暂停接单")
                         response(path, jsonBody, request.getOrElse(1) { path }).also {
                             playback?.beforeSend(path, jsonBody, it)
                             val failure = if (adding) failNextAddResponse.getAndSet(0) else 0
-                            if (failure > 0) throw FixtureHttpException(failure, "测试：命令回报中断，请核对后重试")
+                            if (failure > 0) throw TvFixtureHttpException(failure, "测试：命令回报中断，请核对后重试")
                         }.toByteArray(Charsets.UTF_8)
-                    } catch (error: FixtureHttpException) {
+                    } catch (error: TvFixtureHttpException) {
                         responseStatus = error.status
                         JSONObject().put("detail", error.message).toString().toByteArray(Charsets.UTF_8)
                     }
@@ -135,7 +135,6 @@ internal class TvUiFixture(private val playback: TvPlaybackFixture? = null) : Au
             }
     }
 
-    private class FixtureHttpException(val status: Int, message: String) : RuntimeException(message)
 
     @Synchronized private fun response(path: String, body: JSONObject, requestTarget: String): String {
         if (path.endsWith("/commands")) actions.add(body.getString("action"))
@@ -146,10 +145,10 @@ internal class TvUiFixture(private val playback: TvPlaybackFixture? = null) : Au
         path.endsWith("/participants") -> JSONArray().put(JSONObject().put("id", "test-friend").put("name", "测试亲友").put("revoked", false))
             .put(JSONObject().put("id", "test-revoked").put("name", "已撤销测试设备").put("revoked", true)).toString()
         path.endsWith("/commands") -> {
-            if (path.substringAfter("/sessions/").substringBefore('/') != sessionId) throw FixtureHttpException(410, "旧聚会已结束")
+            if (path.substringAfter("/sessions/").substringBefore('/') != sessionId) throw TvFixtureHttpException(410, "旧聚会已结束")
             val action = body.getString("action")
             if (action == "ADD" && body.optString("requestId") !in addReceipts) {
-                if (body.optLong("expectedRevision") != revision) throw FixtureHttpException(409, "队列已更新，请核对后重试")
+                if (body.optLong("expectedRevision") != revision) throw TvFixtureHttpException(409, "队列已更新，请核对后重试")
                 val song = songs(songCount, mixedSongMetadata).first { it.optString("id") == body.optString("songId") }
                 queue.put(JSONObject().put("id", "test-queue-${queue.length()}").put("songId", song.getString("id"))
                     .put("song", song).put("status", "WAITING").put("ownerName", "测试电视"))
@@ -251,3 +250,5 @@ internal class TvUiFixture(private val playback: TvPlaybackFixture? = null) : Au
             .put("subtitle", "仅测试数据，不访问真实 NAS").put("autoRotate", false).put("banners", JSONArray())
     }
 }
+
+internal class TvFixtureHttpException(val status: Int, message: String) : RuntimeException(message)

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { requestId as newRequestId } from '../../../shared/request-id'
 import PageHeader from '../../shared/ui/PageHeader.vue'
 import { onBeforeUnmount,onMounted,reactive,ref } from 'vue'
 import { ElAlert,ElButton,ElDialog,ElInput,ElMessageBox,ElPagination } from 'element-plus'
@@ -12,7 +13,7 @@ const form=reactive({requestId:'',name:'',description:'',songIds:[] as string[],
 let active=true,epoch=0
 function failure(e:unknown){if(active)error.value=e instanceof Error?e.message:'请求失败，请重试'}
 async function load(reset=false){if(reset)page.value=1;const seq=++epoch;loading.value=true;try{const result=await playlists.list(query.value,page.value-1,sort.value);if(active&&seq===epoch){items.value=result.items;total.value=result.totalElements;const last=Math.max(1,Math.ceil(result.totalElements/12));if(page.value>last){page.value=last;await load()}}}catch(e){failure(e)}finally{if(active&&seq===epoch)loading.value=false}}
-function create(){current.value=null;songs.value={};Object.assign(form,{requestId:crypto.randomUUID(),name:'',description:'',songIds:[],revision:0});proposal.value=null;error.value='';open.value=true}
+function create(){current.value=null;songs.value={};Object.assign(form,{requestId:newRequestId(),name:'',description:'',songIds:[],revision:0});proposal.value=null;error.value='';open.value=true}
 async function edit(id:string){if(busy.value)return;busy.value=true;try{const result=await playlists.get(id);if(!active)return;current.value=result;songs.value=Object.fromEntries(result.songs.map(s=>[s.id,s]));Object.assign(form,{requestId:'',name:result.name,description:result.description,songIds:[...result.songIds],revision:result.revision});proposal.value=null;error.value='';open.value=true}catch(e){failure(e)}finally{if(active)busy.value=false}}
 async function close(){if(busy.value||generating.value)return;try{await ElMessageBox.confirm('关闭将放弃未保存的歌单编辑。','关闭编辑',{confirmButtonText:'放弃编辑',cancelButtonText:'继续编辑',autofocus:false})}catch{return}open.value=false;proposal.value=null}
 async function save(){if(busy.value||generating.value)return;busy.value=true;error.value='';try{const result=await playlists.save({...form,songIds:[...form.songIds]},current.value?.id);if(!active)return;current.value=result;form.revision=result.revision;open.value=false;await load()}catch(e){failure(e)}finally{if(active)busy.value=false}}

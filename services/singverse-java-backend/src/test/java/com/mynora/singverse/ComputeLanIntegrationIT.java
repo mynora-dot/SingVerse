@@ -31,6 +31,10 @@ class ComputeLanIntegrationIT {
         registry.add("singverse.compute.base-url", () -> "http://127.0.0.1:" + COMPUTE_PORT);
         registry.add("singverse.compute.token-file", () -> "");
         registry.add("singverse.transcoding.cache-directory", () -> temp.resolve("service-cache").toString());
+        registry.add("singverse.metadata.cache-path", () -> temp.resolve("covers").toString());
+        registry.add("singverse.webdav.metadata-path", () -> temp.resolve("webdav").toString());
+        registry.add("singverse.transcoding.directory", () -> temp.resolve("versions").toString());
+        registry.add("singverse.audio.directory", () -> temp.resolve("audio").toString());
         registry.add("singverse.classification.worker-enabled", () -> "false");
     }
 

@@ -1,5 +1,5 @@
 import { authRequest, ApiError } from '../../../core/auth/api'
-import type { Artist, Credit, ImageKind, Page } from '../types'
+import type { Artist, ImageKind, Page } from '../types'
 import type { MediaSong } from '../../media-library/types'
 const base='/api/v1/artists'
 const segment=encodeURIComponent
@@ -16,9 +16,6 @@ export const artists = {
   list: (q='',page=0,size=12,type='',countLessThan:number|null=null) => authRequest<Page<Artist>>(`${base}?q=${segment(q)}&page=${page}&size=${size}&type=${segment(type)}${countLessThan === null ? '' : `&countLessThan=${countLessThan}`}`),
   category: (id:string,type:Artist['type'],revision:number) => authRequest<Artist>(`${base}/${segment(id)}/category`,'PUT',{type,revision}),
   get: (id:string) => authRequest<Artist>(`${base}/${segment(id)}`),
-  save: (input: { requestId?:string; name:string; aliases:string[]; type:string; biography:string; active:boolean; revision:number },id?:string) => authRequest<Artist>(base+(id?'/'+segment(id):''),id?'PUT':'POST',input),
-  credits: (q='',unbound=true,page=0,artistId='') => authRequest<Page<Credit>>(`${base}/credits?q=${segment(q)}&unbound=${unbound}&page=${page}&size=20${artistId?'&artistId='+segment(artistId):''}`),
-  bind: (artistId:string|null,items:Credit[]) => authRequest<{success:boolean}>(base+'/bindings','POST',{artistId,items:items.map(({songId,credit,revision})=>({songId,credit,revision}))}),
   upload: async(id:string,kind:ImageKind,version:string,file:File,signal:AbortSignal):Promise<Artist> => {
     const csrf=await authRequest<{token:string}>('/api/v1/auth/csrf');const body=new FormData();body.append('file',file);body.append('version',version)
     let response:Response

@@ -1,19 +1,39 @@
-# 数据库约定
+# 数据库初始化与验证
 
-当前业务表包括单管理员认证的 auth_account、auth_token、auth_recovery、auth_throttle、auth_event，以及媒体来源配置 media_source、解析规则配置 filename_parser_config。本地歌曲文件名索引保存于 media_song；队列和播放表尚未实现。
+当前按**首次部署、从零建库**维护 SQL。SQLite 与 MySQL 各保留一份完整的 dbmate 初始化基线：
 
-migrations/sqlite与migrations/mysql是语言无关的dbmate版本化SQL；schema_migrations记录已应用版本。Java启动前执行迁移，Go未来复用同一迁移与数据含义，不以Entity定义表。不要修改已应用的迁移或自动执行down；SQLite/MySQL切换不搬运数据。
+- `migrations/sqlite/202611070001_initial_schema.sql`
+- `migrations/mysql/202611070001_initial_schema.sql`
 
-账号字段、密钥格式、初始化及恢复见[认证说明](../docs/authentication.md)，连接和Profile见[数据库策略](../docs/database-strategy.md)。账号、会话、恢复码摘要和TOTP密文均属于敏感数据；数据库和主密钥分别存储、配套备份，禁止提交数据库及WAL/SHM或密钥。
+此前每种数据库的 38 份迁移已合并并删除。基线直接定义最终表、字段、约束、索引和必要单例，不执行历史补列、歌曲表重建或旧数据回填。它适用于空数据库，不提供旧版本数据库升级路径；应用仍通过 dbmate 初始化并在 `schema_migrations` 记录唯一版本 `202611070001`。后续在此基线上新增迁移，不修改已部署的基线。首次增加后续迁移时，需同步扩展从零检查的版本集合及逐级回退断言；本轮检查明确要求只有当前初始化版本。
 
-新增 `media_source` 保存真实媒体来源配置，SQLite/MySQL 迁移版本 `202610270002`。WebDAV 密码加密，不返回明文或密文；主密钥配套备份。本地扫描索引保存于 media_song，详见[媒体库管理](../docs/media-library.md)。
+## 结构与初始值
 
-`202610270003` 新增 `filename_parser_config`，单例 id=1，保存规则 JSON、乐观并发 revision 和 UTC 更新时间；没有已保存记录时返回内置默认规则，预览不创建记录。SQLite 使用 TEXT，MySQL 使用 MEDIUMTEXT，JSON 的字段和语义相同；表不包含歌曲索引。更新必须带预期 revision，冲突返回 409，不覆盖其他窗口配置。配置损坏不静默回退；内置规则以稳定 builtinId 引用，见[规则说明](../docs/filename-rules.md)。
+业务表覆盖认证、媒体来源与解析、歌曲索引和扫描、元数据审核与分享、AI 与分类、歌手与图片、TV 与聚会、歌单、转码与音轨、缓存、真实播放统计及缺歌反馈。SQLite/MySQL 保留各自适用的文本、二进制、自增及索引定义；Java 不自动建表，业务 SQL 继续放在 MyBatis Mapper XML。
 
-规则配置的 rules_json 现支持 schemaVersion=2，保存独立 definitions 和 profiles 有序引用；规则 enabled 不再是定义属性。旧数组 GET 时只投影默认方案，首次修改才通过全局 revision 原子升级，ID/名称/表达式/顺序/启停保持。没有新增物理表或改写 `202610270003`；受引用定义禁止删除，引用检查和保存使用同一文档快照，避免悬空引用。详见[规则与方案](../docs/filename-rules.md)。
+- WebDAV 的文件大小和修改时间允许为空；扫描暂存与正式索引采用相同语义。
+- 缓存策略直接默认 `HYBRID`，设置 revision 从 `0` 开始，高/低水位为 `90/75`。
+- 歌曲、播放记录、缓存索引、固定偏好及播放实例初始为空；播放统计单例直接为 `ready=1, phase=READY`，无需等待历史回填。
+- 管理员仍由应用认证初始化流程创建及计算密码摘要，SQL 不预置密码、密钥、真实设备或媒体数据。
+- 外键、唯一键、CHECK 与业务查询索引在首次建库时创建，回退按依赖逆序删除业务表。`down` 仅用于可丢弃的验证库，不由应用启动流程自动执行。
 
-`202610280001` 为媒体来源新增 parser_profile_id，旧记录默认绑定 default；`202610280002` 新增 media_song，保存来源相对路径、文件属性、方案/配置版本、命中规则与解析结果 JSON。来源移除会在同一事务清理索引，原始媒体不变；完整扫描以事务替换该来源索引。既有来源扫描突然得到零媒体文件时保留索引并返回 409，防止掉挂载被当作全删。
+## 从零验证
 
-`202610280003` 为 media_song 增加 needs_review 并从既有结果 JSON 回填，供歌曲管理进行数据库分页筛选；歌曲列表通过来源关联显示名称。扫描写入同时保存复核标志与 JSON 结果，仍为 MyBatis XML 显式 SQL。
+```sh
+# 无需启动后端、前端或 Docker；仅使用临时 SQLite，结束自动清理。
+make db-fresh-check
 
-WebDAV 后台扫描迁移 `202610280005_webdav_scan.sql` 允许 `media_song.file_size/modified_at` 为空，并新增任务、目录待办和歌曲暂存表；任务失败不改变正式索引，成功在事务内从暂存表发布。SQLite 通过重建歌曲表保留已有行及索引，MySQL 修改列可空。迁移回退保留可空属性，不填造缺失值。详见[媒体库管理](../docs/media-library.md)。
+# 从临时 SQLite 启动真实 Java 服务并验证 HTTP、Mapper 和业务结构。
+make db-sqlite-check
+
+# 完整 Java 业务回归；各测试使用各自隔离数据。
+make java-backend-test
+```
+
+`db-fresh-check` 使用真实 dbmate，验证首次 `up`、重复 `migrate`、`down` 和再次建库，比较完整结构及种子，并检查外键、热度/固定约束、空业务数据和默认值。它固定使用自身临时目录，不读取本地 `.env`、不使用 `SQLITE_PATH`、不操作任何已有数据库。此检查也接入 `db-sqlite-check` 和 Java CI。
+
+MySQL 必须使用**另外创建的空数据库**，通过 `MYSQL_HOST/MYSQL_PORT/MYSQL_DATABASE/MYSQL_USER/MYSQL_PASSWORD` 指向隔离实例，再运行 `make db-mysql-check`。该命令会执行业务写入测试，不能指向实际使用的数据库。连接成功不等于业务兼容，未运行真实 MySQL 检查时应明确标记未验证。
+
+手工从零启动可给 `SQLITE_PATH` 指定一个全新文件路径，或使用新的 Docker Compose 项目与其独立数据卷；不要用旧库验证这份基线。现有命名卷和实际数据库由使用者保留或另行处理，本次整理不删除它们。
+
+连接及 Profile 见[数据库策略](../docs/database-strategy.md)，账号与主密钥见[认证说明](../docs/authentication.md)。数据库、WAL/SHM、凭据和主密钥不得提交；切换 Profile 不自动迁移数据。

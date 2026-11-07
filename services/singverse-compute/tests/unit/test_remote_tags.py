@@ -1,9 +1,7 @@
 """Bounded HTTP reads and real embedded tag extraction; never contact a cloud provider."""
 import base64
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import json
 from pathlib import Path
-import shutil
 import subprocess
 import tempfile
 import threading

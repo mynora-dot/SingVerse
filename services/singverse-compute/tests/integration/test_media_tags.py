@@ -46,8 +46,6 @@ class TagServiceTest(unittest.TestCase):
         if authorized: headers['Authorization']='Bearer '+self.token
         return urlopen(Request(self.base+'/internal/v1/media/remote-tags', data=json.dumps(payload).encode(),headers=headers),timeout=10)
     def test_authenticated_read_and_capability_without_media_roots(self):
-        self.assertEqual(self.app.state.settings.media_roots, ())
-        self.assertEqual(self.app.state.settings.java_origin, '')
         with self.request(self.payload()) as response:
             result=json.load(response)
             self.assertEqual(result['tags']['title'],'视频标签')
@@ -68,7 +66,7 @@ class TagServiceTest(unittest.TestCase):
                             headers={'Authorization':'Bearer '+self.token,'Content-Type':'application/json'}))
         self.assertEqual(raised.exception.code,404); raised.exception.close()
     def test_busy_reader_and_safe_validation(self):
-        from singverse_compute.api.routers.remote_tags import slots
+        slots = self.app.state.remote_tag_slots
         slots.acquire()
         try:
             with self.assertRaises(HTTPError) as raised: self.request(self.payload())

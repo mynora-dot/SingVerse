@@ -9,7 +9,18 @@ public final class MediaSongDtos {
     public record Song(String id, String sourceId, String sourceName, String relativePath, Long fileSize,
             String modifiedAt, String scannedAt, String parserProfileId, long parserRevision,
             String selectedRuleId, FilenameParseResult result,
-            com.mynora.singverse.media.metadata.MetadataDtos.Applied metadata, com.mynora.singverse.media.classification.ClassificationDtos.State classification, @com.fasterxml.jackson.annotation.JsonIgnore String contentFingerprint) {}
+            com.mynora.singverse.media.metadata.MetadataDtos.Applied metadata, com.mynora.singverse.media.classification.ClassificationDtos.State classification,
+            @com.fasterxml.jackson.annotation.JsonIgnore String contentFingerprint,
+            @com.fasterxml.jackson.annotation.JsonIgnore String playbackFingerprint) {
+        public Song(String id, String sourceId, String sourceName, String relativePath, Long fileSize,
+                String modifiedAt, String scannedAt, String parserProfileId, long parserRevision,
+                String selectedRuleId, FilenameParseResult result,
+                com.mynora.singverse.media.metadata.MetadataDtos.Applied metadata,
+                com.mynora.singverse.media.classification.ClassificationDtos.State classification, String contentFingerprint) {
+            this(id, sourceId, sourceName, relativePath, fileSize, modifiedAt, scannedAt, parserProfileId, parserRevision,
+                    selectedRuleId, result, metadata, classification, contentFingerprint, null);
+        }
+    }
     public record Page(List<Song> items, int page, int size, long totalElements) {}
     public record Scan(String sourceId, String parserProfileId, String parserProfileName,
             long parserRevision, int totalSongs, int matchedSongs, int needsReviewSongs,

@@ -45,6 +45,7 @@ class ClientInput(BaseModel):
     levels: dict[str,int] = Field(default_factory=dict, max_length=32)
 
 class Negotiate(Input):
+    fingerprint: str | None = Field(default=None, min_length=1, max_length=128)
     client: ClientInput = Field(default_factory=ClientInput)
     burn_subtitle: bool = False
 
@@ -53,6 +54,8 @@ class TargetInput(BaseModel):
     mode: Literal['REMUX','AUDIO_TRANSCODE','TRANSCODE'] = 'TRANSCODE'
     purpose: Literal['REALTIME','OFFLINE'] = 'REALTIME'
     codec: Literal['h264','hevc','av1'] = 'h264'
+    profile: Literal['','baseline','main','high'] = ''
+    level: Literal[0,9,10,11,12,13,20,21,22,30,31,32,40,41,42,50,51,52,60,61,62] = 0
     width: int = Field(default=1920, ge=2, le=7680)
     height: int = Field(default=1080, ge=2, le=4320)
     bitrate: int = Field(default=8000000, ge=64000, le=100000000)
@@ -66,6 +69,8 @@ class TargetInput(BaseModel):
     burn_subtitle: bool = False
     @model_validator(mode='after')
     def valid_pipeline(self):
+        if self.codec != 'h264' and (self.profile or self.level):
+            raise ValueError('AVC profile and level require H264')
         if self.burn_subtitle and (not self.subtitle_id or self.mode != 'TRANSCODE'):
             raise ValueError('Burn-in requires a subtitle and video transcoding')
         return self
@@ -79,7 +84,7 @@ class Create(Input):
 def capabilities(request: Request):
     service = request.app.state.transcoding
     features = service.backends.features()
-    backends = service.backends.inspect(refresh=True)
+    backends = service.backends.inspect()
     for backend in backends:
         verified = service.encoder.pipelines.verified(backend['backend'])
         backend['verifiedPipelines'] = verified
@@ -97,17 +102,17 @@ def capabilities(request: Request):
 
 @router.post('/probe')
 def probe(request: Request, body: Input):
-    return asdict(request.app.state.transcoding.inspect(None, body.reference, body.callbackOrigin))
+    return asdict(request.app.state.transcoding.inspect(body.reference, body.callbackOrigin))
 
 @router.post('/negotiate')
 def negotiate(request: Request, body: Negotiate):
-    media = request.app.state.transcoding.inspect(None, body.reference, body.callbackOrigin)
+    media = request.app.state.transcoding.inspect(body.reference, body.callbackOrigin, body.fingerprint)
     plan = decide(media, Client(**body.client.model_dump()), body.burn_subtitle)
     return {**asdict(plan), 'media':asdict(media)}
 
 @router.post('/executions', status_code=202)
 def create(request: Request, body: Create):
-    return request.app.state.transcoding.create(body.id, None, body.reference, body.fingerprint, Target(**body.target.model_dump()), body.callbackOrigin)
+    return request.app.state.transcoding.create(body.id, body.reference, body.fingerprint, Target(**body.target.model_dump()), body.callbackOrigin)
 
 @router.get('/executions/{identifier}')
 def status(request: Request, identifier: str):

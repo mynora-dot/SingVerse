@@ -25,6 +25,11 @@ import org.springframework.test.annotation.DirtiesContext;
 class AiSettingsHttpTest {
     @TempDir static Path temp;
     @DynamicPropertySource static void properties(DynamicPropertyRegistry p) {
+        p.add("singverse.transcoding.cache-directory", () -> temp.resolve("cache").toString());
+        p.add("singverse.transcoding.directory", () -> temp.resolve("versions").toString());
+        p.add("singverse.audio.directory", () -> temp.resolve("audio").toString());
+        p.add("singverse.metadata.cache-path", () -> temp.resolve("covers").toString());
+        p.add("singverse.webdav.metadata-path", () -> temp.resolve("webdav").toString());
         p.add("singverse.sqlite.path",()->temp.resolve("ai.db").toString());p.add("singverse.auth.key-file",()->temp.resolve("auth.key").toString());p.add("singverse.classification.worker-enabled",()->false);
     }
     @LocalServerPort int port;@Autowired ObjectMapper json;@Autowired JdbcTemplate db;

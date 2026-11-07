@@ -1,7 +1,7 @@
 name: singverse-compute-images
 on:
   pull_request:
-    paths: ['services/singverse-compute/**', '.dockerignore', 'docker-bake.hcl', 'compose*', '.github/workflows/singverse-compute-images.yml']
+    paths: ['services/singverse-compute/**', 'infra/docker/build/.dockerignore', 'infra/docker/build/docker-bake.hcl', 'infra/docker/**', '.github/workflows/singverse-compute-images.yml']
   workflow_dispatch:
   release:
     types: [published]

@@ -29,3 +29,20 @@ class CallbackOriginTest(unittest.TestCase):
                 if allowed: self.assertEqual(validate_origin(origin), origin)
                 else:
                     with self.assertRaises(ComputeError): validate_origin(origin)
+
+    def test_task_gateway_closes_promptly_and_does_not_leave_a_listener(self):
+        from urllib.parse import urlsplit
+        from singverse_compute.infrastructure.transcoding.input import remote_input
+        from singverse_compute.infrastructure.media.remote_tags import loopback
+        from unittest.mock import MagicMock
+        for factory, module in (
+            (lambda: remote_input('http://127.0.0.1', 'reference', 'fixture-token'), 'singverse_compute.infrastructure.transcoding.input'),
+            (lambda: loopback(None), 'singverse_compute.infrastructure.media.remote_tags')):
+            server = MagicMock()
+            server.server_port = 12345
+            with patch(module + '.ThreadingHTTPServer', return_value=server):
+                with factory() as url:
+                    self.assertEqual(urlsplit(url).port, 12345)
+                server.serve_forever.assert_called_once_with(poll_interval=.02)
+                server.shutdown.assert_called_once()
+                server.server_close.assert_called_once()

@@ -3,7 +3,7 @@
 适用于 NVIDIA RTX 3070 / A3000 所在的 Linux x86_64 主机。
 内含前端 Nginx 和 Java 后端运行镜像，数据库使用持久化 SQLite。
 不需要从 Docker Hub 拉镜像，不需要 npm、Maven 或源码构建，不使用 `.env`。
-这是全新安装包，不包含本机已有数据库、密钥或歌曲。
+这是全新安装包，不包含本机已有数据库、密钥或歌曲。当前数据库使用 `202611070001_initial_schema.sql` 从空库初始化，不支持旧迁移链数据库升级。
 
 ## 部署
 
@@ -20,8 +20,8 @@ curl --fail http://10.100.1.12:18080/api/health
 ```
 
 飞牛 Docker 项目界面部署前，先在终端运行 `docker load -i images.tar` 导入镜像。
-再用本包的 `docker-compose.yaml` 创建或更新业务项目；文件不包含 build，且设置 pull_policy: never。
-已有源码包项目应使用相同项目名 `singverse-business`、相同数据库及密钥卷，避免另建空数据库。
+再用本包的 `docker-compose.yaml` 创建首次部署的业务项目；文件不包含 build，且设置 pull_policy: never。
+若已有旧业务项目，所有命令使用一个尚未用过的项目名（例如加 `-p singverse-business-fresh`），创建独立数据库和密钥卷，不复用旧卷；端口冲突时停止原业务项目或修改新项目端口。完成本基线首次安装后，后续启停继续使用选定项目名与同一组卷。
 此包不操作原有 NVIDIA 性能节点项目。不要将它的 Compose 覆盖到性能节点目录。
 
 业务入口 `http://10.100.1.12:18080/`，全新安装初始账号与密码均为 `admin`，登录后改密。

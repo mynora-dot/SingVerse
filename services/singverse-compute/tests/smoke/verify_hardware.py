@@ -1,6 +1,5 @@
 """Repeatable real-machine harness: `python tests/smoke/verify_hardware.py --backend videotoolbox`."""
 import argparse
-from dataclasses import replace
 import hashlib
 import json
 from pathlib import Path

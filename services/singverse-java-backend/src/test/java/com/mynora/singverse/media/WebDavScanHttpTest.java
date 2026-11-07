@@ -25,6 +25,10 @@ class WebDavScanHttpTest {
         registry.add("singverse.sqlite.path", () -> temp.resolve("webdav.db").toString());
         registry.add("singverse.webdav.metadata-path", () -> temp.resolve("webdav-assets").toString());
         registry.add("singverse.auth.key-file", () -> temp.resolve("master.key").toString());
+        registry.add("singverse.metadata.cache-path", () -> temp.resolve("covers").toString());
+        registry.add("singverse.transcoding.directory", () -> temp.resolve("versions").toString());
+        registry.add("singverse.transcoding.cache-directory", () -> temp.resolve("cache").toString());
+        registry.add("singverse.audio.directory", () -> temp.resolve("audio").toString());
     }
     @LocalServerPort int port;
     @Autowired JdbcTemplate db;
@@ -606,7 +610,7 @@ class WebDavScanHttpTest {
         embedded.refresh(List.of(id),false);
         assertThat(db.queryForObject("SELECT enabled FROM webdav_metadata_source",Integer.class)).isZero();
         assertThat(db.queryForObject("SELECT COUNT(*) FROM webdav_metadata_task",Integer.class)).isEqualTo(1);
-        assertThat(db.queryForObject("SELECT manual FROM webdav_metadata_task",Integer.class)).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT `manual` FROM webdav_metadata_task",Integer.class)).isEqualTo(1);
     }
 
     @Test void localManualEditsWriteManagedFilesAndExportLatestWithoutChangingOriginal() throws Exception {

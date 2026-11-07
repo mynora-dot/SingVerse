@@ -24,9 +24,15 @@ import org.springframework.test.context.*;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("sqlite")
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
 class FilenameParserHttpTest {
     @TempDir static Path temp;
     @DynamicPropertySource static void props(DynamicPropertyRegistry properties) {
+        properties.add("singverse.transcoding.cache-directory", () -> temp.resolve("cache").toString());
+        properties.add("singverse.transcoding.directory", () -> temp.resolve("versions").toString());
+        properties.add("singverse.audio.directory", () -> temp.resolve("audio").toString());
+        properties.add("singverse.metadata.cache-path", () -> temp.resolve("covers").toString());
+        properties.add("singverse.webdav.metadata-path", () -> temp.resolve("webdav").toString());
         properties.add("singverse.sqlite.path", () -> temp.resolve("rules.sqlite").toString());
         properties.add("singverse.auth.key-file", () -> temp.resolve("master.key").toString());
     }

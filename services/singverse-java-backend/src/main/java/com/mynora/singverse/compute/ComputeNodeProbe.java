@@ -53,7 +53,7 @@ public class ComputeNodeProbe {
                     return result("CALLBACK_FAILED", callbackOrigin.isEmpty() ? "节点连接与认证成功，但无法确定业务回源地址，请通过节点可达的业务地址打开管理页" : callbackFailure(callbackOrigin, 0), capabilities, start);
                 } finally { callback.revoke(reference); }
             }
-            return result("AVAILABLE",(capabilities.contains("media-tags")||capabilities.contains("media-remote-tags"))?"节点连接、认证与业务回源成功，媒体读取可用":"连接与认证成功，节点暂未开放媒体能力",List.copyOf(capabilities),start);
+            return result("AVAILABLE",capabilities.contains("media-remote-tags")?"节点连接、认证与业务回源成功，媒体读取可用":"连接与认证成功，节点暂未开放媒体能力",List.copyOf(capabilities),start);
         } catch(ResponseStatusException error) {throw error;}
         catch(InterruptedException error) {Thread.currentThread().interrupt();return result("UNAVAILABLE","连接已中断，请重试",List.of(),start);}
         catch(Exception error) {return result("UNAVAILABLE","节点连接失败或超时，请检查地址、服务及网络",List.of(),start);}

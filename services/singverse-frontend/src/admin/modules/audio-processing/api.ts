@@ -23,6 +23,7 @@ export interface BatchItem { batch_id: string; song_id: string; title: string; s
 export interface Batch {
   id: string; state: string; backend: string; createdAt?: number; total: number; counts: Record<string, number>; categories: Record<string, number>
   items?: BatchItem[]
+  prepared?: number; selectionTotal?: number; error?: string
 }
 export interface Model {
   id: string; version: string; format?: string; backends?: string[]; localOnly?: boolean; installed: boolean; writable: boolean; maxBytes: number

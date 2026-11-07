@@ -25,9 +25,9 @@ class Resources(HTMLParser):
 def main():
   root = Path(__file__).resolve().parents[1]
   macos = os.environ.get("SINGVERSE_MACOS_COMPUTE") == "1"
-  compose = ["docker", "compose", "-f", str(root / "compose.app.yaml")]
+  compose = ["docker", "compose", "--project-directory", str(root), "-f", str(root / "infra/docker/compose/compose.app.yaml")]
   if macos:
-    compose += ["-f", str(root / "compose.compute.macos.yaml")]
+    compose += ["-f", str(root / "infra/docker/compose/compose.compute.macos.yaml")]
   endpoint = subprocess.check_output(
     compose + ["port", "singverse-frontend", "80"],
     text=True,
@@ -138,7 +138,7 @@ for authorized, expected in [(False,401),(True,422)]:
   with request("/api/v1/compute-node/test", "POST", {"mode":"AUTO", "revision":configuration["revision"]}) as response:
     check = json.load(response)
     assert check["status"] == "AVAILABLE", check["message"]
-    assert "media-tags" in check["capabilities"]
+    assert "media-remote-tags" in check["capabilities"]
   print("通过：管理员性能节点接口自动识别所选部署节点，认证检查可用且不修改配置")
 
   for method in ["GET", "POST"]:

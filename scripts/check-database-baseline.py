@@ -1,0 +1,113 @@
+"""Exercise the fresh SQLite baseline using dbmate, without touching local data."""
+
+import os
+from pathlib import Path
+import re
+import sqlite3
+import subprocess
+import tempfile
+
+
+ROOT = Path(__file__).resolve().parents[1]
+BASELINE = "202611070001_initial_schema.sql"
+VERSION = BASELINE.split("_", 1)[0]
+
+
+def require(condition, message):
+  if not condition:
+    raise RuntimeError(message)
+
+
+def snapshot(path):
+  with sqlite3.connect(path) as db:
+    db.execute("PRAGMA foreign_keys=ON")
+    require(db.execute("PRAGMA integrity_check").fetchall() == [("ok",)], "SQLite integrity check failed")
+    require(not db.execute("PRAGMA foreign_key_check").fetchall(), "Foreign key check failed")
+    schema = db.execute("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").fetchall()
+    tables = [row[1] for row in schema if row[0] == "table"]
+    data = {}
+    for table in tables:
+      # Table names come from sqlite_master; quoting also handles reserved names.
+      quoted = '"' + table.replace('"', '""') + '"'
+      data[table] = sorted(db.execute(f"SELECT * FROM {quoted}").fetchall(), key=repr)
+    return schema, data
+
+
+def verify_fresh(path):
+  schema, data = snapshot(path)
+  require(data["schema_migrations"] == [(VERSION,)], "Expected exactly the initial migration")
+  with sqlite3.connect(path) as db:
+    db.execute("PRAGMA foreign_keys=ON")
+    require(db.execute("SELECT policy,revision,high_watermark_percent,low_watermark_percent FROM song_cache_settings WHERE id=1").fetchone()
+            == ("HYBRID", 0, 90, 75), "Wrong fresh cache defaults")
+    require(db.execute("SELECT ready,phase,cursor_started_at,cursor_id FROM playback_activity_state WHERE id=1").fetchone()
+            == (1, "READY", 0, ""), "Fresh playback statistics must be ready")
+    for table in ("auth_account", "media_source", "media_song", "playback_history", "playback_attempt", "song_cache_entry", "song_playback_profile"):
+      require(not data[table], f"Fresh database unexpectedly contains {table} data")
+    for table in ("media_song", "media_scan_song"):
+      columns = {row[1]: row for row in db.execute(f"PRAGMA table_info({table})")}
+      require(all(columns[name][3] == 0 for name in ("file_size", "modified_at")), f"{table} must accept unknown WebDAV attributes")
+    probes = (
+      "INSERT INTO song_playback_profile(song_id,heat) VALUES('invalid-heat',1.01)",
+      "INSERT INTO song_playback_profile(song_id,pinned) VALUES('invalid-pin',2)",
+      "INSERT INTO song_cache_lease(session_id,cache_id,renewed_at) VALUES('invalid-lease','missing-cache',0)",
+    )
+    for sql in probes:
+      db.execute("SAVEPOINT baseline_constraint")
+      try:
+        db.execute(sql)
+      except sqlite3.IntegrityError:
+        pass
+      else:
+        raise RuntimeError("Expected a cache protection constraint to reject invalid data")
+      finally:
+        db.execute("ROLLBACK TO baseline_constraint")
+        db.execute("RELEASE baseline_constraint")
+  return schema, data
+
+
+def main():
+  for dialect in ("sqlite", "mysql"):
+    files = sorted(path.name for path in (ROOT / "database/migrations" / dialect).glob("*.sql"))
+    require(files == [BASELINE], f"{dialect}: expected one fresh baseline, found {files}")
+    source = (ROOT / "database/migrations" / dialect / BASELINE).read_text()
+    require(source.count("-- migrate:up") == 1 and source.count("-- migrate:down") == 1, f"{dialect}: invalid dbmate sections")
+    up = source.split("-- migrate:down", 1)[0]
+    up = re.sub(r"--[^\n]*", "", up)
+    require(not re.search(r"\b(?:ALTER\s+TABLE|UPDATE|DELETE\s+FROM|DROP\s+TABLE)\b", up, re.I),
+            f"{dialect}: baseline still contains historical transformations")
+
+  binary = Path(os.environ.get("DBMATE_BIN", ROOT / ".tools/dbmate")).resolve()
+  require(binary.is_file(), "dbmate missing; run make dbmate-setup")
+  with tempfile.TemporaryDirectory(prefix="singverse-fresh-db-") as directory:
+    path = Path(directory) / "fresh.sqlite"
+    environment = os.environ.copy()
+    environment["DATABASE_URL"] = "sqlite:" + str(path)
+    environment.pop("DBMATE_DRIVER", None)
+    environment.pop("DBMATE_WAIT", None)
+    command = [str(binary), "--env-file", os.devnull, "--no-dump-schema",
+               "--migrations-dir", str(ROOT / "database/migrations/sqlite"),
+               "--migrations-table", "schema_migrations"]
+
+    def migrate(action):
+      result = subprocess.run(command + [action], env=environment, capture_output=True, text=True, timeout=60)
+      require(result.returncode == 0, f"dbmate {action} failed: {result.stderr.strip()}")
+
+    migrate("up")
+    initial = verify_fresh(path)
+    migrate("migrate")
+    require(snapshot(path) == initial, "Second migrate changed schema or seeds")
+    migrate("down")
+    with sqlite3.connect(path) as db:
+      remaining = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall()
+      require(remaining == [("schema_migrations",)], f"Rollback left business tables: {remaining}")
+      require(not db.execute("SELECT * FROM schema_migrations").fetchall(), "Rollback left a migration version")
+    migrate("migrate")
+    require(verify_fresh(path) == initial, "Recreating baseline changed schema or seeds")
+    tables = sum(row[0] == "table" and row[1] != "schema_migrations" for row in initial[0])
+    indexes = sum(row[0] == "index" and row[3] is not None for row in initial[0])
+    print(f"通过：SQLite 从零建库、重复迁移、回退、重建及约束；{tables} 张业务表，{indexes} 个显式索引。MySQL 需单独运行真实集成检查。")
+
+
+if __name__ == "__main__":
+  main()

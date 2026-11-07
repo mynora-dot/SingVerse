@@ -1,6 +1,5 @@
 """Node-local execution configuration; never stores business data or credentials."""
 import json
-from pathlib import Path
 import threading
 from ...core.errors import ComputeError
 

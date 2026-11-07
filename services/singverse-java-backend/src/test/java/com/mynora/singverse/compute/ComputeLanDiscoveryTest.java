@@ -53,7 +53,7 @@ class ComputeLanDiscoveryTest {
         when(callback.origin()).thenReturn("http://127.0.0.1:8080");
         when(settings.view()).thenReturn(new Settings("AUTO", "", false, List.of(), "", false, 4));
         when(settings.save(any())).thenAnswer(call -> { Save save = call.getArgument(0); return new Settings(save.mode(), save.endpoint(), true, save.mappings(), "", false, 5); });
-        when(probe.check(any())).thenReturn(new Check("AVAILABLE", "available", List.of("media-tags"), 1));
+        when(probe.check(any())).thenReturn(new Check("AVAILABLE", "available", List.of("media-remote-tags"), 1));
         service = new ComputeLanDiscovery(settings, probe, callback, identity, json);
         responseNonce = challenge;
         fixture = com.sun.net.httpserver.HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);

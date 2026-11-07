@@ -9,6 +9,38 @@ from ..core.errors import ComputeError
 ARTIFACT = re.compile(r'(master\.m3u8|stream_[a-zA-Z0-9]+\.m3u8|stream_[a-zA-Z0-9]+_[0-9]+\.(ts|m4s)|init_[a-zA-Z0-9]+\.mp4|output\.mp4|subtitle\.vtt)')
 
 
+def ready_hls(directory):
+    """Publish only when every advertised rendition has its init and first segment."""
+    def playlist(name):
+        path = directory / name
+        if not ARTIFACT.fullmatch(name) or path.is_symlink() or not path.is_file() or not 0 < path.stat().st_size <= 2 * 1024**2:
+            return None
+        lines = [line.strip() for line in path.read_text(encoding='utf-8').splitlines() if line.strip()]
+        if not lines or lines[0] != '#EXTM3U':
+            return None
+        return [line for line in lines if not line.startswith('#')] + re.findall(r'URI="([^"]+)"', '\n'.join(lines))
+    try:
+        if directory.is_symlink():
+            return False
+        renditions = playlist('master.m3u8')
+        if not renditions or any(not name.endswith('.m3u8') for name in renditions):
+            return False
+        for name in renditions:
+            references = playlist(name)
+            if not references or not any(ref.endswith(('.ts', '.m4s')) for ref in references):
+                return False
+            # Startup checks only one segment and the initialization map per
+            # rendition. Export separately validates every completed artifact.
+            first = next(ref for ref in references if ref.endswith(('.ts', '.m4s')))
+            for ref in [first] + [ref for ref in references if ref.endswith('.mp4')]:
+                path = directory / ref
+                if not ARTIFACT.fullmatch(ref) or ref.endswith('.m3u8') or path.is_symlink() or not path.is_file() or path.stat().st_size <= 0:
+                    return False
+        return True
+    except (OSError, UnicodeError):
+        return False
+
+
 def completed_hls(directory):
     """Only complete, local playlists and their fixed-name media can be exported."""
     if directory.is_symlink():

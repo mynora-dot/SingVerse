@@ -1,14 +1,15 @@
 # 远端业务节点部署
 
 前端 Nginx、Java 业务服务与持久化 SQLite 数据库，无需独立数据库容器。
-数据库由 Java 自动迁移，保存于 `singverse-data` 命名卷的 `/data/singverse.db`；
+数据库由 Java 使用单一 `202611070001_initial_schema.sql` 自动初始化，保存于 `singverse-data` 命名卷的 `/data/singverse.db`；
 凭据加密主密钥保存于 `singverse-secrets`，备份或迁移必须同时保留这两个卷。
-这是全新安装，不包含本机已有数据库、账号、连接密钥或曲库。
+这是全新安装，不包含本机已有数据库、账号、连接密钥或曲库，不支持旧迁移链数据库升级。若已有旧业务项目，请使用一个尚未用过的 Compose 项目名（例如所有命令均加 `-p singverse-business-fresh`），创建独立数据库和密钥卷；不要将旧卷挂到这份基线。端口冲突时停止原业务项目或修改新项目端口，无需删除旧卷。
 
 从仓库根运行 `make app-package` 生成源码部署 ZIP。包内的 `docker-compose.yaml`
 可以直接用于飞牛 Docker 项目；所有部署参数均在此文件中，不使用 `.env`。
 首次构建需要联网下载 Node、Java、Nginx 镜像及 npm、Maven、dbmate 依赖。
 包内包含完整前端和 Java 源码、测试与数据库迁移，不包含预构建镜像。
+`python3 scripts/check-database-baseline.py` 可在安装 dbmate 后独立验证临时 SQLite 的从零建库及回退重建，不操作部署数据库。
 远端无法访问镜像仓库时，可使用[离线镜像包](README.offline.md)。维护者先以
 `docker buildx build --platform linux/amd64 --load` 分别构建 Dockerfile 的
 `singverse-java-backend`、`singverse-frontend` target，标记为对应的 `:offline-amd64` 镜像，
@@ -54,9 +55,8 @@ docker compose -f docker-compose.yaml logs --tail 100 singverse-frontend
 docker compose -f docker-compose.yaml down
 ```
 
-停止时不要加 `-v`。保留项目名 `singverse-business`，避免更名导致使用另一组空卷。
-已有本机数据迁移前停止新任务，等待或取消在途任务，再停止业务写入，成对备份数据库卷及密钥卷；
-不能仅复制运行中的 SQLite 主文件，不能用新主密钥替换原密钥。媒体原件另行搬运，WebDAV 凭据不下发性能节点。
+停止时不要加 `-v`。首次选定项目名后，后续启停继续使用同一名称，避免误用另一组卷。
+备份时先停止业务写入，成对保留数据库卷及密钥卷；不能仅复制运行中的 SQLite 主文件，不能用新主密钥替换原密钥。媒体原件另行保存，WebDAV 凭据不下发性能节点。
 若原本使用 MySQL，本包不会自动迁移为 SQLite。
 
 本包与本次回源修复使用同一份工作区源码。源码测试通过不代表 NAS、跨主机回源或真实歌曲已验收。

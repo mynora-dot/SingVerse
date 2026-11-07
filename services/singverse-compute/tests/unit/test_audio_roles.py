@@ -1,3 +1,8 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from callback_source import CallbackTestCase
+
 import unittest
 from singverse_compute.application.audio_roles import classify
 
@@ -60,7 +65,7 @@ class AudioRoleClassificationTest(unittest.TestCase):
             self.assertEqual(voice['totalFrames'], 6)
             self.assertAlmostEqual(vocal_activity(paths[0], paths[2])['level'], .01)
 
-class AudioRoleWorkerTest(unittest.TestCase):
+class AudioRoleWorkerTest(CallbackTestCase):
     def test_analyze_resamples_uncertain_windows_and_persists_evidence(self):
         from array import array
         from pathlib import Path
@@ -75,7 +80,7 @@ class AudioRoleWorkerTest(unittest.TestCase):
             subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'sine=duration=60',
                 '-f', 'lavfi', '-i', 'sine=frequency=880:duration=60', '-map', '0:a', '-map', '1:a',
                 '-c:a', 'pcm_s16le', str(source)], check=True)
-            app = create_app(Settings((media,), token, transcode_root=root / 'cache', minimum_free_bytes=0))
+            app = create_app(Settings(token_file=token, transcode_root=root / 'cache', minimum_free_bytes=0))
             worker = app.state.audio_roles
             def stems(wav, output, task):
                 _, window, track = wav.stem.split('-')
@@ -89,7 +94,7 @@ class AudioRoleWorkerTest(unittest.TestCase):
                 return vocal, wav
             try:
                 with patch.object(worker, 'backend_runtime_available', return_value=True), patch.object(worker, '_separate', side_effect=stems), patch.object(worker.models, 'selected', return_value='cpu'), patch.object(worker.models, 'entries', return_value=[{'id': 'cpu', 'state': 'AVAILABLE'}]), patch.object(worker.models, 'check_resources'):
-                    identifier = str(uuid.uuid4()); worker.submit(identifier, str(source), None, 'ANALYZE')
+                    identifier = str(uuid.uuid4()); self.submit_audio(worker, identifier, source, 'ANALYZE')
                     deadline = time.monotonic() + 30
                     while worker.active and time.monotonic() < deadline:
                         time.sleep(.02)
@@ -113,14 +118,14 @@ class AudioRoleWorkerTest(unittest.TestCase):
         identifier = str(uuid.uuid4())
         task = AudioTask(identifier)
         task.state = 'RUNNING'
-        task.signature = hashlib.sha256(json.dumps(['/media/song.wav', None, None, 'SEPARATE', 'mps']).encode()).hexdigest()
+        task.signature = hashlib.sha256(json.dumps(['reference', 'http://business', 'SEPARATE', 'mps']).encode()).hexdigest()
         worker = SimpleNamespace(lock=threading.RLock(), tasks={identifier: task}, active=True)
-        self.assertEqual(AudioRoles.submit(worker, identifier, '/media/song.wav', None, 'SEPARATE', 'mps')['state'], 'RUNNING')
+        self.assertEqual(AudioRoles.submit(worker, identifier, 'reference', 'SEPARATE', 'mps', 'http://business')['state'], 'RUNNING')
         with self.assertRaises(ComputeError) as caught:
-            AudioRoles.submit(worker, str(uuid.uuid4()), '/media/next.wav', None, 'SEPARATE', 'mps')
+            AudioRoles.submit(worker, str(uuid.uuid4()), 'next-reference', 'SEPARATE', 'mps', 'http://business')
         self.assertEqual(caught.exception.status, 429)
         with self.assertRaises(ComputeError) as caught:
-            AudioRoles.submit(worker, identifier, '/media/changed.wav', None, 'SEPARATE', 'mps')
+            AudioRoles.submit(worker, identifier, 'changed-reference', 'SEPARATE', 'mps', 'http://business')
         self.assertEqual(caught.exception.status, 409)
 
     def test_transient_resource_shortage_stays_retryable_for_batch_queue(self):
@@ -135,7 +140,7 @@ class AudioRoleWorkerTest(unittest.TestCase):
             models=SimpleNamespace(entries=lambda: [{'id':'mps','state':'AVAILABLE'}],
                 check_resources=Mock(side_effect=ComputeError(422, 'Available RAM is below the configured audio process budget'))))
         with self.assertRaises(ComputeError) as caught:
-            AudioRoles.submit(worker, str(uuid.uuid4()), '/media/song.wav', None, 'SEPARATE', 'mps')
+            AudioRoles.submit(worker, str(uuid.uuid4()), 'reference', 'SEPARATE', 'mps', 'http://business')
         self.assertEqual(caught.exception.status, 429)
         self.assertIn('RAM', caught.exception.message)
 
@@ -155,12 +160,12 @@ class AudioRoleWorkerTest(unittest.TestCase):
             source=media/'song.wav'
             subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=duration=21','-ac','2',str(source)],check=True)
             before=hashlib.sha256(source.read_bytes()).hexdigest()
-            app=create_app(Settings((media,),token,transcode_root=root/'cache',minimum_free_bytes=0))
+            app=create_app(Settings(token_file=token,transcode_root=root/'cache',minimum_free_bytes=0))
             worker=app.state.audio_roles
             # Fake the MODEL only; exercise real extraction, encoding, probing and persistence.
             def stems(wav,output,task): return wav,wav
             with patch.object(AudioRoles,'available',new_callable=__import__('unittest.mock',fromlist=['PropertyMock']).PropertyMock,return_value=True),patch.object(worker,'backend_runtime_available',return_value=True),patch.object(worker,'_separate',side_effect=stems),patch.object(worker.models,'selected',return_value='cpu'),patch.object(worker.models,'entries',return_value=[{'id':'cpu','state':'AVAILABLE'}]),patch.object(worker.models,'check_resources'):
-                identifier=str(uuid.uuid4());worker.submit(identifier,str(source),None,'SEPARATE')
+                identifier=str(uuid.uuid4());self.submit_audio(worker, identifier, source, 'SEPARATE')
                 deadline=time.monotonic()+20
                 while worker.view(identifier)['state'] in ('QUEUED','RUNNING') and time.monotonic()<deadline:time.sleep(.05)
                 self.assertEqual(worker.view(identifier)['state'],'SUCCEEDED',worker.view(identifier))
@@ -184,22 +189,22 @@ class AudioRoleWorkerTest(unittest.TestCase):
             root=Path(temporary);media=root/'media';media.mkdir();token=root/'token';token.write_text('b'*64)
             source=media/'stereo.wav'
             subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=duration=1','-ac','2',str(source)],check=True)
-            app=create_app(Settings((media,),token,transcode_root=root/'cache',minimum_free_bytes=0))
+            app=create_app(Settings(token_file=token,transcode_root=root/'cache',minimum_free_bytes=0))
             worker=app.state.audio_roles
             self.assertFalse(worker.available)
-            identifier=str(uuid.uuid4());worker.submit(identifier,str(source),None,'PROBE')
+            identifier=str(uuid.uuid4());self.submit_audio(worker, identifier, source, 'PROBE')
             deadline=time.monotonic()+10
             while worker.active and time.monotonic()<deadline:time.sleep(.02)
             self.assertEqual(worker.view(identifier)['state'],'SUCCEEDED')
             self.assertEqual(len(worker.view(identifier)['result']['streams']),1)  # Stereo is one stream.
             worker.active=True
             with self.assertRaises(ComputeError) as raised:
-                app.state.transcoding.create(str(uuid.uuid4()),str(source),None,'fingerprint',Target())
+                self.create_transcode(app.state.transcoding, str(uuid.uuid4()), source, 'fingerprint', Target())
             self.assertEqual(raised.exception.status,429)
             worker.active=False
             self.assertGreater(app.state.transcoding.realtime_reserved_until,time.monotonic())
             with self.assertRaises(ComputeError) as raised:
-                worker.submit(str(uuid.uuid4()),str(source),None,'PROBE')
+                self.submit_audio(worker, str(uuid.uuid4()), source, 'PROBE')
             self.assertEqual(raised.exception.status,429)
             worker.close()
 
@@ -249,13 +254,13 @@ class AudioRoleWorkerTest(unittest.TestCase):
             root=Path(temporary);media=root/'media';media.mkdir();token=root/'token';token.write_text('c'*64)
             source=media/'song.wav'
             subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=duration=1','-ac','2',str(source)],check=True)
-            app=create_app(Settings((media,),token,transcode_root=root/'cache',minimum_free_bytes=0))
+            app=create_app(Settings(token_file=token,transcode_root=root/'cache',minimum_free_bytes=0))
             worker=app.state.audio_roles;entered=threading.Event()
             def blocked(wav,output,task):
                 entered.set();task.cancel.wait(5)
                 raise ComputeError(409,'Cancelled')
             with patch.object(AudioRoles,'available',new_callable=PropertyMock,return_value=True),patch.object(worker,'backend_runtime_available',return_value=True),patch.object(worker,'_separate',side_effect=blocked),patch.object(worker.models,'selected',return_value='cpu'),patch.object(worker.models,'entries',return_value=[{'id':'cpu','state':'AVAILABLE'}]),patch.object(worker.models,'check_resources'):
-                identifier=str(uuid.uuid4());worker.submit(identifier,str(source),None,'SEPARATE')
+                identifier=str(uuid.uuid4());self.submit_audio(worker, identifier, source, 'SEPARATE')
                 self.assertTrue(entered.wait(5))
                 worker.cancel(identifier);worker.thread.join(5)
                 self.assertEqual(worker.view(identifier)['state'],'CANCELLED')

@@ -14,6 +14,7 @@
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true"
         android:allowBackup="false">
+        <receiver android:name=".FinishTakeReceiver" android:exported="false" />
         <service android:name=".PlaybackService" android:exported="true" android:foregroundServiceType="mediaPlayback|microphone">
             <intent-filter>
                 <action android:name="androidx.media3.session.MediaSessionService" />

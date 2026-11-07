@@ -22,18 +22,17 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsManifest
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.*
-import org.json.JSONArray
 import org.json.JSONObject
-import java.util.concurrent.Executors
 import kotlin.math.max
 import kotlin.math.pow
+import java.util.UUID
 
 class PlaybackService : MediaSessionService() {
     lateinit var player: ExoPlayer; private set
     private lateinit var session: MediaSession
     lateinit var karaoke: KaraokeEngine; private set
     private lateinit var chain: KaraokeAudioChain
-    private var destroyed = false
+    @Volatile private var destroyed = false
     private var countdown = 0
     private var countdownGeneration = 0
     private var pitch = 0
@@ -49,8 +48,17 @@ class PlaybackService : MediaSessionService() {
     private fun routeChanged() { if (::karaoke.isInitialized && karaoke.phase == "RECORDING") finishRecording("音频设备已改变，录音片段已保留") }
     private lateinit var transport: NasTransport
     private val main = Handler(Looper.getMainLooper())
-    private val worker = Executors.newSingleThreadExecutor()
-    private var generation = 0
+    private val requests = PlaybackRequests()
+    private val historyReporter = PlaybackHistoryReporter()
+    private val historyClock = ActualPlaybackClock(SystemClock::elapsedRealtime)
+    private var historyAttempt: PlaybackHistoryReporter.Attempt? = null
+    private var historyConnection: NasConnection? = null
+    private var historySongId = ""
+    private var historyTransitioning = false
+    private var historyLastState = ""
+    private var historyLastReportAt = 0L
+    private var requestScope = NasRequestScope()
+    @Volatile private var generation = 0
     private var leaseId = ""
     private var offsetMs = 0L
     private var sharedRoles = JSONObject()
@@ -71,6 +79,8 @@ class PlaybackService : MediaSessionService() {
     private var message = ""
     private var state = "IDLE"
     private var nextLeaseAt = 0L
+    private var lastLeaseSuccessAt = 0L
+    private var preparationStartedAt = 0L
     private var focusRequest: AudioFocusRequest? = null
     private val audio by lazy { getSystemService(AUDIO_SERVICE) as AudioManager }
     private val focus = AudioManager.OnAudioFocusChangeListener { change ->
@@ -89,6 +99,7 @@ class PlaybackService : MediaSessionService() {
                     .setAudioProcessorChain(chain)
                     .setAudioTrackProvider { config, attributes, id -> DefaultAudioSink.AudioTrackProvider.DEFAULT.getAudioTrack(config, attributes, id).also { chain.audioTrack = it } }.build()
         }
+        renderers.setEnableDecoderFallback(true)
         player = ExoPlayer.Builder(this, renderers).setMediaSourceFactory(
             DefaultMediaSourceFactory(DefaultDataSource.Factory(this, OkHttpDataSource.Factory(transport.mediaClient())))).build()
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setAudioOffloadPreferences(
@@ -113,7 +124,7 @@ class PlaybackService : MediaSessionService() {
                     else MediaSession.ConnectionResult.reject()
             }
             override fun onPlayerCommandRequest(session: MediaSession, controller: MediaSession.ControllerInfo, command: Int): Int {
-                if (command == Player.COMMAND_PLAY_PAUSE && !player.isPlaying && !requestFocus()) return SessionResult.RESULT_ERROR_INVALID_STATE
+                if (command == Player.COMMAND_PLAY_PAUSE && !player.isPlaying && !requestFocus()) return androidx.media3.session.SessionError.ERROR_INVALID_STATE
                 return SessionResult.RESULT_SUCCESS
             }
         }).build()
@@ -144,18 +155,28 @@ class PlaybackService : MediaSessionService() {
                 var cause: Throwable? = error
                 var expired = false
                 while (cause != null) {
-                    if (cause is HttpDataSource.InvalidResponseCodeException && cause.responseCode == 401) expired = true
+                    if (cause is HttpDataSource.InvalidResponseCodeException && cause.responseCode in listOf(401, 403)) expired = true
                     cause = cause.cause
+                }
+                if (!expired && song.optString("id").isNotBlank() && playbackOrigin == transport.origin &&
+                    PlaybackRecovery.compatible(error.errorCode, force, workId.isNotEmpty(), karaoke.phase in listOf("RECORDING", "FINALIZING") || countdown > 0)) {
+                    open(song, server, requestedPosition, compatible = true, autoplay = player.playWhenReady, preserveSettings = true)
+                    message = "当前格式无法在手机上解码，正在准备兼容播放"; publish(); return
                 }
                 state = if (expired) "AUTH_REQUIRED" else "ERROR"
                 message = if (expired) "登录已失效，请重新登录后继续" else "播放失败，可重试或使用兼容播放"
                 resourceReady = false
                 finishRecording(message)
+                requestScope.cancel(); cancelResource(leaseId); leaseId = ""
                 publish()
             }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT && workId.isEmpty()) {
+                    finishHistory("COMPLETED")
+                    beginHistory()
+                }
                 if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT && resourceMode == "HLS" && offsetMs > 0)
-                    open(song, server, 0, force)
+                    open(song, server, 0, force, preserveSettings = true)
             }
         })
         current = this
@@ -167,21 +188,29 @@ class PlaybackService : MediaSessionService() {
         if (!player.playWhenReady && karaoke.phase != "RECORDING" && countdown == 0) stopSelf()
     }
     override fun onDestroy() {
+        finishHistory("STOPPED")
+        historyReporter.close()
         destroyed = true
+        requestScope.cancel()
         karaoke.close()
         audio.unregisterAudioDeviceCallback(routeCallback)
         generation++
         cancelResource(leaseId, playbackOrigin)
         main.removeCallbacksAndMessages(null)
         session.release(); player.release(); abandonFocus()
-        worker.shutdown()
+        requests.close()
         if (current === this) current = null
         super.onDestroy()
     }
 
-    fun open(value: JSONObject, instanceId: String, position: Long = 0, compatible: Boolean = false, autoplay: Boolean = true, preserveSettings: Boolean = false) {
+    fun open(value: JSONObject, instanceId: String, position: Long = 0, compatible: Boolean = false, autoplay: Boolean = true, preserveSettings: Boolean = false, reuseAttempt: Boolean = false) {
         require(karaoke.phase !in listOf("RECORDING", "FINALIZING") && countdown == 0) { "请先结束并保存当前录音" }
         karaoke.testMicrophone(false)
+        val keepHistory = (preserveSettings || reuseAttempt) && historyAttempt?.invalid == false && historyConnection == transport.connectionIdentity() &&
+            historySongId == value.optString("id") && server == instanceId && workId.isEmpty()
+        if (!keepHistory) finishHistory("STOPPED")
+        historyTransitioning = true
+        historyClock.sample(false)
         workId = ""
         backingUrl = ""; selectedSourceId = ""
         if (!preserveSettings) {
@@ -192,47 +221,62 @@ class PlaybackService : MediaSessionService() {
         }
         val previous = leaseId
         val previousOrigin = playbackOrigin
+        requestScope.cancel(); requestScope = NasRequestScope()
+        val scope = requestScope
         generation++
         val ticket = generation
         player.stop(); player.clearMediaItems()
         song = value; server = instanceId; force = compatible; requestedPosition = max(0, position)
         playbackOrigin = transport.origin; playAfterPreparation = autoplay
         val expectedOrigin = playbackOrigin
+        val requestedRole = requestedAudioRole
         originalDuration = value.optLong("durationMs", 0); offsetMs = 0; resourceMode = ""
         state = "PREPARING"; message = "正在准备播放"; leaseId = ""; resourceReady = false; requestInFlight = true
+        if (!keepHistory) beginHistory()
+        historyTransitioning = false
+        preparationStartedAt = SystemClock.elapsedRealtime()
         publish()
-        worker.execute {
-            if (previous.isNotBlank() && transport.origin == previousOrigin) runCatching { transport.scopedRequest(previousOrigin, "/api/v1/transcoding/sessions/$previous/cancel", "POST") }
+        cancelResource(previous, previousOrigin)
+        requests.open(scope) opening@{
             try {
-                if (transport.origin != expectedOrigin) throw NasFailure(409, "NAS 连接已切换")
-                val options = JSONObject().put("client", capabilities()).put("start", position / 1000.0).put("force", compatible).put("audioRole", requestedAudioRole)
-                val result = JSONObject(transport.scopedRequest(expectedOrigin, "/api/v1/transcoding/playback/${value.getString("id")}", "POST", options.toString()))
+                if (!currentRequest(ticket, expectedOrigin, scope)) return@opening
+                val options = JSONObject().put("client", capabilities()).put("start", max(0, position) / 1000.0).put("force", compatible).put("audioRole", requestedRole)
+                val result = JSONObject(transport.scopedRequest(expectedOrigin, "/api/v1/transcoding/playback/${value.getString("id")}", "POST", options.toString(), scope))
                 main.post {
-                    if (ticket == generation) { requestInFlight = false; applyResource(result, ticket) }
+                    if (currentRequest(ticket, expectedOrigin, scope)) {
+                        requestInFlight = false
+                        try { applyResource(result, ticket) } catch (error: Exception) { fail(error) }
+                    }
                     else cancelResource(result.optString("id"), expectedOrigin)
                 }
-            } catch (error: Exception) { main.post { if (ticket == generation) fail(error) } }
+            } catch (error: Exception) { main.post { if (currentRequest(ticket, expectedOrigin, scope)) fail(error) } }
         }
     }
 
+    private fun currentRequest(ticket: Int, origin: String, scope: NasRequestScope) =
+        !destroyed && ticket == generation && origin == transport.origin && !scope.cancelled
+
     private fun cancelResource(id: String, expectedOrigin: String = playbackOrigin) {
-        // A negotiation may finish after Android has destroyed this service. The server lease
-        // expires on its own if the worker has already shut down; never enqueue on a dead worker.
-        if (id.isNotBlank() && !worker.isShutdown) runCatching {
-            worker.execute { if (transport.origin == expectedOrigin) runCatching { transport.scopedRequest(expectedOrigin, "/api/v1/transcoding/sessions/$id/cancel", "POST") } }
+        if (id.isNotBlank()) requests.cancel {
+            if (transport.origin == expectedOrigin) runCatching {
+                transport.scopedRequest(expectedOrigin, "/api/v1/transcoding/sessions/$id/cancel", "POST", scope = NasRequestScope(5_000))
+            }
         }
     }
 
     private fun applyResource(result: JSONObject, ticket: Int) {
+        if (destroyed || ticket != generation || playbackOrigin != transport.origin) return
         if (result.has("audioRoles")) sharedRoles = result.getJSONObject("audioRoles")
         if (result.has("backingUrl")) backingUrl = result.getString("backingUrl")
-        resourceMode = result.optString("mode")
-        leaseId = result.optString("id")
+        resourceMode = result.optString("mode", resourceMode)
+        leaseId = result.optString("id", leaseId)
+        lastLeaseSuccessAt = SystemClock.elapsedRealtime()
         if (result.optString("state") in listOf("FAILED", "CANCELLED") || result.optString("status") in listOf("FAILED", "CANCELLED")) {
             fail(Exception(result.optString("error", "兼容播放准备失败"))); return
         }
         if (result.optString("status") != "READY") {
-            state = "PREPARING"; message = "正在准备兼容播放…"; nextLeaseAt = 0; publish(); return
+            state = "PREPARING"; message = "正在准备兼容播放…"
+            nextLeaseAt = SystemClock.elapsedRealtime() + PlaybackRecovery.PREPARATION_POLL_MS; publish(); return
         }
         val media = result.optJSONObject("media") ?: result.optJSONObject("execution")?.optJSONObject("media")
         if (media != null && media.optDouble("duration", 0.0) > 0) originalDuration = (media.optDouble("duration") * 1000).toLong()
@@ -254,7 +298,7 @@ class PlaybackService : MediaSessionService() {
             val backing = factory.createMediaSource(MediaItem.Builder().setUri(transport.resolve(backingUrl)).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(offsetMs).build()).build())
             player.setMediaSource(androidx.media3.exoplayer.source.MergingMediaSource(true, original, backing), max(0, requestedPosition - offsetMs))
         } else player.setMediaItem(builder.build(), max(0, requestedPosition - offsetMs))
-        resourceReady = true; message = ""; state = "BUFFERING"; nextLeaseAt = SystemClock.elapsedRealtime() + 10_000
+        resourceReady = true; message = ""; state = "BUFFERING"; nextLeaseAt = SystemClock.elapsedRealtime() + PlaybackRecovery.LEASE_POLL_MS
         player.prepare()
         if (playAfterPreparation && requestFocus()) player.play() else { state = "PAUSED"; message = if (playAfterPreparation) "暂时无法取得音频焦点，请稍后继续" else "" }
         publish()
@@ -263,13 +307,14 @@ class PlaybackService : MediaSessionService() {
     private fun fail(error: Exception) {
         if (resourceReady) requestedPosition = player.currentPosition + offsetMs
         requestInFlight = false; resourceReady = false; finishRecording(error.message ?: "歌曲连接中断"); player.pause()
-        state = if (error is NasFailure && error.status == 401) "AUTH_REQUIRED" else "ERROR"
+        state = if (error is NasFailure && error.status in listOf(401, 403)) "AUTH_REQUIRED" else "ERROR"
         message = if (state == "AUTH_REQUIRED") "登录已失效，请重新登录后继续" else error.message ?: "播放失败"
+        requestScope.cancel(); cancelResource(leaseId); leaseId = ""
         publish()
     }
 
     fun command(action: String, value: Any?) {
-        require(action !in listOf("seek", "track", "pitch", "speed", "channel", "range", "role", "useRole", "stop") || karaoke.phase !in listOf("RECORDING", "FINALIZING") && countdown == 0) { "请先结束当前录音，再修改演唱设置" }
+        require(action !in listOf("seek", "restart", "track", "pitch", "speed", "channel", "range", "role", "useRole", "stop") || karaoke.phase !in listOf("RECORDING", "FINALIZING") && countdown == 0) { "请先结束当前录音，再修改演唱设置" }
         when (action) {
             "pitch" -> { pitch = (value as Number).toInt().coerceIn(-6, 6); player.playbackParameters = PlaybackParameters(speed, 2.0.pow(pitch / 12.0).toFloat()) }
             "speed" -> { speed = (value as Number).toFloat().coerceIn(.6f, 1.2f); player.playbackParameters = PlaybackParameters(speed, 2.0.pow(pitch / 12.0).toFloat()) }
@@ -291,11 +336,12 @@ class PlaybackService : MediaSessionService() {
                 val path = "/api/v1/media-songs/${song.getString("id")}/audio-roles"
                 val roleOrigin = playbackOrigin
                 val roleSong = song.optString("id")
-                worker.execute { try {
-                    val current = JSONObject(transport.scopedRequest(roleOrigin, path, "GET"))
-                    val saved = JSONObject(transport.scopedRequest(roleOrigin, path, "PUT", JSONObject().put("originalId", original).put("backingId", backing).put("revision", current.getLong("revision")).toString()))
-                    main.post { if (playbackOrigin == roleOrigin && song.optString("id") == roleSong) { sharedRoles = saved; publish() } }
-                } catch(e: Exception) { main.post { message = e.message ?: "保存失败"; publish() } } }
+                val scope = requestScope; val ticket = generation
+                requests.metadata(scope) { try {
+                    val current = JSONObject(transport.scopedRequest(roleOrigin, path, "GET", scope = scope))
+                    val saved = JSONObject(transport.scopedRequest(roleOrigin, path, "PUT", JSONObject().put("originalId", original).put("backingId", backing).put("revision", current.getLong("revision")).toString(), scope))
+                    main.post { if (currentRequest(ticket, roleOrigin, scope) && song.optString("id") == roleSong) { sharedRoles = saved; publish() } }
+                } catch(e: Exception) { main.post { if (currentRequest(ticket, roleOrigin, scope)) { message = e.message ?: "保存失败"; publish() } } } }
             }
             "useRole" -> {
                 val saved = roles.getString(roleKey(value.toString()), "").orEmpty().split('|')
@@ -313,14 +359,20 @@ class PlaybackService : MediaSessionService() {
 
             "play" -> { playAfterPreparation = true; if (resourceReady && state !in listOf("ERROR", "AUTH_REQUIRED") && requestFocus()) { message = ""; player.play() } }
             "pause" -> { finishRecording("演唱已暂停，录音片段已保留"); playAfterPreparation = false; player.pause() }
+            "restart" -> { finishHistory("STOPPED"); beginHistory(); command("seek", value ?: 0L) }
             "stop" -> {
+                finishHistory("STOPPED")
+                requestScope.cancel()
                 generation++; player.stop(); player.clearMediaItems(); cancelResource(leaseId); leaseId = ""
                 resourceReady = false; song = JSONObject(); server = ""; state = "IDLE"; message = ""; abandonFocus()
             }
             "seek" -> {
                 val position = (value as Number).toLong().coerceAtLeast(0)
-                if (resourceMode == "HLS") open(song, server, position, force, player.playWhenReady, preserveSettings = true)
-                else player.seekTo(position)
+                if (resourceMode == "HLS") {
+                    val local = PlaybackRecovery.localHlsSeek(position, offsetMs, player.duration, resourceReady && player.isCurrentMediaItemSeekable)
+                    if (local != null) player.seekTo(local)
+                    else open(song, server, position, force, player.playWhenReady, preserveSettings = true)
+                } else player.seekTo(position)
             }
             "loop" -> player.repeatMode = if (value == true) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
             "track" -> {
@@ -339,26 +391,46 @@ class PlaybackService : MediaSessionService() {
 
     private val tick = object : Runnable {
         override fun run() {
+            if (state == "PREPARING" && PlaybackRecovery.preparationExpired(preparationStartedAt, SystemClock.elapsedRealtime())) {
+                fail(java.io.IOException("播放准备超时，请重试或检查 NAS 计算节点"))
+            }
+            if (workId.isEmpty() && playbackOrigin.isNotBlank() && playbackOrigin != transport.origin && state !in listOf("ERROR", "AUTH_REQUIRED", "IDLE")) {
+                historyReporter.invalidate(historyAttempt); historyAttempt = null; historyClock.clear()
+                requestScope.cancel(); generation++; leaseId = ""; resourceReady = false
+                finishRecording("NAS 已切换，录音片段已保留"); player.stop(); player.clearMediaItems()
+                state = "ERROR"; message = "NAS 已切换，请重新选歌"; publish()
+            }
             if (leaseId.isNotBlank() && state !in listOf("ERROR", "AUTH_REQUIRED", "ENDED", "IDLE") && !requestInFlight && SystemClock.elapsedRealtime() >= nextLeaseAt) {
-                requestInFlight = true; nextLeaseAt = SystemClock.elapsedRealtime() + 10_000
+                requestInFlight = true
                 val id = leaseId; val ticket = generation; val expectedOrigin = playbackOrigin
-                worker.execute {
+                val scope = requestScope
+                requests.poll(scope) {
                     try {
-                        if (transport.origin != expectedOrigin) throw NasFailure(409, "NAS 连接已切换")
-                        val result = JSONObject(transport.scopedRequest(expectedOrigin, "/api/v1/transcoding/sessions/$id"))
-                        main.post { if (ticket == generation) {
+                        if (!currentRequest(ticket, expectedOrigin, scope)) return@poll
+                        val result = JSONObject(transport.scopedRequest(expectedOrigin, "/api/v1/transcoding/sessions/$id", scope = scope))
+                        main.post { if (currentRequest(ticket, expectedOrigin, scope)) {
                             requestInFlight = false
+                            lastLeaseSuccessAt = SystemClock.elapsedRealtime()
+                            nextLeaseAt = lastLeaseSuccessAt + PlaybackRecovery.LEASE_POLL_MS
                             if (result.optString("state") in listOf("FAILED", "CANCELLED")) fail(Exception(result.optString("error", "播放资源已失效")))
-                            else if (!resourceReady) applyResource(result, ticket)
+                            else if (!resourceReady) { try { applyResource(result, ticket) } catch (error: Exception) { fail(error) } }
                         } }
-                    } catch (e: Exception) { main.post { if (ticket == generation) fail(e) } }
+                    } catch (e: Exception) { main.post { if (currentRequest(ticket, expectedOrigin, scope)) {
+                        requestInFlight = false
+                        val transient = e is java.io.IOException || e is NasFailure && (e.status == 429 || e.status >= 500)
+                        if (transient && SystemClock.elapsedRealtime() - lastLeaseSuccessAt < PlaybackRecovery.LEASE_FAILURE_LIMIT_MS) {
+                            nextLeaseAt = SystemClock.elapsedRealtime() + PlaybackRecovery.LEASE_RETRY_MS
+                        } else fail(e)
+                    } } }
                 }
             }
             if (rangeB > rangeA && player.isPlaying && player.currentPosition + offsetMs >= rangeB) {
                 if (karaoke.phase == "RECORDING") finishRecording("", true)
                 else if (countdown == 0) command("seek", rangeA)
             }
-            publish(); main.postDelayed(this, 100)
+            reportHistory()
+            if (player.isPlaying || karaoke.phase in listOf("RECORDING", "TESTING") || countdown > 0) publish()
+            main.postDelayed(this, 100)
         }
     }
 
@@ -416,7 +488,47 @@ class PlaybackService : MediaSessionService() {
             "audioRole" to audioRole, "videoAspect" to videoAspect,
             "output" to (chain.audioTrack?.routedDevice?.productName?.toString() ?: "播放后显示实际输出设备"))
     }
-    private fun publish() { if (!destroyed) listener?.invoke(snapshot()) }
+    private fun publish() { if (!destroyed) { reportHistory(); listener?.invoke(snapshot()) } }
+    private fun beginHistory() {
+        if (workId.isNotEmpty() || song.optString("id").isBlank()) return
+        val connection = transport.connectionIdentity()
+        historyConnection = connection; historySongId = song.optString("id")
+        historyClock.start(UUID.randomUUID().toString())
+        historyAttempt = historyReporter.begin(MobilePlaybackHistoryTransport(transport, connection, historySongId))
+        historyLastState = ""; historyLastReportAt = 0
+    }
+    private fun historyFrame(state: String, sample: ActualPlaybackClock.Sample) = PlaybackHistoryReporter.Frame(state,
+        sample.actualPlayedMs, sample.elapsedMs, playbackHistoryDuration(originalDuration, player.duration, offsetMs,
+            player.isCurrentMediaItemDynamic, player.isCurrentMediaItemLive), historyClock.startedAtEpochMs,
+            historyClock.occurredAtEpochMs, historyClock.lastActivityAtEpochMs)
+    private fun reportHistory() {
+        val attempt = historyAttempt ?: return
+        if (historyConnection != transport.connectionIdentity() || workId.isNotEmpty()) {
+            historyReporter.invalidate(attempt); historyAttempt = null; historyClock.clear(); return
+        }
+        val actual = resourceReady && !historyTransitioning && player.isPlaying && state !in listOf("ERROR", "AUTH_REQUIRED")
+        val sample = historyClock.sample(actual)
+        val next = when {
+            historyTransitioning || state == "PREPARING" -> "PREPARING"
+            state == "ENDED" -> "COMPLETED"
+            state in listOf("ERROR", "AUTH_REQUIRED") -> "ERROR"
+            actual -> "PLAYING"
+            state == "BUFFERING" -> "BUFFERING"
+            else -> "PAUSED"
+        }
+        val now = SystemClock.elapsedRealtime()
+        if (next != historyLastState || now - historyLastReportAt >= if (actual) 5000 else 15000) {
+            historyReporter.offer(attempt, historyFrame(next, sample))
+            historyLastState = next; historyLastReportAt = now
+        }
+    }
+    private fun finishHistory(state: String) {
+        val attempt = historyAttempt ?: return
+        val sample = historyClock.sample(false)
+        if (historyConnection == transport.connectionIdentity() && workId.isEmpty()) historyReporter.offer(attempt, historyFrame(state, sample))
+        else historyReporter.invalidate(attempt)
+        historyAttempt = null; historyClock.clear()
+    }
     private fun duration(): Long = (snapshot()["durationMs"] as Number).toLong()
     private fun usingBacking(): Boolean {
         if(requestedAudioRole == "backing" && backingUrl.isNotBlank())return true
@@ -438,16 +550,17 @@ class PlaybackService : MediaSessionService() {
             if (token != countdownGeneration || destroyed) return
             if (countdown > 0) { publish(); main.postDelayed({ countdown--; count() }, 1000); return }
             try {
-                val item = player.currentMediaItem ?: error("歌曲资源已失效")
+                checkNotNull(player.currentMediaItem) { "歌曲资源已失效" }
                 val start = if (rangeB > rangeA) rangeA else 0L
                 require(start >= offsetMs) { "请先从歌曲开头重新准备兼容播放" }
-                player.stop(); player.clearMediaItems()
+                val takeTracks = snapshot()["tracks"] as List<*>
+                player.stop(); player.seekTo(start - offsetMs)
                 karaoke.start(JSONObject(song.toString()), server, JSONObject().put("startMs", start).put("pitch", pitch).put("speed", speed)
                     .put("channel", chain.channels.mode).put("revision", song.optString("revision"))
-                    .put("resourceMode", resourceMode).put("tracks", org.json.JSONArray(snapshot()["tracks"] as List<*>)).put("endMs", rangeB))
+                    .put("resourceMode", resourceMode).put("tracks", org.json.JSONArray(takeTracks)).put("endMs", rangeB))
                 chain.captureEnabled = true
                 player.repeatMode = Player.REPEAT_MODE_OFF
-                player.setMediaItem(item, start - offsetMs); player.prepare()
+                player.prepare()
                 if (!requestFocus()) error("无法取得音频焦点")
                 player.play(); showRecordingForeground(); publish()
             } catch (e: Exception) { chain.captureEnabled = false; if (karaoke.phase == "RECORDING") finishRecording(e.message ?: "录唱启动失败"); message = e.message.orEmpty(); stopRecordingForeground(); publish() }
@@ -465,7 +578,7 @@ class PlaybackService : MediaSessionService() {
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(NotificationChannel("karaoke-recording", "本机录唱", NotificationManager.IMPORTANCE_LOW))
         val open = PendingIntent.getActivity(this, 7401, Intent(this, MainActivity::class.java).setAction("RETURN_SINGING"), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val stop = PendingIntent.getService(this, 7402, Intent(this, PlaybackService::class.java).setAction("FINISH_TAKE"), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val stop = PendingIntent.getBroadcast(this, 7402, Intent(this, FinishTakeReceiver::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val builder = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, "karaoke-recording") else { @Suppress("DEPRECATION") Notification.Builder(this) }
         val notification = builder.setSmallIcon(android.R.drawable.ic_btn_speak_now).setContentTitle(if (karaoke.phase == "RECORDING") "SingVerse · 正在录唱" else "SingVerse · 准备录唱")
             .setContentText(song.optString("title")).setContentIntent(open).setOngoing(true)
@@ -481,13 +594,11 @@ class PlaybackService : MediaSessionService() {
         if (::karaoke.isInitialized && (karaoke.phase == "RECORDING" || countdown > 0)) showRecordingForeground()
         else super.onUpdateNotification(session, startInForegroundRequired)
     }
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == "FINISH_TAKE") { finishRecording("从通知栏结束录唱"); return START_NOT_STICKY }
-        return super.onStartCommand(intent, flags, startId)
-    }
     fun playWork(id: String) {
         require(karaoke.phase !in listOf("RECORDING", "FINALIZING", "RENDERING")) { "请先结束当前录音" }
         val record = karaoke.works.get(id); val file = karaoke.works.playable(id)
+        finishHistory("STOPPED")
+        requestScope.cancel()
         generation++; cancelResource(leaseId); leaseId = ""; workId = id; resourceMode = "LOCAL"; rangeA = 0; rangeB = 0
         song = JSONObject(record.getJSONObject("song").toString()).put("title", record.optString("name")).put("mediaType", "AUDIO")
         originalDuration = record.optLong("durationMs"); offsetMs = 0; requestedPosition = 0; resourceReady = true; state = "BUFFERING"; message = ""
@@ -515,16 +626,6 @@ class PlaybackService : MediaSessionService() {
     companion object {
         var current: PlaybackService? = null; private set
         var listener: ((Map<String, Any?>) -> Unit)? = null
-        fun capabilities(): JSONObject {
-            val codecs = MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos.filter { !it.isEncoder }
-            fun supports(mime: String) = codecs.any { c -> c.supportedTypes.any { it.equals(mime, true) } }
-            return JSONObject().put("family", PlaybackProtocol.CLIENT_FAMILY)
-                .put("containers", JSONArray(listOf("mp4", "mkv", "webm", "ts", "mp3", "flac", "ogg", "wav")))
-                .put("video", JSONArray(listOf("h264" to "video/avc", "hevc" to "video/hevc", "vp9" to "video/x-vnd.on2.vp9", "av1" to "video/av01").filter { supports(it.second) }.map { it.first }))
-                .put("audio", JSONArray(listOf("aac" to "audio/mp4a-latm", "mp3" to "audio/mpeg", "flac" to "audio/flac", "opus" to "audio/opus", "ac3" to "audio/ac3").filter { supports(it.second) }.map { it.first }))
-                .put("hls", true).put("fmp4", true).put("max_width", 1920).put("max_height", 1080).put("max_fps", 30)
-                .put("max_bitrate", 8000000).put("max_bit_depth", 8).put("max_channels", 2).put("hdr", false)
-                .put("profiles", JSONObject().put("h264", JSONArray(listOf("Constrained Baseline", "Baseline", "Main", "High")))).put("levels", JSONObject().put("h264", 41))
-        }
+        fun capabilities(): JSONObject = PlaybackCapabilities.snapshot()
     }
 }

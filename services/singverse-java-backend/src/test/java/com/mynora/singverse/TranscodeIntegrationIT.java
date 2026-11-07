@@ -36,6 +36,9 @@ class TranscodeIntegrationIT {
         p.add("singverse.transcoding.directory", () -> temp.resolve("versions").toString());
         p.add("singverse.transcoding.cache-directory", () -> temp.resolve("service-cache").toString());
         p.add("singverse.transcoding.cache-minimum-free-bytes", () -> "0");
+        p.add("singverse.metadata.cache-path", () -> temp.resolve("covers").toString());
+        p.add("singverse.webdav.metadata-path", () -> temp.resolve("webdav").toString());
+        p.add("singverse.audio.directory", () -> temp.resolve("audio").toString());
         p.add("singverse.classification.worker-enabled", () -> false);
     }
 
@@ -340,7 +343,9 @@ class TranscodeIntegrationIT {
                         ok(
                                 "/api/v1/transcoding/playback/" + song,
                                 "POST",
-                                Map.of("force", true),
+                                Map.of("force", true, "start", 0.215,
+                                        "client", Map.of("video", List.of("h264"), "audio", List.of("aac"),
+                                                "profiles", Map.of("h264", List.of("Baseline")), "levels", Map.of("h264", 31))),
                                 true);
                 for (int i = 0; i < 100 && !remote.path("status").asText().equals("READY"); i++) {
                     Thread.sleep(100);
@@ -352,9 +357,22 @@ class TranscodeIntegrationIT {
                                     false);
                 }
                 assertThat(remote.path("status").asText()).isEqualTo("READY");
+                assertThat(remote.path("mode").asText()).isEqualTo("HLS");
+                assertThat(remote.path("offset").asDouble()).isEqualTo(0.215);
+                assertThat(remote.path("execution").path("effectiveMode").asText()).isEqualTo("TRANSCODE");
+                var compatibleTarget = json.readTree(service.require(remote.path("id").asText(), "admin").get("target_json").toString());
+                assertThat(compatibleTarget.path("profile").asText()).isEqualTo("baseline");
+                assertThat(compatibleTarget.path("level").asInt()).isEqualTo(31);
                 assertThat(reads.get()).isGreaterThan(0);
                 assertThat(req(remote.path("url").asText(), "GET", null, false).body())
                         .contains("#EXTM3U");
+                // Finish this player before changing the source back to LOCAL. A completed
+                // WebDAV capture can otherwise retain a song-wide lease over another variant.
+                String remoteSession = remote.path("id").asText();
+                ok("/api/v1/transcoding/sessions/" + remoteSession + "/cancel", "POST", null, true);
+                assertThat(service.require(remoteSession, "admin")).containsEntry("state", "CANCELLED");
+                assertThat(database.queryForObject("SELECT COUNT(*) FROM song_cache_lease WHERE session_id=?",
+                        Integer.class, remoteSession)).isZero();
             } finally {
                 dav.stop(0);
                 database.update(
@@ -406,17 +424,27 @@ class TranscodeIntegrationIT {
             var settingsOffline = ok(cacheRoot, "GET", null, false).path("settings");
             var changedOffline = ok(cacheRoot + "/settings", "PUT", Map.of("maxBytes", settingsOffline.path("maxBytes").asLong(),
                     "policy", "LRU", "ttlHours", 24, "revision", settingsOffline.path("revision").asLong()), true);
-            assertThat(changedOffline.path("policy").asText()).isEqualTo("LRU");
-            assertThat(req(cacheRoot + "/" + storedId, "DELETE", null, true).statusCode()).isEqualTo(409);
+            assertThat(changedOffline.path("policy").asText()).isEqualTo("HYBRID");
+            assertThat(changedOffline.path("ttlHours").asInt()).isEqualTo(24);
+            var protectedDelete = req(cacheRoot + "/" + storedId, "DELETE", null, true);
+            assertThat(protectedDelete.statusCode()).withFailMessage(protectedDelete.body()).isEqualTo(409);
             var localBytes = client.send(HttpRequest.newBuilder(variantUrl.resolve(segmentName))
                     .header("Range", "bytes=0-15").build(), HttpResponse.BodyHandlers.ofByteArray());
             assertThat(localBytes.statusCode()).isEqualTo(206);
             assertThat(localBytes.body()).hasSize(16);
             ok("/api/v1/transcoding/sessions/" + producedSession + "/cancel", "POST", null, true);
             ok("/api/v1/transcoding/sessions/" + cachedOffline.path("id").asText() + "/cancel", "POST", null, true);
-            assertThat(req(cacheRoot + "/" + storedId, "DELETE", null, true).statusCode()).isEqualTo(409);
+            var remainingPlayerDelete = req(cacheRoot + "/" + storedId, "DELETE", null, true);
+            assertThat(remainingPlayerDelete.statusCode()).withFailMessage(remainingPlayerDelete.body()).isEqualTo(409);
             ok("/api/v1/transcoding/sessions/" + seekedOffline.path("id").asText() + "/cancel", "POST", null, true);
-            assertThat(req(cacheRoot + "/" + storedId, "DELETE", null, true).statusCode()).isEqualTo(204);
+            for (String session : List.of(producedSession, cachedOffline.path("id").asText(), seekedOffline.path("id").asText()))
+                assertThat(service.require(session, "admin")).containsEntry("state", "CANCELLED");
+            assertThat(database.queryForObject("SELECT COUNT(*) FROM media_transcode WHERE song_id=?"
+                    + " AND purpose='REALTIME' AND state IN ('STARTING','RUNNING')", Integer.class, song)).isZero();
+            assertThat(database.queryForObject("SELECT COUNT(*) FROM song_cache_lease l JOIN song_cache_entry e ON e.id=l.cache_id"
+                    + " WHERE e.song_id=?", Integer.class, song)).isZero();
+            var releasedDelete = req(cacheRoot + "/" + storedId, "DELETE", null, true);
+            assertThat(releasedDelete.statusCode()).withFailMessage(releasedDelete.body()).isEqualTo(204);
             assertThat(temp.resolve("service-cache").resolve(storedId)).doesNotExist();
             var version =
                     ok(
@@ -487,6 +515,8 @@ class TranscodeIntegrationIT {
                 .isEqualTo(req(completed.path("url").asText(), "GET", null, false).body());
 
         String cacheRoot = "/api/v1/transcoding/cache";
+        org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(10)).untilAsserted(() ->
+                assertThat(ok(cacheRoot, "GET", null, false).path("statisticsReady").asBoolean()).isTrue());
         var cache = ok(cacheRoot, "GET", null, false);
         assertThat(cache.path("entryCount").asInt()).isEqualTo(1);
         assertThat(cache.path("totalElements").asInt()).isEqualTo(1);
@@ -506,7 +536,10 @@ class TranscodeIntegrationIT {
                         "revision", revision), true);
         assertThat(saved.path("revision").asLong()).isEqualTo(revision + 1);
         assertThat(saved.path("maxBytes").asLong()).isEqualTo(64L * 1024 * 1024);
-        assertThat(saved.path("policy").asText()).isEqualTo("LFU");
+        assertThat(saved.path("policy").asText()).isEqualTo("HYBRID");
+        assertThat(saved.path("ttlHours").asInt()).isEqualTo(72);
+        assertThat(saved.path("highWatermarkPercent")).isEqualTo(cache.path("settings").path("highWatermarkPercent"));
+        assertThat(saved.path("lowWatermarkPercent")).isEqualTo(cache.path("settings").path("lowWatermarkPercent"));
         assertThat(ok(cacheRoot, "GET", null, false).path("settings")).isEqualTo(saved);
         assertThat(req(cacheRoot + "/" + cacheId, "DELETE", null, true).statusCode()).isEqualTo(409);
 

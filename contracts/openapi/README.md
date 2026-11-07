@@ -73,9 +73,9 @@
 
 歌曲列表行内操作统一为按钮，新增“在线播放”，在带原生控件的视频弹窗中播放当前歌曲。关闭弹窗或离开页面移除 video 元素以停止读取；错误时可重新加载。
 
-`GET /api/v1/media-songs/{id}/video` 与 HEAD 复用管理员 Cookie 会话，未登录返回 401，不提供公开媒体 URL。支持单段 Range（起止、开放结束、后缀范围），本地响应 200/206/416 和 Content-Length/Content-Range；非法范围或多范围返回 400。所有流响应禁止缓存。本地解析真实路径并限制在来源目录内，失效文件或越界符号链接返回 404。
+`GET /api/v1/media-songs/{id}/video` 与 HEAD 复用管理员 Cookie 会话，未登录返回 401，不提供公开媒体 URL。支持单段 Range（起止、开放结束、后缀范围），本地响应 200/206/416 和 Content-Length/Content-Range；非法范围或多范围返回 400。流响应发送 HTTP `private, no-store`，避免浏览器与公共代理缓存；Java 内部受控的持久原片缓存独立管理。本地解析真实路径并限制在来源目录内，失效文件或越界符号链接返回 404。
 
-WebDAV 使用保存的地址和加密凭据在服务端发起 GET/HEAD，转发 Range，不把凭据或远端地址返回浏览器。采用 10 秒连接、30 秒读取空闲超时，流式传输，不落盘、不完整缓冲；连接随响应结束/客户端断开清理。上游忽略 Range 时保持 200，拖动能力取决于上游；不跟随 3xx（返回 502），需要支持直接读取的 WebDAV 服务，OpenList 等返回下载跳转的配置需调整，否则暂不能播放。认证/读取错误返回不含远端细节的 502。
+WebDAV 使用保存的地址和加密凭据在服务端发起 GET/HEAD，转发 Range，不把凭据或远端地址返回浏览器。采用 10 秒连接、30 秒读取空闲超时，流式传输、不在内存完整缓冲；可将完整原片块持久写入 Java 独立缓存，缓存不可用时继续回源；连接随响应结束/客户端断开清理。上游忽略从零开始的 Range 时仍可返回 200；GET 忽略非零或后缀 Range 时立即返回 502，避免播放器反复下载并跳过整段前缀。206 响应须与请求的起止、总长及 Content-Length 一致，非 identity 编码响应拒绝交给播放器；不跟随 3xx（返回 502），需要支持直接读取的 WebDAV 服务，OpenList 等返回下载跳转的配置需调整，否则暂不能播放。认证/读取错误返回不含远端细节的 502。
 
 只播放原始音视频，不调用 Python、不转码、不创建队列或电视会话。浏览器能否解码取决于容器与视频/音频编码，MP4/WebM 也不保证所有编码都能播放，MKV/AVI 等可能不可播放。Nginx 对视频接口关闭 proxy_buffering/proxy_cache，避免视频临时文件与额外等待；代理读取空闲超时为 60 秒。真实 NAS、WebDAV 提供者、浏览器编码兼容性仍须单独验收。
 
@@ -91,7 +91,7 @@ WebDAV 使用保存的地址和加密凭据在服务端发起 GET/HEAD，转发 
 
 管理员专用 `/api/v1/ai` 提供厂商目录、多模型/搜索服务 CRUD、显式连接与结构化测试、默认搜索和功能绑定。密钥只写不读，服务与绑定使用 revision 并发保护，引用中的服务不能删除或停用。原分类配置接口保留兼容适配；边界与通用搜索响应见 [AI 设置](../../docs/ai-settings.md)，字段以 `singverse.openapi.json` 为准。
 
-本地扫描沿用歌曲API元数据结构，字段来源kind新增FILE，表示本地音视频内嵌标签优先值；不扩展WebDAV读取或增加远程探测API。
+本地和 WebDAV 标签沿用歌曲 API 元数据结构，字段来源 kind=FILE 表示音视频内嵌标签优先值；读取通过以下短期授权回源协议执行。
 
 计算服务使用 POST /internal/v1/media/remote-tags，所有本地／WebDAV 标签请求均携带 reference、callbackOrigin、filename、size；Java 提供短期授权 Range 回源。转码、音轨任务同样使用引用和回调地址，禁止传本地路径；原 /internal/v1/media/tags 已移除。连接测试增加 /internal/v1/callback/check 及 Java 的短期 /api/v1/internal/compute-callback/{id}。详见 compute-internal.openapi.json；前端不访问计算节点。
 
@@ -108,7 +108,11 @@ WebDAV 使用保存的地址和加密凭据在服务端发起 GET/HEAD，转发 
 
 聚会变更包含 requestId、expectedRevision；同主体同请求与载荷重试不重复入队，冲突 409 后先刷新。revision 是用户操作修订号，播放遥测有独立数据库 CAS 与 eventSeq，不让周期进度报告制造点歌冲突。NEXT 进入待确认交接，START 仅电视可执行；播放事件才使队列变为 PLAYING。电视进程重建调用 recover，失效旧播放实例、清理命令，将进行项放回待唱，不自动重播。
 
-当前仅原始媒体直放，无转码。播放资源 READY 表示已取得授权引用，不保证目标电视能解码；原始媒体直接使用设备 Bearer 请求，并在每次 Range/HEAD 时重新检查撤销。歌曲与分类只读投影不暴露内部路径、来源凭据或模型配置。歌手入口按原始署名精确分组，不建立身份或别名归并。家庭规模保护上限：单场 500 个队列项、1000 项幂等操作、100 条待确认命令；超限明确拒绝。TV 需结束后开新场，不静默删除历史去重记录。
+`POST /tv/sessions/{id}/playback-events` 可选 `durationMs`（1～86400000，原歌曲时间轴总时长，HLS 包含 offset），未知时省略。只接受当前 attempt 的递增 eventSeq；已确认且实际 `PLAYING`、有效进度大于零并进入最后 30 秒时，服务端在事务提交后预取首个 `WAITING` 队列项的 WebDAV 原片。同一播放实例、同一下一首只登记一次，不因每条进度重复创建预取，不触发转码或新增播放命令。TV 和扫码 H5 的队列排序、移除、清空以及 NEXT、STOP、END、recover、设备撤销会使旧预取引用失效；STOP 提交时撤销，无须等待电视回报 IDLE。旧响应、重复事件和预取失败不会改变队列或当前播放；手机单曲没有自动建立队列。 后台暂态失败总共最多尝试 3 次，前两次失败后分别等待 5 秒、10 秒；稳定的参数、权限、素材变化或容量错误停止。新前台请求优先 2 秒，之后前台媒体连接仍打开时预取限为 256KiB/s，前台连接结束后恢复常速；前台优先暂停不计失败。
+
+原片缓存继续通过现有歌曲缓存管理接口查看，`target.mode=ORIGINAL`、`target.sourceBytes` 表示原文件与完整大小；可选 `cachedBytes/sourceBytes/complete` 区分已缓存字节和整曲完成，`complete=false` 仍需授权回源读取缺失范围，不能当作完整离线成品。
+
+播放资源由 Java 按终端能力协商原片、离线兼容版本或实时 HLS。资源 READY 表示已取得授权引用，不保证目标电视能解码；原始媒体直接使用设备 Bearer 请求，并在每次 Range/HEAD 时重新检查撤销。歌曲与分类只读投影不暴露内部路径、来源凭据或模型配置。歌手入口按原始署名精确分组，不建立身份或别名归并。家庭规模保护上限：单场 500 个队列项、1000 项幂等操作、100 条待确认命令；超限明确拒绝。TV 需结束后开新场，不静默删除历史去重记录。
 
 ### TV 首页与当前歌曲详情
 
@@ -122,7 +126,7 @@ TV 非转码增强新增设备专用 text-tracks 与 releases/current、releases
 
 分类封面新增管理员GET/PUT/DELETE /classification/tags/{id}/cover，以及Bearer只读 /tv/library/classification-tags/{id}/cover。首次上传version为空，覆盖/移除带当前coverVersion；内容SHA-256与标签revision独立。正式标签新增coverPath/coverVersion；停用标签对TV封面返回404，完整限制见OpenAPI。
 
-歌手库改为自动汇总：旧档案创建/编辑、人工绑定写操作返回 410。歌曲订正通过现有审核应用接口保存 NAS 歌手覆盖，恢复接口需要 revision。歌手响应新增 automatic、fetchState、图片来源字段；ExternalTrack 新增可选 artistRefs，旧数据按空列表兼容。详见 OpenAPI。
+歌手库按歌曲有效署名自动汇总并提供只读查询，歌曲订正通过现有审核应用接口保存 NAS 歌手覆盖，恢复接口需要 revision。歌手响应新增 automatic、fetchState、图片来源字段；ExternalTrack 新增可选 artistRefs，旧数据按空列表兼容。详见 OpenAPI。
 
 共享歌单新增 `/api/v1/playlists` 管理接口、`/generate` 建议预览及 TV 只读歌单列表/详情/歌曲接口。创建需稳定 requestId，编辑与删除需 revision；生成返回候选范围和草稿，不自动保存。管理与 TV 封面路径分别使用相应身份鉴权。
 
@@ -133,6 +137,8 @@ TV 非转码增强新增设备专用 text-tracks 与 releases/current、releases
 硬件加速配置：GET/POST `/api/v1/transcoding/hardware-settings`，POST `/hardware-settings/test`。保存携带 revision；冲突返回 409，指定硬件短样本失败返回 422。`backend=deployment` 恢复节点部署环境变量，草稿测试不切换当前后端。内部接口路径对应 `/internal/v1/transcoding/hardware-settings`，继续使用 Bearer 和请求体边界。
 
 流水线 v2：播放执行携带 `pipeline`（实际硬解/零拷贝/GPU 色调映射、DV 和回退原因）及 `sampledPeakRssBytes`（0 表示未知）。客户端能力增加 `hdr_formats`、`dovi_profiles`、`dovi_compatibility`，默认不支持 DV；HDR 与 DV 能力分别协商。
+
+`PlaybackClient.profiles.h264`／`levels.h264` 必须来自同一实际解码器能力组合，level 使用 ffprobe 整数单位（31=3.1、9=1b），不可只因 MIME 存在就固定报告 High/41。`quality=auto` 尊重已报告尺寸、帧率和码率；显式画质仍施加所选上限。`force=true` 在新执行中强制兼容视频编码及 AAC，不复用旧离线版本；已生成的匹配兼容缓存仍可直接使用。明确上报 H.264 profile/level 时服务端会限制编码参数；未报告时保持原默认值。公开请求字段不变，Java 到 compute 的内部 `target.profile/level` 与 `/negotiate.fingerprint` 见 compute README。HLS 只有主列表声明的所有 rendition 的首片和初始化文件均可读时才 READY，完成后的整曲缓存复制在后台执行。
 
 手机原生只读曲库：GET `/api/v1/mobile/library/songs`、`/{id}` 和 `/{id}/text-tracks`，使用管理员 Cookie，不接受 TV/party Bearer 替代登录。列表复用既有搜索及分类，返回 MobileSongPage；条目保留独立媒体 ID，补充格式/媒体类型，封面指向管理员资源。播放继续使用 `/api/v1/transcoding`；手机本机收藏和历史不属于服务端业务表。
 
@@ -155,13 +161,19 @@ compute 内部 `/internal/v1/audio-roles/tasks` 接收固定 UUID、mode=PROBE|A
 `GET /api/v1/tv/home`兼容增加`appearance`与`featuredPlaylists`，后者最多4个已保存共享歌单；配置按数组顺序提供已启用图片。`GET /api/v1/tv/home/banners/{id}/image`只接受已授权device，不接受亲友participant；删除或禁用404。全部图片接口no-store，元数据含稳定内容版本，TV可自行有界缓存。没有公开静态图片路径或外部URL代理。
 
 
-## 歌曲解码缓存
+## 歌曲缓存（HLS 与原片）
 
-管理员 `GET /api/v1/transcoding/cache` 按 `page`（默认0，上限1000000）、`size`（默认20，上限100）分页查看 Java 服务节点完整成功的实时 HLS 缓存，按 `lastAccessAt` 倒序和 ID 升序。返回设置、Java 缓存目录实际用量、完整缓存总数，以及包含缓存 ID、可用歌曲名称/歌手、音频/视频类型、大小、生成/访问时间、复用次数、租约状态和输出参数的条目；不暴露来源路径与节点凭据。实际用量可包含接收中的临时文件；列表不包含独立保存的离线兼容成品。
+管理员 `GET /api/v1/transcoding/cache` 按 `page`（默认0，上限1000000）、`size`（默认20，上限100）分页查看 Java 服务节点完整成功的实时 HLS 与已发布完整块的 WebDAV 原片缓存，按 `lastAccessAt` 倒序和 ID 升序。返回设置、Java 缓存目录实际用量、缓存条目总数，以及包含缓存 ID、可用歌曲名称/歌手、音频/视频类型（`mediaType=VIDEO|AUDIO`）、已缓存大小、生成/访问时间、复用次数、租约状态和输出参数的条目；不暴露来源路径与节点凭据。`target.mode=ORIGINAL` 的条目还含 `cachedBytes/sourceBytes/complete`；部分原片不会标为整曲完成，缺失范围仍受权回源。可选 `residueBytes` 表示损坏或待清理文件的实际磁盘占用，计入总 `usageBytes`，但不计入有效 `bytes/cachedBytes` 或完整度。实际用量可包含接收中的临时文件；列表不包含独立保存的离线兼容成品。
 
-`PUT /api/v1/transcoding/cache/settings` 接受完整 `SongCacheSettings`（容量64MiB–1PiB、策略LRU/LFU/TTL/MANUAL、TTL保留小时1–8760、revision），返回新设置。设置、索引及独立会话租约均保存在业务数据库。TTL 从完成生成时计算；LRU/LFU 仅在容量压力下淘汰，MANUAL 仅显式删除。旧修订返回409。`DELETE /cache/{id}` 成功204、播放租约保护409；`POST /cache/clear` 返回已清理/受保护数量。以上写入均要求管理员Cookie及 `X-CSRF-Token`，设备/亲友Bearer不能管理缓存。
+`PUT /api/v1/transcoding/cache/settings` 保存共用容量（整数 bytes，64MiB–1PiB）、`HYBRID|MANUAL`、兼容字段 `ttlHours` 和 `revision`；可选整数百分比 `highWatermarkPercent/lowWatermarkPercent` 默认 90/75，要求 `1≤low<high≤100`。旧四字段请求仍有效，省略水位保留已存值，未知字段返回400、旧修订返回409。已有 LRU/LFU/TTL 自动迁移为 HYBRID 并增加修订，旧策略写入作为 HYBRID 别名兼容；MANUAL 保留，`ttlHours` 仅保留往返兼容，不再控制到期删除。部署容量只负责首次初始化，后续以数据库设置为准；磁盘最低保留空间仍独立生效。
 
-Java 按歌曲、素材指纹及完整播放参数查找缓存，命中时沿用同源受权播放接口，创建独立播放会话，执行结果包含 `cacheHit=true` 和不透明 `cacheId`。缓存读取、管理及清理不依赖 compute 在线。未命中时 compute 执行解码，Java 下载已完成产物并验证长度、SHA-256 和整包 HLS 引用，原子发布后才进入索引；确认落盘后释放 compute 临时产物。任一策略和批量清理都跳过活动租约，满额且无法腾出空间时返回507，删除失败保留索引。重启保留完整缓存，会话租约按续租到期释放。
+混合分数为 `S=0.4H+0.4R+0.2F`：H 每次有效播放增加0.05并限幅至1后按14天半衰期衰减；普通递增事件以O(1)聚合，晚到有效事件仅对同歌按发生时间顺序重折叠以保留限幅语义。R 从最近实际播放活动起按7天半衰期衰减，`F=min(1,ln(1+近7×24h有效次数)/ln(21))`。只有单次实例达到30秒真实播放或短曲完整结束才增加一次 H/F；管理员试听只更新活动保护与 R，不计热门。预取、Range、下载、定位和租约续期不增加热度。3天软保留通过可衰减加分进入 `priority`，不是不可回收的硬保护。生命周期 HOT 为近7天且至少3次有效播放，WARM 为未满30天，COLD 为30–60天，EVICT 为60天及以上；未播放条目以创建时间分层。列表增加 `H/R/F/score/priority/lifecycle/playCount7d/lastPlayedAt`、`pinned/pinRevision/protectionReasons` 和 `state=ACTIVE|DELETING`，可选 `usageReady/statisticsReady/committedBytes/reservedBytes/cleanupGeneration` 区分准备中和真实零值。
+
+`GET /cache/pins?page=0&size=20` 分页列出歌曲级固定，包括暂无缓存或已下架的记录；`PUT /cache/songs/{songId}/pin` 提交 `{pinned,revision}`，返回 `{pinned,revision}`。固定覆盖同曲现有及未来所有原片/HLS变体，不强制下载整曲、不变成离线成品；取消固定不删除文件。批量清理与自动回收都保护播放、下载、固定及近24小时实际播放。24小时从最近实际播放活动计算，继续实际播放会刷新，暂停、缓冲和预取不刷新。单份删除须先取消固定；确认后可仅覆盖该份的近期保护，始终不能覆盖活动播放/下载保护。
+
+新管理页使用异步 `POST /cache/cleanup-jobs`（202，`{mode:POLICY|CLEAR|DELETE,entryId?,confirmRecent?}`），POLICY 回收到低水位，CLEAR 清理全部未保护缓存，DELETE 指定单份。`GET /cache/cleanup-jobs/{id}` 查询，`POST /cache/cleanup-jobs/{id}/cancel` 请求取消；QUEUED/RUNNING/CANCELLING 为非终态，SUCCEEDED/PARTIAL/BLOCKED/FAILED/CANCELLED/INTERRUPTED 为终态。结果保留 `removed/skipped/failed/freedBytes/usageBeforeBytes/usageAfterBytes/targetBytes/targetReached/spaceInsufficient/shortfallBytes/skippedByReason/errors`，删除失败保留索引，已完成删除不会因取消而回滚。未达75%目标与实际空间不足分开表达；保护条目使目标未达时不一定阻止继续缓存。错误不包含路径或凭据。旧 `POST /cache/clear` 同步返回 removed/skipped，旧 `DELETE /cache/{id}` 仍返回204，近期覆盖需 `?confirmRecent=true`。全部写入要求管理员 Cookie 与 `X-CSRF-Token`，设备/亲友 Bearer 不能管理缓存。
+
+实时 HLS 按歌曲、素材指纹及完整播放参数查找缓存，命中时沿用同源受权播放接口，创建独立播放会话，执行结果包含 `cacheHit=true` 和不透明 `cacheId`。缓存读取、管理及清理不依赖 compute 在线。未命中时 compute 执行解码，Java 下载已完成产物并验证长度、SHA-256 和整包 HLS 引用，原子发布后才进入索引；确认落盘后释放 compute 临时产物。任一策略和批量清理都跳过活动租约，满额且无法腾出空间时返回507，删除失败保留索引。重启保留完整缓存，会话租约按续租到期释放。
 
 `PlaybackOptions.start` 是原媒体时间轴上的请求起点。非零起点优先匹配仅将 `start` 设为 0 的同参数整曲缓存；命中后 `PlaybackResource.offset` 仍为缓存的真实偏移 0，客户端对 HLS、DIRECT、VERSION 均按 `max(0, start - offset)` 定位本地媒体时间，播放回报使用 `currentTime + offset`。无完整缓存时仍精确匹配局部起点或按请求起点转码，画质、编码、音轨、字幕、终端能力及兼容处理意图保持隔离；不会因起点不同主动删除旧缓存。
 
@@ -171,4 +183,16 @@ Java 按歌曲、素材指纹及完整播放参数查找缓存，命中时沿用
 
 `GET/POST /api/v1/missing-song-feedback` 查询/登记缺歌，`GET/PUT /{id}` 读取/处理反馈。列表支持 `q`、`status=ALL|PENDING|PROCESSING|RESOLVED|CLOSED`，默认全部状态，分页默认 0/20、最大 100，搜索与状态在 SQL 分页前筛选，按登记时间倒序及 ID 升序。创建必须提供稳定 UUID requestId 和全部原始反馈字段；相同 ID、相同原始输入重试返回原记录（201），不同输入返回 409。处理只更新 status、handlingNote、resolvedSongId，并校验 revision；RESOLVED 必须关联现存歌曲，重开清除关联和 resolvedAt。反馈没有删除接口，也不会自动下载歌曲。
 
-以上接口仅接受管理员 Cookie，缺歌写入另需 `X-CSRF-Token`；字段、长度和空值规则见 `PlaybackHistory*`、`PlaybackPopular*`、`MissingSongFeedback*` schemas。本阶段只实现后台管理和存储，没有新增手机、TV 或试听上报，历史表初始为空，旧聚会队列不转换成播放历史。详见[功能说明](../song-activity.md)。
+播放采集新增管理员 `POST /api/v1/playback-attempts` 与手机 `POST /api/v1/mobile/playback-attempts`，提交 `{songId,deviceName?,startedAt?}`，201返回服务端签发的 `attemptId/writeToken/eventSeq=-1/leaseSeconds=120/startedAt/serverTime`；对应 `/{attemptId}/events` 提交 `{writeToken,eventSeq,state,actualPlayedMs,elapsedMs,durationMs?,occurredAt?,lastActivityAt?}`。日期均为 UTC epoch 毫秒：起点最多回溯24小时，occurredAt与起点+elapsed误差≤5秒，未来容忍5秒；新客户端在采样时冻结日期，注册重试保留原起点和已累计实播，排队/重试不得改写成发送时刻。R、近期保护按实际lastActivityAt，租约按occurredAt+120秒，迟到上报不会刷新保护。两组接口均使用管理员 Cookie 与 CSRF，路由固定 ADMIN/MOBILE，凭据绑定当前登录会话，不能由请求伪造终端或其他用户实例。TV 复用当前聚会实例及已有 playback-events，新增可选成对的 `actualPlayedMs/elapsedMs` 和 `startedAt/occurredAt/lastActivityAt`，起点首次绑定后不能改变；旧客户端缺少时钟时不从 positionMs 推算实播。亲友不能代报 TV 播放。TV 接到确认LOAD即绑定时钟并在准备期每15秒发送实播为0的PREPARING心跳；就绪不重置。过期后仅当前实例ENDED/IDLE可同步队列终态，历史保持INTERRUPTED且不续租或补计热度。
+
+采集只依据主媒体真实播放墙钟；定位、暂停、缓冲不增加 actual，计数单调且增量不得超过 elapsed 增量+1秒，elapsed 不得超过服务端经过时长+5秒。实际播放活动更新最近播放和24小时保护；暂停心跳只续活动租约。管理员主预览和独立原始音轨试听不增加 H/F，独立伴奏不重复建实例。同歌更换轨道、编码或资源继续同一逻辑实例，关闭/失败报告结束状态；普通 ERROR 可在最后一次事件发生后的120秒窗口内由同实例恢复，过期返回410；STOPPED/COMPLETED/SKIPPED 永久结束。120秒无活动到期返回410，客户端停止旧实例采集，下一次明确播放再创建；采集失败不阻断媒体播放。旧聚会队列不转换成听唱历史。
+
+查询与缺歌接口仅接受管理员 Cookie，缺歌写入另需 `X-CSRF-Token`；字段见 `PlaybackHistory*`、`PlaybackPopular*`、`PlaybackAttempt*`、`PlaybackActivity*`、`MissingSongFeedback*` schemas。详见[功能说明](../song-activity.md)。
+
+## 大曲库伴奏索引与后台准备
+
+`GET /api/v1/audio-processing/songs` 增加 `generation` 和 `building`，首次索引未就绪返回 503 及 `Retry-After: 1`；已有快照重建期间仍可读取。筛选后的当前页才加载完整详情。
+
+`POST /api/v1/audio-processing/batches/preview` 返回 202，批次先处于 `PREPARING`，包含 `selectionTotal`、`prepared` 和 `error`。通过原详情接口轮询，完成后为 `PREVIEW`，此时才能提交；准备中提交返回 409。准备中可调用原取消接口，重启时未完成准备转为 `FAILED`。所选歌曲及指纹在创建时固定，每 200 条短事务写入，执行前继续核对当前指纹；数据库采用新增迁移，原有批次保留。
+
+已删除只返回 410 的旧歌手创建、编辑、绑定和 credits 接口。自动歌手库、图片管理、分类及歌曲歌手订正仍使用现有实际接口。旧 `ComputeNodeClient` 及未注册的路径标签接口已删除；连接和回源验证覆盖真实 `ComputeNodeProbe` 链路。

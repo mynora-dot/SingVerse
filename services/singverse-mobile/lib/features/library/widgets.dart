@@ -41,15 +41,16 @@ class _ArtworkState extends State<Artwork> {
     if (old.path != widget.path ||
         old.revision != widget.revision ||
         identity !=
-            '${widget.state.instanceId}:${widget.state.authenticated}') {
+            '${widget.state.origin}:${widget.state.instanceId}:${widget.state.authenticated}') {
       _load();
     }
   }
 
   void _load() {
-    identity = '${widget.state.instanceId}:${widget.state.authenticated}';
+    identity =
+        '${widget.state.origin}:${widget.state.instanceId}:${widget.state.authenticated}';
     _image = widget.path?.trim().isNotEmpty == true
-        ? widget.state.artwork(widget.path!)
+        ? widget.state.artwork(widget.path!, revision: widget.revision)
         : null;
   }
 
@@ -67,6 +68,8 @@ class _ArtworkState extends State<Artwork> {
             return Image.memory(
               snapshot.data!,
               fit: BoxFit.cover,
+              cacheWidth: (widget.size * MediaQuery.devicePixelRatioOf(context))
+                  .ceil(),
               excludeFromSemantics: true,
               errorBuilder: (_, _, _) => _placeholder(context),
             );

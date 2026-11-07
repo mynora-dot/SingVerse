@@ -93,9 +93,17 @@ class AudioRoles:
         manager = getattr(self, 'models', None)
         if manager is None:
             return self.runtime_available
-        if not self.runtime_available and not any(manager.model_valid(model) for model in ('htdemucs-openvino', 'uvr-mdxnet-9482-rknn')):
+        # Status/pairing must not initiate or queue behind a GPU/runtime probe.
+        # The background startup checker or explicit model page establishes it;
+        # task submission still validates the selected model and backend itself.
+        if manager.environment is None or not manager.lock.acquire(blocking=False):
             return False
-        return manager.selected() is not None
+        try:
+            if not self.runtime_available and not any(manager.model_valid(model) for model in ('htdemucs-openvino', 'uvr-mdxnet-9482-rknn')):
+                return False
+            return manager.selected() is not None
+        finally:
+            manager.lock.release()
 
     @property
     def dependencies_available(self):
@@ -265,12 +273,12 @@ class AudioRoles:
         result.update(backend='cpu', model=FAST, modelVersion=manifest(FAST)['version'], modelDigest=file['sha256'])
         return result
 
-    def submit(self, identifier, path, reference, mode, backend=None, callback_origin=None):
+    def submit(self, identifier, reference, mode, backend=None, callback_origin=None):
         if str(uuid.UUID(identifier)) != identifier or mode not in ('PROBE', 'FAST', 'ANALYZE', 'SEPARATE'):
             raise ComputeError(400, 'Invalid audio task')
         if mode in ('ANALYZE', 'SEPARATE') and backend == 'cpu' and hasattr(self, 'models') and any(item.get('detected') for item in self.models.entries()):
             raise ComputeError(422, '检测到加速硬件，CPU 仅用于自动降级')
-        signature = hashlib.sha256(json.dumps([path, reference, callback_origin, mode, backend]).encode()).hexdigest()
+        signature = hashlib.sha256(json.dumps([reference, callback_origin, mode, backend]).encode()).hexdigest()
         with self.lock:
             if identifier in self.tasks:
                 if getattr(self.tasks[identifier], 'signature', signature) != signature:
@@ -340,11 +348,7 @@ class AudioRoles:
             try:
                 task.state = 'RUNNING'
                 self.save(task)
-                from ..infrastructure.transcoding.input import remote_input
-                context = self.transcoding.input(path, None) if path else remote_input(
-                    callback_origin, reference, self.transcoding.auth._token(), 'audio-input')
-                with context as value:
-                    source, network = value if path else (value, True)
+                with self.transcoding.input(reference, callback_origin, 'audio-input') as (source, network):
                     media = self.transcoding.probe.read(source, network)
                     audio = [s for s in media.streams if s.kind == 'audio']
                     if mode == 'PROBE':
@@ -491,6 +495,7 @@ class AudioRoles:
             raise ComputeError(409, 'Audio task is still active')
         for suffix in ('.m4a', '.part'):
             (self.root / f'{task.id}{suffix}').unlink(missing_ok=True)
+        self.transcoding.storage_dirty.set()
         return task.view()
 
     def save(self, task):
@@ -501,6 +506,7 @@ class AudioRoles:
         temporary = self.root / f'{task.id}.json.part'
         temporary.write_text(json.dumps({**task.view(), 'signature': getattr(task, 'signature', '')}), encoding='utf-8')
         temporary.replace(self.root / f'{task.id}.json')
+        self.transcoding.storage_dirty.set()
 
     def close(self):
         self.stopping = True

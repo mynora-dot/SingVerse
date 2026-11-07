@@ -26,6 +26,7 @@ import java.util.*;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @org.springframework.test.context.ActiveProfiles("sqlite")
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
 class AuthHttpTest {
     @TempDir static Path temp;
 
@@ -33,6 +34,11 @@ class AuthHttpTest {
     static void props(DynamicPropertyRegistry properties) {
         properties.add("singverse.auth.key-file", () -> temp.resolve("master.key").toString());
         properties.add("singverse.sqlite.path", () -> temp.resolve("auth.db").toString());
+        properties.add("singverse.metadata.cache-path", () -> temp.resolve("covers").toString());
+        properties.add("singverse.webdav.metadata-path", () -> temp.resolve("webdav").toString());
+        properties.add("singverse.transcoding.directory", () -> temp.resolve("versions").toString());
+        properties.add("singverse.transcoding.cache-directory", () -> temp.resolve("cache").toString());
+        properties.add("singverse.audio.directory", () -> temp.resolve("audio").toString());
     }
 
     @LocalServerPort int port;
@@ -389,6 +395,31 @@ class AuthHttpTest {
     }
 
     @Test
+    void newMasterKeyIsPrivateAndExistingInsecureKeyIsNotRewritten() throws Exception {
+        var privatePermissions = java.nio.file.attribute.PosixFilePermissions.fromString("rw-------");
+        var inheritedPermissions = java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-x---");
+        Path directory = Files.createDirectory(temp.resolve("key-permission-inheritance"),
+                java.nio.file.attribute.PosixFilePermissions.asFileAttribute(inheritedPermissions));
+        Path key = directory.resolve("master.key");
+        var environment = new MockEnvironment().withProperty("singverse.auth.key-file", key.toString());
+
+        var fresh = new AuthCrypto(store, mediaSources, environment);
+        assertThat(Files.getPosixFilePermissions(key)).isEqualTo(privatePermissions);
+        String contents = Files.readString(key);
+        assertThat(Base64.getDecoder().decode(contents)).hasSize(32);
+        String encrypted = fresh.encrypt("first-boot-permission-check");
+        assertThat(new AuthCrypto(store, mediaSources, environment).decrypt(encrypted))
+                .isEqualTo("first-boot-permission-check");
+
+        Files.setPosixFilePermissions(key, inheritedPermissions);
+        assertThatThrownBy(() -> new AuthCrypto(store, mediaSources, environment))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("permissions 0600");
+        assertThat(Files.getPosixFilePermissions(key)).isEqualTo(inheritedPermissions);
+        assertThat(Files.readString(key)).isEqualTo(contents);
+    }
+
+    @Test
     void recoveryCodeConsumptionIsAtomicAcrossConcurrentChallenges() throws Exception {
         jdbc.update(
                 "UPDATE auth_account SET mfa_secret=? WHERE id=1",
@@ -512,6 +543,7 @@ class AuthHttpTest {
                         com.mynora.singverse.media.artist.ArtistController.class,
                         com.mynora.singverse.media.playlist.PlaylistController.class,
                         com.mynora.singverse.media.playbackhistory.PlaybackHistoryController.class,
+                        com.mynora.singverse.media.playbackhistory.PlaybackActivityController.class,
                         com.mynora.singverse.media.missingfeedback.MissingFeedbackController.class,
                         com.mynora.singverse.mobile.MobileLibraryController.class,
                         com.mynora.singverse.tv.TvController.class,

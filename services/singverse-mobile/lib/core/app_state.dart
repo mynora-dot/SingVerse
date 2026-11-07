@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
+import 'artwork_cache.dart';
 import 'local_store.dart';
 import 'models.dart';
 
@@ -36,6 +37,8 @@ class AppState extends ChangeNotifier {
           );
     }
   }
+  final playback = ChangeNotifier();
+  late final Listenable performance = Listenable.merge([this, playback]);
   final NasApi api;
   final LocalStore store;
   final SharedPreferences preferences;
@@ -181,6 +184,7 @@ class AppState extends ChangeNotifier {
       final info = await api.inspect(next) as Json;
       _checkServer(info);
       if (origin != next) await command('stop');
+      _artworkCache.clear();
       await api.configure(next);
       origin = next;
       instanceId = info['instanceId'] as String;
@@ -232,9 +236,18 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<Uint8List> artwork(String path) async {
+  final _artworkCache = ArtworkCache();
+
+  Future<Uint8List> artwork(String path, {String? revision}) async {
     try {
-      return await api.bytes(path);
+      final identity = '$origin:$instanceId:$authenticated';
+      return await _artworkCache.load('$identity:$path:$revision', () async {
+        final bytes = await api.bytes(path);
+        if (identity != '$origin:$instanceId:$authenticated') {
+          throw ApiFailure(409, 'NAS 连接已切换');
+        }
+        return bytes;
+      });
     } on ApiFailure catch (e) {
       if (e.status == 401 && authenticated) {
         authenticated = false;
@@ -252,6 +265,7 @@ class AppState extends ChangeNotifier {
         await api.request('/api/v1/auth/logout', method: 'POST');
       }
     } finally {
+      _artworkCache.clear();
       await api.forget();
       authenticated = false;
       accountName = '';
@@ -306,11 +320,13 @@ class AppState extends ChangeNotifier {
       return;
     }
     favorites = nextFavorites;
+    _favoriteIds = nextFavorites.map((song) => song.id).toSet();
     history = nextHistory;
     notifyListeners();
   }
 
-  bool isFavorite(Song song) => favorites.any((s) => s.id == song.id);
+  bool isFavorite(Song song) => _favoriteIds.contains(song.id);
+  Set<String> _favoriteIds = {};
   Future<void> favorite(Song song) async {
     await store.favorite(instanceId, song, !isFavorite(song));
     await refreshPersonal();
@@ -339,6 +355,7 @@ class AppState extends ChangeNotifier {
     bool force = false,
     int start = 0,
     bool autoplay = true,
+    bool reuseAttempt = false,
   }) async {
     final ticket = ++_playGeneration;
     final detail = Song(
@@ -352,6 +369,7 @@ class AppState extends ChangeNotifier {
       'positionMs': start,
       'force': force,
       'autoplay': autoplay,
+      'reuseAttempt': reuseAttempt,
     });
     final snapshot = await player.invokeMapMethod<String, dynamic>('snapshot');
     if (snapshot != null) _onPlayback(snapshot);
@@ -365,8 +383,46 @@ class AppState extends ChangeNotifier {
     });
   }
 
+  String get _playbackStructure => [
+    current?.data,
+    playbackInstanceId,
+    playbackState,
+    playbackError,
+    isPlaying,
+    loop,
+    mode,
+    tracks,
+    authenticated,
+    workId,
+    singingPhase,
+    takeId,
+    singing['error'],
+    singing['input'],
+    countdown,
+    pitch,
+    speed,
+    volume,
+    channelMode,
+    audioRole,
+    videoAspect,
+    outputRoute,
+    rangeA,
+    rangeB,
+    backingMapped,
+    originalMapped,
+    stageRequests,
+  ].join('\u0000');
+
   void _onPlayback(dynamic event) {
     if (_disposed) return;
+    final previous = _playbackStructure;
+    final previousProgress = [
+      positionMs,
+      durationMs,
+      singing['level'],
+      singing['clipped'],
+      singing['recordedMs'],
+    ].toString();
     final value = Map<String, dynamic>.from(event as Map);
     if (value['openSinging'] == true) stageRequests++;
     final raw = jsonDecode(value['song'] as String) as Json;
@@ -422,7 +478,20 @@ class AppState extends ChangeNotifier {
       unawaited(
         store
             .played(playbackInstanceId, song, positionMs, newPlay: newPlay)
-            .then((_) => refreshPersonal())
+            .then((_) async {
+              if (_disposed || playbackInstanceId != instanceId) return;
+              if (newPlay) {
+                await refreshPersonal();
+              } else {
+                history = history
+                    .map(
+                      (item) => item.id == song.id
+                          ? Song({...item.data, 'positionMs': positionMs})
+                          : item,
+                    )
+                    .toList();
+              }
+            })
             .catchError((Object e) {
               if (!_disposed) {
                 playbackError = '本机历史保存失败';
@@ -432,13 +501,26 @@ class AppState extends ChangeNotifier {
       );
     }
     if (current == null) _lastPlayingKey = '';
-    notifyListeners();
+    if (previous != _playbackStructure) {
+      notifyListeners();
+    } else if (previousProgress !=
+        [
+          positionMs,
+          durationMs,
+          singing['level'],
+          singing['clipped'],
+          singing['recordedMs'],
+        ].toString()) {
+      playback.notifyListeners();
+    }
   }
 
   @override
   void dispose() {
     _disposed = true;
+    _artworkCache.clear();
     unawaited(_events?.cancel());
+    playback.dispose();
     super.dispose();
   }
 }

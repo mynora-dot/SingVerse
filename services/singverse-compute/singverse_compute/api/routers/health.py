@@ -10,9 +10,8 @@ async def health() -> Health:
     return Health()
 
 @router.get('/internal/v1/capabilities', response_model=Capabilities, summary='已实现并可使用的计算能力')
-async def capabilities(request: Request) -> Capabilities:
-    ready = request.app.state.internal_auth.available and request.app.state.media_tags.available
-    values = ['media-tags'] if ready else []
+def capabilities(request: Request) -> Capabilities:
+    values = []
     import shutil
     if request.app.state.internal_auth.available and shutil.which(request.app.state.settings.ffprobe) and shutil.which(request.app.state.settings.ffmpeg):
         values += ['media-remote-tags']
@@ -26,8 +25,8 @@ async def capabilities(request: Request) -> Capabilities:
 
 
 @router.get('/internal/v1/status', response_model=Capabilities, dependencies=[Depends(require_internal_auth)], summary='鉴权后的服务身份与能力', responses=problem_responses({401:'Unauthorized'}))
-async def status(request: Request) -> Capabilities:
-    return await capabilities(request)
+def status(request: Request) -> Capabilities:
+    return capabilities(request)
 
 
 from pydantic import BaseModel, ConfigDict, Field

@@ -45,15 +45,6 @@ internal val Success = Color(0xFF6FCF97)
 internal val Danger = Color(0xFFFF6961)
 internal val Hairline = Color(0xFF3A3A3C)
 
-internal object TvSpacing {
-    val xs = 4.dp
-    val sm = 8.dp
-    val md = 12.dp
-    val lg = 18.dp
-    val xl = 24.dp
-    val xxl = 32.dp
-}
-
 internal object TvShape {
     val control = RoundedCornerShape(12.dp)
     val card = RoundedCornerShape(18.dp)

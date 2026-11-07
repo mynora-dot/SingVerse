@@ -3,6 +3,8 @@ package com.mynora.singverse.mobile
 
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.ComponentName
+import android.content.Intent
 import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
 import android.media.*
@@ -17,6 +19,7 @@ import org.junit.runner.RunWith
 import java.io.*
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.*
 
 @RunWith(AndroidJUnit4::class)
@@ -110,6 +113,93 @@ class KaraokeInstrumentedTest {
             assertEquals("RIFF", String(engine.works.file(interrupted, "voice.wav").readBytes(), 0, 4))
         } finally { engine.close(); engine.works.close(); root.deleteRecursively() }
     }
+    @Test fun backingInitializationFailureClosesMicrophone() {
+        val root = File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "failed-file-test-${System.nanoTime()}").apply { mkdirs() }
+        val blocked = File(root, "blocked-cache").apply { writeText("fixture") }
+        val isolated = object : ContextWrapper(context(root)) { override fun getCacheDir() = blocked }
+        var closed = false
+        val engine = KaraokeEngine(isolated, { null }, {}, {}, { object : VoiceCapture {
+            override val isRecording = false
+            override val routeName = "test-only input"
+            override fun start() = fail("must not start before files are ready")
+            override fun read(samples: ShortArray) = 0
+            override fun timestamp(out: AudioTimestamp) = false
+            override fun stop() = Unit
+            override fun close() { closed = true }
+        } })
+        try {
+            assertThrows(IOException::class.java) { engine.start(JSONObject().put("id", "failure-fixture"), "isolated", JSONObject()) }
+            assertTrue(closed); assertEquals("FAILED", engine.phase)
+        } finally { engine.close(); engine.works.close(); root.deleteRecursively() }
+    }
+
+    @Test fun externalFinishTakeCannotStopRecordingButThePrivateReceiverCan() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val target = instrumentation.targetContext
+        assertTrue("使用 make mobile-audio-test 的独立 .e2e 应用运行", target.packageName.endsWith(".e2e"))
+        assertNull("测试不能替换已有的播放服务", PlaybackService.current)
+        fun shell(command: String) = android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command))
+            .bufferedReader().use { it.readText() }
+        assertEquals("外部调用必须使用 shell UID", "2000", shell("id -u").trim())
+        val root = File(target.cacheDir, "external-finish-test-${System.nanoTime()}").apply { mkdirs() }
+        val frames = AtomicLong()
+        val voice = object : VoiceCapture {
+            @Volatile var on = false
+            override val isRecording get() = on
+            override val routeName = "instrumentation-only controlled input"
+            override fun start() { on = true }
+            override fun read(samples: ShortArray): Int {
+                Thread.sleep(20)
+                if (!on) return 0
+                samples.fill(0); frames.addAndGet(samples.size.toLong()); return samples.size
+            }
+            override fun timestamp(out: AudioTimestamp) = false
+            override fun stop() { on = false }
+            override fun close() { on = false }
+        }
+        val engine = KaraokeEngine(context(root), { null }, {}, {}, { voice })
+        var activity: android.app.Activity? = null
+        try {
+            activity = instrumentation.startActivitySync(Intent(target, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            instrumentation.runOnMainSync { target.startService(Intent(target, PlaybackService::class.java)) }
+            waitFor("actual playback service started") { PlaybackService.current != null }
+            val service = PlaybackService.current!!
+            // Only androidTest substitutes the microphone/files; intents still traverse Android's real component boundary.
+            instrumentation.runOnMainSync {
+                service.karaoke.close(); service.karaoke.works.close()
+                PlaybackService::class.java.getDeclaredField("karaoke").apply { isAccessible = true }.set(service, engine)
+                engine.start(JSONObject().put("id", "external-finish-fixture"), "isolated", JSONObject())
+                engine.appendBacking(ByteArray(4800 * 4))
+            }
+            waitFor("controlled recording is advancing") { frames.get() >= 4800 }
+            val component = "${target.packageName}/${PlaybackService::class.java.name}"
+            val started = shell("am startservice --user current -n $component -a FINISH_TAKE")
+            assertTrue("旧action必须确实送到导出的运行中服务：$started", started.contains("Starting service:"))
+            assertFalse(started, started.contains("Error") || started.contains("Exception"))
+            instrumentation.waitForIdleSync()
+            val afterServiceIntent = frames.get()
+            waitFor("external service intent did not stop input") { frames.get() >= afterServiceIntent + 4800 }
+            assertEquals("RECORDING", engine.phase)
+
+            val receiver = ComponentName(target, FinishTakeReceiver::class.java)
+            @Suppress("DEPRECATION") val info = target.packageManager.getReceiverInfo(receiver, 0)
+            assertFalse("实际注册的结束接收器不对外导出", info.exported)
+            shell("am broadcast --user current -n ${target.packageName}/${FinishTakeReceiver::class.java.name} -a FINISH_TAKE")
+            instrumentation.waitForIdleSync()
+            val afterExternalBroadcast = frames.get()
+            waitFor("external broadcast did not stop input") { frames.get() >= afterExternalBroadcast + 4800 }
+            assertEquals("RECORDING", engine.phase)
+
+            target.sendBroadcast(Intent(target, FinishTakeReceiver::class.java))
+            waitFor("same-app receiver still finishes the actual recording") { engine.phase == "PREVIEW" }
+            assertFalse(voice.isRecording)
+        } finally {
+            instrumentation.runOnMainSync { target.stopService(Intent(target, PlaybackService::class.java)); activity?.finish() }
+            waitFor("isolated playback service stopped") { PlaybackService.current == null }
+            engine.close(); engine.works.close(); root.deleteRecursively()
+        }
+    }
+
     @Test fun microphoneStartFailureCannotBecomeARecordedOrSavedTake() {
         val root = File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "failed-audio-test-${System.nanoTime()}").apply { mkdirs() }
         var closed = false
@@ -127,6 +217,9 @@ class KaraokeInstrumentedTest {
             assertEquals("FAILED", engine.phase); assertTrue(closed)
             assertEquals("FAILED", engine.works.get(engine.takeId).getString("status"))
             assertThrows(IllegalArgumentException::class.java) { engine.save(engine.takeId, "must not save") }
+            closed = false
+            assertThrows(IOException::class.java) { engine.testMicrophone(true) }
+            assertTrue("failed microphone test releases its input", closed)
         } finally { engine.close(); engine.works.close(); root.deleteRecursively() }
     }
     @Test fun capturedAccompanimentIsAfterRealSonicPitchAndSpeedProcessing() {

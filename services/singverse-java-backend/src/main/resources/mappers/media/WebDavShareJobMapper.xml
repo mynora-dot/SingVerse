@@ -10,7 +10,6 @@
 <select id="latest" resultType="map">SELECT * FROM webdav_share_job WHERE source_id=#{sourceId} ORDER BY created_at DESC,id DESC LIMIT 1</select>
 <select id="pending" resultType="map">SELECT * FROM webdav_share_job WHERE state IN ('WAITING','QUEUED','RUNNING') ORDER BY created_at LIMIT 8</select>
 <select id="page" resultType="map">SELECT e.* FROM webdav_share_entry e WHERE e.job_id=#{id} AND e.song_id&gt;#{cursor} AND (#{baseId} IS NULL OR NOT EXISTS(SELECT 1 FROM webdav_share_entry old WHERE old.job_id=#{baseId} AND old.song_id=e.song_id AND old.relative_path=e.relative_path AND COALESCE(old.file_size,-1)=COALESCE(e.file_size,-1) AND COALESCE(old.result_json,'')=COALESCE(e.result_json,'') AND old.filename_json=e.filename_json)) ORDER BY e.song_id LIMIT 50</select>
-<select id="baseEntry" resultType="map">SELECT * FROM webdav_share_entry WHERE job_id=#{baseId} AND song_id=#{songId}</select>
 <select id="deleted" resultType="map">SELECT e.song_id,e.relative_path FROM webdav_share_entry e WHERE e.job_id=#{baseId} AND NOT EXISTS(SELECT 1 FROM webdav_share_entry n WHERE n.job_id=#{id} AND n.song_id=e.song_id) AND e.song_id&gt;#{cursor} ORDER BY e.song_id LIMIT 1000</select>
 <update id="progress">UPDATE webdav_share_job SET state=#{state},cursor_id=#{cursor},processed_count=#{processed},part_count=#{parts},error=#{error} WHERE id=#{id}</update>
 <select id="asset" resultType="map">SELECT hash FROM webdav_share_asset WHERE job_id=#{id} AND hash=#{hash}</select>

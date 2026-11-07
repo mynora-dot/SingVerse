@@ -23,10 +23,15 @@ class ComputeNodeHttpTest {
     @TempDir static Path temp;
     static com.sun.net.httpserver.HttpServer fixture;
     static volatile int status=200;
-    static volatile String payload="{\"service\":\"singverse-compute\",\"apiVersion\":\"1\",\"capabilities\":[\"media-tags\"]}";
+    static volatile String payload="{\"service\":\"singverse-compute\",\"apiVersion\":\"1\",\"capabilities\":[\"media-remote-tags\"]}";
     static volatile String requestedPath;
     static volatile boolean callbackAllowed=true;
     @DynamicPropertySource static void properties(DynamicPropertyRegistry p) throws Exception {
+        p.add("singverse.transcoding.cache-directory", () -> temp.resolve("cache").toString());
+        p.add("singverse.transcoding.directory", () -> temp.resolve("versions").toString());
+        p.add("singverse.audio.directory", () -> temp.resolve("audio").toString());
+        p.add("singverse.metadata.cache-path", () -> temp.resolve("covers").toString());
+        p.add("singverse.webdav.metadata-path", () -> temp.resolve("webdav").toString());
         Files.writeString(temp.resolve("compute.token"),TOKEN);
         fixture=com.sun.net.httpserver.HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
         fixture.createContext("/",e->{
@@ -60,7 +65,7 @@ class ComputeNodeHttpTest {
     @Autowired com.mynora.singverse.ai.AiMapper ai;
     @Autowired ComputeNodeMapper compute;
     HttpClient client;
-    @BeforeEach void reset(){callbackAllowed=true;status=200;payload="{\"service\":\"singverse-compute\",\"apiVersion\":\"1\",\"capabilities\":[\"media-tags\"]}";requestedPath=null;db.update("UPDATE compute_node_settings SET mode='AUTO',endpoint='',secret_encrypted=NULL,mappings_json='[]',revision=0 WHERE id=1");client=HttpClient.newBuilder().cookieHandler(new CookieManager(null,CookiePolicy.ACCEPT_ALL)).build();}
+    @BeforeEach void reset(){callbackAllowed=true;status=200;payload="{\"service\":\"singverse-compute\",\"apiVersion\":\"1\",\"capabilities\":[\"media-remote-tags\"]}";requestedPath=null;db.update("UPDATE compute_node_settings SET mode='AUTO',endpoint='',secret_encrypted=NULL,mappings_json='[]',revision=0 WHERE id=1");client=HttpClient.newBuilder().cookieHandler(new CookieManager(null,CookiePolicy.ACCEPT_ALL)).build();}
     HttpResponse<String> req(String path,String method,Object input,boolean csrf)throws Exception{
         var r=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+path));
         if(csrf)r.header("X-CSRF-Token",json.readTree(req("/api/v1/auth/csrf","GET",null,false).body()).path("token").asText());
@@ -74,7 +79,7 @@ class ComputeNodeHttpTest {
         assertThat(req("/api/v1/compute-node","GET",null,false).statusCode()).isEqualTo(401);login();
         var defaults=ok("/api/v1/compute-node","GET",null);assertThat(defaults.path("mode").asText()).isEqualTo("AUTO");assertThat(defaults.path("automaticEndpoint").asText()).isEqualTo(endpoint());assertThat(defaults.path("automaticHasToken").asBoolean()).isTrue();assertThat(defaults.toString()).doesNotContain(TOKEN);
         assertThat(req("/api/v1/compute-node","PUT",input("MANUAL",0),false).statusCode()).isEqualTo(403);
-        var result=ok("/api/v1/compute-node/test","POST",input("AUTO",0));assertThat(result.path("status").asText()).isEqualTo("AVAILABLE");assertThat(result.path("capabilities").get(0).asText()).isEqualTo("media-tags");assertThat(result.toString()).doesNotContain(TOKEN);
+        var result=ok("/api/v1/compute-node/test","POST",input("AUTO",0));assertThat(result.path("status").asText()).isEqualTo("AVAILABLE");assertThat(result.path("capabilities").get(0).asText()).isEqualTo("media-remote-tags");assertThat(result.toString()).doesNotContain(TOKEN);
         assertThat(ok("/api/v1/compute-node","GET",null).path("revision").asLong()).isZero();
     }
     @Test void failedReverseConnectionDoesNotClaimMediaReadyOrChangeSettings() throws Exception {

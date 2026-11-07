@@ -112,6 +112,62 @@ class AudioModelManagementTest(unittest.TestCase):
             with self.assertRaises(ComputeError): manager.check_resources('cpu')
         self.assertEqual(manager.operation['state'], 'IDLE')
 
+    def test_runtime_probe_uses_configured_audio_budget_and_keeps_its_limit(self):
+        manager = self.manager
+        observed_rss = 1536 * 1024**2
+        runtime = {'devices': {'rocm': {'name': 'AMD GPU', 'memoryBytes': 6 * 1024**3}},
+                   'versions': {'torch': '2.5.1+rocm6.2', 'torchaudio': '2.5.1+rocm6.2', 'demucs': '4.0.1'}}
+
+        def import_runtime(command, *, memory_limit=1024**3, **kwargs):
+            if observed_rss > memory_limit:
+                raise ComputeError(422, 'Media process exceeded memory budget')
+            return json.dumps(runtime).encode()
+
+        for budget in (1024**3, 3 * 1024**3):
+            with self.subTest(audio_budget=budget):
+                manager.audio.settings.audio_memory_bytes = budget
+                with patch('singverse_compute.infrastructure.transcoding.process.run', side_effect=import_runtime) as run:
+                    environment = manager.probe(refresh=True)
+                    self.assertEqual(run.call_args.kwargs['memory_limit'], budget)
+                    self.assertEqual(run.call_args.kwargs['timeout'], 30)
+                    self.assertEqual(run.call_args.kwargs['limit'], 65536)
+                    if budget < observed_rss:
+                        self.assertEqual(environment['error'], 'RUNTIME_MISSING_OR_INCOMPATIBLE')
+                        self.assertEqual(environment['devices'], {})
+                    else:
+                        self.assertEqual(environment['devices']['rocm']['name'], 'AMD GPU')
+                        self.assertEqual(environment['versions'], runtime['versions'])
+                        self.assertNotIn('error', environment)
+                    self.assertIs(manager.probe(), environment)
+                    self.assertEqual(run.call_count, 1, 'A cached environment does not re-import the GPU runtime')
+
+    def test_gpu_free_memory_query_uses_configured_audio_budget_and_keeps_its_limit(self):
+        manager = self.manager
+        observed_rss = 1536 * 1024**2
+        manager.environment['devices']['rocm'] = {'name': 'AMD GPU', 'memoryBytes': 6 * 1024**3}
+
+        def query_free_memory(command, *, memory_limit=1024**3, **kwargs):
+            if observed_rss > memory_limit:
+                raise ComputeError(422, 'Media process exceeded memory budget')
+            return str(4 * 1024**3).encode()
+
+        for budget in (1024**3, 3 * 1024**3):
+            with self.subTest(audio_budget=budget):
+                manager.audio.settings.audio_memory_bytes = budget
+                with patch('singverse_compute.application.audio_models.memory_available', return_value=6 * 1024**3), \
+                        patch('singverse_compute.infrastructure.transcoding.process.run', side_effect=query_free_memory) as run:
+                    if budget < observed_rss:
+                        with self.assertRaises(ComputeError) as caught:
+                            manager.check_resources('rocm')
+                        self.assertEqual(caught.exception.status, 422)
+                        self.assertEqual(caught.exception.message, 'GPU free memory cannot be determined')
+                    else:
+                        manager.check_resources('rocm')
+                    self.assertEqual(run.call_count, 1)
+                    self.assertEqual(run.call_args.kwargs['memory_limit'], budget)
+                    self.assertEqual(run.call_args.kwargs['timeout'], 30)
+                    self.assertEqual(run.call_args.kwargs['limit'], 4096)
+
     def test_unsupported_mps_operator_has_actionable_sanitized_diagnosis(self):
         from singverse_compute.application.audio_roles import AudioTask
         audio=self.manager.audio;audio.transcoding=SimpleNamespace(tasks={});audio.settings.audio_threads=2
@@ -134,6 +190,71 @@ class AudioModelManagementTest(unittest.TestCase):
             self.assertIsNone(manager.selected())
         with patch.object(manager, 'entries', return_value=[{'id':'cpu','state':'AVAILABLE','detected':False}]):
             self.assertEqual(manager.selected(), 'cpu')
+
+
+    def test_installed_rknn_manifest_miss_and_hit_do_not_wait_for_environment_probe(self):
+        from concurrent.futures import ThreadPoolExecutor
+        import hashlib
+        import threading
+        from singverse_compute.application.audio_catalog import RKNN
+        from singverse_compute.infrastructure.rknn_audio import local_manifest
+        manager = self.manager
+        folder = manager.model_path(RKNN); folder.mkdir()
+        model = folder / 'uvr.rknn'; model.write_bytes(b'controlled graph')
+        (folder / 'manifest.json').write_text(json.dumps({
+            'profile': 'uvr-mdxnet-9482-v1', 'target': 'rk3566',
+            'sourceSha256': '9d78f8566fa8198065214ab628be1de966a500c57786695aa4b13e2b27a7727d',
+            'toolkit': '2.3.2', 'size': model.stat().st_size,
+            'sha256': hashlib.sha256(model.read_bytes()).hexdigest()}))
+        locked, proceed = threading.Event(), threading.Event()
+        def probing():
+            with manager.lock:
+                locked.set(); proceed.wait(3)
+        holder = threading.Thread(target=probing); holder.start()
+        try:
+            self.assertTrue(locked.wait(1))
+            with patch('singverse_compute.infrastructure.rknn_audio.local_manifest', wraps=local_manifest) as hashing, \
+                    ThreadPoolExecutor(max_workers=1) as executor:
+                for _ in range(2):
+                    self.assertTrue(executor.submit(manager.model_valid, RKNN).result(timeout=1))
+                self.assertEqual(hashing.call_count, 1, 'The second request uses the verified manifest snapshot')
+        finally:
+            proceed.set(); holder.join(2)
+
+    def test_status_reuses_one_backend_snapshot_and_rknn_hash_until_files_change(self):
+        import hashlib
+        from singverse_compute.application.audio_catalog import RKNN
+        from singverse_compute.infrastructure.rknn_audio import local_manifest
+        manager = self.manager
+        folder = manager.model_path(RKNN); folder.mkdir()
+        model = folder / 'uvr.rknn'; model.write_bytes(b'controlled graph')
+        metadata = {'profile': 'uvr-mdxnet-9482-v1', 'target': 'rk3566',
+                    'sourceSha256': '9d78f8566fa8198065214ab628be1de966a500c57786695aa4b13e2b27a7727d',
+                    'toolkit': '2.3.2', 'size': model.stat().st_size, 'sha256': hashlib.sha256(model.read_bytes()).hexdigest()}
+        manifest = folder / 'manifest.json'; manifest.write_text(json.dumps(metadata))
+        manager.audio.dependencies_available = True
+        manager.environment['devices']['rknn'] = {'name': 'NPU'}
+        manager.environment['versions']['rknn-toolkit-lite2'] = '2.3.2'
+        manager.qualified['rknn'] = {'state': 'AVAILABLE', 'environment': 'env1', 'digest': local_manifest(folder)[1]}
+        with patch('singverse_compute.infrastructure.rknn_audio.local_manifest', wraps=local_manifest) as hashing, patch.object(manager, 'entries', wraps=manager.entries) as entries:
+            self.assertEqual(manager.status()['selected'], 'rknn')
+            self.assertEqual(entries.call_count, 1)
+            self.assertEqual(hashing.call_count, 1)
+            manager.status()
+            self.assertEqual(hashing.call_count, 1)
+            # Same-length edits still invalidate the cache, even when mtime is restored.
+            before = model.stat()
+            model.write_bytes(b'corrupted graph!')
+            import os
+            os.utime(model, ns=(before.st_atime_ns, before.st_mtime_ns))
+            self.assertFalse(manager.model_valid(RKNN))
+            self.assertEqual(hashing.call_count, 2)
+            model.write_bytes(b'controlled graph')
+            self.assertTrue(manager.model_valid(RKNN))
+            metadata['note'] = 'replacement manifest'
+            manifest.write_text(json.dumps(metadata))
+            self.assertNotEqual(manager.inference_digest(RKNN), manager.qualified['rknn']['digest'])
+            self.assertEqual(hashing.call_count, 4)
 
 
 class StartupQualificationTest(unittest.TestCase):

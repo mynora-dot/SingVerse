@@ -15,6 +15,38 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 
 class TranscodeClientTest {
+    @Test void responseBodyStallIsBoundedAfterHeadersAndFollowingRequestStillWorks() throws Exception {
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        var executor = java.util.concurrent.Executors.newCachedThreadPool();
+        server.setExecutor(executor);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        server.createContext("/internal/v1/transcoding/executions/test/artifacts/segment.ts", exchange -> {
+            exchange.sendResponseHeaders(200, 0);
+            try (var output = exchange.getResponseBody()) {
+                output.write(1); output.flush();
+                try { release.await(); } catch (InterruptedException error) { Thread.currentThread().interrupt(); }
+            }
+        });
+        server.createContext("/internal/v1/status", exchange -> {
+            byte[] response = "{}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            try (var output = exchange.getResponseBody()) { output.write(response); }
+        });
+        server.start();
+        try {
+            var settings = mock(ComputeNodeSettings.class);
+            var connection = new Connection(URI.create("http://127.0.0.1:" + server.getAddress().getPort()), "isolated-token", List.of());
+            var client = new TranscodeClient(settings, new ObjectMapper(), java.time.Duration.ofMillis(100));
+            org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(5), () -> {
+                try (var input = client.artifact(connection, "/internal/v1/transcoding/executions/test/artifacts/segment.ts", null).body()) {
+                    assertThat(input.read()).isEqualTo(1);
+                    assertThatThrownBy(input::read).isInstanceOf(java.net.http.HttpTimeoutException.class);
+                }
+            });
+            assertThat(client.call(connection, "/internal/v1/status", "GET", null).isObject()).isTrue();
+        } finally { release.countDown(); server.stop(0); executor.shutdownNow(); }
+    }
+
     @Test void cacheStorageAndLeaseConflictsKeepTheirHttpStatus() throws Exception {
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/internal/v1/transcoding/cache/clear", exchange -> {

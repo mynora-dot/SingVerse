@@ -98,7 +98,7 @@ class _WorksPageState extends State<WorksPage> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: widget.state,
+    listenable: widget.state.performance,
     builder: (context, _) {
       final state = widget.state;
       final works = state.visibleWorks.where((work) {
@@ -404,7 +404,7 @@ class _ReviewPageState extends State<ReviewPage> {
   @override
   void initState() {
     super.initState();
-    widget.state.addListener(changed);
+    widget.state.performance.addListener(changed);
     unawaited(load());
   }
 
@@ -412,7 +412,7 @@ class _ReviewPageState extends State<ReviewPage> {
   void dispose() {
     loadGeneration++;
     renderGeneration++;
-    widget.state.removeListener(changed);
+    widget.state.performance.removeListener(changed);
     super.dispose();
   }
 
@@ -859,7 +859,7 @@ class _ReviewPageState extends State<ReviewPage> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: widget.state,
+    listenable: widget.state.performance,
     builder: (context, _) {
       final state = widget.state, work = data;
       final saved = work?['status'] == 'SAVED';

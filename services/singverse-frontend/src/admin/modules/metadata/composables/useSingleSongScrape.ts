@@ -1,3 +1,4 @@
+import { requestId as newRequestId } from '../../../../shared/request-id'
 import { computed, ref } from 'vue'
 import { metadata } from '../api/metadata'
 import { singleReview } from '../api/single-review'
@@ -103,7 +104,7 @@ export function useSingleSongScrape() {
     const base = { fingerprint: review.value.fingerprint, version: review.value.version, candidateId: selected.value?.id ?? null,
       fields: [...changed.value], edits: { ...edits.value }, coverCandidateId: cover.value?.kind === 'candidate' ? cover.value.id : null, coverAssetId: cover.value?.kind === 'asset' ? cover.value.id : null }
     const signature = JSON.stringify(base)
-    if (!attempt || attempt.signature !== signature) attempt = { signature, input: { ...base, requestId: crypto.randomUUID() } }
+    if (!attempt || attempt.signature !== signature) attempt = { signature, input: { ...base, requestId: newRequestId() } }
     applying.value = true; error.value = ''
     try { const response = await execute(review.value.song.id, attempt.input); if (token === session) result.value = response }
     catch (failure) { if (token === session) error.value = failure instanceof Error ? failure.message : '应用失败，请重试' }

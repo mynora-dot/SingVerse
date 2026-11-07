@@ -7,9 +7,13 @@ import org.apache.ibatis.annotations.Param;
 
 @Mapper
 public interface AudioProcessingMapper {
-    List<String> songIds(@Param("cursor") String cursor, @Param("source") String source);
-    int insertBatch(@Param("id") String id, @Param("backend") String backend, @Param("now") long now);
-    int insertItem(@Param("row") Map<String,Object> row);
+    int insertBatch(@Param("id") String id, @Param("backend") String backend, @Param("now") long now, @Param("total") int total);
+    int insertItems(@Param("rows") List<Map<String,Object>> rows);
+    int lockPreparing(@Param("id") String id,@Param("now") long now);
+    int prepared(@Param("id") String id,@Param("amount") int amount,@Param("now") long now);
+    int ready(@Param("id") String id,@Param("now") long now);
+    int preparationFailed(@Param("id") String id,@Param("error") String error,@Param("now") long now);
+    int recoverPreparing(@Param("now") long now);
     Map<String,Object> batch(@Param("id") String id);
     List<Map<String,Object>> batches(@Param("limit") int limit,@Param("offset") long offset);
     long batchCount();

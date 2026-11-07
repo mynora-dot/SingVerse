@@ -84,8 +84,40 @@ it('操作失败的提示不会被后台轮询的成功刷新清除', async () =
     await form.get('input').setValue('123456')
     vi.mocked(authRequest).mockRejectedValueOnce(new Error('授权码已过期'))
     await form.trigger('submit'); await flushPromises()
+    const calls = vi.mocked(authRequest).mock.calls.length
     await vi.advanceTimersByTimeAsync(5000); await flushPromises()
+    expect(authRequest).toHaveBeenCalledTimes(calls + 1)
     expect(wrapper.text()).toContain('授权码已过期')
+  } finally { wrapper.unmount(); vi.useRealTimers() }
+})
+
+it('撤销确认等待期间锁定操作，离页后确认不再发送撤销', async () => {
+  vi.mocked(authRequest).mockResolvedValue({ devices: [{ id: 'tv1', name: '客厅电视', revoked: false }], pending: [] })
+  let confirm!: (approved: boolean) => void
+  vi.mocked(confirmDanger).mockImplementationOnce(() => new Promise(done => { confirm = done }))
+  const wrapper = mount(TvDevices)
+  try {
+    await flushPromises()
+    const revoke = wrapper.get('article.device-row button')
+    await revoke.trigger('click')
+    expect(revoke.attributes('disabled')).toBeDefined()
+    await revoke.trigger('click')
+    expect(confirmDanger).toHaveBeenCalledTimes(1)
+    wrapper.unmount(); confirm(true); await flushPromises()
+    expect(authRequest).not.toHaveBeenCalledWith('/api/v1/admin/tv-devices/tv1', 'DELETE')
+  } finally { wrapper.unmount() }
+})
+it('慢查询期间不会叠加轮询，卸载后不再调度', async () => {
+  vi.useFakeTimers()
+  let resolve!: (value: unknown) => void
+  vi.mocked(authRequest).mockImplementationOnce(() => new Promise(done => { resolve = done }))
+  const wrapper = mount(TvDevices)
+  try {
+    await vi.advanceTimersByTimeAsync(15000)
+    expect(authRequest).toHaveBeenCalledTimes(1)
+    wrapper.unmount(); resolve({ devices: [], pending }); await flushPromises()
+    await vi.advanceTimersByTimeAsync(15000)
+    expect(authRequest).toHaveBeenCalledTimes(1)
   } finally { wrapper.unmount(); vi.useRealTimers() }
 })
 

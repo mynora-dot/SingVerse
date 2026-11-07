@@ -9,8 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def contents():
-    files = {'docker-compose.yaml': (ROOT/'compose.compute.nvidia.yaml').read_bytes(),
-             '.dockerignore': (ROOT/'.dockerignore').read_bytes()}
+    files = {'docker-compose.yaml': (ROOT/'infra/docker/compose/compose.compute.nvidia.yaml').read_bytes(),
+             '.dockerignore': (ROOT/'infra/docker/build/.dockerignore').read_bytes()}
     compute = ROOT/'services/singverse-compute'
     for path in sorted((compute/'singverse_compute').rglob('*')):
         if path.is_file() and not path.is_symlink() and path.suffix in ('.py', '.json', '.txt') and '__pycache__' not in path.parts:
@@ -32,9 +32,9 @@ def contents():
    无需 media 目录、曲库挂载或业务地址配置；保留现有模型、缓存和认证命名卷。
 4. 执行：
 
-   docker compose -f docker-compose.yaml up -d --build
-   docker compose -f docker-compose.yaml ps -a
-   docker compose -f docker-compose.yaml logs --tail 80
+   docker compose --project-directory . -f docker-compose.yaml up -d --build
+   docker compose --project-directory . -f docker-compose.yaml ps -a
+   docker compose --project-directory . -f docker-compose.yaml logs --tail 80
 
 在业务管理页的性能节点连接设置中扫描局域网，选择节点并点击“连接此节点”，
 可自动配对、测试并保存，无需填写密钥。首次配对信任受限局域网，已绑定节点只允许
@@ -48,7 +48,7 @@ Java 重启后无固定回源配置时，先访问管理页以重新确认入口
 性能节点通过任务 UUID、Bearer、固定内部接口及 HTTP Range 读取媒体，不接受本地文件路径。
 下载／导入分离模型后重新执行 CUDA 试跑；视频 NVENC 与音频 CUDA 分别验收。
 
-停止：docker compose -f docker-compose.yaml down
+停止：docker compose --project-directory . -f docker-compose.yaml down
 不要加 -v；项目名 singverse-compute-node 与原独立节点一致，不能同时启动两份。
 
 本包不代表 A3000／3070 的真实歌曲、长曲与音质已验收；以现场复验为准。

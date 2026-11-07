@@ -84,6 +84,8 @@ public class AuthCrypto {
                     path,
                     PosixFilePermissions.asFileAttribute(
                             PosixFilePermissions.fromString("rw-------")));
+            // NAS ACL inheritance can override creation attributes; secure the empty file first.
+            Files.setPosixFilePermissions(path, PosixFilePermissions.fromString("rw-------"));
             Files.writeString(path, Base64.getEncoder().encodeToString(random(32)));
         }
         if (!Files.getPosixFilePermissions(path)

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { requestId as newRequestId } from '../../../../shared/request-id'
 import PageHeader from '../../../shared/ui/PageHeader.vue'
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -40,7 +41,7 @@ function tagCount(dimension: string) { return matchingTags.value.filter(t => !di
 const progress = computed(() => task.value?.total ? Math.round(task.value.completed * 100 / task.value.total) : 0)
 let active = true, timer: ReturnType<typeof setTimeout> | undefined, generation = 0
 const requestIds = new Map<string, string>()
-function requestId(key: string) { let value = requestIds.get(key); if (!value) { value = crypto.randomUUID(); requestIds.set(key, value) } return value }
+function requestId(key: string) { let value = requestIds.get(key); if (!value) { value = newRequestId(); requestIds.set(key, value) } return value }
 function dimensionLabels(dims: Dimension[]) { return dims.map(d => dimensionNames[d]).join('、') }
 function names(ids: string[] = []) { return ids.map(id => tags.value.find(t => t.id === id)?.name ?? id).join('、') || '未知 / 无建议' }
 function notifyFailure(e: unknown) { error.value = e instanceof Error ? e.message : '请求失败' }

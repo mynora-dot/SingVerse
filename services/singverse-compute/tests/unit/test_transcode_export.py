@@ -1,12 +1,14 @@
 """Temporary HLS transfer integrity and lease/release lifecycle without real FFmpeg."""
-from pathlib import Path
-import hashlib
-import json
 import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from callback_source import CallbackTestCase
+from singverse_compute.infrastructure.transcoding.input import remote_input
+
+import hashlib
 import tempfile
 import time
 from types import SimpleNamespace
-import unittest
 from unittest.mock import patch
 import uuid
 
@@ -14,11 +16,10 @@ from singverse_compute.application.transcoding import Execution, Transcoding
 from singverse_compute.core.config import Settings
 from singverse_compute.core.errors import ComputeError
 from singverse_compute.domain.transcoding import Media, Stream, Target
-from singverse_compute.infrastructure.filesystem import RootedMediaPaths
 from singverse_compute.infrastructure.security import InternalAuth
 
 
-class TranscodeExportTest(unittest.TestCase):
+class TranscodeExportTest(CallbackTestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
@@ -26,7 +27,7 @@ class TranscodeExportTest(unittest.TestCase):
         self.media.mkdir()
         self.source = self.media / 'song.mkv'
         self.source.write_bytes(b'original media')
-        self.config = Settings((self.media,), self.root / 'token', transcode_root=self.root / 'work',
+        self.config = Settings(token_file=self.root / 'token', transcode_root=self.root / 'work',
                                ffmpeg=sys.executable, ffprobe=sys.executable, minimum_free_bytes=0)
         self.calls = 0
         auth = InternalAuth(self.root / 'token')
@@ -45,8 +46,8 @@ class TranscodeExportTest(unittest.TestCase):
                 (directory / 'stream_0_000000.m4s').write_bytes(b'complete media data')
             return [{'sourceId': 'stream:0', 'kind': 'video', 'outputIndex': 0}]
 
-        self.ports = (RootedMediaPaths((self.media,)), auth, probe,
-                      SimpleNamespace(execute=encode), SimpleNamespace(select=lambda *a, **kw: 'software'), None)
+        self.ports = (auth, probe,
+                      SimpleNamespace(execute=encode), SimpleNamespace(select=lambda *a, **kw: 'software'), remote_input)
         self.service = Transcoding(self.config, *self.ports)
 
     def tearDown(self):
@@ -55,7 +56,7 @@ class TranscodeExportTest(unittest.TestCase):
 
     def create(self, target=None, identifier=None):
         identifier = identifier or str(uuid.uuid4())
-        self.service.create(identifier, str(self.source), None, 'same-song', target or Target(fmp4=True))
+        self.create_transcode(self.service, identifier, self.source, 'same-song', target or Target(fmp4=True))
         for thread in self.service.threads:
             thread.join(2)
         self.assertEqual(self.service.view(identifier)['state'], 'SUCCEEDED')
@@ -85,6 +86,25 @@ class TranscodeExportTest(unittest.TestCase):
         with self.assertRaises(ComputeError) as caught:
             self.service.remove(identifier)
         self.assertEqual(caught.exception.status, 409)
+
+    def test_ready_is_latched_without_rechecking_a_long_playlist_on_each_lease(self):
+        from singverse_compute.application.transcode_artifacts import ready_hls
+        identifier = self.create()
+        task = self.service.get(identifier); task.hls_ready = False
+        playlist = self.service.root / identifier / 'stream_0.m3u8'
+        playlist.write_text(playlist.read_text() + ''.join(f'stream_0_{index:06d}.m4s\n' for index in range(1, 10001)))
+        # Later segments are deliberately absent: admission checks only the first
+        # published segment; completed export retains full artifact verification.
+        with patch('singverse_compute.application.transcoding.ready_hls', wraps=ready_hls) as check:
+            self.assertTrue(self.service.view(identifier)['ready'])
+            for _ in range(20): self.assertTrue(self.service.renew(identifier)['ready'])
+            self.assertEqual(check.call_count, 1)
+            task.cancel.set()
+            self.assertFalse(self.service.view(identifier)['ready'])
+            task.cancel.clear()
+            task.released = True
+            self.assertFalse(self.service.view(identifier)['ready'])
+            self.assertEqual(check.call_count, 1)
 
     def test_missing_external_and_unterminated_playlists_cannot_export(self):
         identifier = self.create()
@@ -176,3 +196,99 @@ class TranscodeExportTest(unittest.TestCase):
         self.assertFalse(hasattr(self.service, 'query_cache'))
         self.assertFalse(hasattr(self.service, 'cache_config'))
         self.create()
+
+    def test_slow_export_keeps_other_tasks_responsive_and_protects_its_files(self):
+        import threading
+        from singverse_compute.application.transcode_artifacts import export_hls
+        identifier = self.create()
+        other = self.create()
+        entered, proceed, renewed = threading.Event(), threading.Event(), threading.Event()
+        errors = []
+        def slow_hash(directory):
+            entered.set()
+            if not proceed.wait(3): raise RuntimeError('Test export was not released')
+            return export_hls(directory)
+        def exporting():
+            try: self.service.export(identifier)
+            except BaseException as error: errors.append(error)
+        with patch('singverse_compute.application.transcoding.export_hls', side_effect=slow_hash):
+            worker = threading.Thread(target=exporting)
+            worker.start()
+            try:
+                self.assertTrue(entered.wait(1))
+                renewal = threading.Thread(target=lambda: (self.service.renew(other), renewed.set()))
+                renewal.start()
+                self.assertTrue(renewed.wait(1), 'Another playback lease must not wait for export hashing')
+                renewal.join(1)
+                task = self.service.get(identifier)
+                task.renewed = task.finished = time.time() - 601
+                self.service.collect()
+                self.assertTrue((self.service.root / identifier).is_dir())
+                for action in (self.service.remove, self.service.acknowledge):
+                    with self.assertRaises(ComputeError) as caught: action(identifier)
+                    self.assertEqual(caught.exception.status, 409)
+            finally:
+                proceed.set(); worker.join(3)
+        self.assertFalse(errors, errors)
+        self.assertEqual(self.service.get(identifier).exports, 0)
+
+    def test_export_failure_releases_protection_for_retry(self):
+        identifier = self.create()
+        with patch('singverse_compute.application.transcoding.export_hls', side_effect=OSError('fixture read failure')):
+            with self.assertRaises(ComputeError): self.service.export(identifier)
+        self.assertEqual(self.service.get(identifier).exports, 0)
+        self.assertTrue(self.service.export(identifier)['artifacts'])
+        self.assertTrue(self.service.acknowledge(identifier)['released'])
+
+    def test_acknowledged_offline_record_expires_after_seven_days_across_restart(self):
+        identifier = self.create(Target(purpose='OFFLINE'))
+        untransferred = self.create(Target(purpose='OFFLINE'))
+        self.service.acknowledge(identifier)
+        released_at = self.service.get(identifier).released_at
+        self.service.close()
+        self.service = Transcoding(self.config, *self.ports)
+        self.assertEqual(self.service.get(identifier).released_at, released_at)
+        with patch('singverse_compute.application.transcoding.time.time', return_value=released_at + 7 * 86400 - 1):
+            self.service.collect()
+            self.assertIn(identifier, self.service.tasks)
+        with patch('singverse_compute.application.transcoding.time.time', return_value=released_at + 7 * 86400 + 1):
+            self.service.collect()
+        self.assertNotIn(identifier, self.service.tasks)
+        self.assertIn(untransferred, self.service.tasks)
+        self.assertFalse((self.service.root / identifier).exists())
+        self.assertTrue((self.service.root / untransferred / 'output.mp4').is_file())
+
+    def test_unchanged_terminal_storage_does_not_rescan_history(self):
+        self.create()
+        first = self.service.usage()
+        with patch('singverse_compute.application.transcoding.os.scandir', side_effect=AssertionError('Historical cache rescanned')):
+            self.assertEqual(self.service.usage(), first)
+            self.service.collect()
+
+    def test_slow_storage_scan_does_not_block_playback_lease(self):
+        import threading
+        identifier = self.create()
+        entered, proceed, renewed = threading.Event(), threading.Event(), threading.Event()
+        def slow_scan():
+            entered.set(); proceed.wait(3)
+            return 0
+        with patch.object(self.service, 'usage', side_effect=slow_scan):
+            worker = threading.Thread(target=self.service.collect)
+            worker.start()
+            try:
+                self.assertTrue(entered.wait(1))
+                renewal = threading.Thread(target=lambda: (self.service.renew(identifier), renewed.set()))
+                renewal.start()
+                self.assertTrue(renewed.wait(1), 'Playback lease must not wait for disk accounting')
+                renewal.join(1)
+            finally:
+                proceed.set(); worker.join(3)
+
+    def test_release_persistence_failure_can_be_retried(self):
+        identifier = self.create(Target(purpose='OFFLINE'))
+        with patch.object(self.service, 'save', side_effect=OSError('fixture persistence failure')):
+            with self.assertRaises(OSError): self.service.acknowledge(identifier)
+        self.assertTrue(self.service.acknowledge(identifier)['released'])
+        restored = Transcoding(self.config, *self.ports)
+        try: self.assertTrue(restored.view(identifier)['released'])
+        finally: restored.close()

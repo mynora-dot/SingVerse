@@ -64,7 +64,7 @@ public class WebDavShareJobs {
             String encoded=asset.getValue().asText();if(!asset.getKey().equals(com.mynora.singverse.auth.crypto.AuthCrypto.hash(encoded)))throw failure(400,"Asset hash mismatch");
             metadata.installSharedCover(encoded);
         }
-        tx.executeWithoutResult(t->{mapper.lock(Map.of());mapper.receiptInsert(key);});var receipt=mapper.receipt(key).getFirst();int cursor=(int)number(receipt,"processed"),imported=(int)number(receipt,"imported"),skipped=(int)number(receipt,"skipped");
+        tx.executeWithoutResult(t->{mapper.lock(Map.of());mapper.receiptInsert(key);if(number(mapper.receipt(key).getFirst(),"processed")<entries.size())sharing.prepareImport(sourceId,binding);});var receipt=mapper.receipt(key).getFirst();int cursor=(int)number(receipt,"processed"),imported=(int)number(receipt,"imported"),skipped=(int)number(receipt,"skipped");
         while(cursor<entries.size()){
             var pack=json.createObjectNode();pack.put("format","singverse-media-index");pack.put("version",2);var batch=pack.putArray("entries");long used=0;
             for(int i=cursor;i<entries.size()&&batch.size()<100;i++){
@@ -75,7 +75,7 @@ public class WebDavShareJobs {
             var result=tx.execute(t->{
                 mapper.receiptLock(key);if(number(mapper.receipt(key).getFirst(),"processed")!=start)return null;
                 if(!binding(sources.get(sourceId)).equals(binding))throw failure(409,"Source root changed during import");
-                try{var values=sharing.importBundle(sourceId,small);mapper.receiptUpdate(args("sourceId",sourceId,"binding",binding,"hash",hash,"processed",next,"imported",priorImported+values.get("imported"),"skipped",priorSkipped+values.get("skipped")));return values;}catch(java.io.IOException error){throw failure(400,"Invalid package");}
+                try{var values=sharing.importPreparedBundle(sourceId,small,binding);mapper.receiptUpdate(args("sourceId",sourceId,"binding",binding,"hash",hash,"processed",next,"imported",priorImported+values.get("imported"),"skipped",priorSkipped+values.get("skipped")));return values;}catch(java.io.IOException error){throw failure(400,"Invalid package");}
             });
             if(result==null){var current=mapper.receipt(key).getFirst();cursor=(int)number(current,"processed");imported=(int)number(current,"imported");skipped=(int)number(current,"skipped");continue;}
             imported+=result.get("imported");skipped+=result.get("skipped");cursor=next;
