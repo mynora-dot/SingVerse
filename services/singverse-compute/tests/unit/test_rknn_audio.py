@@ -1,15 +1,61 @@
 import hashlib
 import json
+import logging
 import tempfile
+import sys
+from types import SimpleNamespace
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-from singverse_compute.infrastructure.rknn_audio import local_manifest, separate
+from singverse_compute.infrastructure.rknn_audio import Forward, local_manifest, separate
 from singverse_compute.application.audio_catalog import model_for_backend, RKNN
 
 
 class RknnAudioTest(unittest.TestCase):
+    def test_sdk_logging_changes_do_not_break_later_dsp_imports(self):
+        for result in (0, -1):
+            runtime = Mock()
+            runtime.load_rknn.return_value = 0
+            def initialize():
+                logging._nameToLevel.pop('WARNING', None)
+                return result
+            runtime.init_runtime.side_effect = initialize
+            with patch.dict(logging._nameToLevel), \
+                    patch.dict(sys.modules, {'rknnlite.api': SimpleNamespace(RKNNLite=Mock(return_value=runtime))}), \
+                    patch('singverse_compute.infrastructure.rknn_audio.local_manifest', return_value=({'target': 'rk3566'}, 'digest')), \
+                    patch('singverse_compute.infrastructure.hardware.device_tree', return_value='rockchip,rk3566'):
+                if result == 0:
+                    Forward('model').close()
+                else:
+                    with self.assertRaisesRegex(RuntimeError, 'initialization failed'):
+                        Forward('model')
+                logger = logging.getLogger('rknn-dsp-regression')
+                logger.setLevel('WARNING')
+                self.assertEqual(logger.level, logging.WARNING)
+            runtime.release.assert_called_once()
+
+    def test_runtime_checks_board_using_container_compatible_identity(self):
+        runtime = Mock()
+        runtime.load_rknn.return_value = runtime.init_runtime.return_value = 0
+        factory = Mock(return_value=runtime)
+        with patch.dict(sys.modules, {'rknnlite.api': SimpleNamespace(RKNNLite=factory)}), \
+                patch('singverse_compute.infrastructure.rknn_audio.local_manifest', return_value=({'target': 'rk3566'}, 'digest')), \
+                patch('singverse_compute.infrastructure.hardware.device_tree', return_value='rockchip,rk3566\0'):
+            forward = Forward('model')
+            forward.close()
+        runtime.init_runtime.assert_called_once()
+        runtime.release.assert_called_once()
+
+    def test_runtime_rejects_model_for_another_board_before_loading(self):
+        factory = Mock()
+        with patch.dict(sys.modules, {'rknnlite.api': SimpleNamespace(RKNNLite=factory)}), \
+                patch('singverse_compute.infrastructure.rknn_audio.local_manifest', return_value=({'target': 'rk3588'}, 'digest')), \
+                patch('singverse_compute.infrastructure.hardware.device_tree', return_value='rockchip,rk3566\0'):
+            with self.assertRaisesRegex(RuntimeError, 'target differs'):
+                Forward('model')
+        factory.assert_not_called()
+
     def test_local_model_requires_target_profile_size_and_digest(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

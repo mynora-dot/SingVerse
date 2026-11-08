@@ -60,8 +60,8 @@ except Exception: pass
 try:
  from rknnlite.api import RKNNLite
  out['versions']['rknn-toolkit-lite2']=version('rknn-toolkit-lite2')
- from pathlib import Path
- compatible=Path('/proc/device-tree/compatible').read_bytes().decode(errors='replace').lower()
+ from singverse_compute.infrastructure.hardware import device_tree
+ compatible=device_tree('compatible').lower()
  if platform.system() == 'Linux' and platform.machine() == 'aarch64' and any(x in compatible for x in ('rk3588','rk3566','rk3568')):
   out['devices']['rknn']={'name':'Rockchip NPU', 'runtime':out['versions']['rknn-toolkit-lite2']}
 except Exception: pass
@@ -152,10 +152,10 @@ class AudioModels:
                         hardware.append({'vendor': (card/'vendor').read_text().strip(), 'device': (card/'device').read_text().strip()})
                     except OSError:
                         pass
-                try:
-                    hardware.append({'board': Path('/proc/device-tree/model').read_text().strip('\x00')})
-                except OSError:
-                    pass
+                from ..infrastructure.hardware import device_tree
+                board = device_tree('model')
+                if board:
+                    hardware.append({'board': board, 'compatible': device_tree('compatible')})
                 try:
                     driver = Path('/proc/driver/nvidia/version').read_text().strip()
                 except OSError:

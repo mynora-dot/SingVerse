@@ -182,7 +182,7 @@ def main():
         files = [rk / 'docker-compose.yaml']
         if experimental:
             files.append(rk / 'compose.rknn.yaml')
-        config = render(files, NAS_BIND_IP='127.0.0.1', RKNPU_GID='103')
+        config = render(files, NAS_BIND_IP='127.0.0.1', RKNPU_GID='103', RKNPU_CARD_GID='44')
         validate_builds(config)
         service = config['services']['singverse-compute']
         private_port(service, 8090, 18090)

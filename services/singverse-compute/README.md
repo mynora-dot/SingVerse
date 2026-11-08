@@ -219,7 +219,7 @@ CI 可手动启用 `mps_model_smoke`，执行器须实际暴露 Apple GPU；普�
 - RK3566：Linux ARM64 CPU路径需实际依赖安装成功和内存充足；RKNN实验适配支持本地转换模型，须安装专用运行时并完成板端试跑；见下方部署说明。不能凭板卡名称宣布NPU可用。
 - Apple M2：macOS原生CPU/MPS，Docker内不开放MPS。关闭PyTorch隐式CPU算子回退；Demucs自身的频谱变换明确在CPU执行，网络使用MPS，页面及任务标记 `mps+cpu-stft`。固定运行时的超长一维卷积通过保留重叠边界的 GPU 分块处理；其他算子不支持时仍明确失败，可选择通过试跑的CPU。
 
-CPU/CUDA/ROCm/MPS的执行选择及试跑门禁已接入；M2 原先的“Output channels > 65536”限制已通过数学等价的卷积分块解决，本机 2GiB 预算下资格试跑及 8／60 秒分离通过。Intel GPU和RKNN转换/音质验收尚未完成，不把硬件识别或待适配状态算作加速实现。各型号的长曲、音质、内存和速度仍须逐台验证。运行环境、内核/驱动、设备或模型版本改变后旧试跑凭据失效；可用后端才进入自动选择，默认顺序CUDA → ROCm → OpenVINO → RKNN → MPS → CPU。每个任务保存实际后端与模型版本；检查RAM、磁盘及CUDA/ROCm可用显存（至少2GiB），仍可能因模型/歌曲峰值资源不足失败。
+CPU/CUDA/ROCm/MPS的执行选择及试跑门禁已接入；M2 原先的“Output channels > 65536”限制已通过数学等价的卷积分块解决，本机 2GiB 预算下资格试跑及 8／60 秒分离通过。Intel GPU验收、RKNN正式接入与主观音质验收尚未完成，不把硬件识别或待适配状态算作加速实现。各型号的长曲、音质、内存和速度仍须逐台验证。运行环境、内核/驱动、设备或模型版本改变后旧试跑凭据失效；可用后端才进入自动选择，默认顺序CUDA → ROCm → OpenVINO → RKNN → MPS → CPU。每个任务保存实际后端与模型版本；检查RAM、磁盘及CUDA/ROCm可用显存（至少2GiB），仍可能因模型/歌曲峰值资源不足失败。
 
 实际模型冒烟测试（只验证执行链路，合成音不是音质基准）：
 
@@ -243,7 +243,7 @@ SINGVERSE_TEST_AUDIO_MODEL_REPO="$PWD/.tools/demucs-htdemucs" \
 | `-rocm-native` | linux/amd64、Python 3.12 | Torch 2.11.0+rocm10.0.0、gfx1103 设备库 | Radeon 780M 单机实测见 [ROCm 记录](../../docs/verification-rocm-2026-11-08.md)；不泛化到其它 GPU |
 | `-openvino` | linux/amd64 | OpenVINO 2025.4.0、CPU Torch 2.5.1、固定 Intel OpenCL 用户态库 | N100／8400T 分别待真机验证 |
 
-CPU 镜像由 Docker 清单选择 amd64／arm64，GPU 后端需要显式选择。RKNN 采用实验性原生部署，尚无已验收转换模型，因此不发布 `-rknn` 镜像；RK3566 可验证 ARM64 CPU，资源不足时阻止任务。M2 使用 macOS 原生环境及下述 MPS 分块适配器。视频转码后端与 AI 推理后端独立检测，QSV 可用不等于 OpenVINO 可用。
+CPU 镜像由 Docker 清单选择 amd64／arm64，GPU 后端需要显式选择。RKNN 已有单台 RK3566 的转换及隔离 NPU 全曲记录，尚未发布通用转换权重或经过默认隔离验收的 `-rknn` 镜像；RK3566 可验证 ARM64 CPU，资源不足时阻止任务。M2 使用 macOS 原生环境及下述 MPS 分块适配器。视频转码后端与 AI 推理后端独立检测，QSV 可用不等于 OpenVINO 可用。
 
 ### gfx1103 原生 ROCm 与固件
 
@@ -387,22 +387,22 @@ python scripts/convert-rknn-audio.py \
   --target rk3566 --output /absolute/path/to/uvr-mdxnet-9482-rknn
 ```
 
-脚本先校验固定 ONNX 摘要，再将动态 batch 固定为 1，按 `[1,4,2048,256]` 转换；不量化。不支持的算子或构建失败会明确失败，不生成可部署 manifest。输出目录须不存在；成功输出 `uvr.rknn` 和 `manifest.json`。目前没有实际 RKNN 转换成功或板端执行结果，不能把脚本存在视作 NPU 已可用。
+脚本先校验固定 ONNX 摘要，再将动态 batch 固定为 1，按 `[1,4,2048,256]` 转换；不量化。不支持的算子或构建失败会明确失败，不生成可部署 manifest。输出目录须不存在；成功输出 `uvr.rknn` 和 `manifest.json`。RK3566 的转换、容器限制及板端结果见 [实测记录](VERIFICATION.rk3566-2026-11-08.md)；其他设备仍须自行转换并验证，不能把脚本存在视作 NPU 已可用。
 
 板端原生部署步骤：
 
-1. fnOS 所用内核必须提供与 RKNN Lite2 2.3.2 匹配的 RKNPU 驱动及 `librknnrt.so`；服务用户应有 NPU 设备权限。没有驱动时仅复制 Python 包不能启用 NPU。未远程检测你的设备，因此具体 fnOS 镜像的驱动条件尚未确认。
+1. fnOS 所用内核必须提供与 RKNN Lite2 2.3.2 匹配的 RKNPU 驱动及 `librknnrt.so`；服务用户应有 NPU 设备权限。没有驱动时仅复制 Python 包不能启用 NPU。具体设备及固件仍须逐台验证；已检查的 RK3566/fnOS 环境见 [实测记录](VERIFICATION.rk3566-2026-11-08.md)。
 2. 执行 `make compute-setup compute-audio-rknn-setup`，将上述转换目录放到 `COMPUTE_AUDIO_MODEL_REPO` 同级的 `uvr-mdxnet-9482-rknn/`，避免运行时替换。旧 `htdemucs-rknn/` 不再读取，旧试跑资格自动失效。
-3. 沿用现有 compute 认证与缓存配置启动节点，媒体使用任务回源；默认音频预算 4GiB，内存不足会阻止任务。可选 Dockerfile `rknn` 构建阶段及设备映射配置见部署包说明，不使用特权容器。
+3. Docker 中将主机 `/sys/firmware/devicetree/base` 只读挂到 `/run/singverse-hardware/device-tree`（模板已包含），供板型与模型目标校验；Docker 默认可能屏蔽容器内 `/sys/firmware`，不要将目标仍设在那里。识别同时读取 `model` 和 `compatible`，支持 OEC 等产品名。沿用现有 compute 认证与缓存配置启动节点，媒体使用任务回源；默认音频预算 4GiB，内存不足会阻止任务。可选 Dockerfile `rknn` 构建阶段及设备映射配置见部署包说明，不使用特权容器。
 4. 刷新管理端节点，RKNN 模型应显示 `UNVERIFIED`，执行试跑后才能选择。试跑校验约 8 秒输出的时间轴与非静音，不能替代真实歌曲音质验收。网络下载和网页导入 RKNN 模型仍不支持。
 5. 首次真机测试关闭 CPU 自动降级，确认结果实际后端为 `rknn`、模型为 `uvr-mdxnet-9482-rknn`；对比 ONNX 基准的人声残留、乐器损失、声道及起止对齐，记录全曲耗时、内存峰值与模型摘要。随后测试取消、重启、实时播放抢占和 CPU 降级；降级仍需安装 Demucs 基准模型并完成 CPU 试跑。
 
-本机真实 ONNX 合成音推理只能验证接口与处理流程；RKNN 编译兼容性、RK3566/fnOS 驱动、NPU 性能及自备歌曲音质仍需真机验证。
+本次 RK3566 已完成转换、隔离 NPU 全曲及首块 CPU 数值对照，见 [实测记录](VERIFICATION.rk3566-2026-11-08.md)；正式服务接入、主观音质和其他 BSP/设备仍须分别验证。
 
 
 ### RK3566 Compose 源码部署包
 
-模板位于 `infra/deploy/rk3566/`，用于打包后的根目录。默认构建 `uvr` ARM64 阶段，手动执行 ONNX CPU 基准；可选 `compose.rknn.yaml` 构建 `rknn` 阶段并映射单个 NPU 设备，仍须另行转换模型与真机验证。部署包仅包含计算节点，不包含 Java/管理端，不是离线镜像。
+模板位于 `infra/deploy/rk3566/`，用于打包后的根目录。默认构建 `uvr` ARM64 阶段，手动执行 ONNX CPU 基准；可选 `compose.rknn.yaml` 构建 `rknn` 阶段并映射指定 NPU 的主设备和 render 节点，仍须另行转换模型与真机验证。部署包仅包含计算节点，不包含 Java/管理端，不是离线镜像。
 
 先通过 `scripts/setup-uvr-model.py` 准备固定模型，再用项目 Python 打包：
 

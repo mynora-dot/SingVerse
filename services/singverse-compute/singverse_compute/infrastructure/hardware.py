@@ -4,6 +4,15 @@ import platform
 from functools import lru_cache
 
 
+def device_tree(name):
+    for root in ('/proc/device-tree', '/sys/firmware/devicetree/base', '/run/singverse-hardware/device-tree'):
+        try:
+            return (Path(root) / name).read_text().strip('\x00')
+        except OSError:
+            pass
+    return ''
+
+
 @lru_cache(maxsize=1)
 def accelerators():
     vendors = set()
@@ -34,12 +43,9 @@ def accelerators():
         video.add('videotoolbox')
         if platform.machine().lower() in ('arm64', 'aarch64'):
             audio.add('mps')
-    try:
-        board = Path('/proc/device-tree/model').read_text().lower()
-        if 'rockchip' in board or 'rk3566' in board or 'rk3588' in board:
-            audio.add('rknn'); video.add('rkmpp')
-    except OSError:
-        pass
+    board = (device_tree('model') + '\n' + device_tree('compatible')).lower()
+    if 'rockchip' in board or any(chip in board for chip in ('rk3566', 'rk3568', 'rk3588')):
+        audio.add('rknn'); video.add('rkmpp')
     return {'audio': sorted(audio), 'video': sorted(video)}
 
 

@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import logging
 from pathlib import Path
 
 
@@ -26,20 +27,27 @@ def local_manifest(directory):
 class Forward:
     """Expose the small compiled-model interface used by the common DSP pipeline."""
     def __init__(self, directory):
-        from rknnlite.api import RKNNLite
-        metadata, _ = local_manifest(directory)
-        compatible = Path('/proc/device-tree/compatible').read_bytes().decode(errors='replace').lower()
-        if metadata['target'] not in compatible:
-            raise RuntimeError('RKNN model target differs from this board')
-        self.runtime = RKNNLite()
+        levels = logging.getLevelNamesMapping()
         try:
-            if self.runtime.load_rknn(str(Path(directory) / 'uvr.rknn')) != 0:
-                raise RuntimeError('RKNN model load failed')
-            if self.runtime.init_runtime() != 0:
-                raise RuntimeError('RKNN NPU initialization failed')
-        except Exception:
-            self.runtime.release()
-            raise
+            from rknnlite.api import RKNNLite
+            metadata, _ = local_manifest(directory)
+            from .hardware import device_tree
+            compatible = device_tree('compatible').lower()
+            if metadata['target'] not in compatible:
+                raise RuntimeError('RKNN model target differs from this board')
+            self.runtime = RKNNLite()
+            try:
+                if self.runtime.load_rknn(str(Path(directory) / 'uvr.rknn')) != 0:
+                    raise RuntimeError('RKNN model load failed')
+                if self.runtime.init_runtime() != 0:
+                    raise RuntimeError('RKNN NPU initialization failed')
+            except Exception:
+                self.runtime.release()
+                raise
+        finally:
+            # Lite2 replaces standard level names; a later Torch import then fails.
+            for name, number in levels.items():
+                logging.addLevelName(number, name)
 
     def __call__(self, inputs):
         import numpy as np

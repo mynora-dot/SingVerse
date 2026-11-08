@@ -1,6 +1,6 @@
 # SingVerse RK3566 / fnOS 计算节点部署包
 
-这是独立计算节点，连接已有 SingVerse Java/管理端；不含 Java、管理端、数据库或离线 Docker 镜像。当前默认可测试 UVR ONNX CPU 分离；**没有转换好的 RKNN 模型，NPU 不能直接启用**。CPU 基准为手动命令，不接入管理端批量伴奏任务；管理端的 RKNN 生成仍需转换模型和板端试跑。
+这是独立计算节点，连接已有 SingVerse Java/管理端；不含 Java、管理端、数据库或离线 Docker 镜像。当前默认可测试 UVR ONNX CPU 分离；**部署包不含转换好的 RKNN 权重，NPU 需离线转换并完成板端试跑**。CPU 基准为手动命令，不接入管理端批量伴奏任务；管理端的 RKNN 生成仍需转换模型和板端试跑。
 
 ## 启动
 
@@ -45,13 +45,13 @@ docker compose exec -T singverse-compute cat /run/singverse-compute/token
 python scripts/convert-rknn-audio.py models/uvr-mdxnet-9482/UVR_MDXNET_9482.onnx --target rk3566 --output models/uvr-mdxnet-9482-rknn
 ```
 
-没有实测转换成功记录；构建失败须保留错误，不能用 ONNX 改后缀替代。成功后将输出目录完整复制回 NAS。确认 fnOS 内核 RKNPU 驱动和匹配的 `librknnrt.so` 就绪，找到真正 NPU 设备及其组 ID（示例 renderD129 不一定正确），在 `.env` 设置 `RKNPU_DEVICE` 与 `RKNPU_GID`，再执行：
+本次 RK3566 已成功编译固定 UVR 模型；转换摘要及运行边界见 [实测记录](../../../services/singverse-compute/VERIFICATION.rk3566-2026-11-08.md)。构建失败须保留错误，不能用 ONNX 改后缀替代。成功后将输出目录完整复制回 NAS。确认 fnOS 内核 RKNPU 驱动和匹配的 `librknnrt.so` 就绪，找到真正 NPU 设备及其组 ID（主机节点不一定是 renderD129；模板会将所选真实 NPU 映射为容器内 renderD129，满足 Lite2 的容器检查），还需确认 NPU 主设备（本次为 `card0`），仅映射 render 节点时本机运行库不能打开驱动。在 `.env` 设置 `RKNPU_DEVICE` / `RKNPU_GID` 及 `RKNPU_CARD_DEVICE` / `RKNPU_CARD_GID`，再执行：
 
 ```sh
 docker compose -f docker-compose.yaml -f compose.rknn.yaml up -d --build
 ```
 
-该配置不映射 MPP/RGA，不宣称启用视频硬件加速。缺少设备、库或转换模型时先使用默认 CPU 基准。管理端刷新 RKNN 模型，试跑通过后再生成伴奏；首次验收关闭 CPU 自动降级，确认实际后端为 rknn。
+该配置将设备树只读挂在 `/run/singverse-hardware/device-tree`，供 `compatible` 板型和模型目标检查；另将真实 `compatible` 文件只读挂到 `/proc/device-tree/compatible`，供 Lite2 自身的容器检查。fnOS 上该路径可能解析到被遮蔽或受 AppArmor 限制的 `/sys/firmware`，仅挂载文件仍可能失败；需以实际读取和 NPU 试跑结果为准，不能把模型编译成功当作可执行。该配置不映射 MPP/RGA，不宣称启用视频硬件加速。缺少设备、库或转换模型时先使用默认 CPU 基准。管理端刷新 RKNN 模型，试跑通过后再生成伴奏；首次验收关闭 CPU 自动降级，确认实际后端为 rknn。
 
 ## 停止与数据
 
