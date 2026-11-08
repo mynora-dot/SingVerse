@@ -80,6 +80,11 @@ class Encoder:
                         command += ['-profile:v', target.profile]
                     if target.level:
                         command += ['-level:v', '1b' if target.level == 9 else f'{target.level // 10}.{target.level % 10}', '-refs', '1']
+                        if backend == 'nvenc':
+                            # NVENC's default reference B-frames conflict with the
+                            # single-reference cap in strict browser AVC decoders.
+                            # Keep ordinary B-frames without using them as references.
+                            command += ['-b_ref_mode', 'disabled']
                     if target.profile == 'baseline':
                         command += ['-bf', '0']
                         if backend == 'software':

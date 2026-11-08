@@ -269,6 +269,23 @@ class SongCacheServiceTest {
         verifyNoInteractions(compute);
     }
 
+    @Test void newEncodingTemplateDoesNotReuseLegacyAvcCacheOrRemoveItsActiveLease() throws Exception {
+        var target = json.readTree("{\"codec\":\"h264\",\"level\":41,\"profile\":\"high\"}");
+        var client = json.readTree("{\"fmp4\":true}");
+        // Canonical v1 key from before the NVENC reference B-frame compatibility fix.
+        String legacyKey = com.mynora.singverse.auth.crypto.AuthCrypto.hash(
+                "{\"client\":{\"fmp4\":true},\"explicitCodec\":true,\"fingerprint\":\"f\",\"force\":true,\"songId\":\"removed-song\",\"target\":{\"codec\":\"h264\",\"level\":41,\"profile\":\"high\"},\"version\":1}");
+        String player = id();
+        String cacheId = service.capture(row(player), legacyKey, connection, execution()).path("cacheId").asText();
+        String currentKey = service.key("removed-song", "f", target, client, true, true);
+        assertThat(service.acquire(currentKey, id())).isNull();
+        assertThat(service.renew(player).path("cacheId").asText()).isEqualTo(cacheId);
+        var response = new MockHttpServletResponse();
+        assertThat(service.serve(player, "stream_v0_000000.ts", null, false, response)).isTrue();
+        assertThat(response.getContentAsByteArray()).isEqualTo(files.get("stream_v0_000000.ts"));
+        assertThat(service.contains(cacheId)).isTrue();
+    }
+
     @Test void manualBudgetNeverBlocksPlaybackAndLegacyTtlNoLongerExpiresByCreationTime() throws Exception {
         String session = id();
         var stored = service.capture(row(session), "kept", connection, execution());

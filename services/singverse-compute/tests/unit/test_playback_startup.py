@@ -24,6 +24,38 @@ from singverse_compute.infrastructure.transcoding.probe import MediaProbe
 
 
 class PlaybackStartupTest(CallbackTestCase):
+    def test_nvenc_avc_reference_cap_does_not_enable_reference_b_frames(self):
+        from singverse_compute.infrastructure.transcoding.pipelines import VideoPipeline
+        media = Media('mkv', 5, 1000, (Stream('stream:0', 0, 'video', 'hevc', width=160, height=90, fps=25),))
+        backend = SimpleNamespace(features=lambda: {}, prefix=lambda name: [], upload=lambda name: '')
+        encoder = Encoder('ffmpeg', SimpleNamespace(read=lambda *args: media), backend)
+        encoder.pipelines.choose = Mock(return_value=VideoPipeline('fixture'))
+        cases = [('nvenc', 'TRANSCODE', 'h264', 41, True),
+                 ('software', 'TRANSCODE', 'h264', 41, False),
+                 ('nvenc', 'REMUX', 'h264', 41, False),
+                 ('nvenc', 'TRANSCODE', 'h264', 0, False),
+                 ('nvenc', 'TRANSCODE', 'hevc', 0, False)]
+        for purpose in ('REALTIME', 'OFFLINE'):
+            for name, mode, codec, level, constrained in cases:
+                with self.subTest(purpose=purpose, backend=name, mode=mode, codec=codec, level=level), tempfile.TemporaryDirectory() as folder:
+                    directory = Path(folder)
+                    def execute(command, **kwargs):
+                        if purpose == 'OFFLINE':
+                            (directory / 'output.partial.mp4').write_bytes(b'complete fixture')
+                        return b''
+                    with patch('singverse_compute.infrastructure.transcoding.encoder.run', side_effect=execute) as run:
+                        encoder.execute('fixture', False, media,
+                                        Target(mode=mode, purpose=purpose, codec=codec, profile='high' if codec == 'h264' else '', level=level),
+                                        directory, __import__('threading').Event(), lambda *args: None, name)
+                        command = run.call_args.args[0]
+                    if constrained:
+                        self.assertEqual(command[command.index('-refs') + 1], '1')
+                        self.assertIn('-b_ref_mode', command, 'NVENC reference B-frames conflict with the single-reference AVC cap')
+                        self.assertEqual(command[command.index('-b_ref_mode') + 1], 'disabled')
+                        self.assertNotIn('-bf', command, 'Ordinary B-frames remain available')
+                    else:
+                        self.assertNotIn('-b_ref_mode', command)
+
     def test_absent_optional_rknn_weights_do_not_wait_for_the_model_probe_lock(self):
         import threading
         with tempfile.TemporaryDirectory() as folder:

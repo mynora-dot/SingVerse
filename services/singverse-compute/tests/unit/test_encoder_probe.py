@@ -8,6 +8,22 @@ from singverse_compute.infrastructure.transcoding.backends import Backends
 
 
 class EncoderProbeTest(unittest.TestCase):
+    @patch('singverse_compute.infrastructure.transcoding.backends.platform.system', return_value='Linux')
+    def test_slow_nvenc_initialization_does_not_reject_working_hardware(self, _system):
+        def slow_driver(command, *, timeout=15, **kwargs):
+            if '-encoders' in command:
+                return b'h264_nvenc libx264'
+            if timeout < 4:
+                raise ComputeError(422, 'Media execution cancelled or exceeded budget')
+            return b''
+        for manual in (True, False):
+            with self.subTest(manual=manual), patch('singverse_compute.infrastructure.transcoding.backends.run', side_effect=slow_driver):
+                backend = Backends('ffmpeg', preferred='nvenc')
+                if manual:
+                    self.assertTrue(backend.test('nvenc')['passed'])
+                else:
+                    self.assertEqual(backend.select('h264'), 'nvenc')
+
     def encoder(self, command, **kwargs):
         if '-encoders' in command:
             return b'h264_nvenc hevc_nvenc av1_nvenc'

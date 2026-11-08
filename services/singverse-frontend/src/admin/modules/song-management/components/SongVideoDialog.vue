@@ -179,20 +179,22 @@ async function start(force = false, startAt = position.value, resumePlayback = p
       applyVolume(); updatePosition(); if (resumePlayback) void resume()
     }, { once: true })
     applyVolume()
-    if (value.mode === 'HLS' && !element.canPlayType('application/vnd.apple.mpegurl')) {
+    activeMedia = { element, turn, compatible: force || encoding.value === 'compatible', resumePlayback }
+    if (value.mode === 'HLS') {
       const { default: Hls } = await import('hls.js')
       if (turn !== generation) return
-      if (!Hls.isSupported()) throw new Error('当前浏览器无法播放 HLS，请生成兼容版本')
-      hls = new Hls()
-      hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (turn !== generation || !data.fatal) return
-        if (data.type === 'mediaError') decodeFailed('兼容播放解码失败，请生成兼容版本或检查媒体文件', turn)
-        else mediaFailed(data.type === 'networkError' ? '兼容播放网络中断，请检查连接后重新加载' : '兼容播放中断，请重新加载')
-      })
-      activeMedia = { element, turn, compatible: force || encoding.value === 'compatible', resumePlayback }
-      hls.loadSource(value.url); hls.attachMedia(element)
+      // Some browsers advertise native HLS but cannot parse a growing EVENT stream.
+      if (Hls.isSupported()) {
+        hls = new Hls()
+        hls.on(Hls.Events.ERROR, (_event, data) => {
+          if (turn !== generation || !data.fatal) return
+          if (data.type === 'mediaError') decodeFailed('兼容播放解码失败，请生成兼容版本或检查媒体文件', turn)
+          else mediaFailed(data.type === 'networkError' ? '兼容播放网络中断，请检查连接后重新加载' : '兼容播放中断，请重新加载')
+        })
+        hls.loadSource(value.url); hls.attachMedia(element)
+      } else if (element.canPlayType('application/vnd.apple.mpegurl')) element.src = value.url
+      else throw new Error('当前浏览器无法播放 HLS，请生成兼容版本')
     } else {
-      activeMedia = { element, turn, compatible: force || encoding.value === 'compatible', resumePlayback }
       element.src = value.url
     }
     if (turn !== generation) return

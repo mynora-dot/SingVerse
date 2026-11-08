@@ -232,7 +232,8 @@ public class SongCacheService {
     private boolean valid(Map<String, Object> row) { return validArtifacts(row) != null; }
     /** Stable content and output intent; task references and node origins never enter this key. */
     public String key(String songId, String fingerprint, JsonNode requestTarget, JsonNode client, boolean force, boolean explicitCodec) {
-        var input = json.createObjectNode().put("version", 1).put("songId", songId).put("fingerprint", fingerprint)
+        // v2 excludes AVC produced with NVENC's incompatible single-reference/B-ref combination.
+        var input = json.createObjectNode().put("version", 2).put("songId", songId).put("fingerprint", fingerprint)
                 .put("force", force).put("explicitCodec", explicitCodec);
         input.set("target", requestTarget); input.set("client", client);
         return com.mynora.singverse.auth.crypto.AuthCrypto.hash(canonical(input).toString());

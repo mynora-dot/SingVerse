@@ -51,17 +51,16 @@ async function preview(id: string) {
       if (turn !== generation) return
       void element.play().catch(() => { if (turn === generation) notice.value = '点击播放器的播放按钮开始试听' })
     }
-    if (element.canPlayType('application/vnd.apple.mpegurl')) {
-      element.addEventListener('loadedmetadata', play, { once: true }); element.src = value.url
-    } else {
-      const { default: Hls } = await import('hls.js')
-      if (turn !== generation) return
-      if (!Hls.isSupported()) throw new Error('当前浏览器不支持音轨试听，请使用支持 HLS 的浏览器')
+    const { default: Hls } = await import('hls.js')
+    if (turn !== generation) return
+    if (Hls.isSupported()) {
       hls = new Hls()
       hls.on(Hls.Events.MANIFEST_PARSED, play)
       hls.on(Hls.Events.ERROR, (_event, data) => { if (turn === generation && data.fatal) failed('音轨播放中断，请重新试听') })
       hls.loadSource(value.url); hls.attachMedia(element)
-    }
+    } else if (element.canPlayType('application/vnd.apple.mpegurl')) {
+      element.addEventListener('loadedmetadata', play, { once: true }); element.src = value.url
+    } else throw new Error('当前浏览器不支持音轨试听，请使用支持 HLS 的浏览器')
     if (value.id) heartbeat = setInterval(() => {
       if (resource?.id) void playback.status(resource.id).catch(() => {})
     }, 10000)

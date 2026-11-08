@@ -5,10 +5,10 @@ import AudioTrackPreview from '../src/admin/modules/song-management/components/A
 import { playback } from '../src/admin/modules/transcoding/playback'
 import { adminActivity } from '../src/admin/modules/transcoding/activity'
 import { mockMediaElements } from './media-element-mocks'
-const adapter = vi.hoisted(() => ({ load: vi.fn(), attach: vi.fn(), destroy: vi.fn(), on: vi.fn() }))
+const adapter = vi.hoisted(() => ({ supported: vi.fn(), load: vi.fn(), attach: vi.fn(), destroy: vi.fn(), on: vi.fn() }))
 vi.mock('hls.js', () => ({ default: class {
   static Events = { MANIFEST_PARSED: 'manifestParsed', ERROR: 'error' }
-  static isSupported() { return true }
+  static isSupported = adapter.supported
   loadSource = adapter.load
   attachMedia = adapter.attach
   destroy = adapter.destroy
@@ -19,6 +19,7 @@ const streams = [{ id: 'stream:1' }, { id: 'stream:2' }]
 let wrapper: ReturnType<typeof mount> | undefined
 beforeEach(() => {
   vi.useFakeTimers(); vi.clearAllMocks(); mockMediaElements()
+  adapter.supported.mockReturnValue(false)
   vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('probably')
   vi.mocked(playback.start).mockResolvedValue({ id: 'session1', mode: 'HLS', status: 'READY', offset: 0, url: '/first.m3u8' })
   vi.mocked(playback.cancel).mockResolvedValue(undefined)
@@ -26,6 +27,21 @@ beforeEach(() => {
   vi.spyOn(adminActivity, 'event').mockResolvedValue(undefined)
 })
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; vi.restoreAllMocks(); vi.useRealTimers() })
+it('同时支持原生 HLS 和 MSE 时通过 hls.js 试听，并在停止时释放播放器', async () => {
+  adapter.supported.mockReturnValue(true)
+  wrapper = mount(AudioTrackPreview, { props: { songId: 'song', streams } })
+  await wrapper.findAll('button')[0]!.trigger('click')
+  for (let i = 0; i < 5; i++) await flushPromises()
+  expect(adapter.load).toHaveBeenCalledExactlyOnceWith('/first.m3u8')
+  expect(adapter.attach).toHaveBeenCalledExactlyOnceWith(wrapper.get('audio').element)
+  expect(wrapper.get('audio').attributes('src')).toBeUndefined()
+  const play = adapter.on.mock.calls.find(([event]) => event === 'manifestParsed')![1] as () => void
+  play(); await flushPromises()
+  expect(HTMLMediaElement.prototype.play).toHaveBeenCalled()
+  await wrapper.findAll('button').find(button => button.text() === '停止试听')!.trigger('click')
+  expect(adapter.destroy).toHaveBeenCalledOnce()
+  expect(playback.cancel).toHaveBeenCalledWith('session1')
+})
 it('未标记也能指定音轨试听，切换时保留时间且释放旧会话', async () => {
   wrapper = mount(AudioTrackPreview, { props: { songId: 'song', streams } })
   await wrapper.findAll('button')[0]!.trigger('click'); await flushPromises()
@@ -49,6 +65,7 @@ it.each([
   { native: false, offset: 40, mediaTime: 60.21576 },
 ])('切轨命中 HLS 缓存时保留原曲位置（native=$native，offset=$offset）', async ({ native, offset, mediaTime }) => {
   vi.mocked(HTMLMediaElement.prototype.canPlayType).mockReturnValue(native ? 'probably' : '')
+  adapter.supported.mockReturnValue(!native)
   wrapper = mount(AudioTrackPreview, { props: { songId: 'song', streams } })
   await wrapper.findAll('button')[0]!.trigger('click')
   for (let i = 0; i < 5; i++) await flushPromises()

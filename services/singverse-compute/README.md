@@ -123,6 +123,12 @@ Java 可在实时执行成功后读取 `GET /internal/v1/transcoding/executions/
 
 完整硬件图通过 `infrastructure/transcoding/pipelines.py` 的固定模板选择，执行前用实际素材试跑。任务返回 `pipeline` 各阶段和观测 RSS；能力页的硬解/零拷贝/GPU 色调映射只来源于已通过的素材试跑。`COMPUTE_PROCESS_MEMORY_BYTES` 默认 1 GiB，以观测 RSS 检查并终止超限子进程；Linux 容器额外默认 2 GiB 内存/2 CPU 硬限制，可按 NAS 资源调整。
 
+NVENC H.264 使用显式 level 的单参考帧约束时，同时设置 `-b_ref_mode disabled`，保留普通 B 帧并避免严格浏览器解码器拒绝默认 B 帧参考组合。该修复需要配套更新 Java，以新的兼容播放缓存键避开旧产物；不清空歌曲、认证、模型或缓存卷。浏览器播放与原时间轴跳转需单独验收，详见[转码说明](../../docs/transcoding.md)。
+
+NVENC 编码资格试跑允许最多 10 秒，兼顾受限 CPU 容器的驱动初始化；其它后端保持 3 秒预算。手动测试与自动选择使用同一预算，真实失败仍拒绝硬件资格，不以延长超时或编码器存在代替成功执行。
+
+本次 A3000 / Chrome 的参数对照、冷缓存与缓存连续播放、部署和其它设备验收提示词见 [2026-11-08 播放验证](VERIFICATION.playback-2026-11-08.md)。
+
 播放冷启动只试跑当前请求的输出编码，复用该编码的试跑结果；管理员能力查询仍返回完整编码清单。内部 `/negotiate` 可携带 `fingerprint`，同一 `reference + callbackOrigin + fingerprint` 的探测快照仅供随后执行复用一次，60 秒失效、最多 128 条；实际编码继续通过当前授权回源读取，不持久化媒体探测缓存。`target.profile` 仅接受空值／`baseline`／`main`／`high`，`target.level` 使用 ffprobe 的 H.264 整数单位（31 表示 3.1、9 表示 1b），只适用于 H.264。Java 按设备明确报告的 profile/level 限制输出尺寸、帧率和码率，Baseline 禁止 B 帧和 CABAC；未报告时保持原编码默认值。
 
 实时 `TRANSCODE` 的 HLS 分段及强制关键帧周期为 2 秒，`AUDIO_TRANSCODE` 目标分段为 2 秒但保留原视频 GOP，`REMUX` 与离线模板保持原设置。HLS 为 EVENT、保留本执行从 `offset` 起的所有分片。只有主列表引用的每条视频／音频列表、各自首片及 fMP4 初始化文件均已发布才返回 `ready=true`；就绪结果在执行内记忆，续租不重复遍历全曲，失败／取消／释放后立即为 false。完整文件校验仍在导出时执行。Java 在后台复制整曲缓存，播放 READY 和续租不等待复制完成。

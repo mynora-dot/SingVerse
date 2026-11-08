@@ -4,9 +4,19 @@ import { expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { mockMediaElements } from './media-element-mocks'
 import { playback } from '../src/admin/modules/transcoding/playback'
 import { adminActivity } from '../src/admin/modules/transcoding/activity'
+const hlsAdapter = vi.hoisted(() => ({ supported: vi.fn(), load: vi.fn(), attach: vi.fn(), destroy: vi.fn(), on: vi.fn() }))
+vi.mock('hls.js', () => ({ default: class {
+  static Events = { ERROR: 'error' }
+  static isSupported = hlsAdapter.supported
+  loadSource = hlsAdapter.load
+  attachMedia = hlsAdapter.attach
+  destroy = hlsAdapter.destroy
+  on = hlsAdapter.on
+} }))
 vi.mock('../src/admin/modules/transcoding/playback')
 beforeEach(() => {
   vi.resetAllMocks()
+  hlsAdapter.supported.mockReturnValue(true)
   mockMediaElements()
   vi.spyOn(adminActivity, 'create').mockResolvedValue({ attemptId: 'admin-attempt', writeToken: 'test-write-token', eventSeq: -1, leaseSeconds: 120, startedAt: Date.now(), serverTime: Date.now() })
   vi.spyOn(adminActivity, 'event').mockResolvedValue(undefined)
@@ -90,6 +100,27 @@ it('转换失败展示真实错误，生成兼容版本只提交当前歌曲', a
 
 const videoSong = { id: 'roles-song', sourceName: '来源', relativePath: 'song.mkv', result: { title: '歌曲', artists: [] } } as unknown as MediaSong
 const confirmed = { state: 'CONFIRMED', originalId: 'stream:1', backingId: 'stream:2', jobs: [], streams: [{ id: 'stream:1' }, { id: 'stream:2' }] }
+
+it.each([true, false])('浏览器报告原生 HLS 时优先使用可用的 MSE，并保留原生回退（MSE=%s）', async mse => {
+  vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('probably')
+  hlsAdapter.supported.mockReturnValue(mse)
+  vi.mocked(playback.start).mockResolvedValue({ id: 'hls-session', mode: 'HLS', status: 'READY', url: '/compatible.m3u8', offset: 0 })
+  const wrapper = mount(SongVideoDialog, { props: { song: videoSong }, global: { stubs: { teleport: true } } })
+  try {
+    for (let i = 0; i < 5; i++) await flushPromises()
+    if (mse) {
+      expect(hlsAdapter.load).toHaveBeenCalledExactlyOnceWith('/compatible.m3u8')
+      expect(hlsAdapter.attach).toHaveBeenCalledExactlyOnceWith(wrapper.get('video').element)
+      expect(wrapper.get('video').attributes('src')).toBeUndefined()
+    } else {
+      expect(hlsAdapter.load).not.toHaveBeenCalled()
+      expect(wrapper.get('video').attributes('src')).toBe('/compatible.m3u8')
+    }
+    await wrapper.setProps({ song: null })
+    expect(playback.cancel).toHaveBeenCalledWith('hls-session')
+    expect(hlsAdapter.destroy).toHaveBeenCalledTimes(mse ? 1 : 0)
+  } finally { wrapper.unmount() }
+})
 
 function mediaError(element: HTMLMediaElement, code: number) {
   Object.defineProperty(element, 'error', { configurable: true, value: { code } })

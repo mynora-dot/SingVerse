@@ -9,6 +9,8 @@ ENCODERS = {'software': 'libx264', 'qsv': 'h264_qsv', 'nvenc': 'h264_nvenc',
 
 # Use a conventional video size: some NVENC devices reject 128x128.
 PROBE_SOURCE = 'color=s=1280x720:r=25:d=0.2'
+# Driver initialization can exceed three seconds in CPU-limited NVIDIA containers.
+PROBE_TIMEOUT_SECONDS = {'nvenc': 10}
 
 VIDEO_ENCODERS = {
     'h264': ENCODERS,
@@ -49,7 +51,7 @@ class Backends:
             try:
                 run([self.executable, '-v','error','-nostdin', *self.prefix(name), '-f','lavfi',
                      '-i',PROBE_SOURCE, '-vf','format=nv12'+self.upload(name),
-                     '-threads:v','2','-c:v',ENCODERS[name],'-frames:v','3','-f','null','-'],timeout=3, memory_limit=self.memory_limit)
+                     '-threads:v','2','-c:v',ENCODERS[name],'-frames:v','3','-f','null','-'],timeout=PROBE_TIMEOUT_SECONDS.get(name, 3), memory_limit=self.memory_limit)
                 return {'passed':True, 'backend':name, 'hardware':name!='software',
                         'elapsedMs':round((time.monotonic()-started)*1000)}
             except ComputeError:
@@ -100,7 +102,7 @@ class Backends:
                 run([self.executable, '-v','error','-nostdin', *self.prefix(name), '-f','lavfi',
                      '-i',PROBE_SOURCE, '-vf','format=nv12'+self.upload(name),
                      '-threads:v','2','-c:v',implementation, *extra, '-frames:v','3','-f','null','-'],
-                    timeout=3, memory_limit=self.memory_limit)
+                    timeout=PROBE_TIMEOUT_SECONDS.get(name, 3), memory_limit=self.memory_limit)
                 passed = True
             except ComputeError:
                 pass
