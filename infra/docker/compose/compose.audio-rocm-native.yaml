@@ -1,0 +1,10 @@
+# Add after compose.audio-rocm.yaml for the pinned Linux x86_64 gfx1103 runtime.
+services:
+  singverse-compute:
+    image: '${COMPUTE_IMAGE:-singverse-compute:local-rocm-native}'
+    build:
+      target: rocm-native
+    environment:
+      HOME: /tmp
+      USER: singverse
+      LOGNAME: singverse

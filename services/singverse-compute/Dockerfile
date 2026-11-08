@@ -74,6 +74,16 @@ RUN --mount=type=cache,target=/root/.cache/pip python -m pip install -r requirem
 ENV SINGVERSE_COMPUTE_VARIANT=openvino
 USER 10001:10001
 
+# gfx1103 requires native device libraries absent from the legacy ROCm 6.2 wheels.
+# Keep this explicit profile separate from CPU/CUDA/legacy ROCm dependencies.
+FROM base AS rocm-native
+USER root
+ARG TARGETARCH
+RUN test "$TARGETARCH" = amd64
+RUN --mount=type=cache,target=/root/.cache/pip python -m pip install --no-build-isolation -r requirements-audio-rocm-native.lock && python -m pip check
+ENV SINGVERSE_COMPUTE_VARIANT=rocm-native HOME=/tmp USER=singverse LOGNAME=singverse
+USER 10001:10001
+
 # UVR baseline keeps the same pinned CPU DSP dependencies.
 FROM cpu AS uvr
 USER root

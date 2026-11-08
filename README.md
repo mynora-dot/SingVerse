@@ -34,7 +34,7 @@ docs/                     架构、开发、验证与research调研
 
 `services/`是本仓库统一工程目录，各模块使用`singverse-模块名`命名并独立构建。亲友点歌页面与NAS管理页面同属`singverse-frontend`；Java工程、Maven制品及Spring应用名统一为`singverse-java-backend`。目录迁移明细见[仓库布局](docs/repository-layout.md)。
 
-统一前端以Vite多页面方式构建：`party/index.html`加载亲友点歌 Vue 应用，`admin/index.html`加载Vue/Element Plus管理页面。管理端提供概览、系统状态、真实健康检查及失败重试。整个`services/singverse-frontend/dist`可交给Java或未来Go托管；浏览器通过同源HTTP访问主服务，不依赖Java内部类型。当前Java将产物打入JAR，生产不需要Node进程；Docker交付由Nginx前端容器与Java后端容器组成。详见[前端说明](services/singverse-frontend/README.md)与[托管契约](contracts/frontend-hosting.md)。
+统一前端以Vite多页面方式构建：`party/index.html`加载亲友点歌 Vue 应用，`admin/index.html`加载Vue/Element Plus管理页面。管理端提供概览、系统状态、真实健康检查及失败重试。整个`services/singverse-frontend/dist`可交给Java或未来Go托管；浏览器通过同源HTTP访问主服务，不依赖Java内部类型。当前Java将产物打入JAR，生产不需要Node进程；默认 Docker 交付由 Nginx 前端、Java 后端和基础 compute 三个容器组成。详见[前端说明](services/singverse-frontend/README.md)与[托管契约](contracts/frontend-hosting.md)。
 
 亲友H5使用本地构建的 Vue/TypeScript 与 CSS，入口为`/party/`；管理端直接托管在`/admin/`，Nginx对外映射到`/`；无CDN、微信JS-SDK、小程序AppID或微信网页登录。
 
@@ -44,7 +44,11 @@ docs/                     架构、开发、验证与research调研
 
 首次启动账号密码为 `admin/admin`。登录后到「系统管理 → 系统参数」修改密码、绑定认证器或管理恢复码；默认密码只提示修改。公网访问前请配置HTTPS并修改默认密码。恢复命令、备份及接口见[账号与MFA说明](docs/authentication.md)。
 
-## Docker快速测试
+## Docker 部署
+
+从零安装请看 **[Docker 部署指南](infra/docker/README.md)**；硬件加速、AMD gfx1103 原生 ROCm、CUDA/OpenVINO、模型安装与完整歌曲验收见 **[GPU 与 AI 部署](infra/docker/GPU.md)**。指南同时覆盖 WebDAV、本地曲库只读挂载、独立计算节点、离线业务包以及备份和升级。
+
+部署后的验收清单、可执行备份/恢复及版本更新步骤见 **[验收与运维指南](infra/docker/OPERATIONS.md)**，该指南也随部署包交付。
 
 ```sh
 make docker-up
@@ -53,7 +57,7 @@ make docker-check
 make docker-down
 ```
 
-构建启动只需Docker与Compose；检查脚本另需Python3。管理页访问 http://localhost:18080/ ，点歌欢迎页访问 http://localhost:18080/party/ 。默认仅本机可访问，后端不发布端口，SQLite使用独立命名卷。端口、局域网访问和日志见[Docker说明](docs/docker.md)。
+构建启动只需 Docker、Buildx 和 Compose 插件 2.24.4+；检查脚本另需 Python 3。管理页访问 http://localhost:18080/ ，亲友入口为 http://localhost:18080/party/ 。默认仅本机可访问，后端不发布端口，SQLite 使用独立命名卷。默认三个容器为 Nginx、Java 和基础 compute；AI 运行库与模型需要按上述指南另选配置，不随默认镜像安装。
 
 ## 环境与命令
 
@@ -92,7 +96,7 @@ java -jar target/singverse-java-backend-0.1.0-SNAPSHOT.jar
 
 TV 已提供设备授权与聚会邀请二维码，亲友扫码进入同一 NAS 的 H5 点歌、队列及授权遥控。Android/iOS 微信真机的导航、安全提示、网络权限和前后台恢复仍需单独验收，普通浏览器检查不替代微信结果。
 
-两个入口的页面、脚本与样式随JAR交付；独立admin CI检查前端，Java CI验证H5与管理端HTTP及资源。无需小程序开发者工具、上传或发布流程。compose.yaml提供开发MySQL；compose.app.yaml提供Nginx与Java应用容器，本地运行不代表NAS实机已验收。
+两个入口的页面、脚本与样式随JAR交付；独立admin CI检查前端，Java CI验证H5与管理端HTTP及资源。无需小程序开发者工具、上传或发布流程。compose.yaml提供开发MySQL；compose.app.yaml 提供 Nginx、Java 与基础 compute 容器，本地运行不代表NAS实机已验收。
 
 ## 数据库
 
@@ -184,7 +188,7 @@ Docker 必须在部署时配置设备、驱动和组权限。Intel/AMD 使用 `i
 
 独立业务节点上传包使用 `make app-package`，包含完整前端、Java 源码和 SQLite 数据库迁移。
 所有部署参数位于包内 Compose，曲库只读挂载解压目录下的 `media/`；数据库与密钥分别持久化到命名卷。
-默认入口 `http://10.100.1.12:18080/`，在管理页连接已有性能节点；包内不携带本机业务数据或凭据。
+默认仅监听 `127.0.0.1:18080`，局域网部署时按说明改为 NAS 实际地址，并在管理页连接已有性能节点；包内不携带本机业务数据或凭据。
 部署、回源地址及数据保留说明见 [业务节点上传包](infra/deploy/app/README.md)。
 无法访问镜像仓库的远端可使用包含 AMD64 运行镜像的[离线业务包](infra/deploy/app/README.offline.md)，
 导入镜像后无需在线构建或拉取；`make app-package-offline` 用于导出已构建的离线镜像。

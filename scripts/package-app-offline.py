@@ -20,6 +20,14 @@ def digest(path):
     return result.hexdigest()
 
 
+def offline_compose():
+    compose = (ROOT/'infra/deploy/app/docker-compose.yaml').read_text()
+    compose, count = re.subn(r'    build:\n(?:      .*\n)+', '', compose)
+    if count != 2 or compose.count(':remote\n') != 2:
+        raise ValueError('Unexpected source Compose build/image structure')
+    return compose.replace(':remote\n', ':offline-amd64\n    platform: linux/amd64\n    pull_policy: never\n')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', required=True, type=Path)
@@ -33,11 +41,7 @@ def main():
         ).strip()
         if platform != 'linux/amd64':
             raise ValueError(f'{name}: expected linux/amd64, got {platform}')
-    compose = (ROOT/'infra/deploy/app/docker-compose.yaml').read_text()
-    compose, count = re.subn(r'    build:\n(?:      .*\n)+', '', compose)
-    if count != 2 or compose.count(':remote\n') != 2:
-        raise ValueError('Unexpected source Compose build/image structure')
-    compose = compose.replace(':remote\n', ':offline-amd64\n    platform: linux/amd64\n    pull_policy: never\n')
+    compose = offline_compose()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='singverse-offline-') as directory:
         staging = Path(directory)
@@ -46,6 +50,7 @@ def main():
             (staging/'docker-compose.yaml').write_text(compose)
         readme = 'README.frontend-update.md' if args.frontend_only else 'README.offline.md'
         (staging/'部署说明.md').write_bytes((ROOT/'infra/deploy/app'/readme).read_bytes())
+        (staging/'README.operations.md').write_bytes((ROOT/'infra/docker/OPERATIONS.md').read_bytes())
         (staging/'SHA256SUMS').write_text(''.join(
             f'{digest(path)}  {path.name}\n' for path in sorted(staging.iterdir()) if path.is_file()
         ))

@@ -253,7 +253,8 @@ class AudioModels:
         free = shutil.disk_usage(self.root).free if self.root else 0
         memory = memory_available()
         return {'environment': self.environment, 'memoryAvailableBytes': memory, 'diskFreeBytes': free,
-                'resourceReady': (not memory or memory >= self.audio.settings.audio_memory_bytes) and free >= self.audio.settings.minimum_free_bytes,
+                'resourceReady': (not memory or memory + (self.audio.native_worker.resident() if getattr(self.audio, 'native_worker', None) else 0)
+                                  >= self.audio.settings.audio_memory_bytes) and free >= self.audio.settings.minimum_free_bytes,
                 'limits': {'audioProcessBudgetBytes': self.audio.settings.audio_memory_bytes, 'minimumFreeBytes': self.audio.settings.minimum_free_bytes},
                 'model': {'id': 'htdemucs', 'version': '955717e8', 'filename': NAME, 'sha256': DIGEST, 'size': MODEL_BYTES, 'maxBytes': MAX_BYTES,
                           'downloadUrl': URL, 'installed': self.weights_valid(), 'runtimeReady': self.audio.runtime_available, 'writable': self.writable()},
@@ -600,7 +601,9 @@ class AudioModels:
 
     def check_resources(self, backend):
         available = memory_available()
-        if available and available < self.audio.settings.audio_memory_bytes:
+        native = getattr(self.audio, 'native_worker', None)
+        resident = native.resident() if native else 0
+        if available and available + resident < self.audio.settings.audio_memory_bytes:
             raise ComputeError(422, 'Available RAM is below the configured audio process budget')
         device = self.probe().get('devices', {}).get(backend, {})
         if backend in ('cuda', 'rocm') and device.get('memoryBytes', 0) < 2*1024**3:
@@ -608,8 +611,11 @@ class AudioModels:
         if backend in ('cuda', 'rocm'):
             from ..infrastructure.transcoding.process import run
             try:
-                free = int(run([sys.executable, '-c', 'import torch; print(torch.cuda.mem_get_info()[0])'], timeout=30, limit=4096,
-                               memory_limit=self.audio.settings.audio_memory_bytes))
+                if native and backend == 'rocm':
+                    free = int(native.request(self.audio.native_key(backend), {'op': 'resources'}, timeout=30)['freeMemoryBytes'])
+                else:
+                    free = int(run([sys.executable, '-c', 'import torch; print(torch.cuda.mem_get_info()[0])'], timeout=30, limit=4096,
+                                   memory_limit=self.audio.settings.audio_memory_bytes))
             except Exception as error:
                 raise ComputeError(422, 'GPU free memory cannot be determined') from error
             if free < 2*1024**3:

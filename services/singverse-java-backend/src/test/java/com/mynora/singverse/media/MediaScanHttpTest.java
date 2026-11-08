@@ -53,6 +53,15 @@ class MediaScanHttpTest {
                 byte[] response="{\"selected\":\"cpu\",\"backends\":[{\"id\":\"cpu\",\"state\":\"AVAILABLE\"}]}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
                 exchange.sendResponseHeaders(200,response.length);try(var out=exchange.getResponseBody()){out.write(response);}
             });
+            computeStub.createContext("/internal/v1/audio-roles/tasks", exchange -> {
+                boolean authorized="Bearer isolated-compute-token-01234567890123456789".equals(exchange.getRequestHeaders().getFirst("Authorization"));
+                boolean cancel=exchange.getRequestURI().getPath().endsWith("/cancel");
+                byte[] response=(cancel?"{\"state\":\"CANCELLED\",\"result\":{}}":"{\"state\":\"RUNNING\",\"result\":{}}")
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                exchange.getRequestBody().close();
+                exchange.sendResponseHeaders(authorized?(exchange.getRequestMethod().equals("POST")&&!cancel?202:200):401,response.length);
+                try(var out=exchange.getResponseBody()){out.write(response);}
+            });
         } catch (Exception error) { throw new IllegalStateException(error); }
     }
     @AfterAll static void stopComputeStub() { if (computeStub != null) computeStub.stop(0); }
@@ -152,6 +161,12 @@ class MediaScanHttpTest {
         Files.writeString(directory.resolve("新增-歌手.wav"),"fixture");assertThat(request(source+"/scan","POST",null,true).statusCode()).isEqualTo(200);
         assertThat(body(request(base+"/batches/"+id,"GET",null,false)).path("total").asLong()).isEqualTo(2);
         for(int attempt=0;attempt<2;attempt++)assertThat(request(base+"/batches/"+id+"/submit","POST",null,true).statusCode()).isEqualTo(200);
+        org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(5)).untilAsserted(()->{
+            var running=body(request(base+"/batches/"+id,"GET",null,false));
+            assertThat(running.path("state").asText()).isEqualTo("QUEUED");
+            assertThat(java.util.stream.StreamSupport.stream(running.path("items").spliterator(),false)
+                    .anyMatch(item->item.path("state").asText().equals("PROCESSING")&&item.path("job_state").asText().equals("RUNNING"))).isTrue();
+        });
         var cancelled=body(request(base+"/batches/"+id+"/cancel","POST",null,true));assertThat(cancelled.path("state").asText()).isEqualTo("CANCELLED");assertThat(cancelled.at("/counts/CANCELLED").asInt()).isEqualTo(1);
         assertThat(body(request(base+"/batches/"+id+"?size=1","GET",null,false)).path("items")).hasSize(1);
     }

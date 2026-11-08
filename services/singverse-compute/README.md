@@ -1,5 +1,7 @@
 # SingVerse Python 计算服务
 
+容器从零部署、只读媒体挂载和独立节点回源见 [Docker 部署指南](../../infra/docker/README.md)；ROCm/CUDA/OpenVINO、模型安装与验收见 [GPU 与 AI 指南](../../infra/docker/GPU.md)。
+
 Python 3.12+ / FastAPI。所有 FFmpeg/ffprobe 执行都由本工程处理，Java 通过内部 HTTP 编排、校验和入库，前端不直连计算服务；Python不访问业务库、不管理业务队列。当前通过任务授权回源读取本地／WebDAV 音视频标签，以及实时 HLS/离线兼容版本、六类硬件编码适配。已增加按素材试跑的硬解、零拷贝、GPU 色调映射与 DV P5/P8 转 SDR；已支持可选本地 htdemucs 原唱识别与离线伴奏分离；详见[转码说明](../../docs/transcoding.md)。
 
 ## 运行与验证
@@ -165,7 +167,7 @@ SINGVERSE_TEST_FAST_MODEL_REPO="$PWD/.tools/demucs-htdemucs" \
 ```
 
 
-可选模型运行时固定为 Demucs 4.0.1、torch/torchaudio 2.5.1；CPU依赖见 `requirements-audio.lock`，Linux x86_64 CUDA 12.4 / ROCm 6.2 分别见 `requirements-audio-cuda.lock` / `requirements-audio-rocm.lock`。原生节点先执行 `make compute-setup`，CPU/Mac可用 `make compute-audio-setup`（同时显式下载模型到 `.tools/demucs-htdemucs`）；CUDA/ROCm分别执行 `make compute-audio-cuda-setup` / `make compute-audio-rocm-setup`（仅安装环境）。节点不能在HTTP请求中安装Python依赖或驱动。
+常规模型运行时固定为 Demucs 4.0.1、torch/torchaudio 2.5.1；CPU依赖见 `requirements-audio.lock`，Linux x86_64 CUDA 12.4 / ROCm 6.2 分别见 `requirements-audio-cuda.lock` / `requirements-audio-rocm.lock`。gfx1103 的原生 ROCm 配置独立固定为 torch/torchaudio `2.11.0+rocm10.0.0`，见 `requirements-audio-rocm-native.lock`，不替换其它后端。原生节点先执行 `make compute-setup`，CPU/Mac可用 `make compute-audio-setup`（同时显式下载模型到 `.tools/demucs-htdemucs`）；CUDA/旧 ROCm 分别执行 `make compute-audio-cuda-setup` / `make compute-audio-rocm-setup`，Linux x86_64 / Python 3.12 的 gfx1103 节点使用 `make compute-audio-rocm-native-setup`（均仅安装环境）。节点不能在 HTTP 请求中安装 Python 依赖或驱动。
 
 ### 深度识别与伴奏分离
 
@@ -181,7 +183,7 @@ SINGVERSE_TEST_FAST_MODEL_REPO="$PWD/.tools/demucs-htdemucs" \
 - 音频任务一次一个，默认 CPU 线程 2、进程 RSS 上限 4 GiB（`COMPUTE_AUDIO_THREADS`、`COMPUTE_AUDIO_MEMORY_BYTES`），共享磁盘预算及最小空余限制，超时 2 小时。实时播放先终止音频任务，再重试获取执行容量；音频任务不能进入实时预留期间。compute被抢占任务显示 CANCELLED / REALTIME_PREEMPTED，Java记录为失败，批量页面可显式重试；默认开启的统一 CPU 自动降级仅对明确的加速后端故障重试一次，记录实际设备及原因；关闭后不切换。无效媒体、磁盘不足、取消和进程内存预算错误不重试。
 - Java 校验下载的产物后保存至自己的衍生目录，确认成功后释放 compute 副本；未收到确认的 compute 音频在后续任务回收时保留最长一天。不要把衍生目录放入原始媒体目录。
 
-Compose默认不安装音频运行环境或下载权重，但已提供持久卷 `singverse-audio-models`，默认模型目录 `/var/lib/singverse-models/htdemucs`。CPU部署使用 `infra/docker/compose/compose.audio-cpu.yaml`，设置 `COMPUTE_AUDIO_RUNTIME=cpu` 和 `COMPUTE_CONTAINER_MEMORY_LIMIT=6g` 后重建compute；随后从网页下载模型和试跑。原有只读模型挂载可通过override继续使用。默认2g容器不满足默认4GiB音频预算，不会因识别到CPU就启用任务。Java的 `AUDIO_DERIVED_PATH` 为持久卷 `/data/audio-roles`；原媒体卷只读。
+Compose默认不安装音频运行环境或下载权重，但已提供持久卷 `singverse-audio-models`，默认模型目录 `/var/lib/singverse-models/htdemucs`。CPU部署使用 `infra/docker/compose/compose.audio-cpu.yaml`，叠加该覆盖文件后重建并重新创建 compute（覆盖文件已选择 CPU target 和默认 6g 容器上限）；随后从网页下载模型和试跑。原有只读模型挂载可通过override继续使用。默认2g容器不满足默认4GiB音频预算，不会因识别到CPU就启用任务。Java的 `AUDIO_DERIVED_PATH` 为持久卷 `/data/audio-roles`；原媒体卷只读。
 
 ### Mac 原生伴奏节点
 
@@ -236,22 +238,51 @@ SINGVERSE_TEST_AUDIO_MODEL_REPO="$PWD/.tools/demucs-htdemucs" \
 | 标签后缀 | 架构 | 环境 | 设备验收状态 |
 |---|---|---|---|
 | `-cpu` | linux/amd64、linux/arm64 | Torch 2.5.1 CPU、Demucs 4.0.1 | ARM64 镜像本次构建通过；各设备音乐效果与长曲分别记录 |
-| `-cuda` | linux/amd64 | Torch 2.5.1+cu124 | 3070／A3000 待真机验证 |
+| `-cuda` | linux/amd64 | Torch 2.5.1+cu124 | 各设备需重新试跑及完整歌曲验收 |
 | `-rocm` | linux/amd64 | Torch 2.5.1+rocm6.2 | AMD APU 按实际 GPU 标识与运行时验证，不能由型号推定兼容 |
+| `-rocm-native` | linux/amd64、Python 3.12 | Torch 2.11.0+rocm10.0.0、gfx1103 设备库 | Radeon 780M 单机实测见 [ROCm 记录](../../docs/verification-rocm-2026-11-08.md)；不泛化到其它 GPU |
 | `-openvino` | linux/amd64 | OpenVINO 2025.4.0、CPU Torch 2.5.1、固定 Intel OpenCL 用户态库 | N100／8400T 分别待真机验证 |
 
 CPU 镜像由 Docker 清单选择 amd64／arm64，GPU 后端需要显式选择。RKNN 采用实验性原生部署，尚无已验收转换模型，因此不发布 `-rknn` 镜像；RK3566 可验证 ARM64 CPU，资源不足时阻止任务。M2 使用 macOS 原生环境及下述 MPS 分块适配器。视频转码后端与 AI 推理后端独立检测，QSV 可用不等于 OpenVINO 可用。
 
+### gfx1103 原生 ROCm 与固件
+
+`rocm-native` 是独立配置，SDK 包版本为 10.0.0，实际 `torch.version.hip` 为 7.15.26333。锁文件直接固定官方 AMD 仓库的已测试文件和实测完整 SHA256；AMD 未提供这些文件的完整摘要，不能把本地计算的摘要称为厂商校验和。共享依赖从 `requirements-audio-dependencies.lock` 读取，旧配置仍固定 SymPy 1.13.1，原生配置按 Torch 要求单独固定 1.13.3。
+
+显式构建：`docker buildx bake -f infra/docker/build/docker-bake.hcl rocm-native`。应用或独立 compute 的基础 Compose 后依次叠加 `infra/docker/compose/compose.audio-rocm.yaml`、`infra/docker/compose/compose.audio-rocm-native.yaml`，设置实际 render/video 组 ID，选择对应 `COMPUTE_IMAGE`。ROCm 配置包含无限 memlock 和 256MiB 共享内存，仍受容器内存和音频进程预算限制。数字 UID 使用可写的 `/tmp` HOME 和明确用户名，避免编译缓存写入 `/` 或依赖不存在的 passwd 条目。
+
+该配置通过专用适配器读取既有官方权重与 44.1kHz 双声道 PCM，保持模型原始 7.8 秒分段、0.25 重叠和 shifts=0。每次工作进程从同一已核验大小/SHA256的文件描述符加载官方 checkpoint，局部使用 `weights_only=False`，不全局修改 Torch 加载行为；音频读写使用 SoundFile，避免新 torchaudio 对额外 TorchCodec 的要求。实际模型参数和每次 forward 的输入/输出必须留在指定设备；GPU 不可用或架构不符立即失败，不在适配器内隐式转 CPU。CPU 仅接受显式选择或上层已有的、带结果标记的降级流程。
+
+原生 ROCm 的连续任务复用一个独立子进程和已校验模型，空闲默认 60 秒后退出；`COMPUTE_AUDIO_WORKER_IDLE_SECONDS` 范围 0～3600，0 使用每次独立启动。模型文件的设备、inode、大小、mtime/ctime 或后端变化会重启进程并完整校验权重；不缓存不同后端的多份模型。GPU 空闲显存查询复用此进程，但仍在每次准入时检查。取消、执行失败、120 秒无推理进展、内存超限、节点停止及实时播放抢占都会销毁进程，后续任务重新启动。播放抢占同时释放闲置模型，不在播放调度锁内等待进程回收。
+
+适配器先分块计算整首歌曲的全局均值及无偏标准差，再按原始分段、三角重叠权重与尾段上下文推理并逐段写出，CPU 不再持有整首四条音轨。只生成伴奏时不写无人使用的人声 WAV；模型试跑和深度识别仍输出人声。源 PCM、伴奏 WAV、AAC 编码及完整校验仍按顺序执行，尚不是边生成边播放。其它运行时保留原适配器，不宣称已获得相同的模型驻留优化。
+
+音频任务使用专用、可取消的 ffprobe 投影，跳过视频帧/HDR 检查，并在一次产物探测中校验时长和起点。任务结果增加 `stage`、`progress`、`timingsMs` 和原生 `inference` 证据：`queue` 为 Java 本地采集并合并的排队时间，不扩展内部提交请求；`admission/probe/extract/separate/encode/validate/hash/total` 为单调时钟毫秒，Java 接收后补充 `transfer`。`extract` 包含回源和解码；`separate` 包含 IPC、模型加载、推理及 WAV 写出，嵌套 `inference.timingsMs` 为其中的细分，不能将所有字段直接相加。`progress` 只表示当前分离任务已完成重叠合并的音频帧，不是整任务进度。旧节点缺省这些字段仍兼容。
+
+本地有固定模型时，可显式比较流式合并与完整 Demucs 参考输出（CPU 正确性测试，不授予 GPU 资格）：
+
+```sh
+SINGVERSE_TEST_AUDIO_MODEL_REPO="$PWD/.tools/demucs-htdemucs" \
+  services/singverse-compute/.venv/bin/python -m unittest discover \
+  -s services/singverse-compute/tests/integration -p test_native_audio_streaming.py -v
+```
+
+本轮变更入口、本地回归、1 万／10 万索引测量及隔离 NAS 实际歌曲结果见 [伴奏优化验证记录](VERIFICATION.audio-2026-11-08.md)。记录区分适配器推理、端到端耗时和生产部署状态。
+
+ROCm 6.2 的现有轮子缺少这台 gfx1103 所需的原生算子库，不能靠伪造 `HSA_OVERRIDE_GFX_VERSION` 修复。仅换运行时仍曾触发 MES/GPU Hang。该 NAS 的 GC IP 是 11.0.1，与 `gfx1103` 名称不同；试验采用 linux-firmware 固定提交 `9ec083c3aba932190e3c160e52cbb7e264148b61` 中的 ME/MEC/MES_2/PFP 四个文件，安装到 `/lib/firmware/updates/amdgpu/` 并校验 initramfs，保留原文件及启动镜像回滚副本。固件文件名、哈希、驱动重载限制和证据见上述真机记录；不由容器或网页自动更新宿主固件。
+
+镜像、内核或固件改变后重新执行环境检测与所选后端试跑，再用实际歌曲验收。8 秒试跑成功不代表长时间稳定，也不等同于音质验收。
+
 ### 本地构建与预构建镜像
 
-RTX 3070／A3000 独立节点使用根目录 `infra/docker/compose/compose.compute.nvidia.yaml`，参数直接写在 YAML，无需 `.env`。节点默认绑定 `10.100.1.12:18090`；按实际设备修改绑定地址并限制入站。宿主安装兼容 NVIDIA 驱动与 NVIDIA Container Toolkit；无需媒体目录或 Java 地址配置。
+RTX 3070／A3000 独立节点使用根目录 `infra/docker/compose/compose.compute.nvidia.yaml`，参数直接写在 YAML，无需 `.env`。节点默认仅绑定 `127.0.0.1:18090`；跨主机部署时改为该 GPU 主机实际的受限局域网地址，并限制入站仅业务节点可访问。宿主安装兼容 NVIDIA 驱动与 NVIDIA Container Toolkit；无需媒体目录或 Java 地址配置。
 
 ```sh
 docker compose --project-directory . -f infra/docker/compose/compose.compute.nvidia.yaml up -d --build
 docker compose --project-directory . -f infra/docker/compose/compose.compute.nvidia.yaml ps
 ```
 
-此命令需在完整仓库根目录执行，构建 CUDA 镜像，不自动下载模型。首次启动自动生成并持久保存认证凭据；在管理端配置独立节点地址及凭据，再下载／导入模型并进行 CUDA 试跑。视频 NVENC 与音频 CUDA 分别验证；3070／A3000 仍待真机验收。停止使用 `docker compose --project-directory . -f infra/docker/compose/compose.compute.nvidia.yaml down`，保留命名卷。该文件与原 `infra/docker/compose/compose.compute.yaml` 使用相同项目名及卷，作为替代入口使用，不同时启动两份独立节点。
+此命令需在完整仓库根目录执行，构建 CUDA 镜像，不自动下载模型。首次启动自动生成并持久保存认证凭据；在管理端配置独立节点地址及凭据，再下载／导入模型并进行 CUDA 试跑。视频 NVENC 与音频 CUDA 分别验证；各设备需重新试跑及完整歌曲验收。停止使用 `docker compose --project-directory . -f infra/docker/compose/compose.compute.nvidia.yaml down`，保留命名卷。该文件与原 `infra/docker/compose/compose.compute.yaml` 使用相同项目名及卷，作为替代入口使用，不同时启动两份独立节点。
 
 从源码在实际节点构建，例如 Intel GPU 独立节点：
 

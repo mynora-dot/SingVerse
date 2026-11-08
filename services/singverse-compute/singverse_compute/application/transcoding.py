@@ -188,10 +188,12 @@ class Transcoding:
                             task.cancel.set()
                 raise ComputeError(429, 'Transcode capacity busy; retry after active execution stops')
             audio = getattr(self, 'audio_roles', None)
+            if audio and target.purpose == 'REALTIME':
+                # Also release an idle warm GPU model before admitting realtime playback.
+                audio.preempt()
             if audio and audio.active:
                 if target.purpose == 'REALTIME':
                     self.realtime_reserved_until = time.monotonic() + 5
-                    audio.preempt()
                 raise ComputeError(429, 'Offline audio worker stopping; retry playback')
             if usage >= self.settings.cache_bytes or free < self.settings.minimum_free_bytes:
                 raise ComputeError(507, 'Transcode storage budget exhausted')

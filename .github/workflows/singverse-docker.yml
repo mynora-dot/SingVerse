@@ -1,9 +1,9 @@
 name: singverse-docker
 on:
   push:
-    paths: ['services/singverse-compute/**', 'services/singverse-frontend/**', 'services/singverse-java-backend/**', 'infra/docker/**', 'scripts/check-docker-app.py', 'scripts/check-nginx-media.py', 'scripts/check-auth-docker.py', '.github/workflows/singverse-docker.yml', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh']
+    paths: ['services/singverse-compute/**', 'services/singverse-frontend/**', 'services/singverse-java-backend/**', 'infra/docker/**', 'infra/deploy/**', '.env.example', '.gitignore', 'scripts/package-*.py', 'scripts/check-docker-app.py', 'scripts/check-nginx-media.py', 'scripts/check-auth-docker.py', '.github/workflows/singverse-docker.yml', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh']
   pull_request:
-    paths: ['services/singverse-compute/**', 'services/singverse-frontend/**', 'services/singverse-java-backend/**', 'infra/docker/**', 'scripts/check-docker-app.py', 'scripts/check-nginx-media.py', 'scripts/check-auth-docker.py', '.github/workflows/singverse-docker.yml', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh']
+    paths: ['services/singverse-compute/**', 'services/singverse-frontend/**', 'services/singverse-java-backend/**', 'infra/docker/**', 'infra/deploy/**', '.env.example', '.gitignore', 'scripts/package-*.py', 'scripts/check-docker-app.py', 'scripts/check-nginx-media.py', 'scripts/check-auth-docker.py', '.github/workflows/singverse-docker.yml', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh']
   workflow_dispatch:
 permissions:
   contents: read
@@ -23,16 +23,10 @@ jobs:
         run: |
           python -m pip install openapi-spec-validator==0.7.2
           python -m openapi_spec_validator contracts/openapi/singverse.openapi.json
-      - name: Validate standalone compute Compose
-        run: |
-          docker compose --project-directory . -f infra/docker/compose/compose.compute.yaml config --quiet
-          docker compose --project-directory . -f infra/docker/compose/compose.compute.nvidia.yaml config --quiet
-      - name: Validate optional audio runtime Compose profiles
-        run: |
-          docker compose --project-directory . -f infra/docker/compose/compose.app.yaml -f infra/docker/compose/compose.audio-cpu.yaml config --quiet
-          COMPUTE_RENDER_GID=1000 docker compose --project-directory . -f infra/docker/compose/compose.app.yaml -f infra/docker/compose/compose.audio-openvino.yaml config --quiet
-          docker compose --project-directory . -f infra/docker/compose/compose.app.yaml -f infra/docker/compose/compose.audio-cuda.yaml config --quiet
-          SINGVERSE_RENDER_GID=1000 SINGVERSE_VIDEO_GID=1001 docker compose --project-directory . -f infra/docker/compose/compose.app.yaml -f infra/docker/compose/compose.audio-rocm.yaml config --quiet
+      - name: Validate Docker deployment matrix and build inputs
+        run: make docker-config-check
+      - name: Verify deployment archive inputs, permissions and digests
+        run: python -m unittest discover -s services/singverse-compute/tests/unit -p test_deployment_archive.py -v
       - name: Verify media streams without proxy buffering
         run: |
           node_image="$(sed -n 's/^ARG NODE_IMAGE=//p' services/singverse-java-backend/Dockerfile)"

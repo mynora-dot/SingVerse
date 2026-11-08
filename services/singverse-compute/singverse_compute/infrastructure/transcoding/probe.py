@@ -1,16 +1,49 @@
 """Technical probe with restricted protocols and stable source-stream identifiers."""
 import json
 import re
+import math
+from dataclasses import dataclass
 from ...core.errors import ComputeError
 from ...domain.transcoding import Media, Stream
 from .process import run
 
 FORMATS = 'mp3,flac,ogg,wav,mov,matroska,webm,avi,asf,mpeg,mpegts,aac,ape,aiff'
 
+
+@dataclass(frozen=True)
+class AudioMedia(Media):
+    start_time: float = 0.
+
 class MediaProbe:
     def __init__(self, executable, memory_limit=1024**3):
         self.executable = executable
         self.memory_limit = memory_limit
+
+    def read_audio(self, path, network=False, cancel=None):
+        """Audio-only jobs need neither video frame inspection nor a second timeline probe."""
+        raw = run([self.executable, '-v', 'error', '-protocol_whitelist',
+                   'file,http,tcp' if network else 'file', '-format_whitelist', FORMATS,
+                   '-probesize', '8388608', '-analyzeduration', '5000000', '-select_streams', 'a',
+                   '-show_entries', 'format=format_name,duration,bit_rate,start_time:stream=index,codec_type,codec_name,profile,channels:stream_tags=language,title',
+                   '-of', 'json', str(path)], memory_limit=self.memory_limit, cancel=cancel)
+        try:
+            data = json.loads(raw)
+            fmt = data['format']
+            container = fmt.get('format_name', '').split(',')[0]
+            container = {'mov': 'mp4', 'matroska': 'mkv', 'mpegts': 'ts'}.get(container, container)
+            duration = float(fmt.get('duration', 0))
+            start = float(fmt.get('start_time', 0))
+            if not math.isfinite(duration) or not math.isfinite(start):
+                raise ValueError()
+            streams = tuple(Stream(f"stream:{int(s['index'])}", int(s['index']), 'audio', s.get('codec_name', ''),
+                profile=s.get('profile', ''), channels=int(s.get('channels', 0)),
+                language=s.get('tags', {}).get('language', 'und'), title=s.get('tags', {}).get('title', '')[:120])
+                for s in data.get('streams', [])[:64] if s.get('codec_type') == 'audio')
+            if not streams:
+                raise ValueError()
+            return AudioMedia(container, duration, int(fmt.get('bit_rate', 0)), streams, start)
+        except (ValueError, KeyError, TypeError) as error:
+            raise ComputeError(422, 'Invalid audio probe result') from error
 
     def _has_dovi_rpu(self, path, network, index):
         raw=run([self.executable,'-v','error','-protocol_whitelist','file,http,tcp' if network else 'file',

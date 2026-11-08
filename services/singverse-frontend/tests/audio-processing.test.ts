@@ -206,6 +206,19 @@ it('停止进行中的任务需要确认，取消确认则不发送请求', asyn
   await button('停止').trigger('click'); await flushPromises()
   expect(authRequest).toHaveBeenCalledWith('/api/v1/audio-processing/batches/batch/cancel', 'POST')
 })
+it('任务详情显示真实分离进度，保存阶段不沿用分离百分比', async () => {
+  const previous = vi.mocked(authRequest).getMockImplementation()!
+  let stage = 'separate'
+  vi.mocked(authRequest).mockImplementation(async (...args) => args[0].endsWith('/batches/batch?page=0')
+    ? { ...preview, state: 'QUEUED', items: [{ song_id: 'a', title: 'a', state: 'PROCESSING', job_state: 'RUNNING',
+      execution: { stage, progress: { completedFrames: 400, frames: 1000 } }, error: '' }] } as never : previous(...args))
+  router.route.query = { tab: 'tasks' }; await open()
+  await button('查看详情').trigger('click'); await flushPromises()
+  expect(wrapper!.get('.item-row').text()).toContain('生成伴奏 40%')
+  stage = 'encode'; await vi.advanceTimersByTimeAsync(4000); await flushPromises()
+  expect(wrapper!.get('.item-row').text()).toContain('保存伴奏')
+  expect(wrapper!.get('.item-row').text()).not.toContain('40%')
+})
 it('停止任务确认期间阻止重复提交，离页后不发送停止请求', async () => {
   router.route.query = { tab: 'tasks' }; await open()
   let confirm!: (approved: boolean) => void

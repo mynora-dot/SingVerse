@@ -13,6 +13,7 @@ services:
       SERVER_PORT: '8080'
       COMPUTE_NODE_URL: http://singverse-compute:8090
       SINGVERSE_COMPUTE_AUTO_CALLBACK_ORIGIN: http://singverse-java-backend:8080
+      SINGVERSE_CALLBACK_ORIGIN: '${SINGVERSE_CALLBACK_ORIGIN:-}'
       COMPUTE_AUTH_TOKEN_FILE: /run/singverse-compute/token
       WEBDAV_METADATA_PATH: /data/metadata/webdav
       METADATA_CACHE_PATH: /data/metadata/covers
@@ -50,6 +51,7 @@ services:
       COMPUTE_AUDIO_MODEL_REPO: '${COMPUTE_AUDIO_MODEL_REPO:-/var/lib/singverse-models/htdemucs}'
       COMPUTE_AUDIO_MEMORY_BYTES: '${COMPUTE_AUDIO_MEMORY_BYTES:-4294967296}'
       COMPUTE_AUDIO_THREADS: '${COMPUTE_AUDIO_THREADS:-2}'
+      COMPUTE_AUDIO_WORKER_IDLE_SECONDS: '${COMPUTE_AUDIO_WORKER_IDLE_SECONDS:-60}'
     volumes:
       - singverse-compute-auth:/run/singverse-compute
       - singverse-transcode-cache:/var/cache/singverse-transcode
@@ -78,5 +80,8 @@ volumes:
   singverse-secrets:
   singverse-compute-auth:
   singverse-media:
+  # Also holds hardware settings, audio model selection and qualification records.
+  # Preserve this volume during upgrades; it is not exclusively disposable cache.
   singverse-transcode-cache:
+  # Model weights only; selection/qualification records live in transcode-cache.
   singverse-audio-models:

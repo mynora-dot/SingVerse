@@ -13,6 +13,7 @@ public interface AudioRoleMapper {
     int insertRole(@Param("row") Map<String,Object> row);
     int updateRole(@Param("row") Map<String,Object> row);
     Map<String,Object> job(@Param("id") String id);
+    List<Map<String,Object>> jobsByIds(@Param("ids") List<String> ids);
     List<Map<String,Object>> pending();
     List<String> candidates(@Param("cursor") String cursor);
     List<Map<String,Object>> forSong(@Param("song") String song,@Param("fingerprint") String fingerprint);

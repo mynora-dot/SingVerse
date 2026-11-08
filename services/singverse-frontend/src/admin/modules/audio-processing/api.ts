@@ -7,7 +7,13 @@ export interface AnalysisEvidence {
   analysisVersion?: string; vocalRatio?: [number, number][]; informativeWindows?: number; votes?: number[]
   windows?: { start: number; seconds: number; tracks?: { level: number; activeFrames: number; totalFrames: number; vocalFrames: number }[] }[]
 }
-export interface AudioJob { id: string; kind: string; state: string; error?: string; backend?: string; modelVersion?: string; fallbackReason?: string; resultState?: string; reason?: string; evidence?: AnalysisEvidence }
+export interface AudioExecution {
+  backend?: string; modelVersion?: string; fallbackReason?: string; stage?: string
+  timingsMs?: Record<string, number>
+  progress?: { completedFrames: number; frames: number; completedForwards?: number }
+  inference?: { modelReused?: boolean; sampledPeakRssBytes?: number; timingsMs?: Record<string, number> }
+}
+export interface AudioJob extends AudioExecution { id: string; kind: string; state: string; error?: string; resultState?: string; reason?: string; evidence?: AnalysisEvidence }
 /** `/api/v1/media-songs/{id}/audio-roles` 与列表行 `audio` 共用的音轨角色视图。 */
 export interface AudioRoles {
   state: string; revision?: number; origin?: string; originalId?: string; backingId?: string
@@ -19,7 +25,7 @@ export interface AudioRow {
   coverAvailable?: boolean; category: string; audio: AudioRoles
 }
 export interface Filter { title: string; artist: string; sourceId: string; streams: string; state: string; songId: string }
-export interface BatchItem { batch_id: string; song_id: string; title: string; state: string; category: string; job_id?: string; job_state?: string; execution?: { backend?: string; modelVersion?: string; fallbackReason?: string }; error: string }
+export interface BatchItem { batch_id: string; song_id: string; title: string; state: string; category: string; job_id?: string; job_state?: string; execution?: AudioExecution; error: string }
 export interface Batch {
   id: string; state: string; backend: string; createdAt?: number; total: number; counts: Record<string, number>; categories: Record<string, number>
   items?: BatchItem[]

@@ -65,10 +65,16 @@ public class LibraryChangeInterceptor implements Interceptor {
                         && !id.contains("settings"))
                 || id.contains("ArtistMapper.insertOverride") || id.contains("ArtistMapper.deleteOverride"))
             events.publishEvent(new ArtistDtos.Changed());
-        boolean progressOnly = id.endsWith("AudioRoleMapper.updateJob")
-                && parameter instanceof java.util.Map<?,?> values
-                && "RUNNING".equals(values.get("state"));
-        if (id.contains("AudioRoleMapper.") && !progressOnly || id.endsWith("WebDavMetadataMapper.applyTags")
+        // Job updates already know their song ID and publish after a changed row in AudioJobService.
+        if (id.contains("AudioRoleMapper.") && !id.endsWith(".updateJob") && result instanceof Number count && count.intValue()>0){
+            String audioSong=null;
+            if(parameter instanceof java.util.Map<?,?> values){
+                if(values.containsKey("row") && values.get("row") instanceof java.util.Map<?,?> row)audioSong=(String)row.get("song_id");
+                else if(values.containsKey("song"))audioSong=(String)values.get("song");
+            }
+            events.publishEvent(new com.mynora.singverse.media.audio.AudioCatalog.Changed(audioSong));
+        }
+        if (id.endsWith("WebDavMetadataMapper.applyTags")
                 || id.endsWith("WebDavMetadataMapper.insertSongs") || id.endsWith("WebDavMetadataMapper.removeArchivedSongs")
                 || id.endsWith("WebDavMetadataMapper.refresh"))
             events.publishEvent(new com.mynora.singverse.media.audio.AudioCatalog.Changed());

@@ -12,6 +12,7 @@ from importlib.metadata import version, PackageNotFoundError
 from .audio_analysis import _label
 from .audio_catalog import FAST, manifest
 from ..core.errors import ComputeError
+from ..core.audio_runtime import audio_runtime_profile
 from ..infrastructure.transcoding.process import stop
 from ..infrastructure.transcoding.memory import resident_bytes
 
@@ -62,7 +63,7 @@ class FastAudioRoles:
     @property
     def available(self):
         try:
-            return (version('torch').split('+')[0] == '2.5.1' and version('numpy') == '1.26.4'
+            return (audio_runtime_profile() is not None and version('numpy') == '1.26.4'
                     and self.audio.models.model_valid(FAST))
         except PackageNotFoundError:
             return False

@@ -60,7 +60,16 @@ for authorized, expected in [(False,401),(True,422)]:
   subprocess.run(compose + ["exec", "-T", "singverse-java-backend", "sh", "-c", "! command -v ffmpeg && ! command -v ffprobe"], check=True)
   print("通过：独立计算服务标签能力、内部鉴权和拒绝本地路径；Java镜像无FFmpeg")
   smoke = (root / "services/singverse-compute/tests/callback_source.py").read_text() + "\n" + (root / "services/singverse-compute/tests/smoke/container_media_tags.py").read_text()
-  subprocess.run(["docker", "run", "--rm", "--network", "none", "-i", "singverse-compute:local", "python", "-"], input=smoke, text=True, check=True)
+  if macos:
+    # This mode uses the native node above; its separate base-image smoke remains explicit.
+    smoke_image = "singverse-compute:local"
+  else:
+    container = subprocess.check_output(compose + ["ps", "-q", "singverse-compute"], text=True).strip()
+    if not container:
+      raise RuntimeError("No running compute container in the application project")
+    # Verify the deployed image, including CPU/GPU overrides or a loaded offline image.
+    smoke_image = subprocess.check_output(["docker", "inspect", "--format", "{{.Image}}", container], text=True).strip()
+  subprocess.run(["docker", "run", "--rm", "--network", "none", "-i", smoke_image, "python", "-"], input=smoke, text=True, check=True)
 
 
 

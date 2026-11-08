@@ -4,7 +4,7 @@ import { ElAlert, ElButton, ElDrawer, ElEmpty, ElPagination, ElProgress, ElTag }
 import { authRequest } from '../../../core/auth/api'
 import { confirmDanger } from '../../../shared/ui/confirm'
 import { base, type Backend, type Batch, type BatchItem } from '../api'
-import { backendName, batchProgress, batchStates, batchTones, failure, itemStates, itemTones, time } from '../presentation'
+import { backendName, batchProgress, batchStates, batchTones, executionStage, failure, itemStates, itemTones, time } from '../presentation'
 
 const props = defineProps<{ batches: Batch[]; total: number; page: number; focus: string; backends: Backend[] }>()
 const emit = defineEmits<{ preview: [batch: Batch]; page: [page: number]; changed: []; songs: [] }>()
@@ -23,7 +23,11 @@ function summary(batch: Batch) {
   if (pending) parts.push(`剩余 ${pending}`)
   return parts.join(' · ')
 }
-function itemState(item: BatchItem) { return item.state === 'PROCESSING' && item.job_state === 'QUEUED' ? '排队中' : itemStates[item.state] || item.state }
+function itemState(item: BatchItem) {
+  if (item.state === 'PROCESSING' && item.job_state === 'QUEUED') return '排队中'
+  if (item.state === 'PROCESSING' && item.job_state === 'RUNNING') return executionStage(item.execution) || '生成中'
+  return itemStates[item.state] || item.state
+}
 async function run(task: () => Promise<unknown>) {
   if (!active || !visible || busy.value) return
   sequence++

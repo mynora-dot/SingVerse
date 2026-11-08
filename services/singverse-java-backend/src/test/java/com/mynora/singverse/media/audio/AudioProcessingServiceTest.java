@@ -25,7 +25,14 @@ class AudioProcessingServiceTest {
     @BeforeEach void init(){
         when(transactions.getTransaction(any())).thenAnswer(call->new org.springframework.transaction.support.SimpleTransactionStatus());
         when(mapper.lockPreparing(anyString(),anyLong())).thenReturn(1);
-        var song=mock(Song.class);when(song.contentFingerprint()).thenReturn("current");when(songs.get("song")).thenReturn(song);
+        var song=mock(Song.class);when(song.id()).thenReturn("song");when(song.contentFingerprint()).thenReturn("current");when(songs.get("song")).thenReturn(song);
+        when(songs.byIds(anyList())).thenReturn(List.of(song));
+        when(roles.jobsByIds(anyList())).thenAnswer(call->{
+            List<String> ids=call.getArgument(0);return ids.stream().map(id->{
+                var job=roles.job(id);if(job==null)return Map.<String,Object>of();
+                var row=new HashMap<>(job);row.put("id",id);return row;
+            }).filter(row->!row.isEmpty()).toList();
+        });
         when(mapper.batch(anyString())).thenAnswer(call->Map.of("id",call.getArgument(0),"state","PREVIEW","backend","","created_at",1L));
     }
     @Test void unprobedSongsSeparateOnlyAfterSingleStreamProbe()throws Exception{
@@ -128,6 +135,15 @@ class AudioProcessingServiceTest {
         verify(mapper).items("batch",50,0);
         verify(mapper,never()).items(eq("batch"),eq(100),anyLong());
         verify(jobs,never()).cancel(anyString(),anyString());
+    }
+
+    @Test void unchangedRunningMembersUseBulkReadsAndDoNotRewriteRows() {
+        when(mapper.pending()).thenReturn(List.of(item("PROCESSING","work")));
+        doReturn(List.of(Map.of("id","work","state","RUNNING","error",""))).when(roles).jobsByIds(List.of("work"));
+        service.tick();
+        verify(songs).byIds(List.of("song"));verify(roles).jobsByIds(List.of("work"));
+        verify(mapper,never()).updateItem(anyString(),anyString(),anyString(),any(),anyString(),anyLong());
+        verify(jobs,never()).status(anyString());verify(roles,never()).job(anyString());
     }
 
 }

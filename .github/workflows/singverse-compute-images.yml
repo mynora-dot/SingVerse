@@ -45,6 +45,7 @@ jobs:
           - { variant: cpu, arch: arm64, runner: ubuntu-24.04-arm }
           - { variant: cuda, arch: amd64, runner: ubuntu-24.04 }
           - { variant: rocm, arch: amd64, runner: ubuntu-24.04 }
+          - { variant: rocm-native, arch: amd64, runner: ubuntu-24.04 }
           - { variant: openvino, arch: amd64, runner: ubuntu-24.04 }
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
@@ -76,7 +77,7 @@ jobs:
         env:
           VARIANT: ${{ matrix.variant }}
         run: |
-          docker run --rm --network none -e EXPECTED_VARIANT="$VARIANT" singverse-compute:check python -c "import os,torch,torchaudio; from singverse_compute.core.build_info import build_info; assert build_info()['variant']==os.environ['EXPECTED_VARIANT']; assert torch.__version__.split('+')[0]=='2.5.1'; assert torchaudio.__version__.split('+')[0]=='2.5.1'"
+          docker run --rm --network none -e EXPECTED_VARIANT="$VARIANT" singverse-compute:check python -c "import os,torch,torchaudio; from singverse_compute.core.build_info import build_info; from singverse_compute.core.audio_runtime import audio_runtime_profile; variant=os.environ['EXPECTED_VARIANT']; assert build_info()['variant']==variant; assert audio_runtime_profile()==('rocm-native' if variant=='rocm-native' else 'legacy')"
           if [ "$VARIANT" = openvino ]; then
             docker run --rm --network none singverse-compute:check python -c "import openvino; from importlib.metadata import version; assert version('openvino')=='2025.4.0'"
           fi
@@ -114,6 +115,6 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
           docker buildx imagetools create -t "$IMAGE:$VERSION-cpu" "$IMAGE:$VERSION-cpu-amd64" "$IMAGE:$VERSION-cpu-arm64"
-          for variant in cuda rocm openvino; do
+          for variant in cuda rocm rocm-native openvino; do
             docker buildx imagetools create -t "$IMAGE:$VERSION-$variant" "$IMAGE:$VERSION-$variant-amd64"
           done

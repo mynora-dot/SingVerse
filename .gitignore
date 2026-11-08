@@ -27,6 +27,11 @@ local.properties
 captures/
 # All build output
 build/
+# Infrastructure build inputs are source files, not generated build output.
+!/infra/docker/build/
+/infra/docker/build/*
+!/infra/docker/build/.dockerignore
+!/infra/docker/build/docker-bake.hcl
 target/
 dist/
 node_modules/

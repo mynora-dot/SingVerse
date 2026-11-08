@@ -1,0 +1,15 @@
+# Linux x86_64 / Python 3.12, native gfx1103 only. SDK package 10.0.0 contains HIP 7.15.26333.
+# These measured artifact SHA256 values pin the tested bytes from the official AMD repository.
+# AMD does not publish full hashes for these files; they are not publisher checksum claims.
+-r requirements-audio-dependencies.lock
+amd-torch-device-gfx1103 @ https://stable.repo.amd.com/rocm/whl-next/amd-torch-device-gfx1103/amd_torch_device_gfx1103-2.11.0%2Brocm10.0.0-cp312-cp312-linux_x86_64.whl#sha256=33f162860cf0c26bd654f205c741d12e8ba6d87d4cd5f4c2c90ed8e0509ee4c8
+amd-torch-device-gfx110x @ https://stable.repo.amd.com/rocm/whl-next/amd-torch-device-gfx110x/amd_torch_device_gfx110x-2.11.0%2Brocm10.0.0-cp312-cp312-linux_x86_64.whl#sha256=d3bc0aa968651e9d104dbd92691700c41d35d0eb598e98a22fded196ea696967
+rocm @ https://stable.repo.amd.com/rocm/whl-next/rocm/rocm-10.0.0.tar.gz#sha256=65b5982249612a310135f5e061b9f28909e8ad718a1ddb3f1abba92298b7216b
+rocm-bootstrap @ https://stable.repo.amd.com/rocm/whl-next/rocm-bootstrap/rocm_bootstrap-0.3.0-py3-none-any.whl#sha256=62d0160ecdd86f7132dbab9aec257cb2c96327df2592b0633aa6bb56399cc095
+rocm-sdk-core @ https://stable.repo.amd.com/rocm/whl-next/rocm-sdk-core/rocm_sdk_core-10.0.0-py3-none-linux_x86_64.whl#sha256=3bf4a72d11aa2a4ee1e90572c73630f937d38c1b7af4dda45b483b54655138a7
+rocm-sdk-device-gfx1103 @ https://stable.repo.amd.com/rocm/whl-next/rocm-sdk-device-gfx1103/rocm_sdk_device_gfx1103-10.0.0-py3-none-linux_x86_64.whl#sha256=45aca48e24b79f4e3a9a17759839658417fefbb15134a7e51c3e7d5acd2e8f28
+rocm-sdk-libraries @ https://stable.repo.amd.com/rocm/whl-next/rocm-sdk-libraries/rocm_sdk_libraries-10.0.0-py3-none-linux_x86_64.whl#sha256=bbe83a550cb8ceeb306abf6d57df6617857a1b19384549526db2ec81a4374e57
+sympy @ https://files.pythonhosted.org/packages/99/ff/c87e0622b1dadea79d2fb0b25ade9ed98954c9033722eb707053d310d4f3/sympy-1.13.3-py3-none-any.whl#sha256=54612cf55a62755ee71824ce692986f23c88ffa77207b30c1368eda4a7060f73
+torch @ https://stable.repo.amd.com/rocm/whl-next/torch/torch-2.11.0%2Brocm10.0.0-cp312-cp312-linux_x86_64.whl#sha256=5964561d4a08100a1814ca062db788c96035b5607fcb7d6ac48a6a84ba1fb2f6
+torchaudio @ https://stable.repo.amd.com/rocm/whl-next/torchaudio/torchaudio-2.11.0%2Brocm10.0.0-cp312-cp312-linux_x86_64.whl#sha256=d7e7dc644e8f0ced64e484345d6eb9b0484429aa3a386f4674c6d3b2c9316760
+triton @ https://stable.repo.amd.com/rocm/whl-next/triton/triton-3.8.0%2Bgit4cff872c.rocm10.0.0-cp312-cp312-linux_x86_64.whl#sha256=07f92a10d8c8286c205892c66cded7ea6df226ebff47e44af50805d643611c8a

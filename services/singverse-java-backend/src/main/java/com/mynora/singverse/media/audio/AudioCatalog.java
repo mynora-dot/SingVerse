@@ -15,7 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 /** Shared lightweight read index. Complete job documents are loaded only for a requested page. */
 @Service
 public class AudioCatalog implements AutoCloseable {
-    public record Changed() {}
+    public record Changed(String songId) { public Changed(){this(null);} }
     public record Summary(String id, String sourceId, String title, List<String> artists,
             String fingerprint, Integer streams, String state, String category, boolean failed) {
         boolean matches(AudioProcessingService.Filter filter) {
@@ -43,14 +43,24 @@ public class AudioCatalog implements AutoCloseable {
     });
     private volatile Snapshot snapshot;
     private volatile long attempted;
+    private volatile long fullBuilt;
+    private final Object changes = new Object();
+    private final Map<String,Long> dirty = new HashMap<>();
+    private long fullGeneration, publishedFullGeneration;
 
     public AudioCatalog(MediaSongRepository songs, AudioRoleMapper mapper, AudioJobService jobs) {
         this.songs = songs; this.mapper = mapper; this.jobs = jobs;
     }
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
-    public void changed(Changed ignored) { generation.incrementAndGet(); }
+    public void changed(Changed change) {
+        synchronized(changes){
+            long version=generation.incrementAndGet();
+            if(change.songId()==null || change.songId().isBlank())fullGeneration=version;
+            else dirty.put(change.songId(),version);
+        }
+    }
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
-    public void libraryChanged(com.mynora.singverse.media.artist.ArtistDtos.Changed ignored) { generation.incrementAndGet(); }
+    public void libraryChanged(com.mynora.singverse.media.artist.ArtistDtos.Changed ignored) {changed(new Changed());}
     public boolean building() {
         var current = snapshot;
         return building.get() || current == null || current.generation() != generation.get();
@@ -69,41 +79,66 @@ public class AudioCatalog implements AutoCloseable {
     public void refresh() {
         var current = snapshot;
         long now = System.nanoTime();
-        if (current != null && current.generation() == generation.get() && now - current.built() < TimeUnit.SECONDS.toNanos(30)) return;
+        if (current != null && current.generation() == generation.get() && now - fullBuilt < TimeUnit.SECONDS.toNanos(30)) return;
         if (now - attempted < TimeUnit.SECONDS.toNanos(1) || !building.compareAndSet(false, true)) return;
         attempted = now;
         try { executor.submit(() -> { try { rebuild(); } finally { building.set(false); } }); }
         catch (RejectedExecutionException stopping) { building.set(false); }
     }
     void rebuild() {
-        long version = generation.get();
+        long version, fullVersion;
+        Set<String> changedIds;
+        var current=snapshot;
+        boolean full;
+        synchronized(changes){
+            version=generation.get();fullVersion=fullGeneration;changedIds=Set.copyOf(dirty.keySet());
+            full=current==null || publishedFullGeneration!=fullGeneration || System.nanoTime()-fullBuilt>=TimeUnit.SECONDS.toNanos(30);
+        }
         try {
             var records = new ArrayList<Summary>();
             var byId = new HashMap<String, Summary>();
-            String cursor = "";
-            while (!Thread.currentThread().isInterrupted()) {
-                var batch = songs.batchAfter(cursor, null, 200);
-                if (batch.isEmpty()) {
-                    snapshot = new Snapshot(List.copyOf(records), Map.copyOf(byId), version, System.nanoTime());
-                    return;
+            if(full){
+                String cursor="";
+                while(!Thread.currentThread().isInterrupted()){
+                    var batch=songs.batchAfter(cursor,null,200);
+                    if(batch.isEmpty())break;
+                    for(var summary:summaries(batch)){records.add(summary);byId.put(summary.id(),summary);}
+                    cursor=batch.getLast().id();
                 }
-                var statuses = statuses(batch);
-                for (var song : batch) {
-                    var status = statuses.get(song.id());
-                    boolean failed = false;
-                    for (var job : status.path("jobs"))
-                        if (job.path("kind").asText().equals("SEPARATE") && job.path("state").asText().equals("FAILED")) failed = true;
-                    var summary = new Summary(song.id(), song.sourceId(), AudioProcessingService.title(song),
-                            List.copyOf(AudioProcessingService.artists(song)), MediaSongRepository.fingerprint(song),
-                            status.has("streams") ? status.path("streams").size() : null,
-                            status.path("state").asText(), AudioProcessingService.category(status), failed);
-                    records.add(summary); byId.put(summary.id(), summary);
+            }else{
+                byId.putAll(current.byId());
+                var ids=new ArrayList<>(changedIds);
+                for(int offset=0;offset<ids.size();offset+=200){
+                    var batch=ids.subList(offset,Math.min(ids.size(),offset+200));
+                    batch.forEach(byId::remove);
+                    for(var summary:summaries(songs.byIds(batch)))byId.put(summary.id(),summary);
                 }
-                cursor = batch.getLast().id();
+                // Reuse unchanged summary objects; only the immutable index containers are copied.
+                for(var summary:current.songs())if(byId.containsKey(summary.id()))records.add(byId.get(summary.id()));
+                boolean added=false;
+                for(String id:changedIds)if(!current.byId().containsKey(id)&&byId.containsKey(id)){records.add(byId.get(id));added=true;}
+                if(added)records.sort(Comparator.comparing(Summary::id));
+            }
+            if(Thread.currentThread().isInterrupted())return;
+            snapshot=new Snapshot(List.copyOf(records),Map.copyOf(byId),version,System.nanoTime());
+            synchronized(changes){
+                dirty.entrySet().removeIf(entry->entry.getValue()<=version);
+                if(full){fullBuilt=System.nanoTime();publishedFullGeneration=fullVersion;}
             }
         } catch (RuntimeException failure) {
             org.slf4j.LoggerFactory.getLogger(AudioCatalog.class).warn("Audio catalog refresh failed; retaining previous snapshot");
         }
+    }
+    private List<Summary> summaries(List<Song> batch){
+        var statuses=statuses(batch);var result=new ArrayList<Summary>();
+        for(var song:batch){
+            var status=statuses.get(song.id());boolean failed=false;
+            for(var job:status.path("jobs"))if(job.path("kind").asText().equals("SEPARATE")&&job.path("state").asText().equals("FAILED"))failed=true;
+            result.add(new Summary(song.id(),song.sourceId(),AudioProcessingService.title(song),List.copyOf(AudioProcessingService.artists(song)),
+                    MediaSongRepository.fingerprint(song),status.has("streams")?status.path("streams").size():null,
+                    status.path("state").asText(),AudioProcessingService.category(status),failed));
+        }
+        return result;
     }
     Map<String, ObjectNode> statuses(List<Song> batch) {
         if (batch.isEmpty()) return Map.of();

@@ -28,6 +28,10 @@ public class AudioJobService {
     private String scanCursor="";
     private final java.util.concurrent.atomic.AtomicBoolean ticking = new java.util.concurrent.atomic.AtomicBoolean();
     private final Map<String, InputStream> receiving = new HashMap<>();
+    @org.springframework.beans.factory.annotation.Autowired private AudioDispatch dispatch;
+    @org.springframework.beans.factory.annotation.Autowired private org.springframework.context.ApplicationEventPublisher events;
+    @jakarta.annotation.PostConstruct void initializeDispatch(){dispatch.registerJobs(this::tick);}
+    void wakeup(){if(dispatch!=null)dispatch.jobs(0);}
     public AudioJobService(AudioRoleMapper mapper,AudioRoleService roles,MediaSongRepository songs,
             MediaPlaybackService playback,TranscodeClient compute,ObjectMapper json,
             @Value("${singverse.audio.directory:${AUDIO_DERIVED_PATH:./data/audio-roles}}") String directory) {
@@ -47,7 +51,9 @@ public class AudioJobService {
         var list=result.putArray("jobs");
         for(var row:history){
             var view=list.addObject().put("id",text(row,"id")).put("kind",text(row,"kind")).put("state",text(row,"state")).put("error",text(row,"error"));
-            try{var data=json.readTree(text(row,"result_json"));view.put("backend",data.path("backend").asText()).put("modelVersion",data.path("modelVersion").asText()).put("fallbackReason",data.path("fallbackReason").asText());if(Set.of("FAST","ANALYZE").contains(text(row,"kind"))){view.put("resultState",data.path("state").asText()).put("reason",data.path("reason").asText());if(data.path("evidence").isObject())view.set("evidence",data.get("evidence"));}if(!result.has("streams") && data.path("streams").isArray())result.set("streams",data.get("streams"));}catch(IOException ignored){}
+            try{var data=json.readTree(text(row,"result_json"));view.put("backend",data.path("backend").asText()).put("modelVersion",data.path("modelVersion").asText()).put("fallbackReason",data.path("fallbackReason").asText());
+                for(String field:List.of("stage","timingsMs","progress","inference"))if(data.has(field))view.set(field,data.get(field));
+                if(Set.of("FAST","ANALYZE").contains(text(row,"kind"))){view.put("resultState",data.path("state").asText()).put("reason",data.path("reason").asText());if(data.path("evidence").isObject())view.set("evidence",data.get("evidence"));}if(!result.has("streams") && data.path("streams").isArray())result.set("streams",data.get("streams"));}catch(IOException ignored){}
         }
         if(result.path("streams").size()==1){
             result.put("originalId",result.path("streams").get(0).path("id").asText()).put("state","CONFIRMED").put("origin","SOURCE");
@@ -77,7 +83,7 @@ public class AudioJobService {
         var connection=compute.connection();String id=UUID.randomUUID().toString();
         var row=new HashMap<String,Object>();row.put("id",id);row.put("song_id",song);row.put("kind",kind);row.put("state","QUEUED");
         row.put("fingerprint",fingerprint);row.put("backend",backend);row.put("node_origin",connection.origin().toString());row.put("created_at",System.currentTimeMillis());row.put("updated_at",System.currentTimeMillis());
-        mapper.insertJob(row);return jobView(row);
+        mapper.insertJob(row);wakeup();return jobView(row);
     }
     private ObjectNode jobView(Map<String,Object> row){
         return json.createObjectNode().put("id",text(row,"id")).put("kind",text(row,"kind")).put("state",text(row,"state"));
@@ -100,10 +106,14 @@ public class AudioJobService {
         return body;
     }
     @Scheduled(fixedDelay=3000,initialDelay=6000,scheduler="audioScheduler")
+    public void scheduledTick(){dispatch.jobs(0);}
     public void tick(){
         if (!ticking.compareAndSet(false, true)) return;
         try {
-        for(var row:mapper.pending()){
+        var pending=mapper.pending();
+        boolean running=pending.stream().anyMatch(row->text(row,"state").equals("RUNNING"));
+        for(var row:pending){
+            if(running && text(row,"state").equals("QUEUED"))continue;
             String id=text(row,"id");
             try{
                 String current;
@@ -115,7 +125,10 @@ public class AudioJobService {
                 var connection=compute.connection(text(row,"node_origin"));
                 if(text(row,"state").equals("QUEUED")){
                     var body=input(row);
-                    update(id,"RUNNING","{}","");
+                    // Keep the request compatible with older compute nodes which reject extra fields.
+                    var execution=json.createObjectNode();
+                    execution.putObject("timingsMs").put("queue",Math.max(0,System.currentTimeMillis()-((Number)row.getOrDefault("created_at",System.currentTimeMillis())).longValue()));
+                    update(id,"RUNNING",execution.toString(),"");
                     try{compute.call(connection,"/internal/v1/audio-roles/tasks","POST",body);}
                     catch(Exception e){update(id,"QUEUED","{}","等待计算节点");throw e;}
                     finally {
@@ -124,12 +137,13 @@ public class AudioJobService {
                         if(latest!=null&&text(latest,"state").equals("CANCELLED"))
                             try{compute.call(connection,"/internal/v1/audio-roles/tasks/"+id+"/cancel","POST",null);}catch(Exception ignored){}
                     }
+                    if(dispatch!=null)dispatch.jobs(1000);
                     break;
                 }
                 var state=compute.call(connection,"/internal/v1/audio-roles/tasks/"+id,"GET",null);
+                var result=executionResult(row,state.path("result"));
                 String phase=state.path("state").asText();
                 if(phase.equals("SUCCEEDED")){
-                    var result=state.path("result");
                     if(Set.of("FAST","ANALYZE").contains(text(row,"kind"))) {
                         synchronized (this) { checkReceiving(id); roles.applySuggestion(text(row,"song_id"),text(row,"fingerprint"),result); }
                     }
@@ -145,8 +159,11 @@ public class AudioJobService {
                     }
                     if(text(row,"kind").equals("SEPARATE"))try{compute.call(connection,"/internal/v1/audio-roles/tasks/"+id+"/release","POST",null);}catch(Exception ignored){}
 
-                }else if(Set.of("FAILED","CANCELLED").contains(phase))update(id,state.path("error").asText().equals("REALTIME_PREEMPTED")?"FAILED":phase,state.path("result").isObject()?state.path("result").toString():"{}",state.path("error").asText("计算失败")+(state.path("result").path("diagnostic").asText().isBlank()?"":"："+state.path("result").path("diagnostic").asText()));
-                else if(phase.equals("RUNNING"))update(id,"RUNNING",state.path("result").isObject()?state.path("result").toString():"{}","");
+                }else if(Set.of("FAILED","CANCELLED").contains(phase))update(id,state.path("error").asText().equals("REALTIME_PREEMPTED")?"FAILED":phase,result.toString(),state.path("error").asText("计算失败")+(result.path("diagnostic").asText().isBlank()?"":"："+result.path("diagnostic").asText()));
+                else if(phase.equals("RUNNING")){
+                    update(id,"RUNNING",result.toString(),"");
+                    if(dispatch!=null)dispatch.jobs(1000);
+                }
             }catch(ResponseStatusException e){
                 if(e.getStatusCode().value()==404)update(id,text(row,"state").equals("RUNNING")?"QUEUED":"FAILED","{}",text(row,"state").equals("RUNNING")?"节点重启后重新排队":"媒体文件不可读取");
                 else if(e.getStatusCode().value()==409)update(id,"FAILED","{}","节点配置或任务状态已变化，请重试");
@@ -157,7 +174,20 @@ public class AudioJobService {
         }
         } finally { ticking.set(false); }
     }
+    private ObjectNode executionResult(Map<String,Object> row,JsonNode value){
+        var result=value.isObject()?((ObjectNode)value).deepCopy():json.createObjectNode();
+        try{
+            var previous=json.readTree(text(row,"result_json"));
+            var queue=previous==null?json.nullNode():previous.path("timingsMs").path("queue");
+            if(queue.isNumber()){
+                var timings=result.get("timingsMs") instanceof ObjectNode object?object:result.putObject("timingsMs");
+                timings.put("queue",Math.max(0,queue.asLong()));
+            }
+        }catch(IOException ignored){}
+        return result;
+    }
     @Scheduled(fixedDelay=10000,initialDelay=15000,scheduler="audioScheduler")
+    public void scheduledDiscover(){dispatch.background("discover",this::discover);}
     public void discover(){
         try {
             var capability=compute.call(compute.connection(),"/internal/v1/status","GET",null);
@@ -192,6 +222,7 @@ public class AudioJobService {
         update(text(row,"id"),"FAILED","{}",reason);
     }
     @Scheduled(fixedDelay=3600000,initialDelay=60000,scheduler="audioScheduler")
+    public void scheduledCollect(){dispatch.background("collect",this::collect);}
     public void collect(){
         if(!Files.isDirectory(root))return;
         try(var paths=Files.list(root)){
@@ -209,13 +240,20 @@ public class AudioJobService {
     private synchronized void update(String id,String state,String result,String error){
         var latest=mapper.job(id);
         if(latest!=null&&text(latest,"state").equals("CANCELLED")&&!state.equals("CANCELLED"))return;
-        mapper.updateJob(id,state,result,error,System.currentTimeMillis());
+        if(latest!=null && state.equals(text(latest,"state")) && result.equals(text(latest,"result_json")) && error.equals(text(latest,"error")))return;
+        if(mapper.updateJob(id,state,result,error,System.currentTimeMillis())>0 && !state.equals("RUNNING")){
+            if(Set.of("SUCCEEDED","FAILED","CANCELLED").contains(state)){
+                if(events!=null && latest!=null)events.publishEvent(new AudioCatalog.Changed(text(latest,"song_id")));
+                if(dispatch!=null){dispatch.batches();dispatch.jobs(0);}
+            }else if(dispatch!=null)dispatch.jobs(3000);
+        }
     }
     private void checkReceiving(String id)throws java.io.InterruptedIOException {
         var latest=mapper.job(id);
         if(latest!=null&&text(latest,"state").equals("CANCELLED"))throw new java.io.InterruptedIOException("Audio task cancelled");
     }
     private void receive(Connection connection,String id,JsonNode result)throws IOException{
+        long started=System.nanoTime();
         if(!result.path("artifact").asText().equals(id+".m4a"))throw fail(422,"伴奏产物无效");
         Files.createDirectories(root);
         if(Files.getFileStore(root).getUsableSpace()<2L*1024*1024*1024)throw fail(507,"伴奏存储空间不足");
@@ -237,6 +275,7 @@ public class AudioJobService {
                 Files.move(temporary,root.resolve(id+".m4a"),StandardCopyOption.REPLACE_EXISTING,StandardCopyOption.ATOMIC_MOVE);
             }
         } finally { Files.deleteIfExists(temporary); }
+        if(result instanceof ObjectNode value)value.withObject("/timingsMs").put("transfer",(System.nanoTime()-started)/1_000_000d);
     }
     public void cancel(String song,String id){
         Map<String,Object> row;

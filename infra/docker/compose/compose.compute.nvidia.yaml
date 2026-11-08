@@ -24,8 +24,9 @@ services:
       COMPUTE_AUDIO_MEMORY_BYTES: "4294967296"
       COMPUTE_AUDIO_THREADS: "2"
     ports:
-      # Bind to the NVIDIA host LAN IP; restrict inbound access to Java.
-      - "10.100.1.12:18090:8090"
+      # For remote Java, replace 127.0.0.1 with this host's private LAN IP.
+      # Restrict inbound access to the Java host; keep authentication enabled.
+      - "127.0.0.1:18090:8090"
     volumes:
       - singverse-compute-auth:/run/singverse-compute
       - singverse-transcode-cache:/var/cache/singverse-transcode
@@ -43,5 +44,7 @@ services:
     stop_grace_period: 10s
 volumes:
   singverse-compute-auth:
+  # Includes persistent hardware/model settings and qualification records.
   singverse-transcode-cache:
+  # Weights are kept apart from the settings in transcode-cache.
   singverse-audio-models:

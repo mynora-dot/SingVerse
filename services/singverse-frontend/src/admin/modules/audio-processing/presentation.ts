@@ -1,4 +1,4 @@
-import type { AudioRoles, AudioStream, Batch, Node } from './api'
+import type { AudioExecution, AudioRoles, AudioStream, Batch, Node } from './api'
 
 /** 原唱与伴奏的用户文案集中在这里，列表、单曲面板和歌曲详情共用同一套说法。 */
 export type Tone = 'success' | 'warning' | 'danger' | 'info' | 'primary'
@@ -20,6 +20,16 @@ export function analysisReason(reason?: string) {
 }
 export function latestJob(roles: AudioRoles | undefined, kind: string) { return roles?.jobs.find(job => job.kind === kind) }
 
+export function executionStage(execution?: AudioExecution) {
+  const labels: Record<string, string> = { probe: '读取歌曲', extract: '准备音频', separate: '生成伴奏', encode: '保存伴奏', validate: '检查伴奏', hash: '检查伴奏' }
+  const label = labels[execution?.stage || '']
+  if (!label) return ''
+  const progress = execution?.progress
+  if (execution?.stage !== 'separate' || !progress || !Number.isFinite(progress.completedFrames)
+    || !Number.isFinite(progress.frames) || progress.frames <= 0) return label
+  return `${label} ${Math.max(0, Math.min(100, Math.floor(progress.completedFrames / progress.frames * 100)))}%`
+}
+
 export function latestAnalysis(roles: AudioRoles | undefined) {
   const jobs = roles?.jobs.filter(job => ['FAST', 'ANALYZE'].includes(job.kind))
   return jobs?.find(job => active(job.state)) || jobs?.[0]
@@ -38,7 +48,7 @@ export function rolesSummary(roles: AudioRoles | undefined): RolesSummary {
   if (!streams.length) return { tag: '无音轨', title: '文件里没有音频', hint: '这个文件没有可用的音频，无法设置原唱或伴奏。', tone: 'info' }
   if (streams.length === 1) {
     if (roles.backingResource) return { tag: '已有伴奏', title: '已生成独立伴奏', hint: '点歌时可以在原唱和伴奏之间切换。', tone: 'success' }
-    if (separate && active(separate.state)) return { tag: '生成中', title: '正在生成伴奏', hint: '由计算节点在后台分离人声，完成后自动可用。', tone: 'primary' }
+    if (separate && active(separate.state)) return { tag: '生成中', title: separate.state === 'QUEUED' ? '等待生成伴奏' : executionStage(separate) || '正在生成伴奏', hint: '由计算节点在后台分离人声，完成后自动可用。', tone: 'primary' }
     if (separate?.state === 'FAILED') return { tag: '生成失败', title: '上次生成伴奏失败', hint: separate.error || '可以检查节点后重新生成。', tone: 'danger' }
     return { tag: '可生成伴奏', title: '只有一条原唱音轨', hint: '可以用 AI 分离人声，生成一份独立伴奏。', tone: 'warning' }
   }

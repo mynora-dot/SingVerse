@@ -19,6 +19,7 @@ services:
       COMPUTE_AUDIO_MODEL_REPO: '${COMPUTE_AUDIO_MODEL_REPO:-/var/lib/singverse-models/htdemucs}'
       COMPUTE_AUDIO_MEMORY_BYTES: '${COMPUTE_AUDIO_MEMORY_BYTES:-4294967296}'
       COMPUTE_AUDIO_THREADS: '${COMPUTE_AUDIO_THREADS:-2}'
+      COMPUTE_AUDIO_WORKER_IDLE_SECONDS: '${COMPUTE_AUDIO_WORKER_IDLE_SECONDS:-60}'
     ports:
       - '${COMPUTE_HTTP_BIND:-127.0.0.1}:${COMPUTE_HTTP_PORT:-18090}:8090'
     volumes:
@@ -31,5 +32,7 @@ services:
     stop_grace_period: 10s
 volumes:
   singverse-compute-auth:
+  # Includes persistent hardware/model settings and qualification records.
   singverse-transcode-cache:
+  # Weights are kept apart from the settings in transcode-cache.
   singverse-audio-models:

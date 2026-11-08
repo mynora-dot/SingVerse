@@ -78,6 +78,16 @@ class AudioCatalogTest {
                     verify(mapper).jobsForSongs(argThat(ids->ids.size()==20));
                     System.out.printf(Locale.ROOT,"AUDIO_PAGE_SYNTHETIC songs=%d returned=20 bulk_queries=3 elapsed_ms=%d allocated_bytes=%d%n",
                             total,elapsed,bytes);
+                    clearInvocations(songs,mapper);
+                    String changed=String.format(Locale.ROOT,"%06d",total/2);
+                    fixture.catalog.changed(new AudioCatalog.Changed(changed));
+                    start=System.nanoTime();before=allocated();fixture.catalog.rebuild();
+                    assertThat(fixture.catalog.current().songs()).hasSize(total);
+                    assertThat(fixture.catalog.current().byId().get("000000")).isSameAs(index.byId().get("000000"));
+                    verify(songs).byIds(List.of(changed));verify(songs,never()).batchAfter(anyString(),any(),anyInt());
+                    verify(mapper).jobsForSongs(argThat(ids->ids.size()==1));verify(mapper).rolesForSongs(List.of(changed));
+                    System.out.printf(Locale.ROOT,"AUDIO_INCREMENTAL_SYNTHETIC songs=%d changed=1 bulk_queries=3 elapsed_ms=%d allocated_bytes=%d%n",
+                            total,(System.nanoTime()-start)/1_000_000,allocated()-before);
                 } finally {processing.close();}
             }
         }

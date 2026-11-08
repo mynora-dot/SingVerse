@@ -15,7 +15,7 @@ services:
       COMPUTE_AUDIO_MEMORY_BYTES: '4294967296'
       COMPUTE_AUDIO_THREADS: '2'
     ports:
-      - '${NAS_BIND_IP:-10.100.1.115}:18090:8090'
+      - '${NAS_BIND_IP:-127.0.0.1}:18090:8090'
     volumes:
       - auth:/run/singverse-compute
       - cache:/var/cache/singverse-transcode

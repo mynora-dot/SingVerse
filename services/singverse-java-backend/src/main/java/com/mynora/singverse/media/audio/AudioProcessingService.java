@@ -28,6 +28,8 @@ public class AudioProcessingService {
     private final AudioCatalog catalog;
     private final TransactionTemplate transaction;
     private final AtomicBoolean preparing = new AtomicBoolean();
+    @org.springframework.beans.factory.annotation.Autowired private AudioDispatch dispatch;
+    @jakarta.annotation.PostConstruct void initializeDispatch(){dispatch.registerBatches(this::tick);}
     private final ExecutorService preparation = Executors.newSingleThreadExecutor(r -> {
         var thread = new Thread(r, "audio-batch-preparation"); thread.setDaemon(true); return thread;
     });
@@ -158,7 +160,8 @@ public class AudioProcessingService {
         boolean ready=backend.isEmpty()?!node.path("selected").isNull()&&!node.path("selected").asText().isEmpty():java.util.stream.StreamSupport.stream(node.path("backends").spliterator(),false).anyMatch(b->b.path("id").asText().equals(backend)&&b.path("state").asText().equals("AVAILABLE"));
         if(!ready)throw AudioJobService.fail(422,"请先在性能节点配置中安装模型并完成试跑");
         if(!node.path("resourceReady").asBoolean(true))throw AudioJobService.fail(422,"节点当前内存或磁盘空间不足，请查看性能节点配置中的资源预算");
-        mapper.start(id,System.currentTimeMillis());mapper.finish(id,System.currentTimeMillis());return detail(id,0,50);
+        mapper.start(id,System.currentTimeMillis());mapper.finish(id,System.currentTimeMillis());
+        if(dispatch!=null)dispatch.batches();return detail(id,0,50);
     }
     public synchronized ObjectNode cancel(String id){
         var batch=require(id);mapper.cancel(id,System.currentTimeMillis());mapper.skipCancelled(id,System.currentTimeMillis());
@@ -187,22 +190,36 @@ public class AudioProcessingService {
         }
         update(item,"CANCELLED",job,"");
     }
-    void update(Map<String,Object> item,String state,String job,String error){mapper.updateItem(text(item,"batch_id"),text(item,"song_id"),state,job,error,System.currentTimeMillis());}
+    void update(Map<String,Object> item,String state,String job,String error){
+        if(state.equals(text(item,"state"))&&clean(job).equals(text(item,"job_id"))&&clean(error).equals(text(item,"error")))return;
+        mapper.updateItem(text(item,"batch_id"),text(item,"song_id"),state,job,error,System.currentTimeMillis());
+    }
     @Scheduled(fixedDelay=3000,initialDelay=9000,scheduler="audioScheduler")
+    public void scheduledTick(){dispatch.batches();}
     public synchronized void tick(){
         var touched=new HashSet<String>();
-        for(var item:mapper.pending()){
+        var pending=mapper.pending();
+        var current=new HashMap<String,Song>();
+        songs.byIds(pending.stream().map(item->text(item,"song_id")).distinct().toList()).forEach(song->current.put(song.id(),song));
+        var executions=new HashMap<String,Map<String,Object>>();
+        var jobIds=pending.stream().map(item->text(item,"job_id")).filter(id->!id.isEmpty()).distinct().toList();
+        if(!jobIds.isEmpty())roles.jobsByIds(jobIds).forEach(job->executions.put(text(job,"id"),job));
+        for(var item:pending){
             String batch=text(item,"batch_id"),song=text(item,"song_id"),job=text(item,"job_id"),state=text(item,"state");touched.add(batch);
             try{
                 if(text(item,"batch_state").equals("CANCELLED")){
                     cancelMember(item);continue;
                 }
-                if(!MediaSongRepository.fingerprint(songs.get(song)).equals(text(item,"fingerprint"))){
+                if(!current.containsKey(song)){
+                    if(!job.isEmpty())jobs.cancel(song,job);
+                    update(item,"FAILED",job,"歌曲已删除");continue;
+                }
+                if(!MediaSongRepository.fingerprint(current.get(song)).equals(text(item,"fingerprint"))){
                     if(state.equals("PROCESSING")&&!job.isEmpty())jobs.cancel(song,job);
                     update(item,"FAILED",job,"源媒体已变化，请重新选择歌曲");continue;
                 }
                 if(!job.isEmpty()){
-                    var execution=roles.job(job);if(execution==null||execution.isEmpty()){update(item,"FAILED",job,"歌曲任务已丢失");continue;}
+                    var execution=executions.get(job);if(execution==null||execution.isEmpty()){update(item,"FAILED",job,"歌曲任务已丢失");continue;}
                     String phase=text(execution,"state");
                     if(Set.of("FAILED","CANCELLED").contains(phase)){update(item,phase,job,text(execution,"error"));continue;}
                     if(!phase.equals("SUCCEEDED")){update(item,state,job,text(execution,"error"));continue;}

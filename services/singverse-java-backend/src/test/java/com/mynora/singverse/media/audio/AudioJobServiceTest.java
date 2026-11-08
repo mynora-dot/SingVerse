@@ -26,6 +26,45 @@ class AudioJobServiceTest {
     final ObjectMapper json=new ObjectMapper();
     final Connection connection=mock(Connection.class);
     final String id=UUID.randomUUID().toString();
+    @Test void queueTimingSurvivesLegacyNodeResponsesWithoutChangingTheSubmissionContract(){
+        var service=service("current");
+        var queued=new HashMap<String,Object>(mapper.pending().getFirst());
+        queued.put("state","QUEUED");queued.put("kind","PROBE");queued.put("error","");queued.put("created_at",System.currentTimeMillis()-5000);
+        var current=new java.util.concurrent.atomic.AtomicReference<Map<String,Object>>(queued);
+        when(mapper.pending()).thenAnswer(call->List.of(new HashMap<>(current.get())));
+        when(mapper.job(id)).thenAnswer(call->new HashMap<>(current.get()));
+        doAnswer(call->{var next=new HashMap<>(current.get());next.put("state",call.getArgument(1));next.put("result_json",call.getArgument(2));next.put("error",call.getArgument(3));current.set(next);return 1;})
+                .when(mapper).updateJob(eq(id),anyString(),anyString(),anyString(),anyLong());
+        when(compute.call(eq(connection),eq("/internal/v1/audio-roles/tasks"),eq("POST"),any())).thenAnswer(call->{
+            com.fasterxml.jackson.databind.JsonNode body=call.getArgument(3);var fields=new HashSet<String>();body.fieldNames().forEachRemaining(fields::add);
+            assertThat(fields).containsExactlyInAnyOrder("id","reference","mode");
+            return json.createObjectNode().put("state","RUNNING");
+        });
+        var response=json.createObjectNode().put("state","RUNNING");response.putObject("result");
+        when(compute.call(connection,"/internal/v1/audio-roles/tasks/"+id,"GET",null)).thenReturn(response);
+        service.tick();
+        long queue=queueTime(current.get());
+        assertThat(queue).isGreaterThanOrEqualTo(5000);
+        clearInvocations(mapper);service.tick();
+        verify(mapper,never()).updateJob(anyString(),anyString(),anyString(),anyString(),anyLong());
+        response.put("state","SUCCEEDED");service.tick();
+        assertThat(current.get().get("state")).isEqualTo("SUCCEEDED");
+        assertThat(queueTime(current.get())).isEqualTo(queue);
+    }
+    private long queueTime(Map<String,Object> row){
+        try{return json.readTree(row.get("result_json").toString()).at("/timingsMs/queue").asLong();}
+        catch(IOException failure){throw new AssertionError(failure);}
+    }
+    @Test void unchangedRunningResultDoesNotWriteOrSubmitOtherQueuedWork() throws Exception {
+        var service=service("current");
+        var running=new HashMap<String,Object>(mapper.pending().getFirst());running.put("error","");
+        var queued=new HashMap<String,Object>(running);queued.put("id",UUID.randomUUID().toString());queued.put("state","QUEUED");
+        when(mapper.pending()).thenReturn(List.of(running,queued));when(mapper.job(id)).thenReturn(running);
+        when(compute.call(connection,"/internal/v1/audio-roles/tasks/"+id,"GET",null)).thenReturn(json.readTree("{\"state\":\"RUNNING\",\"result\":{}}"));
+        service.tick();
+        verify(mapper,never()).updateJob(anyString(),anyString(),anyString(),anyString(),anyLong());
+        verify(compute,never()).call(any(),eq("/internal/v1/audio-roles/tasks"),eq("POST"),any());
+    }
     AudioJobService service(String fingerprint) {
         var song=mock(Song.class);when(song.contentFingerprint()).thenReturn(fingerprint);when(songs.get("song")).thenReturn(song);
         when(compute.connection("node")).thenReturn(connection);

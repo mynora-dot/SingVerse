@@ -4,7 +4,15 @@ services:
     image: '${COMPUTE_IMAGE:-singverse-compute:local-rocm}'
     build:
       target: rocm
+    environment:
+      COMPUTE_HARDWARE_BACKEND: '${COMPUTE_HARDWARE_BACKEND:-auto}'
+      COMPUTE_HARDWARE_DEVICE: '${COMPUTE_HARDWARE_DEVICE:-/dev/dri/renderD128}'
     mem_limit: '${COMPUTE_CONTAINER_MEMORY_LIMIT:-6g}'
+    shm_size: '256m'
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri

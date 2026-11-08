@@ -1,42 +1,53 @@
 # Linux AMD64 业务节点离线镜像包
 
-适用于 NVIDIA RTX 3070 / A3000 所在的 Linux x86_64 主机。
-内含前端 Nginx 和 Java 后端运行镜像，数据库使用持久化 SQLite。
-不需要从 Docker Hub 拉镜像，不需要 npm、Maven 或源码构建，不使用 `.env`。
-这是全新安装包，不包含本机已有数据库、密钥或歌曲。当前数据库使用 `202611070001_initial_schema.sql` 从空库初始化，不支持旧迁移链数据库升级。
+适用于 Linux x86_64 NAS/主机，与 GPU 品牌无关。内含 Nginx、Java 运行镜像及 SQLite 配置，**不含 compute、模型、歌曲或手机/TV APK**。不需要在线拉镜像、npm、Maven 或源码构建。ARM64 不能使用此包。
+
+需要 Docker 与 Compose 插件 2.24.4+。当前从空库以 `202611070001_initial_schema.sql` 初始化，不包含旧数据库或账号，不支持旧迁移链升级。已有旧业务项目时，使用全新的项目名（所有命令统一加 `-p <新项目名>`）及空闲端口，不复用或删除原卷。
 
 ## 部署
 
-解压后进入 `SingVerse-Business` 目录，再执行：
+1. 解压**离线镜像 ZIP**并进入 `SingVerse-Business`，确认有 `images.tar`。源码包里附带此说明不代表源码包含有镜像。
+2. 默认 `docker-compose.yaml` 绑定 `127.0.0.1:18080`。TV/手机访问时改为 NAS 的实际局域网 IP；有独立 compute 时，将 Java 的 `SINGVERSE_CALLBACK_ORIGIN` 填为 compute 可达的业务 URL，例如 `http://<NAS-IP>:18080`。
+3. 执行：
 
 ```sh
 sha256sum -c SHA256SUMS
 docker load -i images.tar
 mkdir -p media
 docker compose -f docker-compose.yaml config --quiet
-docker compose -f docker-compose.yaml up -d --no-build --pull never --wait
+docker compose -f docker-compose.yaml up -d --no-build --pull never --wait --wait-timeout 180
 docker compose -f docker-compose.yaml ps -a
-curl --fail http://10.100.1.12:18080/api/health
+curl --fail http://127.0.0.1:18080/api/health
 ```
 
-飞牛 Docker 项目界面部署前，先在终端运行 `docker load -i images.tar` 导入镜像。
-再用本包的 `docker-compose.yaml` 创建首次部署的业务项目；文件不包含 build，且设置 pull_policy: never。
-若已有旧业务项目，所有命令使用一个尚未用过的项目名（例如加 `-p singverse-business-fresh`），创建独立数据库和密钥卷，不复用旧卷；端口冲突时停止原业务项目或修改新项目端口。完成本基线首次安装后，后续启停继续使用选定项目名与同一组卷。
-此包不操作原有 NVIDIA 性能节点项目。不要将它的 Compose 覆盖到性能节点目录。
+最后的检查 URL 使用默认回环；改了绑定地址后请使用实际 NAS 地址。macOS 校验可用 `shasum -a 256 -c SHA256SUMS`。NAS 项目界面部署前先在终端执行 `docker load`，再使用包内无 build、`pull_policy: never` 的 Compose 创建项目，不覆盖已有计算节点的配置。
 
-业务入口 `http://10.100.1.12:18080/`，全新安装初始账号与密码均为 `admin`，登录后改密。
-歌曲放在解压目录的 `media/`，管理页本地来源路径填写 `/media`；也可以添加 WebDAV。
-在性能节点连接设置里扫描局域网，选择节点后点击“连接此节点”，可自动配对、测试并保存，无需填写密钥。性能节点须同步升级并允许局域网配对；旧节点仍可手填 `http://10.100.1.12:18090` 和原连接密钥。
-只有业务容器挂载歌曲；性能节点通过任务授权回源读取。
+管理页 `http://<NAS-IP>:18080/`，全新安装账号密码均为 `admin`，登录后改密。歌曲可放到 `media/`，本地来源填写 `/media`，或直接使用 WebDAV；原件只读挂载给 Java。容器 UID 10001 需要读取及目录遍历权限。
 
-如果业务部署到其他地址，同时修改 Compose 中的端口绑定和 SINGVERSE_CALLBACK_ORIGIN。
-回源地址必须从性能容器内可达，不能使用 localhost。
-SINGVERSE_PUBLIC_ORIGIN 在内网 HTTP 部署中保持为空；只有正式 HTTPS 入口才可填写此项。
-所有参数都在 Compose 中，客户端只访问 Java 的业务入口。
+独立计算节点需要同版本镜像和模型，单独导入/部署。在管理页性能节点配置中扫描配对或手工连接，验证 Java 与 compute 双向访问；随后下载/导入模型、GPU 试跑和完整歌曲验收。内网 HTTP 的 `SINGVERSE_PUBLIC_ORIGIN` 留空。没有独立 compute 时仍可使用业务入口和原片播放，计算功能不可用。
 
-SQLite 数据与衍生文件保存在 `singverse-data` 卷，凭据加密主密钥保存在 `singverse-secrets` 卷。
-停止可用 `docker compose down`，不要加 `-v`。备份与迁移必须同时保留这两个卷。
-旧本机数据不在此包中，MySQL 数据不会自动迁移到 SQLite。
+## 数据保留与升级
 
-检查日志：`docker compose logs --tail 100 singverse-java-backend singverse-frontend`。
-本包包含回源地址修复；镜像构建与本机检查不能代替 NAS 上的歌曲、GPU 和跨主机验收。
+SQLite 与业务衍生文件保存在 `singverse-data`，加密主密钥在 `singverse-secrets`，实际卷名带项目名前缀。停止使用 `docker compose -f docker-compose.yaml down`，不加 `-v`。备份前停止写入，成套备份两卷及配置，媒体另行保存；不能只复制运行中的 SQLite 主文件。此包不会迁移 MySQL 数据，也不操作原计算节点项目。
+
+更新时先备份、记录原镜像 ID，加载相同架构及配套版本的新镜像，再用原项目和配置执行 `up -d --no-build --pull never`。若复用相同镜像标签，请加 `--force-recreate` 保证容器更新；`restart` 不会使用新镜像。数据库不兼容时不能仅回退镜像，需恢复原配套备份。
+
+日志：`docker compose -f docker-compose.yaml logs --tail 100 singverse-java-backend singverse-frontend`。离线镜像能启动不代表 GPU、跨主机回源或真实歌曲验收完成。
+
+随包附带的 [验收与运维指南](README.operations.md) 提供停机备份、恢复验证与维护命令；备份使用本机已有镜像，不需要额外联网拉取工具镜像。
+
+## 维护者制作离线包
+
+在可联网构建的完整仓库根执行；导出的是干净运行镜像，不是容器文件系统或业务卷：
+
+```sh
+docker buildx build --platform linux/amd64 --load \
+  -f services/singverse-java-backend/Dockerfile --target singverse-java-backend \
+  -t singverse-java-backend:offline-amd64 .
+docker buildx build --platform linux/amd64 --load \
+  -f services/singverse-java-backend/Dockerfile --target singverse-frontend \
+  -t singverse-frontend:offline-amd64 .
+make app-package-offline APP_OFFLINE_PACKAGE_OUTPUT=/tmp/SingVerse-Business-offline-amd64.zip
+```
+
+打包器检查两个镜像均为 `linux/amd64`，移除源码 build 配置，设置禁止拉取并生成 `SHA256SUMS`。输出已存在时失败。compute 镜像可另用 `docker save` / `docker load` 转移对应架构的固定镜像；模型通过管理页导入，不能把运行中的业务卷打进镜像。

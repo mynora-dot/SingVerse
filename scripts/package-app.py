@@ -14,6 +14,8 @@ def contents():
     files = {
         'docker-compose.yaml': (ROOT/'infra/deploy/app/docker-compose.yaml').read_bytes(),
         '部署说明.md': (ROOT/'infra/deploy/app/README.md').read_bytes(),
+        'README.offline.md': (ROOT/'infra/deploy/app/README.offline.md').read_bytes(),
+        'README.operations.md': (ROOT/'infra/docker/OPERATIONS.md').read_bytes(),
         '.dockerignore': (ROOT/'infra/docker/build/.dockerignore').read_bytes(),
     }
     trees = (
@@ -39,6 +41,8 @@ def contents():
         ['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], cwd=ROOT,
     ).decode().split('\0')
     for name in sources:
+        if any(part in ('.DS_Store', '__MACOSX') or part.startswith('._') for part in Path(name).parts):
+            continue
         if name and (name in exact or name.startswith(trees)):
             path = ROOT/name
             if not path.exists() and not path.is_symlink():

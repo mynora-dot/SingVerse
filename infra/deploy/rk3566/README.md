@@ -4,8 +4,8 @@
 
 ## 启动
 
-1. 将整个 ZIP 解压到 NAS 一个新目录；在飞牛 Docker Compose 项目中使用该目录下的 `docker-compose.yaml`。首次构建需要网络访问 Python/Debian 镜像、GitHub 和 Python 包源，不是离线安装包。
-2. 复制 `.env.example` 为 `.env`，填写 NAS 的局域网 IP（`NAS_BIND_IP`）。本包默认监听 NAS 受限局域网地址 `10.100.1.115:18090`，更换设备时修改 IP；将端口访问限制在 Java 所在的受限网络。
+1. 将整个 ZIP 解压到 NAS 一个新目录；需要 Docker、Buildx 和 Compose 插件 2.24.4+，在飞牛 Docker Compose 项目中使用该目录下的 `docker-compose.yaml`。首次构建需要网络访问 Python/Debian 镜像、GitHub 和 Python 包源，不是离线安装包。
+2. 仅首次复制 `.env.example` 为 `.env`，已有配置请保留。默认只监听 `127.0.0.1:18090`；跨主机连接时将 `NAS_BIND_IP` 改为 NAS 实际的受限局域网地址，并限制端口访问仅 Java 主机可用。
 3. `mkdir -p test-output`；给 `test-output` 目录授予容器 UID 10001 写入权限（例如仅对此目录执行 `sudo chown 10001:10001 test-output`）。原始媒体仅由业务节点管理，不修改歌曲文件权限或所有者。
 4. 在解压目录执行：
 
@@ -35,7 +35,7 @@ docker compose exec -T singverse-compute python -m singverse_compute.infrastruct
 docker compose exec -T singverse-compute cat /run/singverse-compute/token
 ```
 
-原始媒体只由 Java 管理；所有任务通过 Java 随请求提供的回源地址及任务授权读取，不需要节点媒体挂载或 Java 地址配置。健康状态不代表音频模型已通过资格试跑。
+原始媒体只由 Java 管理；所有任务通过 Java 随请求提供的回源地址及任务授权读取，不需要节点媒体挂载或在 compute 中配置 Java 地址。业务侧的 `SINGVERSE_CALLBACK_ORIGIN` 应填写从此节点可达的业务 URL（无尾部 `/`），验证 Java → compute 和 compute → Java 两个方向。健康状态不代表音频模型已通过资格试跑。
 
 ## 后续 RKNN 实验
 

@@ -49,6 +49,7 @@ class AudioProcessingHttpTest {
     @Autowired ObjectMapper json;
     @Autowired MediaSongRepository songs;
     @Autowired AudioProcessingMapper batches;
+    @Autowired AudioRoleMapper audioJobs;
     @Autowired DataSource database;
     @MockitoBean AudioCatalog catalog;
     final HttpClient client = HttpClient.newBuilder()
@@ -95,6 +96,30 @@ class AudioProcessingHttpTest {
         var cancelled = request("/api/v1/audio-processing/batches/preparing-http/cancel", "POST", null, true);
         assertThat(cancelled.statusCode()).withFailMessage(cancelled.body()).isEqualTo(200);
         assertThat(json.readTree(cancelled.body()).path("state").asText()).isEqualTo("CANCELLED");
+        verifyQueuePriorityAndNoopWrites();
+    }
+
+    private void verifyQueuePriorityAndNoopWrites(){
+        var ids=new java.util.HashSet<String>();
+        for(String kind:List.of("PROBE","FAST","SEPARATE")){
+            String id=java.util.UUID.randomUUID().toString();ids.add(id);
+            var row=new java.util.HashMap<String,Object>();row.put("id",id);row.put("song_id","http-song");row.put("fingerprint","current");
+            row.put("kind",kind);row.put("state","QUEUED");row.put("node_origin","");row.put("created_at",1000L);row.put("updated_at",1000L);
+            audioJobs.insertJob(row);
+        }
+        assertThat(audioJobs.pending().stream().filter(row->ids.contains(row.get("id"))).map(row->row.get("kind")))
+                .containsExactly("SEPARATE","FAST","PROBE");
+        String job=ids.iterator().next();
+        assertThat(audioJobs.jobsByIds(List.of(job))).hasSize(1);
+        assertThat(audioJobs.updateJob(job,"FAILED","{}","test",2000)).isEqualTo(1);
+        assertThat(audioJobs.updateJob(job,"FAILED","{}","test",3000)).isZero();
+        assertThat(((Number)audioJobs.job(job).get("updated_at")).longValue()).isEqualTo(2000);
+        String batch=java.util.UUID.randomUUID().toString();batches.insertBatch(batch,"",1000,1);
+        batches.insertItems(List.of(Map.of("batch",batch,"song","http-song","fingerprint","current","title","歌曲",
+                "category","ELIGIBLE","state","PENDING","error","","now",1000L)));
+        assertThat(batches.updateItem(batch,"http-song","PENDING",null,"",2000)).isZero();
+        assertThat(batches.updateItem(batch,"http-song","PROCESSING",job,"",2000)).isEqualTo(1);
+        assertThat(batches.updateItem(batch,"http-song","PROCESSING",job,"",3000)).isZero();
     }
 
     private HttpResponse<String> request(String path, String method, Object body, boolean csrf) throws Exception {

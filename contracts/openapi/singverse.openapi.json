@@ -24444,6 +24444,40 @@
           "fallbackReason": {
             "type": "string",
             "description": "Empty unless CPU fallback occurred; ACCELERATOR_NOT_READY or ACCELERATOR_EXECUTION_FAILED. The backend field records actual execution."
+          },
+          "stage": {
+            "type": "string",
+            "description": "Current processing stage: probe, extract, separate, encode, validate, hash, or terminal task state. Optional for older nodes."
+          },
+          "timingsMs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "minimum": 0
+            },
+            "description": "Elapsed monotonic milliseconds. queue is Java waiting time, total is compute admission through completion, transfer is Java artifact download/validation. Nested inference timings overlap separate; do not sum all fields."
+          },
+          "progress": {
+            "type": "object",
+            "properties": {
+              "completedFrames": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "frames": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "completedForwards": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "description": "Completed overlap-add audio frames for the current separation; not overall task progress."
+          },
+          "inference": {
+            "type": "object",
+            "description": "Native adapter evidence: explicit device/backend, modelReused, started/completedForwards, bounded bufferFrames, sampledPeakRssBytes, peak GPU allocation and phase timingsMs. No implicit CPU inference fallback."
           }
         },
         "required": [
@@ -24676,7 +24710,43 @@
                   "type": [
                     "object",
                     "null"
-                  ]
+                  ],
+                  "properties": {
+                    "stage": {
+                      "type": "string",
+                      "description": "Current processing stage: probe, extract, separate, encode, validate, hash, or terminal task state. Optional for older nodes."
+                    },
+                    "timingsMs": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "description": "Elapsed monotonic milliseconds. queue is Java waiting time, total is compute admission through completion, transfer is Java artifact download/validation. Nested inference timings overlap separate; do not sum all fields."
+                    },
+                    "progress": {
+                      "type": "object",
+                      "properties": {
+                        "completedFrames": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "frames": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "completedForwards": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "description": "Completed overlap-add audio frames for the current separation; not overall task progress."
+                    },
+                    "inference": {
+                      "type": "object",
+                      "description": "Native adapter evidence: explicit device/backend, modelReused, started/completedForwards, bounded bufferFrames, sampledPeakRssBytes, peak GPU allocation and phase timingsMs. No implicit CPU inference fallback."
+                    }
+                  }
                 }
               }
             }

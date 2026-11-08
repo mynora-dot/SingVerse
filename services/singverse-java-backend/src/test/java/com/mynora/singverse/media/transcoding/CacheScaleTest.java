@@ -334,7 +334,8 @@ class CacheScaleTest {
                 "One tiny HLS fixture only; Files counts cover current-thread hot contains/renew/serve after cold worker validation.",
                 "Heap delta is an approximate unforced-GC snapshot, may be negative, and includes other JVM activity; allocation is current thread only (-1 if unavailable).",
                 "One candidate-load/rank observation per scale and seven mapper-page observations; no latency threshold or statistical performance claim."));
-        Path reportPath = Path.of(System.getProperty("singverse.cache-scale.report", "/private/tmp/singverse-cache-scale-metrics.json"));
+        Path defaultReportPath = Path.of(System.getProperty("java.io.tmpdir"), "singverse-cache-scale-metrics.json");
+        Path reportPath = Path.of(System.getProperty("singverse.cache-scale.report", defaultReportPath.toString()));
         Files.writeString(reportPath, json.writerWithDefaultPrettyPrinter().writeValueAsString(report) + "\n");
         System.out.println("SQLITE_CACHE_SCALE_REPORT " + reportPath);
     }

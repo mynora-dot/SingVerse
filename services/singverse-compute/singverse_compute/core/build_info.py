@@ -33,4 +33,5 @@ def native_identity():
 
 def includes_backend(backend):
     variant = build_info()['variant']
-    return variant == 'native' or backend == 'cpu' and variant != 'base' or backend == variant
+    return (variant == 'native' or backend == 'cpu' and variant != 'base' or backend == variant
+            or variant == 'rocm-native' and backend == 'rocm')
