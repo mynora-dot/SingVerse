@@ -70,7 +70,13 @@ const unclassifiedCount = computed(() => items.value.filter(s => !songTags(s, ta
 const reviewedCount = computed(() => items.value.filter(identityReviewed).length)
 const matchedCount = computed(() => items.value.filter(s => !s.result.needsReview && !identityReviewed(s)).length)
 
-let active = true, generation = 0, reviewGeneration = 0
+let active = true, generation = 0, reviewGeneration = 0, detailGeneration = 0
+watch(() => route.query.detailSongId, async id => {
+  const token = ++detailGeneration
+  if (typeof id !== 'string') return
+  try { const context = await singleReview.load(id); if (active && token === detailGeneration) detailSong.value = context.song }
+  catch (failure) { if (active && token === detailGeneration) error.value = failure instanceof Error ? failure.message : '读取单曲失败' }
+}, { immediate: true })
 watch(() => route.query.reviewSongId, async id => {
   const token = ++reviewGeneration
   if (typeof id !== 'string') return

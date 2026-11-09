@@ -13,6 +13,7 @@ help:
 	@printf '%s\n' 'compute-setup      Create Python 3.12+ venv and install locked dependencies' 'compute-check      Python compute HTTP and internal contract tests' 'compute-run        Start compute node on 127.0.0.1:8090' 'compute-fast-audio-setup Install pinned fast classifier runtime and model for scans' 'compute-audio-setup Install optional pinned CPU Demucs runtime and local model (explicit download)' 'compute-audio-cuda-setup Install pinned Linux x86_64 CUDA audio runtime (model downloaded in admin)' 'compute-audio-rocm-setup Install pinned Linux x86_64 ROCm audio runtime (compatible GPUs only)' 'compute-audio-openvino-setup Install pinned Linux x86_64 OpenVINO audio runtime' 'compute-audio-uvr-setup Install ONNX CPU baseline runtime and pinned UVR 9482 model' 'compute-audio-rknn-setup Install native Linux ARM64 RKNN Lite2 runtime (no model download)' 'compute-images     Build backend image matrix using infra/docker/build/docker-bake.hcl' 'compute-package-nvidia Package CUDA source deployment without media mounts or .env' 'transcode-tools    Download checksum-pinned Jellyfin media tools into .tools (no global installation)' 'transcode-fixtures Download optional checksum-pinned official Dolby Vision verification samples'
 	@printf '%s\n' 'backend-check      Java + Python tests, package and real process integration (run compute-setup first)'
 	@printf '%s\n' 'compute-audio-rocm-native-setup Install pinned native gfx1103 audio runtime (Linux x86_64 / Python 3.12)'
+	@printf '%s\n' 'compute-separation-cpu-setup Install independent ONNX CPU worker (no GPU drivers)' 'compute-separation-mlx-setup Install isolated native macOS ARM64 MLX worker'
 	@printf '%s\n' 'frontend-setup    Install locked frontend dependencies (Node.js 22.19+)' 'frontend-dev      Start unified frontend development server on 127.0.0.1:5173/admin/' 'frontend-check    Frontend typecheck and two-page build (run npm test separately)' 'frontend-build    Build portable assets in services/singverse-frontend/dist'
 	@printf '%s\n' 'docker-build      Build Nginx, Java and base compute images' 'docker-up         Build and start default Docker app (AI runtime not included)' 'docker-down       Stop Docker app; preserve all named volumes' 'docker-status     Show Docker app status' 'docker-logs       Follow Docker app logs'
 	@printf '%s\n' 'auth-docker-check Verify password/MFA/recovery in a disposable Docker project' 'docker-check      Verify Docker pages, assets, API health and 404 behavior (Python 3)'
@@ -177,6 +178,15 @@ compute-audio-rknn-setup:
 compute-audio-uvr-setup:
 	cd services/singverse-compute && .venv/bin/python -m pip install -r requirements-audio-uvr.lock
 	services/singverse-compute/.venv/bin/python scripts/setup-uvr-model.py
+
+.PHONY: compute-separation-cpu-setup
+compute-separation-cpu-setup:
+	services/singverse-compute/.venv/bin/python scripts/setup-separation-runtime.py
+
+.PHONY: compute-separation-mlx-setup
+compute-separation-mlx-setup:
+	services/singverse-compute/.venv/bin/python -c "import platform; assert platform.system() == 'Darwin' and platform.machine() == 'arm64', 'Run on native Apple Silicon'"
+	services/singverse-compute/.venv/bin/python scripts/setup-separation-runtime.py --directory services/singverse-compute/.venv-audio-mlx --lock services/singverse-compute/requirements-separation-mlx.lock --role accelerator
 
 .PHONY: compute-package-nvidia
 # Override NVIDIA_PACKAGE_OUTPUT only when another artifact destination is required.

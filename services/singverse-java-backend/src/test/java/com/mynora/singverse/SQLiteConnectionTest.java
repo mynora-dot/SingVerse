@@ -58,7 +58,7 @@ class SQLiteConnectionTest {
                                     + " LIKE 'sqlite_%'",
                                 String.class))
                 .containsExactlyInAnyOrder(
-                        "audio_batch", "audio_batch_item", "media_audio_role", "media_audio_job", "media_audio_import", "schema_migrations", "media_metadata_file", "webdav_share_lock", "webdav_share_job", "webdav_share_entry", "webdav_share_asset", "webdav_share_receipt", "webdav_metadata_source", "webdav_resource", "webdav_metadata_task", "webdav_access_budget",
+                        "lx_download_settings", "lx_script", "lx_catalog_track", "lx_download_batch", "lx_download_item", "lx_download_asset", "background_task", "background_task_item", "background_task_relation", "background_scan_scope", "audio_batch", "audio_batch_item", "media_audio_role", "media_audio_job", "media_audio_selection", "media_audio_import", "schema_migrations", "media_metadata_file", "webdav_share_lock", "webdav_share_job", "webdav_share_entry", "webdav_share_asset", "webdav_share_receipt", "webdav_metadata_source", "webdav_resource", "webdav_metadata_task", "webdav_access_budget",
                         "playback_history", "playback_attempt", "song_playback_profile", "playback_activity_state",
                         "song_cache_cleanup_job", "missing_song_feedback", "missing_song_feedback_lock",
                         "auth_account",
@@ -79,7 +79,7 @@ class SQLiteConnectionTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM filename_parser_config", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT mode FROM compute_node_settings WHERE id=1", String.class)).isEqualTo("AUTO");
         assertThat(jdbc.queryForList("SELECT version FROM schema_migrations", String.class))
-                .containsExactly(com.mynora.singverse.infrastructure.database.InitialSchemaFixture.VERSION);
+                .containsExactlyInAnyOrder(com.mynora.singverse.infrastructure.database.InitialSchemaFixture.VERSIONS);
         assertThat(jdbc.queryForObject("SELECT ready FROM playback_activity_state WHERE id=1", Integer.class)).isOne();
         assertThat(jdbc.queryForObject("SELECT phase FROM playback_activity_state WHERE id=1", String.class)).isEqualTo("READY");
     }

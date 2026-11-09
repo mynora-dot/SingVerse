@@ -149,8 +149,17 @@ public class AudioCatalog implements AutoCloseable {
         var identities = batch.stream().map(song -> Map.of("id", song.id(), "fingerprint", MediaSongRepository.fingerprint(song))).toList();
         for (var row : mapper.jobsForSongs(identities))
             history.computeIfAbsent(row.get("song_id").toString(), ignored -> new ArrayList<>()).add(row);
+        var selections=new HashMap<String,Map<String,Object>>();
+        for(var selection:mapper.selectionsForSongs(batch.stream().map(Song::id).toList()))selections.put(selection.get("song_id").toString(),selection);
+        var present=history.values().stream().flatMap(List::stream).map(row->row.get("id").toString()).collect(java.util.stream.Collectors.toSet());
+        var missing=selections.values().stream().map(row->row.get("job_id").toString()).filter(id->!present.contains(id)).distinct().toList();
+        if(!missing.isEmpty())for(var row:mapper.jobsByIds(missing)){
+            String id=row.get("song_id").toString();
+            if(identities.stream().anyMatch(song->song.get("id").equals(id)&&song.get("fingerprint").equals(row.get("fingerprint"))))
+                history.computeIfAbsent(id,ignored->new ArrayList<>()).add(row);
+        }
         var result = new HashMap<String, ObjectNode>();
-        for (var song : batch) result.put(song.id(), jobs.status(song, roles.get(song.id()), history.getOrDefault(song.id(), List.of())));
+        for (var song : batch) result.put(song.id(), jobs.status(song, roles.get(song.id()), history.getOrDefault(song.id(), List.of()),selections.get(song.id())));
         return result;
     }
     @Override @jakarta.annotation.PreDestroy public void close() { executor.shutdownNow(); }

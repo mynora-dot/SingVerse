@@ -978,7 +978,11 @@ public class SongCacheService {
         }
         public void write(byte[] bytes, int offset, int length) throws IOException {
             while (length > 0) {
-                if (position % ORIGINAL_BLOCK_BYTES == 0 && staging != null) begin();
+                if (position % ORIGINAL_BLOCK_BYTES == 0 && staging != null) {
+                    // Stop before opening another block so cancellation preserves completed blocks.
+                    guard.run();
+                    begin();
+                }
                 int count = (int) Math.min(length, original.blockEnd(position) - position + 1);
                 if (output != null) { output.write(bytes, offset, count); received += count; synchronized (lock) { stagingBytes.merge(staging, (long) count, Long::sum); } }
                 position += count; offset += count; length -= count;

@@ -4,13 +4,15 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ElDialog, ElInput, ElMessageBox } from 'element-plus'
 import MediaLibraryView from '../src/admin/modules/media-library/views/MediaLibraryView.vue'
 import { media } from '../src/admin/modules/media-library/api/media'
+import { lx } from '../src/admin/modules/lx-downloads/api'
 
 import { parserProfiles } from '../src/admin/modules/filename-parser/api/rules'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import { workspace } from './fixtures/filename-workspace'
 
 vi.mock('../src/admin/modules/filename-parser/api/rules', () => ({ parserProfiles: { load: vi.fn() } }))
-vi.mock('../src/admin/modules/media-library/api/media', () => ({ media: { directories: vi.fn(), list: vi.fn(), save: vi.fn(), remove: vi.fn(), scan: vi.fn(), songs: vi.fn(), createTask: vi.fn(), latestTask: vi.fn(), task: vi.fn(), cancelTask: vi.fn() } }))
+vi.mock('../src/admin/modules/lx-downloads/api', () => ({ lx: { status: vi.fn() } }))
+vi.mock('../src/admin/modules/media-library/api/media', () => ({ media: { get: vi.fn(), directories: vi.fn(), list: vi.fn(), save: vi.fn(), remove: vi.fn(), scan: vi.fn(), songs: vi.fn(), createTask: vi.fn(), latestTask: vi.fn(), task: vi.fn(), cancelTask: vi.fn() } }))
 let wrapper: VueWrapper
 let router: Router
 beforeEach(async () => {
@@ -21,7 +23,8 @@ beforeEach(async () => {
   await router.push('/library/media')
   vi.mocked(parserProfiles.load).mockResolvedValue(workspace())
   vi.mocked(media.list).mockResolvedValue({ items: [], page: 0, size: 20, totalElements: 0 })
-  vi.mocked(media.directories).mockResolvedValue({ path: '/media', parent: '/', items: [{ name: 'songs', path: '/media/songs' }], hasMore: false })
+  vi.mocked(media.directories).mockImplementation(async (path = '') => ({ path: path || '/media', parent: '/',
+    items: path === '/media/songs' ? [] : [{ name: 'songs', path: '/media/songs' }], hasMore: false }))
   vi.mocked(media.latestTask).mockResolvedValue(undefined)
   vi.mocked(media.save).mockResolvedValue({ id: 'saved' } as never)
 })
@@ -29,6 +32,15 @@ afterEach(() => { wrapper?.unmount(); document.body.innerHTML = ''; vi.clearAllM
 function button(text: string) {
   return wrapper.findAll('button').find(item => item.text() === text)!
 }
+it('任务中心来源深链接读取不在当前页的来源，并打开对应业务面板', async () => {
+  await router.push('/library/media?source=outside-page')
+  const source = { id: 'outside-page', name: '目标曲库', type: 'WEBDAV', location: 'https://nas.example.invalid/dav/', username: '', parserProfileId: 'default', passwordConfigured: false, createdAt: '', updatedAt: '' }
+  vi.mocked(media.get).mockResolvedValue(source as never)
+  wrapper = mount(MediaLibraryView, { global: { plugins: [router], stubs: { WebDavMetadataDialog: { props: ['source'], template: '<div class="linked-source">{{ source.name }}</div>' } } } })
+  await flushPromises()
+  expect(media.get).toHaveBeenCalledWith('outside-page')
+  expect(wrapper.get('.linked-source').text()).toBe('目标曲库')
+})
 it('WebDAV 地址在卡片中显示解码后的中文，编辑时保留原地址', async () => {
   const location = 'http://nas.example.invalid/%E5%AA%92%E4%BD%93%E5%BA%93/ktv/music/'
   vi.mocked(media.list).mockResolvedValue({ items: [{ id: 'source-1', name: 'all', type: 'WEBDAV', location, username: '', parserProfileId: 'default', passwordConfigured: false, createdAt: '', updatedAt: '' }], page: 0, size: 20, totalElements: 1 })
@@ -54,7 +66,7 @@ it('本地目录表单独立于远端认证，保存后刷新真实列表', asyn
   await selectFolder()
   await form.get('form').trigger('submit')
   await flushPromises()
-  expect(media.save).toHaveBeenCalledWith({ name: '本地歌曲', type: 'LOCAL', location: '/media/songs', parserProfileId: 'default' }, undefined)
+  expect(media.save).toHaveBeenCalledWith({ name: '本地歌曲', type: 'LOCAL', location: '/media/songs', parserProfileId: 'default', useForLxDownloads: false }, undefined)
   expect(media.list).toHaveBeenCalledTimes(2)
 })
 it('WebDAV 编辑不回显密码，留空时不覆盖密码', async () => {
@@ -211,7 +223,7 @@ it('添加来源支持五段 cron 配置，六段表达式阻止提交', async (
   const dialog = wrapper.findComponent(ElDialog)
   const inputs = dialog.findAllComponents(ElInput)
   await inputs[0]!.setValue('定时歌曲'); await selectFolder()
-  await dialog.get('summary').trigger('click'); await dialog.get('input[type="checkbox"]').setValue(true); await flushPromises()
+  await dialog.get('summary').trigger('click'); await dialog.get('.source-advanced input[type="checkbox"]').setValue(true); await flushPromises()
   await dialog.get('input[aria-label="扫描 Cron 表达式"]').setValue('0 0 3 * * *')
   await dialog.get('form').trigger('submit'); await flushPromises()
   expect(media.save).not.toHaveBeenCalled()
@@ -223,19 +235,40 @@ it('添加来源支持五段 cron 配置，六段表达式阻止提交', async (
 
 async function selectFolder() {
   await button('选择文件夹').trigger('click'); await flushPromises()
-  await wrapper.get('input[aria-label="选择 songs"]').setValue(true)
-  await button('选择此文件夹').trigger('click'); await flushPromises()
+  await wrapper.get('button[aria-label="进入 songs"]').trigger('click'); await flushPromises()
+  await button('使用当前文件夹').trigger('click'); await flushPromises()
 }
+it('下载位置标记可见，更换绑定明确确认原目录和新目录', async () => {
+  vi.mocked(lx.status).mockResolvedValue({ target: { id: 'old', path: '/old-downloads' } } as never)
+  vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never)
+  wrapper = mount(MediaLibraryView, { global: { plugins: [router], stubs: { teleport: true } } }); await flushPromises()
+  await button('添加媒体库').trigger('click'); await flushPromises(); await selectFolder()
+  const form = wrapper.findComponent(ElDialog)
+  await form.get('input[type="checkbox"]').setValue(true)
+  await form.get('form').trigger('submit'); await flushPromises()
+  expect(ElMessageBox.confirm).toHaveBeenCalledWith(expect.stringContaining('原保存位置：/old-downloads。新保存位置：/media/songs'), '更改下载保存位置', expect.anything())
+  expect(media.save).toHaveBeenCalledWith(expect.objectContaining({ useForLxDownloads: true }), undefined)
+})
+it('编辑已绑定本地媒体库保留下载用途并显示卡片标记', async () => {
+  vi.mocked(media.list).mockResolvedValue({ items: [{ id: 'bound', name: '下载曲库', type: 'LOCAL', location: '/downloads', username: '', parserProfileId: 'default', passwordConfigured: false, useForLxDownloads: true }], page: 0, size: 20, totalElements: 1 } as never)
+  vi.mocked(lx.status).mockResolvedValue({ target: { id: 'bound', path: '/downloads' } } as never)
+  wrapper = mount(MediaLibraryView, { global: { plugins: [router], stubs: { teleport: true } } }); await flushPromises()
+  expect(wrapper.text()).toContain('下载保存位置')
+  await wrapper.get('summary[aria-label="下载曲库的更多操作"]').trigger('click'); await button('编辑').trigger('click'); await flushPromises()
+  const form = wrapper.findComponent(ElDialog); expect(form.get('input[type="checkbox"]').element).toHaveProperty('checked', true)
+  await form.get('form').trigger('submit'); await flushPromises()
+  expect(media.save).toHaveBeenCalledWith(expect.objectContaining({ useForLxDownloads: true }), 'bound')
+})
 it('目录加载失败禁止选择，重试后可浏览与自动命名', async () => {
   wrapper = mount(MediaLibraryView, { global: { plugins: [router], stubs: { teleport: true } } }); await flushPromises()
   await button('添加媒体库').trigger('click'); await flushPromises()
   vi.mocked(media.directories).mockRejectedValueOnce(new Error('目录不可读'))
   await button('选择文件夹').trigger('click'); await flushPromises()
   expect(wrapper.text()).toContain('目录不可读')
-  expect(button('选择此文件夹').attributes('disabled')).toBeDefined()
-  await button('返回根目录').trigger('click'); await flushPromises()
-  await wrapper.get('input[aria-label="选择 songs"]').setValue(true)
-  await button('选择此文件夹').trigger('click'); await flushPromises()
+  expect(button('使用当前文件夹').attributes('disabled')).toBeDefined()
+  await button('返回常用位置').trigger('click'); await flushPromises()
+  await wrapper.get('button[aria-label="进入 songs"]').trigger('click'); await flushPromises()
+  await button('使用当前文件夹').trigger('click'); await flushPromises()
   await wrapper.findComponent(ElDialog).get('form').trigger('submit'); await flushPromises()
   expect(media.save).toHaveBeenCalledWith(expect.objectContaining({ name: 'songs', location: '/media/songs' }), undefined)
 })

@@ -31,6 +31,10 @@ public class MediaScanService {
     private final MediaTagsClient fileTags;
     private final TransactionTemplate transaction;
     private final Set<String> running = ConcurrentHashMap.newKeySet();
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.mynora.singverse.media.download.LxMapper downloads;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.mynora.singverse.background.BackgroundTaskService backgroundTasks;
     private record Context(Source source, FilenameParserConfigService.ProfileSnapshot profile) {}
 
     public MediaScanService(MediaSourceRepository sources, MediaSourceMapper sourceMapper,
@@ -47,11 +51,22 @@ public class MediaScanService {
 
     public MediaSongDtos.Scan scan(String sourceId) {
         if (!running.add(sourceId)) throw conflict("该媒体来源正在扫描，请稍后重试");
-        try { return scanLocal(sourceId); }
+        String task = null;
+        try {
+            if (backgroundTasks != null) task = backgroundTasks.startLocal(sourceId);
+            final String scanTask=task;
+            var result = MediaIndexCoordinator.locked(sourceId,()->scanLocal(sourceId, scanTask));
+            if (backgroundTasks != null) backgroundTasks.finishLocal(task, result, null);
+            return result;
+        } catch (RuntimeException error) {
+            if (backgroundTasks != null) backgroundTasks.finishLocal(task, null,
+                    error instanceof ResponseStatusException response ? response.getReason() : "本地扫描失败，请检查目录与权限");
+            throw error;
+        }
         finally { running.remove(sourceId); }
     }
 
-    private MediaSongDtos.Scan scanLocal(String sourceId) {
+    private MediaSongDtos.Scan scanLocal(String sourceId, String taskId) {
         Context context = transaction.execute(status -> {
             profiles.lockBindings();
             Source source = sources.get(sourceId);
@@ -62,10 +77,17 @@ public class MediaScanService {
         Path root = Path.of(context.source().location());
         var tagReader = fileTags.session();
         var indexed = new ArrayList<MediaSongRepository.Stored>();
+        var downloaded = new HashMap<String,com.mynora.singverse.media.download.LxTypes.Track>();
+        var downloadedIdentity = new HashMap<String,String>();
+        if(downloads!=null)for(var asset:downloads.sourceAssets(com.mynora.singverse.media.download.LxTypes.args("sourceId",sourceId))) {
+            try {downloadedIdentity.put(asset.get("relative_path").toString(),asset.get("file_size")+":"+asset.get("modified_at"));downloaded.put(asset.get("relative_path").toString(),new com.fasterxml.jackson.databind.ObjectMapper().readValue(asset.get("track_json").toString(),com.mynora.singverse.media.download.LxTypes.Track.class));}
+            catch(com.fasterxml.jackson.core.JsonProcessingException error){throw new IllegalStateException("下载歌曲来源信息无法读取",error);}
+        }
         var parser = new KtvFilenameParser();
         String scannedAt = Instant.now().toString();
         int[] visited = {0}, skipped = {0}, matched = {0}, review = {0};
         long deadline = System.nanoTime() + 30_000_000_000L;
+        long[] lastProgress = {System.nanoTime()};
         try {
             if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS) || !Files.isReadable(root)
                     || !root.toRealPath().equals(root)) throw bad("本地目录已离线或路径发生变化，请检查挂载");
@@ -73,10 +95,12 @@ public class MediaScanService {
                 private void budget() {
                     if (++visited[0] > 20000 || System.nanoTime() > deadline)
                         throw bad("目录超过单次扫描范围（20000 个条目 / 30 秒），请拆分媒体来源后重试");
+                    report(taskId, "SCANNING", lastProgress, visited[0], indexed.size(), null, null, false);
                 }
                 @Override
                 public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes) {
                     budget();
+                    if(directory.getFileName().toString().equals(".singverse-downloads"))return FileVisitResult.SKIP_SUBTREE;
                     return FileVisitResult.CONTINUE;
                 }
                 @Override
@@ -92,12 +116,14 @@ public class MediaScanService {
                     String relative = root.relativize(file).toString().replace(file.getFileSystem().getSeparator(), "/");
                     if (relative.length() > 2048) throw bad("歌曲相对路径过长，请缩短目录后重试");
                     var parsed = parser.preview(file.getFileName().toString(), context.profile().rules());
+                    var result = downloaded.containsKey(relative) && (attributes.size()+":"+attributes.lastModifiedTime().toInstant()).equals(downloadedIdentity.get(relative))
+                            ? com.mynora.singverse.media.download.LxDownloadService.seed(downloaded.get(relative),file.getFileName().toString()) : parsed.result();
                     if (parsed.selectedRule() != null) matched[0]++;
                     String id = UUID.nameUUIDFromBytes((sourceId + "\0" + relative).getBytes(StandardCharsets.UTF_8)).toString();
                     indexed.add(new MediaSongRepository.Stored(id, sourceId, relative, AuthCrypto.hash(relative),
                             attributes.size(), attributes.lastModifiedTime().toInstant().toString(), scannedAt,
                             context.profile().id(), context.profile().revision(),
-                            parsed.selectedRule() == null ? null : parsed.selectedRule().id(), songs.encode(parsed.result()), parsed.result().needsReview(), null));
+                            parsed.selectedRule() == null ? null : parsed.selectedRule().id(), songs.encode(result), result.needsReview(), null));
                     return FileVisitResult.CONTINUE;
                 }
             });
@@ -105,6 +131,7 @@ public class MediaScanService {
             throw bad("扫描未完成：目录或文件不可读取，原歌曲数据已保留，请检查挂载和权限");
         }
         // Validate traversal limits before launching any bounded tag subprocesses.
+        report(taskId, "READING_TAGS", lastProgress, visited[0], indexed.size(), 0L, (long) indexed.size(), true);
         for (int index = 0; index < indexed.size(); index++) {
             var song = indexed.get(index);
             Path file = root.resolve(song.relativePath());
@@ -120,7 +147,9 @@ public class MediaScanService {
             if (song.needsReview() && !fileTags.hasIdentity(embedded)) review[0]++;
             indexed.set(index, new MediaSongRepository.Stored(song.id(), song.sourceId(), song.relativePath(), song.pathHash(),
                     song.fileSize(), song.modifiedAt(), song.scannedAt(), song.profileId(), song.revision(), song.ruleId(), song.resultJson(), song.needsReview(), embedded));
+            report(taskId, "READING_TAGS", lastProgress, visited[0], indexed.size(), (long) index + 1, (long) indexed.size(), false);
         }
+        report(taskId, "COMMITTING", lastProgress, visited[0], indexed.size(), (long) indexed.size(), (long) indexed.size(), true);
         transaction.executeWithoutResult(status -> {
             profiles.lockBindings();
             Source current = sources.get(sourceId);
@@ -132,9 +161,18 @@ public class MediaScanService {
             if (sourceMapper.touch(sourceId, context.source().updatedAt(), Instant.now().toString()) != 1)
                 throw conflict("媒体来源已修改，本次扫描未保存，请重新扫描");
             songs.replace(sourceId, indexed);
+            if (backgroundTasks != null) backgroundTasks.registerScanScope(taskId, sourceId);
         });
         return new MediaSongDtos.Scan(sourceId, context.profile().id(), context.profile().name(),
                 context.profile().revision(), indexed.size(), matched[0], review[0], skipped[0], scannedAt);
+    }
+
+    private void report(String task, String stage, long[] last, long entries, long discovered, Long completed, Long total, boolean force) {
+        long now = System.nanoTime();
+        if (backgroundTasks != null && task != null && (force || now - last[0] >= 1_000_000_000L)) {
+            backgroundTasks.localProgress(task, stage, entries, discovered, completed, total);
+            last[0] = now;
+        }
     }
 
     private static ResponseStatusException bad(String detail) {

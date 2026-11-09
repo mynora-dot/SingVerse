@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Param;
 @Mapper
 public interface AudioProcessingMapper {
     int insertBatch(@Param("id") String id, @Param("backend") String backend, @Param("now") long now, @Param("total") int total);
+    int setRecipe(@Param("id") String id,@Param("recipe") String recipe);
     int insertItems(@Param("rows") List<Map<String,Object>> rows);
     int lockPreparing(@Param("id") String id,@Param("now") long now);
     int prepared(@Param("id") String id,@Param("amount") int amount,@Param("now") long now);

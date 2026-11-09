@@ -1,0 +1,7 @@
+# Experimental Linux x86_64 TensorRT 10.4, matching ORT 1.20's compatibility matrix.
+# NVIDIA supplies the platform libraries; not installed by the default CUDA image.
+--extra-index-url https://pypi.nvidia.com
+-r requirements-separation-cuda.lock
+tensorrt-cu12==10.4.0
+tensorrt-cu12-bindings==10.4.0
+tensorrt-cu12-libs==10.4.0

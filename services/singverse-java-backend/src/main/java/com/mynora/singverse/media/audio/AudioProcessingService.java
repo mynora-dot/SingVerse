@@ -18,7 +18,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Service
 public class AudioProcessingService {
     public record Filter(String title,String artist,String sourceId,Integer streams,String state,String songId) {}
-    public record Selection(Filter filter,List<String> ids,boolean all,String backend) {}
+    public record Selection(Filter filter,List<String> ids,boolean all,String backend,String separationProfile,String modelId,String outputFormat) {
+        public Selection(Filter filter,List<String> ids,boolean all,String backend){this(filter,ids,all,backend,null,null,null);}
+        AudioRecipe recipe(){return new AudioRecipe(separationProfile,modelId,outputFormat,false,null);}
+    }
     private final AudioProcessingMapper mapper;
     private final AudioRoleMapper roles;
     private final AudioJobService jobs;
@@ -43,10 +46,22 @@ public class AudioProcessingService {
     static List<String> artists(Song song){return song.metadata()!=null&&!song.metadata().stale()&&song.metadata().fields().contains("artists")?song.metadata().track().artists():song.result().artists();}
     static String category(JsonNode status){
         if(status.has("backingResource"))return "READY";
+        if(status.path("state").asText().equals("CONFIRMED")&&!status.path("backingId").asText("").isEmpty())return "READY";
         for(var job:status.path("jobs"))if(job.path("kind").asText().equals("SEPARATE")&&Set.of("QUEUED","RUNNING").contains(job.path("state").asText()))return "PROCESSING";
         int count=status.path("streams").size();
         if(!status.has("streams"))return "UNPROBED";
         return count==1?"ELIGIBLE":"INAPPLICABLE";
+    }
+    static String category(JsonNode status,AudioRecipe recipe){
+        if(recipe.legacyDefault()&&!status.has("versions"))return category(status);
+        if(status.path("state").asText().equals("CONFIRMED")&&!status.path("backingId").asText("").isEmpty())return "READY";
+        for(var version:status.path("versions"))if(recipe.separationProfile().equals(version.path("separationProfile").asText(AudioRecipe.LEGACY))
+                &&recipe.outputFormat().equals(version.path("outputFormat").asText("aac"))&&!version.path("preview").asBoolean())return "READY";
+        for(var job:status.path("jobs"))if(job.path("kind").asText().equals("SEPARATE")&&Set.of("QUEUED","RUNNING").contains(job.path("state").asText())
+                &&recipe.separationProfile().equals(job.path("separationProfile").asText(AudioRecipe.LEGACY))
+                &&recipe.outputFormat().equals(job.path("outputFormat").asText("aac"))&&!job.path("preview").asBoolean())return "PROCESSING";
+        if(!status.has("streams"))return "UNPROBED";
+        return status.path("streams").size()==1?"ELIGIBLE":"INAPPLICABLE";
     }
     ObjectNode row(Song song, ObjectNode status) {
         var value=json.createObjectNode().put("id",song.id()).put("title",title(song)).put("sourceId",song.sourceId()).put("sourceName",song.sourceName()).put("relativePath",song.relativePath());
@@ -74,7 +89,8 @@ public class AudioProcessingService {
     }
     public ObjectNode preview(Selection input){
         if(input==null||!input.all()&&(input.ids()==null||input.ids().isEmpty()))throw AudioJobService.fail(400,"请选择歌曲");
-        String backend=clean(input.backend());if(!Set.of("","cpu","cuda","rocm","mps","openvino").contains(backend))throw AudioJobService.fail(400,"未知推理后端");
+        String backend=clean(input.backend());if(backend.equals("auto"))backend="";
+        var specification=input.recipe();specification.validateBackend(backend);
         var snapshot=catalog.current();
         var selected=new ArrayList<AudioCatalog.Summary>();
         if(input.all()){
@@ -88,7 +104,8 @@ public class AudioProcessingService {
         if(!preparing.compareAndSet(false,true))throw AudioJobService.fail(429,"正在准备其他批次，请稍后重试");
         String id=UUID.randomUUID().toString();long now=System.currentTimeMillis();
         try{
-            transaction.executeWithoutResult(status->mapper.insertBatch(id,backend,now,selected.size()));
+            String chosen=backend;
+            transaction.executeWithoutResult(status->{mapper.insertBatch(id,chosen,now,selected.size());mapper.setRecipe(id,specification.view(json).toString());});
             preparation.submit(()->prepare(id,List.copyOf(selected)));
         }catch(RuntimeException failure){
             preparing.set(false);
@@ -100,6 +117,7 @@ public class AudioProcessingService {
     }
     void prepare(String id,List<AudioCatalog.Summary> selected){
         try{
+            var specification=AudioRecipe.stored(json,require(id).get("recipe_json"));
             for(int offset=0;offset<selected.size();offset+=200){
                 if(Thread.currentThread().isInterrupted())throw new CancellationException();
                 var batch=selected.subList(offset,Math.min(selected.size(),offset+200));
@@ -108,9 +126,10 @@ public class AudioProcessingService {
                     if(mapper.lockPreparing(id,now)!=1)return false;
                     var current=new HashMap<String,Song>();
                     songs.byIds(batch.stream().map(AudioCatalog.Summary::id).toList()).forEach(song->current.put(song.id(),song));
+                    var statuses=catalog.statuses(new ArrayList<>(current.values()));
                     var entries=new ArrayList<Map<String,Object>>();
                     for(var song:batch){
-                        var item=new HashMap<String,Object>();String category=song.category();
+                        var item=new HashMap<String,Object>();String category=statuses.containsKey(song.id())?category(statuses.get(song.id()),specification):song.category();
                         var actual=current.get(song.id());
                         boolean unchanged=actual!=null&&MediaSongRepository.fingerprint(actual).equals(song.fingerprint());
                         item.put("batch",id);item.put("song",song.id());item.put("fingerprint",song.fingerprint());
@@ -133,6 +152,7 @@ public class AudioProcessingService {
     Map<String,Object> require(String id){var value=mapper.batch(id);if(value==null||value.isEmpty())throw AudioJobService.fail(404,"批量任务不存在");return value;}
     ObjectNode view(Map<String,Object> batch){
         String id=text(batch,"id");var value=json.createObjectNode().put("id",id).put("state",text(batch,"state")).put("backend",text(batch,"backend")).put("createdAt",((Number)batch.get("created_at")).longValue());
+        value.setAll(AudioRecipe.stored(json,batch.get("recipe_json")).view(json));
         long total=0;var counts=value.putObject("counts");var categories=value.putObject("categories");
         for(var count:mapper.counts(id)){long amount=((Number)count.get("amount")).longValue();total+=amount;String state=text(count,"state"),category=text(count,"category");counts.put(state,counts.path(state).asLong()+amount);categories.put(category,categories.path(category).asLong()+amount);}
         value.put("total",batch.get("selection_total") instanceof Number n?n.longValue():total)
@@ -156,10 +176,10 @@ public class AudioProcessingService {
         if(!text(batch,"state").equals("PREVIEW"))return detail(id,0,50);
         var node=compute.call(compute.connection(),"/internal/v1/audio-roles/models","GET",null);
         String backend=text(batch,"backend");
-        if(backend.equals("cpu")&&java.util.stream.StreamSupport.stream(node.path("backends").spliterator(),false).anyMatch(b->!b.path("id").asText().equals("cpu")&&(b.path("detected").asBoolean()||b.path("device").isObject())))throw AudioJobService.fail(422,"检测到加速硬件，CPU 仅用于自动降级");
-        boolean ready=backend.isEmpty()?!node.path("selected").isNull()&&!node.path("selected").asText().isEmpty():java.util.stream.StreamSupport.stream(node.path("backends").spliterator(),false).anyMatch(b->b.path("id").asText().equals(backend)&&b.path("state").asText().equals("AVAILABLE"));
+        var specification=AudioRecipe.stored(json,batch.get("recipe_json"));
+        boolean ready=specification.ready(node,backend);
         if(!ready)throw AudioJobService.fail(422,"请先在性能节点配置中安装模型并完成试跑");
-        if(!node.path("resourceReady").asBoolean(true))throw AudioJobService.fail(422,"节点当前内存或磁盘空间不足，请查看性能节点配置中的资源预算");
+        if(specification.legacyDefault()&&!node.path("resourceReady").asBoolean(true))throw AudioJobService.fail(422,"节点当前内存或磁盘空间不足，请查看性能节点配置中的资源预算");
         mapper.start(id,System.currentTimeMillis());mapper.finish(id,System.currentTimeMillis());
         if(dispatch!=null)dispatch.batches();return detail(id,0,50);
     }
@@ -172,7 +192,7 @@ public class AudioProcessingService {
         }
         return detail(id,0,50);
     }
-    public ObjectNode retry(String id,String backend){require(id);return preview(new Selection(null,mapper.failedSongs(id),false,backend));}
+    public ObjectNode retry(String id,String backend){var batch=require(id);var specification=AudioRecipe.stored(json,batch.get("recipe_json"));return preview(new Selection(null,mapper.failedSongs(id),false,backend,specification.separationProfile(),specification.modelId(),specification.outputFormat()));}
     public synchronized void cancelItem(String id,String song){
         require(id);
         // Pages are bounded at the API; cancellation locates the exact snapshot member through its key.
@@ -226,11 +246,14 @@ public class AudioProcessingService {
                     if(state.equals("PROCESSING")){update(item,"SUCCEEDED",job,"");continue;}
                 }
                 synchronized(jobs){
-                    var status=jobs.status(song);String category=category(status);
+                    var status=jobs.status(song);var specification=AudioRecipe.stored(json,item.get("recipe_json"));String category=category(status,specification);
                     if(category.equals("READY")||category.equals("PROCESSING")){update(item,"SKIPPED",null,category.equals("READY")?"已有伴奏":"已有其他分离任务");continue;}
                     if(category.equals("INAPPLICABLE")){update(item,"SKIPPED",null,"非单音轨，不生成独立伴奏");continue;}
                     boolean probe=category.equals("UNPROBED");
-                    var result=jobs.submit(song,probe?"PROBE":"SEPARATE",probe?"":text(item,"backend"));
+                    var origins=List.of(com.mynora.singverse.background.BackgroundTaskService.audioBatchId(text(item,"batch_id")));
+                    var result=probe||specification.legacyDefault()
+                            ?jobs.submit(song,probe?"PROBE":"SEPARATE",probe?"":text(item,"backend"),origins)
+                            :jobs.submit(song,"SEPARATE",text(item,"backend"),origins,specification);
                     update(item,probe?"PROBING":"PROCESSING",result.path("id").asText(),"");
                 }
             }catch(org.springframework.web.server.ResponseStatusException error){

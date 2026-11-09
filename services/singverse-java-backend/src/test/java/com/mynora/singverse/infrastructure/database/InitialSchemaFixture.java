@@ -11,6 +11,7 @@ import org.springframework.jdbc.datasource.init.ScriptUtils;
 /** Executes the real first-deployment SQLite DDL in isolated JDBC fixtures. */
 public final class InitialSchemaFixture {
     public static final String VERSION = "202611070001";
+    public static final String[] VERSIONS = {VERSION, "202611080001", "202611090001", "202611090002", "202611090003"};
     private InitialSchemaFixture() {}
 
     public static void sqlite(Connection connection) throws Exception {

@@ -35,10 +35,16 @@ public class AuthCrypto {
             com.mynora.singverse.ai.AiMapper ai) throws Exception {
         this(store,mediaSources,env,classification,ai,null);
     }
-    @org.springframework.beans.factory.annotation.Autowired
     public AuthCrypto(AuthStore store, MediaSourceMapper mediaSources, Environment env,
             com.mynora.singverse.media.classification.ClassificationMapper classification,
             com.mynora.singverse.ai.AiMapper ai, com.mynora.singverse.compute.ComputeNodeMapper compute) throws Exception {
+        this(store,mediaSources,env,classification,ai,compute,null);
+    }
+    @org.springframework.beans.factory.annotation.Autowired
+    public AuthCrypto(AuthStore store, MediaSourceMapper mediaSources, Environment env,
+            com.mynora.singverse.media.classification.ClassificationMapper classification,
+            com.mynora.singverse.ai.AiMapper ai, com.mynora.singverse.compute.ComputeNodeMapper compute,
+            com.mynora.singverse.media.download.LxMapper downloads) throws Exception {
         if (AuthRecovery.active()) {
             key = new byte[32];
             return;
@@ -68,6 +74,7 @@ public class AuthCrypto {
         }
         if (ai != null) for (var row : ai.secrets()) classificationSecrets.put(row.get("secret_encrypted").toString(), row.get("credential_purpose").toString());
         if (compute != null) for (String secret:compute.secrets()) classificationSecrets.put(secret,"singverse:compute-node:v1");
+        if (downloads != null) for (String secret:downloads.secrets()) classificationSecrets.put(secret,"singverse:lx-source:v1");
         if (!Files.exists(path)) {
             var account = store.account();
             if (account.get("mfa_secret") != null

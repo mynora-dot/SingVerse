@@ -22,8 +22,10 @@ class Settings:
     retention_seconds: int = 600
     audio_model_repo: Path | None = None
     audio_memory_bytes: int = 4 * 1024**3
-    audio_threads: int = 2
+    audio_threads: int = 0
     audio_worker_idle_seconds: int = 60
+    audio_cpu_python: Path | None = None
+    audio_accelerator_python: Path | None = None
     lan_pairing_enabled: bool = True
 
     @classmethod
@@ -44,12 +46,15 @@ class Settings:
         if not 1 <= concurrency <= 16 or cache_bytes <= 0 or free_bytes < 0 or memory_bytes < 64*1024**2:
             raise ValueError('Invalid transcode resource budget')
         audio_memory = int(os.environ.get('COMPUTE_AUDIO_MEMORY_BYTES', str(4 * 1024**3)))
-        audio_threads = int(os.environ.get('COMPUTE_AUDIO_THREADS', '2'))
+        audio_threads = int(os.environ.get('COMPUTE_AUDIO_THREADS', '0'))
         audio_idle = int(os.environ.get('COMPUTE_AUDIO_WORKER_IDLE_SECONDS', '60'))
+        interpreters = [os.environ.get(name, '') for name in ('COMPUTE_AUDIO_CPU_PYTHON', 'COMPUTE_AUDIO_ACCELERATOR_PYTHON')]
+        if any(value and not Path(value).is_absolute() for value in interpreters):
+            raise ValueError('Audio worker Python executables must be absolute paths')
         lan_pairing = os.environ.get('COMPUTE_LAN_PAIRING_ENABLED', 'true').lower()
         if lan_pairing not in ('true', 'false'):
             raise ValueError('COMPUTE_LAN_PAIRING_ENABLED must be true or false')
-        if audio_memory < 512*1024**2 or not 1 <= audio_threads <= 8 or not 0 <= audio_idle <= 3600:
+        if audio_memory < 512*1024**2 or not 0 <= audio_threads <= 8 or not 0 <= audio_idle <= 3600:
             raise ValueError('Invalid audio resource budget')
         return cls(token_file=Path(token) if token else None,
                    transcode_root=Path(cache).resolve() if cache else None,
@@ -61,4 +66,6 @@ class Settings:
                    audio_model_repo=Path(audio_repo).resolve() if audio_repo else None,
                    audio_memory_bytes=audio_memory, audio_threads=audio_threads,
                    audio_worker_idle_seconds=audio_idle,
+                   audio_cpu_python=Path(interpreters[0]) if interpreters[0] else None,
+                   audio_accelerator_python=Path(interpreters[1]) if interpreters[1] else None,
                    lan_pairing_enabled=lan_pairing == 'true')

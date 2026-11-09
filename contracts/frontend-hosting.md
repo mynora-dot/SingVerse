@@ -9,6 +9,7 @@
 | 管理页面 | `/admin/`，根路径重定向到此 | `/`，同时兼容 `/admin/` | `dist/admin/index.html` |
 | 点歌H5 | `/party/` | `/party/` | `dist/party/index.html` |
 | 构建JS/CSS | `/assets/*` | `/assets/*` | `dist/assets/*` |
+| 项目 Logo 与浏览器图标 | `/assets/brand/*` | 相同路径 | `dist/assets/brand/*`，来自前端 `public/assets/brand/` |
 | 亲友欢迎样式 | `/party/assets/welcome.css` | 相同路径 | `dist/party/assets/welcome.css` |
 | 健康检查 | `/api/health` | 同路径转发后端 | Actuator原生JSON，不属于业务API |
 | 账号/MFA及后续业务 | `/api/v1/*` | 同路径转发后端 | 按独立业务OpenAPI实现 |

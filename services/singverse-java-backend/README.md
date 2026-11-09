@@ -21,6 +21,10 @@ SPRING_PROFILES_ACTIVE=mysql ./mvnw spring-boot:run
 
 主服务工程、Maven制品和Spring应用名均为`singverse-java-backend`；Java包名保持`com.mynora.singverse`。
 
+## 后台任务中心
+
+`background` 模块提供管理员只读 `/api/v1/background-tasks`、`/{id}`、`/{id}/children`、`/{id}/items`，按操作批次统一查询扫描、元数据、分类、音频、离线转码、缓存清理与分享导出。概览分别保存原业务与聚合状态，关联表支持跨阶段归属和复用，扫描发布索引时登记素材指纹范围；整批结束后保留 30 天，活动批次引用的子任务持续保留；业务 Mapper 写入在同一事务同步记录，高频进度合并补写，启动批量导入并定期核对。在已有任务迁移后新增两种数据库的 `202611090001_background_task_batches.sql`，保留当前数据，所有 SQL 位于 `mappers/background/`；不改变原业务执行规则。恢复、保留、深链接及真实验证边界见[后台任务中心](../../contracts/background-tasks.md)。
+
 亲友H5和NAS管理页面统一在兄弟工程`../singverse-frontend`中开发。Vite一次构建`/party/`与`/admin/`两入口，Maven将整个`dist`复制到`target/classes/static`，不混入Java源码资源目录。Spring静态资源托管JS/CSS，`AdminWebConfiguration`只处理管理目录首页与尾斜杠。运行`java -jar target/singverse-java-backend-0.1.0-SNAPSHOT.jar`后提供两个入口；运行时不需要Node，无CDN、微信JS-SDK或小程序AppID。根`make web-check`执行真实访问集成测试。
 
 管理端有概览、系统状态、登录和系统参数，初始admin/admin，支持修改登录账号、改密及可选MFA；详情见[认证说明](../../docs/authentication.md)。不直连Python或数据库。其静态产物未来可由Go复用，详见[管理端说明](../../services/singverse-frontend/README.md)与[前端托管契约](../../contracts/frontend-hosting.md)。
@@ -40,6 +44,8 @@ Java 首次扫描时创建 RSA3072 身份，公钥为 SPKI、私钥为 PKCS8；�
 mysql-check是Maven测试Profile，执行MySqlConnectionIT；普通测试独立验证SQLite及H5，临时数据库不污染开发文件。健康端点保留Actuator原生响应，不泄露数据库详情。
 
 ## Nginx与API前缀
+
+洛雪下载业务位于 `media/download/`，负责公共目录适配、加密音源管理、独立下载队列、完整文件发布与增量入库；持久 SQL 位于 `mappers/download/LxMapper.xml`。GraalJS Community 固定 `25.0.3`，由同一 Java 21 JAR 的 `--lx-worker` 入口启动受限子进程；普通启动仍运行 Spring。OkHttp `4.12.0` 的受控 DNS/重定向桥保持 TLS 验证。基础下载不依赖 compute，完整扫描与下载发布按来源协调。接口、时限、备份与兼容边界见[歌曲下载](../../docs/lx-downloads.md)。
 
 [nginx/nginx.conf](nginx/nginx.conf)用于Nginx部署和Docker打包：对外管理入口为根路径，点歌H5为 `/party/`，所有 `/api` 命名空间请求原路径转发到后端。当前健康端点为 `/api/health`，后续业务使用 `/api/v1`；健康响应保持Actuator原生格式。静态产物复制、Docker内部服务名和部署检查见[Nginx说明](nginx/README.md)。已提供[联合Dockerfile](Dockerfile)与[应用Compose](../../infra/docker/compose/compose.app.yaml)，从仓库根执行 `make docker-up` 后访问 http://localhost:18080/ 。SQLite保存在独立命名卷；运行和检查见[Docker说明](../../docs/docker.md)。NAS实机尚未验收。
 
@@ -210,6 +216,8 @@ cd services/singverse-java-backend
 ## 歌曲位置与本地目录选择
 
 管理端“歌曲位置”以卡片呈现来源，统一添加入口；定时扫描、解析方案收进“更多设置”。本地文件夹通过 `GET /api/v1/media-sources/local-directories?path=...&page=0` 浏览选择，WebDAV 仍填写地址。名称在前端留空时按文件夹名生成，API 的 name 仍为必填。
+
+目录浏览的空 `path` 返回 `locations` 快捷位置与 `containerized` 标记。Linux 读取本进程的 mountinfo，仅列目录挂载目标及权限状态，排除系统和应用私有挂载，不返回宿主机来源或连接 Docker socket。原生环境回退到常用目录和文件系统根。非空路径可带 `q` 按子目录名不区分大小写筛选，先筛选再排序和分页；每页 100 项。可写状态仅用于界面提示，洛雪下载绑定继续实际写入探测。浏览不会创建目录、改变权限或修改挂载，详见[媒体库说明](../../docs/media-library.md)。
 
 目录接口仅管理员会话可用，范围与已有本地来源保存相同：服务进程有权读取的目录，不改变权限或挂载。空 path 列出文件系统根目录；绝对路径返回规范化 path、parent、items（name/path）、hasMore。parent 为 null 表示根目录列表，为空字符串表示返回该列表。仅列可读子目录，略过符号链接，不读文件内容；按目录名排序，每页固定 100 条，page 从 0 开始且不超过 10000。路径无效、不存在或无法列目录返回 400，未登录返回 401。Docker 中仅能看到容器目录，NAS 歌曲目录须预先只读挂载，不能通过浏览器选择未挂载的宿主机目录。
 
@@ -411,3 +419,7 @@ SQLite/MySQL 的 `202611070001_initial_schema.sql` 直接定义水位、歌曲�
 管理员 `GET /api/v1/playback-history`、`/popular` 和 `/summary` 分别读取逐次播放记录、按有效播放聚合的歌曲排行和汇总。共享 `q/period/songId` 过滤，明细与排行在数据库分页；歌曲、来源、设备及点歌人使用播放时快照，删除歌曲不删除历史。SQLite/MySQL 初始化脚本定义历史、播放实例和派生聚合表。管理端、TV 和手机的实际播放事件按实例去重采集，预取与聚会排队不计为播放；不提供手工写入历史接口，空库历史为空。上报与有效播放口径见[功能与契约说明](../../contracts/song-activity.md)。
 
 `/api/v1/missing-song-feedback` 提供管理员登记与分页查询，`/{id}` 支持查询及带 revision 的处理状态更新。创建使用稳定 requestId 去重，原始反馈只读；标记已补齐必须关联现存曲库歌曲，重开清除关联和补齐时间。初始化脚本定义反馈表，所有业务 SQL 在 MyBatis XML，写接口继续要求管理员 Cookie 与 CSRF。没有手机/TV 反馈上报或自动下载接口，详见[功能与契约说明](../../contracts/song-activity.md)。
+
+## 快速伴奏任务与版本
+
+SEPARATE 新增可选 profile/model/format/preview/backend，固定配方按媒体指纹去重；已确认源音轨/声道提取须显式确认。Java 继续负责回源授权、任务/批次、输出摘要校验和唯一业务写入，compute 不写库。仅完整 AAC 可通过新增 activate 接口设为当前伴奏，试听/FLAC 不覆盖当前版本。增量迁移与 MyBatis XML、CPU 回退和旧节点协商见 [实施说明](../singverse-compute/AUDIO-SEPARATION.md)。

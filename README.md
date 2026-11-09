@@ -1,12 +1,18 @@
 # SingVerse
 
+[项目 Logo 与打包图标](assets/branding/README.md)
+
 家庭KTV多端基础工程：Flutter Android手机端、Android TV、独立NAS管理前端、Java业务主服务、Python计算节点，以及亲友H5点歌页。亲友入口已调整为**微信扫一扫打开NAS网页**，不再使用小程序。当前已具备曲库管理及多端点唱基础，已增加单管理员登录与可选TOTP二次验证；已支持管理端本地/WebDAV 原始音视频在线播放；已增加电视设备授权、原始媒体直放、聚会队列与亲友 H5 扫码点歌；已支持计算节点转码、全曲库音轨角色及可选离线伴奏分离，真实电视/微信/NAS 验收见验证记录。
 
 WebDAV 原片按需分块缓存，完整成功的音视频解码结果也由 Java 服务节点保存，可跨播放复用；管理端「曲库 → 歌曲缓存」可查看、删除部分或完整缓存并配置容量，以及最近使用优先、热门歌曲优先、到期清理或手动清理策略。命中缓存与缓存管理无需计算节点在线；计算节点只保留临时执行产物。正在播放的数据受保护，媒体原件保持只读，详见[转码与缓存说明](docs/transcoding.md#任务缓存和恢复)。
 
 管理端「曲库 → 播放记录」将热门排行、逐次播放明细和单曲历史合并在一个入口；「曲库 → 缺歌反馈」支持管理员登记缺歌、跟进处理并关联已补齐的曲库歌曲。本阶段完成后台页面、管理接口和存储，尚未接入手机或 TV 上报，播放记录初始为空，旧播放历史不回填；缺歌登记不会自动下载歌曲。详见[播放记录与缺歌反馈](contracts/song-activity.md)。
 
+管理端「设备与服务 → 后台任务」按每次操作的批次查看扫描、元数据整理、AI 分类、音频处理、离线转码、缓存清理和分享包导出，运行优先，进入批次后直接查看明细。扫描与后续探测、快速识别同批，整批结束后保留 30 天。任务操作在关联业务页进行，详见[后台任务中心](contracts/background-tasks.md)。
+
 ## 技术栈与目录
+
+管理端「来源与导入 → 歌曲下载」支持自备洛雪音源、五平台歌曲搜索及公开歌单/专辑读取。先将一个可写本地媒体库指定为下载保存位置，再导入并启用音源；后台下载完成自动入库，支持取消、重试与重启恢复，基础下载无需 compute。使用方法、Docker `/downloads` 挂载及边界见[歌曲下载](docs/lx-downloads.md)。
 
 | 部分 | 技术 | 位置 |
 |---|---|---|
@@ -100,7 +106,7 @@ TV 已提供设备授权与聚会邀请二维码，亲友扫码进入同一 NAS 
 
 ## 数据库
 
-默认SQLite：`SQLITE_PATH`缺省`./data/singverse.db`，相对于服务进程工作目录，必要父目录自动创建；应用启动执行真实`SELECT 1`并通过dbmate初始化全部业务表。SQLite/MySQL 各使用一份 `202611070001_initial_schema.sql`，当前按空数据库首次部署，不支持旧迁移链升级。`make db-fresh-check` 可在临时库验证从零建库及回退重建，详见[数据库说明](database/README.md)。默认从服务目录启动时数据在`services/singverse-java-backend/data/`。
+默认SQLite：`SQLITE_PATH`缺省`./data/singverse.db`，相对于服务进程工作目录，必要父目录自动创建；应用启动执行真实`SELECT 1`并通过dbmate初始化全部业务表。SQLite/MySQL 以 `202611070001_initial_schema.sql` 从空库初始化，后续递增迁移（包含 `202611080001_background_tasks.sql` 和 `202611090001_background_task_batches.sql`）自动应用；不支持更早的旧迁移链升级。`make db-fresh-check` 可在临时库验证从零建库、增量迁移保留数据及逐级回退重建，详见[数据库说明](database/README.md)。默认从服务目录启动时数据在`services/singverse-java-backend/data/`。
 
 ```sh
 (cd services/singverse-java-backend && SQLITE_PATH=/tmp/singverse-dev/app.db ./mvnw spring-boot:run)
@@ -221,3 +227,7 @@ Mac 原唱／伴奏使用原生 CPU 或 MPS：显式执行 `make compute-audio-s
 伴奏管理入口：**曲库 → 原唱与伴奏**，分“歌曲 / 生成任务”。可按状态快速找出待标记原唱、可生成伴奏等歌曲，跨页/全部筛选结果批量生成；选择快照在后台每 200 首准备，显示准备进度，完成后确认开始，支持准备取消及失败重试。歌曲列表使用可失效的后台轻量索引，首次准备会提示并自动重试；持久任务支持进度查看、停止及重试；“设备与服务 → 性能节点配置”统一管理连接、实际硬件、CPU 自动降级及模型下载/导入和试跑。部署CPU、NVIDIA CUDA、AMD ROCm及Mac MPS的方式和当前Intel GPU/RKNN限制见计算节点README；实际只有一个计算节点，不做多节点分配。
 
 计算节点现提供 CPU（amd64/arm64）、CUDA、ROCm、OpenVINO 镜像构建目标及正式 release 发布工作流；模型独立下载／离线导入。部署选择见 [compute 说明](services/singverse-compute/README.md)。GPU 和设备效果必须单独验收，RKNN 尚无合格模型。
+
+## 跨平台快速伴奏
+
+管理端已接入已有伴奏复用、CPU DSP 极速档、固定 MDX 干净档、短片试听、FLAC 导出与伴奏版本切换。各设备通过模型试跑后才启用加速，使用独立 CPU worker 回退；部署、锁文件、转换与 Benchmark 见 [快速伴奏引擎](services/singverse-compute/AUDIO-SEPARATION.md)。即时点歌生成、流式分离和未提供设备的真实歌曲验收仍为后续阶段。

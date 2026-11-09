@@ -5,7 +5,9 @@
 - `migrations/sqlite/202611070001_initial_schema.sql`
 - `migrations/mysql/202611070001_initial_schema.sql`
 
-此前每种数据库的 38 份迁移已合并并删除。基线直接定义最终表、字段、约束、索引和必要单例，不执行历史补列、歌曲表重建或旧数据回填。它适用于空数据库，不提供旧版本数据库升级路径；应用仍通过 dbmate 初始化并在 `schema_migrations` 记录唯一版本 `202611070001`。后续在此基线上新增迁移，不修改已部署的基线。首次增加后续迁移时，需同步扩展从零检查的版本集合及逐级回退断言；本轮检查明确要求只有当前初始化版本。
+此前每种数据库的 38 份迁移已合并并删除。基线直接定义表、字段、约束、索引和必要单例，不执行旧迁移链的转换。它适用于空数据库，不提供更早开发版本的升级路径；后续在此基线上新增迁移，不修改已部署的基线。
+
+两种方言的 `202611080001_background_tasks.sql` 创建任务概览与明细快照，`202611090001_background_task_batches.sql` 增加独立批次状态、共享任务关系及扫描处理范围，并导入已确认的旧 parent 关系。应用启动依次应用基线和增量迁移，`schema_migrations` 记录 `202611070001`、`202611080001`、`202611090001`；已经部署基线的数据库只应用新版本。最新增量 down 仅移除批次扩展，原任务概览/明细保留；更早任务增量 down 移除任务中心快照，原曲库和业务任务保留；初始化基线 down 仍会移除全部业务结构，只用于隔离验证库。
 
 ## 结构与初始值
 
@@ -30,10 +32,20 @@ make db-sqlite-check
 make java-backend-test
 ```
 
-`db-fresh-check` 使用真实 dbmate，验证首次 `up`、重复 `migrate`、`down` 和再次建库，比较完整结构及种子，并检查外键、热度/固定约束、空业务数据和默认值。它固定使用自身临时目录，不读取本地 `.env`、不使用 `SQLITE_PATH`、不操作任何已有数据库。此检查也接入 `db-sqlite-check` 和 Java CI。
+`db-fresh-check` 使用真实 dbmate，验证首次 `up`、重复 `migrate`、逐级 `down` 和再次建库，比较完整结构及种子，并检查外键、热度/固定约束、空业务数据和默认值；还验证增量迁移及其回退保留原曲库和任务记录、真实 parent 关系被导入。它固定使用自身临时目录，不读取本地 `.env`、不使用 `SQLITE_PATH`、不操作任何已有数据库。此检查也接入 `db-sqlite-check` 和 Java CI。
 
 MySQL 必须使用**另外创建的空数据库**，通过 `MYSQL_HOST/MYSQL_PORT/MYSQL_DATABASE/MYSQL_USER/MYSQL_PASSWORD` 指向隔离实例，再运行 `make db-mysql-check`。该命令会执行业务写入测试，不能指向实际使用的数据库。连接成功不等于业务兼容，未运行真实 MySQL 检查时应明确标记未验证。
+
+专项测试的 MySQL Profile 使用 60 秒读取预算，容纳十万首歌曲暂存与发布夹具；生产连接仍保留原有预算。回滚用例需要在隔离库创建触发器，MySQL 开启二进制日志时，须由该测试实例的管理员设置 `log_bin_trust_function_creators=1`，CI 在自身临时实例中完成此配置。
 
 手工从零启动可给 `SQLITE_PATH` 指定一个全新文件路径，或使用新的 Docker Compose 项目与其独立数据卷；不要用旧库验证这份基线。现有命名卷和实际数据库由使用者保留或另行处理，本次整理不删除它们。
 
 连接及 Profile 见[数据库策略](../docs/database-strategy.md)，账号与主密钥见[认证说明](../docs/authentication.md)。数据库、WAL/SHM、凭据和主密钥不得提交；切换 Profile 不自动迁移数据。
+
+## 洛雪下载增量迁移
+
+两种方言的 `202611090003_lx_downloads.sql` 新增唯一目标/音源绑定单例、加密音源版本、目录缓存、下载批次和逐曲明细，以及长期来源记录，共 6 张表。媒体来源的 `useForLxDownloads` 由单例绑定推导，不增加重复布尔存储；事务写锁保护唯一绑定。活动请求与解析音质分别有可空唯一键，结束后释放；下载来源独立于记录保留，重扫按文件大小、修改时间沿用元数据。此增量 down 只移除下载表，不删除媒体文件、原曲库或既有任务表；不可在正式库中回退后声称仍能恢复下载状态。
+
+## 伴奏配方增量迁移
+
+`202611090002_audio_separation_profiles.sql` 为 SQLite/MySQL 增加任务/批次 recipe_json 和 media_audio_selection；不修改已部署初始基线。默认旧行按 LEGACY_DEMUCS/AAC 解释；新配方隔离缓存，当前版本按媒体指纹绑定。`make db-fresh-check` 验证空库、重复应用及回滚重建；未连接真实 MySQL 的检查不能代替 MySQL 验收。

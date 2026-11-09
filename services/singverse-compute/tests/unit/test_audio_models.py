@@ -179,14 +179,15 @@ class AudioModelManagementTest(unittest.TestCase):
         self.assertIn('所需算子',caught.exception.message)
         self.assertNotIn('/private',caught.exception.message)
 
-    def test_hardware_cpu_guard_and_legacy_selection(self):
+    def test_explicit_cpu_is_allowed_even_when_accelerator_is_detected(self):
         manager = self.manager
         with patch.object(manager, 'entries', return_value=[{'id':'cpu','state':'AVAILABLE','detected':False}, {'id':'cuda','state':'UNVERIFIED','detected':True}]):
             self.assertEqual(manager.selected(), 'cpu')
-            with self.assertRaises(ComputeError): manager.choose('cpu')
+            manager.choose('cpu')
+            self.assertEqual(manager.selected(), 'cpu')
             manager.audio.transcoding.backends.cpu_fallback = False
-            self.assertIsNone(manager.selected())
-            manager.selection = 'cpu'
+            self.assertEqual(manager.selected(), 'cpu')
+            manager.selection = 'auto'
             self.assertIsNone(manager.selected())
         with patch.object(manager, 'entries', return_value=[{'id':'cpu','state':'AVAILABLE','detected':False}]):
             self.assertEqual(manager.selected(), 'cpu')

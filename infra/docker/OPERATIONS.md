@@ -60,6 +60,7 @@ sv() {
 |---|---|
 | Java `/data` / `singverse-data` | SQLite、曲库/账号设置、封面、持久缓存、兼容版本和已接收的伴奏 |
 | Java `/secrets` / `singverse-secrets` | 解密业务凭据的主密钥，必须与原数据库配套 |
+| Java `/downloads` / `singverse-downloads` | 洛雪下载音频、歌词/封面和未完成临时文件；NAS 绑定时备份实际宿主目录 |
 | compute `/run/singverse-compute` / `singverse-compute-auth` | 连接令牌、配对身份及 owner 信息 |
 | compute `/var/lib/singverse-models` / `singverse-audio-models` | 模型权重与模型配置文件 |
 | compute `/var/cache/singverse-transcode` / `singverse-transcode-cache` | 临时产物、任务记录、`hardware-settings.json`，以及 `audio-roles/models/settings.json` 中的模型选择/试跑资格 |

@@ -31,6 +31,7 @@ services:
       - singverse-secrets:/secrets
       - singverse-compute-auth:/run/singverse-compute:ro
       - singverse-media:/media:ro
+      - singverse-downloads:/downloads
     restart: unless-stopped
     stop_grace_period: 20s
 
@@ -80,6 +81,7 @@ volumes:
   singverse-secrets:
   singverse-compute-auth:
   singverse-media:
+  singverse-downloads:
   # Also holds hardware settings, audio model selection and qualification records.
   # Preserve this volume during upgrades; it is not exclusively disposable cache.
   singverse-transcode-cache:

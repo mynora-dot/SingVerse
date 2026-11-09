@@ -64,9 +64,11 @@
 
 ## 歌曲位置与本地目录选择
 
+歌曲下载新增 `/api/v1/lx-downloads` 和 `Lx*` schemas，媒体来源增加 `useForLxDownloads`。全部要求管理员会话，POST/DELETE 要求 CSRF；请求只接收服务端缓存的歌曲标识，不接受音频 URL 或解析载荷。目录搜索页码从 1 开始，记录页码从 0 开始；预览显示上游总数、读取限制及警告。音源正文与导入地址仅写入并加密，响应不回显。下载执行独立于只读任务中心，取消/重试通过下载业务接口。完整语义见[歌曲下载](../../docs/lx-downloads.md)。
+
 管理端“歌曲位置”以卡片呈现来源，统一添加入口；定时扫描、解析方案收进“更多设置”。本地文件夹通过 `GET /api/v1/media-sources/local-directories?path=...&page=0` 浏览选择，WebDAV 仍填写地址。名称在前端留空时按文件夹名生成，API 的 name 仍为必填。
 
-目录接口仅管理员会话可用，范围与已有本地来源保存相同：服务进程有权读取的目录，不改变权限或挂载。空 path 列出文件系统根目录；绝对路径返回规范化 path、parent、items（name/path）、hasMore。parent 为 null 表示根目录列表，为空字符串表示返回该列表。仅列可读子目录，略过符号链接，不读文件内容；按目录名排序，每页固定 100 条，page 从 0 开始且不超过 10000。路径无效、不存在或无法列目录返回 400，未登录返回 401。Docker 中仅能看到容器目录，NAS 歌曲目录须预先只读挂载，不能通过浏览器选择未挂载的宿主机目录。
+目录接口仅管理员会话可用，范围与已有本地来源保存相同：服务进程有权读取的目录，不改变权限或挂载。空 path 列出文件系统根目录，并通过 `locations` 返回常用目录与实际挂载目标的读取/写入状态；`containerized` 表示检测到容器标记。只返回后端可见路径，不回显宿主机挂载来源，不需要 Docker socket；非空 path 的 `locations` 为空列表。绝对路径返回规范化 path、parent、items（name/path）、hasMore。parent 为 null 表示根目录列表，为空字符串表示返回该列表。仅列可读子目录，略过符号链接，不读文件内容；可选 `q` 在排序和分页前按目录名不区分大小写筛选，最长 100 字。每页固定 100 条，page 从 0 开始且不超过 10000。写入状态仅供提示，下载绑定仍实际探测写入。路径无效、不存在或无法列目录返回 400，未登录返回 401。Docker 中仅能看到容器目录，NAS 歌曲目录须预先挂载。
 
 
 ## 管理端在线播放
@@ -196,3 +198,11 @@ compute 内部 `/internal/v1/audio-roles/tasks` 接收固定 UUID、mode=PROBE|A
 `POST /api/v1/audio-processing/batches/preview` 返回 202，批次先处于 `PREPARING`，包含 `selectionTotal`、`prepared` 和 `error`。通过原详情接口轮询，完成后为 `PREVIEW`，此时才能提交；准备中提交返回 409。准备中可调用原取消接口，重启时未完成准备转为 `FAILED`。所选歌曲及指纹在创建时固定，每 200 条短事务写入，执行前继续核对当前指纹；数据库采用新增迁移，原有批次保留。
 
 已删除只返回 410 的旧歌手创建、编辑、绑定和 credits 接口。自动歌手库、图片管理、分类及歌曲歌手订正仍使用现有实际接口。旧 `ComputeNodeClient` 及未注册的路径标签接口已删除；连接和回源验证覆盖真实 `ComputeNodeProbe` 链路。
+
+## 后台任务中心
+
+管理员只读 `GET /api/v1/background-tasks`、`/{id}`、`/{id}/children`、`/{id}/items` 查询 Java 持久化快照，复用 Cookie 会话；不触发计算节点或媒体源请求。列表默认 `view=ACTIVE`，支持 `HISTORY/ALL`、类型、状态、名称/编号搜索和 0 起始分页（默认 20、最大 100）。首页只列操作批次，按运行、取消、排队、暂停、等待开始、终态在分页前排序；关键词匹配关联歌曲和子任务，按批次去重。详情分开返回批次状态与 operation 原业务阶段；children 支持类型/状态筛选并运行优先，detailMode 指示使用 children 或已有 items，避免重复。扫描后探测到快速识别的范围全部结束才结算整批；单曲是含一项的批次。明细按原状态筛选，counts 返回未筛选的统计。整批终态保留 30 天，未完成及有效批次引用的共享任务持续保留。未知分母的百分比为 null，缺失的历史时间为 null，帧计数只代表当前阶段。详情包含业务页入口与关联有效性；所有返回字段均为展示白名单。schema 为 `BackgroundTask*`，完整行为见[后台任务中心](../../contracts/background-tasks.md)。
+
+## 快速伴奏配方与版本接口
+
+SEPARATE 与批量请求新增可选 separationProfile（DSP_FAST/AI_CLEAN/LEGACY_DEMUCS）、modelId、outputFormat、preview、backend；FAST 仍表示音轨识别。sourceAudioId 指定当前已探测音轨或 LEFT/RIGHT 声道时必须 sourceConfirmed=true。GET audio-roles 增加 versions，POST /api/v1/media-songs/{song}/accompaniment/{id}/activate 仅接受当前指纹下完整 AAC；下载支持 audio/flac。新字段只向 separation.version>=1 的节点发送，默认旧任务保持旧协议。真实行为、依赖和验收边界见 [伴奏说明](../../services/singverse-compute/AUDIO-SEPARATION.md)。

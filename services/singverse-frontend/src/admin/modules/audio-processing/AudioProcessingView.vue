@@ -5,7 +5,7 @@ import { ElAlert } from 'element-plus'
 import PageHeader from '../../shared/ui/PageHeader.vue'
 import { authRequest } from '../../core/auth/api'
 import { base, type Batch, type Node } from './api'
-import { failure, readiness as evaluate } from './presentation'
+import { failure, profileReady, readiness as evaluate } from './presentation'
 import SongsTab from './components/SongsTab.vue'
 import BatchesTab from './components/BatchesTab.vue'
 import BatchConfirmDialog from './components/BatchConfirmDialog.vue'
@@ -16,16 +16,19 @@ const tabs: { id: Tab; name: string }[] = [{ id: 'songs', name: '歌曲' }, { id
 const tab = computed<Tab>(() => tabs.some(item => item.id === route.query.tab) ? route.query.tab as Tab : 'songs')
 const songId = computed(() => typeof route.query.song === 'string' ? route.query.song : '')
 const node = ref<Node>(), nodeError = ref(''), error = ref('')
-const batches = ref<Batch[]>([]), batchPage = ref(0), batchTotal = ref(0), focus = ref('')
+const batches = ref<Batch[]>([]), batchPage = ref(0), batchTotal = ref(0), focus = ref(typeof route.query.batch === 'string' ? route.query.batch : '')
 const preview = ref<Batch>(), starting = ref(false)
 const songsTab = ref<InstanceType<typeof SongsTab>>(), batchesTab = ref<InstanceType<typeof BatchesTab>>()
 const tabButtons = ref<HTMLButtonElement[]>([])
 const readiness = computed(() => evaluate(node.value, nodeError.value))
+const anyReady = computed(() => readiness.value.ready || node.value?.separation?.profiles.some(item => item.ready))
+const previewReady = computed(() => profileReady(node.value?.separation, preview.value?.separationProfile || 'LEGACY_DEMUCS', readiness.value.ready))
 const activeBatches = computed(() => batches.value.filter(batch => ['PREPARING', 'QUEUED'].includes(batch.state)).length)
 let active = true, timer: ReturnType<typeof setTimeout> | undefined, batchRequest = 0, previewGeneration = 0
 
 function setup() { void router.push('/system/compute#audio-models') }
 watch(() => route.query.tab, value => { if (value === 'setup') void router.replace('/system/compute#audio-models') }, { immediate: true })
+watch(() => route.query.batch, value => { focus.value = typeof value === 'string' ? value : '' })
 function navigate(next: Tab, extra: Record<string, string> = {}) {
   const query: Record<string, string> = { ...extra }
   if (next !== 'songs') query.tab = next
@@ -96,9 +99,9 @@ onBeforeUnmount(() => { active = false; clearTimeout(timer) })
 
 <template>
   <main class="audio-processing">
-    <PageHeader title="原唱与伴奏" description="让每首歌都能在原唱和伴奏之间切换：自带两条音轨的歌曲标记哪条是原唱，只有一条音轨的歌曲可以用 AI 生成独立伴奏。原始文件不会被修改。">
+    <PageHeader title="原唱与伴奏" description="自带伴奏的歌曲先试听标记；普通立体声可选极速中心抵消或轻量 AI 分离，试听后生成整曲。原始文件保持只读。">
       <template #actions>
-        <button type="button" class="ready-pill" :class="readiness.ready ? 'is-ready' : 'is-pending'" @click="setup()"><span class="sv-status-dot" :class="readiness.ready ? 'ok' : 'warn'" aria-hidden="true" />{{ readiness.ready ? readiness.title : '伴奏生成未就绪' }}</button>
+        <button type="button" class="ready-pill" :class="anyReady ? 'is-ready' : 'is-pending'" @click="setup()"><span class="sv-status-dot" :class="anyReady ? 'ok' : 'warn'" aria-hidden="true" />{{ readiness.ready ? readiness.title : anyReady ? '极速档已就绪' : '伴奏生成未就绪' }}</button>
       </template>
     </PageHeader>
     <div class="tabs" role="tablist" aria-label="原唱与伴奏功能">
@@ -109,11 +112,11 @@ onBeforeUnmount(() => { active = false; clearTimeout(timer) })
     <ElAlert v-if="error" :title="error" type="error" show-icon :closable="false" role="alert" class="page-error" />
     <section :id="'audio-panel-' + tab" role="tabpanel" :aria-labelledby="'audio-tab-' + tab" class="panel">
       <KeepAlive>
-        <SongsTab v-if="tab === 'songs'" ref="songsTab" :song-id="songId" :readiness="readiness" :backends="node?.backends || []" @preview="showPreview" @setup="setup()" @show-all="navigate('songs')" />
+        <SongsTab v-if="tab === 'songs'" ref="songsTab" :song-id="songId" :readiness="readiness" :backends="node?.backends || []" :separation="node?.separation" @preview="showPreview" @setup="setup()" @show-all="navigate('songs')" />
         <BatchesTab v-else-if="tab === 'tasks'" ref="batchesTab" :batches="batches" :total="batchTotal" :page="batchPage" :focus="focus" :backends="node?.backends || []" @preview="showPreview" @page="changeBatchPage" @changed="loadBatches" @songs="navigate('songs')" />
       </KeepAlive>
     </section>
-    <BatchConfirmDialog :batch="preview" :ready="readiness.ready" :busy="starting" @start="start" @close="closePreview" @cancel="cancelPreparation" />
+    <BatchConfirmDialog :batch="preview" :ready="previewReady" :busy="starting" @start="start" @close="closePreview" @cancel="cancelPreparation" />
   </main>
 </template>
 

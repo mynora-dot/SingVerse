@@ -40,7 +40,7 @@ try:
  out['devices']['cpu']={'name':platform.processor() or platform.machine()}
  if torch.cuda.is_available():
   p=torch.cuda.get_device_properties(0)
-  out['devices']['rocm' if torch.version.hip else 'cuda']={'name':p.name,'memoryBytes':p.total_memory,'driver':str(torch.version.hip or torch.version.cuda)}
+  out['devices']['rocm' if torch.version.hip else 'cuda']={'name':p.name,'memoryBytes':p.total_memory,'driver':str(torch.version.hip or torch.version.cuda),'uuid':str(getattr(p,'uuid',''))}
  if hasattr(torch.backends,'mps') and torch.backends.mps.is_available(): out['devices']['mps']={'name':'Apple GPU'}
  if hasattr(torch,'xpu') and torch.xpu.is_available(): out['devices']['xpu']={'name':torch.xpu.get_device_name(0)}
 except Exception: out['error']='RUNTIME_MISSING_OR_INCOMPATIBLE'
@@ -146,6 +146,12 @@ class AudioModels:
                                                       memory_limit=self.audio.settings.audio_memory_bytes))
                 except Exception:
                     self.environment = {'devices': {}, 'versions': {}, 'error': 'RUNTIME_MISSING_OR_INCOMPATIBLE'}
+                if getattr(self.audio.settings, 'audio_cpu_python', None):
+                    cpu = self.audio.cpu_runtime(refresh)
+                    self.environment['independentCpu'] = cpu
+                    self.environment['devices'].pop('cpu', None)
+                    if cpu.get('valid'):
+                        self.environment['devices']['cpu'] = {'name': platform.machine(), 'independent': True}
                 hardware = []
                 for card in Path('/sys/class/drm').glob('card[0-9]*/device'):
                     try:
@@ -170,7 +176,7 @@ class AudioModels:
                     pass
                 if 'cpu' in self.environment.get('devices', {}):
                     self.environment['devices']['cpu']['name'] = processor or platform.machine()
-                self.environment.update(system=platform.system(), release=platform.release(), architecture=platform.machine(), processor=processor, hardware=hardware, driver=driver, inferenceVersion='2', python=platform.python_version(), build=build_info())
+                self.environment.update(system=platform.system(), release=platform.release(), architecture=platform.machine(), processor=processor, hardware=hardware, driver=driver, inferenceVersion='3', python=platform.python_version(), build=build_info())
                 self.environment['fingerprint'] = hashlib.sha256(json.dumps(self.environment, sort_keys=True).encode()).hexdigest()
             return self.environment
 
@@ -190,6 +196,8 @@ class AudioModels:
         installed = self.audio.runtime_available
         values = []
         for backend in BACKENDS:
+            backend_installed = installed and (backend != 'cpu' or not getattr(self.audio.settings, 'audio_cpu_python', None)
+                                                or self.audio.backend_runtime_available('cpu'))
             device = environment.get('devices', {}).get(backend)
             item = {'id': backend, 'device': device, 'state': 'RUNTIME_MISSING', 'reason': '未检测到兼容的推理运行环境'}
             if not device:
@@ -222,9 +230,9 @@ class AudioModels:
                         item.update(state=record['state'], reason=record.get('reason', ''), elapsedMs=record.get('elapsedMs'))
                 item.update(modelId=OPENVINO, pipeline='openvino-gpu+cpu-stft')
             elif device:
-                item.update(state='MODEL_MISSING' if not installed else 'UNVERIFIED', reason='请下载模型或修复固定版本运行环境' if not installed else '请运行模型试跑')
+                item.update(state='MODEL_MISSING' if not backend_installed else 'UNVERIFIED', reason='请下载模型或修复固定版本运行环境' if not backend_installed else '请运行模型试跑')
                 record = self.qualified.get(backend, {})
-                if installed and record.get('environment') == environment['fingerprint'] and record.get('digest') == DIGEST:
+                if backend_installed and record.get('environment') == environment['fingerprint'] and record.get('digest') == DIGEST:
                     item.update(state=record['state'], reason=record.get('reason', ''), elapsedMs=record.get('elapsedMs'))
             if backend == 'mps':
                 item['pipeline'] = 'mps+cpu-stft'
@@ -240,10 +248,10 @@ class AudioModels:
         entries = self.entries() if entries is None else entries
         available = {item['id'] for item in entries if item['state'] == 'AVAILABLE'}
         hardware = any(item.get('detected') for item in entries)
-        selection = 'auto' if self.selection == 'cpu' and hardware else self.selection
+        selection = self.selection
         fallback = getattr(self.audio.transcoding.backends, 'cpu_fallback', True)
         choices = ('cuda', 'rocm', 'openvino', 'rknn', 'mps') if selection == 'auto' else (selection,)
-        if not hardware or fallback:
+        if selection != 'cpu' and (not hardware or fallback):
             choices += ('cpu',)
         return next((item for item in choices if item in available), None)
 
@@ -253,6 +261,7 @@ class AudioModels:
         free = shutil.disk_usage(self.root).free if self.root else 0
         memory = memory_available()
         return {'environment': self.environment, 'memoryAvailableBytes': memory, 'diskFreeBytes': free,
+                **({'separation': self.audio.separation.status(refresh)} if hasattr(self.audio, 'separation') else {}),
                 'resourceReady': (not memory or memory + (self.audio.native_worker.resident() if getattr(self.audio, 'native_worker', None) else 0)
                                   >= self.audio.settings.audio_memory_bytes) and free >= self.audio.settings.minimum_free_bytes,
                 'limits': {'audioProcessBudgetBytes': self.audio.settings.audio_memory_bytes, 'minimumFreeBytes': self.audio.settings.minimum_free_bytes},
@@ -353,8 +362,6 @@ class AudioModels:
     def choose(self, backend):
         if backend not in ('auto', *BACKENDS):
             raise ComputeError(400, 'Unknown audio inference backend')
-        if backend == 'cpu' and any(item.get('detected') for item in self.entries()):
-            raise ComputeError(422, '检测到加速硬件，CPU 仅用于自动降级')
         if backend != 'auto' and not any(b['id'] == backend and b['state'] == 'AVAILABLE' for b in self.entries()):
             raise ComputeError(422, 'Backend has not passed model qualification')
         with self.lock:
@@ -611,7 +618,11 @@ class AudioModels:
         if backend in ('cuda', 'rocm'):
             from ..infrastructure.transcoding.process import run
             try:
-                if native and backend == 'rocm':
+                from ..infrastructure.gpu_memory import nvidia_free_memory
+                measured = nvidia_free_memory(device.get('uuid')) if backend == 'cuda' else None
+                if measured is not None:
+                    free = measured
+                elif native:
                     free = int(native.request(self.audio.native_key(backend), {'op': 'resources'}, timeout=30)['freeMemoryBytes'])
                 else:
                     free = int(run([sys.executable, '-c', 'import torch; print(torch.cuda.mem_get_info()[0])'], timeout=30, limit=4096,

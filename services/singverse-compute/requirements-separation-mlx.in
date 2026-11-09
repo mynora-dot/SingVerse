@@ -1,0 +1,6 @@
+# Resolve only in a separate Apple Silicon environment; never mix with NumPy 1 CPU worker.
+mlx-audio-separator==0.1.20
+mlx==0.32.3
+numpy==2.2.6
+onnx==1.17.0
+soundfile==0.13.1

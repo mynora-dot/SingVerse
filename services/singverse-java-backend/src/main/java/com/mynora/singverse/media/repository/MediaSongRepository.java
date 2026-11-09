@@ -111,7 +111,7 @@ public class MediaSongRepository {
         return new com.mynora.singverse.media.metadata.MetadataDtos.Applied(track,fields,now,false,origins);
     }
     private com.mynora.singverse.media.metadata.MetadataDtos.Applied effectiveApplied(Map<String,Object> row) throws JsonProcessingException {
-        var prior = applied(row);
+        var prior = downloadApplied(row,applied(row));
         if (row.get("embedded_tags_json") == null) return prior;
         var remote = row.get("remote_metadata_json")==null?json.nullNode():json.readTree(row.get("remote_metadata_json").toString());
         String originKind=remote.path("origin").asText().equals("SHARED")?"SHARED":"FILE";
@@ -149,6 +149,24 @@ public class MediaSongRepository {
             sharedAliases!=null ? sharedAliases : track == null ? java.util.List.of() : track.aliases(), embeddedCover != null ? embeddedCover : track == null ? null : track.coverUrl(),"UNKNOWN",java.time.OffsetDateTime.parse(now));
         if(track!=null)merged=merged.withArtistRefs(track.artistRefs());
         return new com.mynora.singverse.media.metadata.MetadataDtos.Applied(merged,fields,now,false,origins);
+    }
+    private com.mynora.singverse.media.metadata.MetadataDtos.Applied downloadApplied(Map<String,Object> row,
+            com.mynora.singverse.media.metadata.MetadataDtos.Applied prior) throws JsonProcessingException {
+        if(row.get("download_track_json")==null)return prior;
+        var downloaded=json.readValue(row.get("download_track_json").toString(),com.mynora.singverse.media.download.LxTypes.Track.class);
+        var valid=prior!=null&&!prior.stale()?prior:null;var old=valid==null?null:valid.track();
+        var fields=new java.util.HashSet<String>(valid==null?java.util.Set.of():valid.fields());
+        var origins=new java.util.HashMap<String,com.mynora.singverse.media.metadata.MetadataDtos.Origin>(valid==null?java.util.Map.of():valid.origins());
+        String now=row.get("download_created_at").toString();
+        java.util.Set<String> supplied=new java.util.HashSet<>(java.util.Set.of("title","artists","album"));
+        if(downloaded.durationMs()!=null)supplied.add("durationMs");if(downloaded.coverUrl()!=null&&!downloaded.coverUrl().isBlank())supplied.add("cover");
+        var keep=java.util.Set.copyOf(fields);
+        for(String field:supplied)if(fields.add(field))origins.put(field,new com.mynora.singverse.media.metadata.MetadataDtos.Origin(null,downloaded.platform()+":"+downloaded.remoteId(),now,"DOWNLOAD"));
+        var track=new com.mynora.singverse.media.metadata.ExternalTrack(old==null?null:old.provider(),old==null?null:old.externalId(),
+                keep.contains("title")?old.title():downloaded.title(),keep.contains("artists")?old.artists():downloaded.artists(),
+                keep.contains("album")?old.album():downloaded.album(),keep.contains("durationMs")?old.durationMs():downloaded.durationMs()==null?null:downloaded.durationMs().intValue(),
+                old==null?null:old.releaseDate(),old==null?java.util.List.of():old.aliases(),keep.contains("cover")?old.coverUrl():downloaded.coverUrl(),"UNKNOWN",java.time.OffsetDateTime.parse(now));
+        return new com.mynora.singverse.media.metadata.MetadataDtos.Applied(track,fields,now,false,origins);
     }
     private com.mynora.singverse.media.metadata.MetadataDtos.Applied applied(Map<String, Object> row) throws JsonProcessingException {
         if (row.get("metadata_track") == null) return null;

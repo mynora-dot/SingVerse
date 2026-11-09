@@ -32,7 +32,8 @@ public class MediaSourceRepository {
                 row.get("updated_at").toString(), ((Number) row.get("scan_enabled")).intValue() == 1,
                 (String) row.get("scan_cron"), (String) row.get("next_scan_at"), (String) row.get("last_scan_at"),
                 (String) row.get("last_scan_status"), (String) row.get("last_scan_error"),
-                com.mynora.singverse.media.model.PlaybackFingerprint.configuration(row.get("id").toString(), row));
+                com.mynora.singverse.media.model.PlaybackFingerprint.configuration(row.get("id").toString(), row),
+                row.get("use_for_lx_downloads") instanceof Number n && n.intValue()!=0);
     }
 
     public List<Source> list(int page, int size) {

@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { ElButton, ElDialog } from 'element-plus'
 import type { Batch } from '../api'
-import { backendName } from '../presentation'
+import { backendName, profileName } from '../presentation'
 
 const props = defineProps<{ batch?: Batch; ready: boolean; busy: boolean }>()
 const emit = defineEmits<{ start: []; close: []; cancel: [] }>()
@@ -21,6 +21,8 @@ const skipped = computed(() => {
       <p v-else-if="batch.state === 'FAILED'" class="lead" role="alert">{{ batch.error || '歌曲准备失败，请重新选择歌曲后重试。' }}</p>
       <p v-else-if="batch.state === 'CANCELLED'" class="lead">已取消准备。</p>
       <p v-else class="lead">将为 <strong>{{ pending }}</strong> 首歌曲生成独立伴奏。</p>
+      <p class="muted">方案：{{ profileName(batch.separationProfile) }} · {{ batch.outputFormat === 'flac' ? 'FLAC' : 'AAC 192k' }}</p>
+      <p v-if="batch.separationProfile === 'DSP_FAST'" class="muted">中心抵消也可能削弱鼓、贝斯和主奏，并留下混响。建议先对代表歌曲进行短片试听。</p>
       <ul v-if="batch.state === 'PREVIEW'" class="breakdown">
         <li v-if="batch.categories.ELIGIBLE">直接生成 {{ batch.categories.ELIGIBLE }} 首（单音轨）</li>
         <li v-if="batch.categories.UNPROBED">先读取音轨 {{ batch.categories.UNPROBED }} 首，确认只有一条音轨后才生成</li>

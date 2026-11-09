@@ -1780,10 +1780,31 @@
               "rocm",
               "mps",
               "openvino",
+              "openvino-cpu",
               "xpu",
-              "rknn"
+              "rknn",
+              "tensorrt",
+              "migraphx",
+              "coreml",
+              "directml",
+              "mlx"
             ],
             "title": "Backend"
+          },
+          "separationProfile": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "AI_CLEAN",
+                  "LEGACY_DEMUCS"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Separationprofile"
           }
         },
         "additionalProperties": false,
@@ -2394,7 +2415,14 @@
                   "cuda",
                   "rocm",
                   "mps",
-                  "openvino"
+                  "openvino",
+                  "openvino-cpu",
+                  "tensorrt",
+                  "migraphx",
+                  "coreml",
+                  "directml",
+                  "rknn",
+                  "mlx"
                 ]
               },
               {
@@ -2402,6 +2430,64 @@
               }
             ],
             "title": "Backend"
+          },
+          "separationProfile": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "DSP_FAST",
+                  "AI_CLEAN",
+                  "LEGACY_DEMUCS"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Separationprofile"
+          },
+          "modelId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "uvr-mdxnet-9482",
+                  "center-cancel-v1",
+                  "htdemucs"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modelid"
+          },
+          "outputFormat": {
+            "type": "string",
+            "enum": [
+              "aac",
+              "flac"
+            ],
+            "title": "Outputformat",
+            "default": "aac"
+          },
+          "preview": {
+            "type": "boolean",
+            "title": "Preview",
+            "default": false
+          },
+          "sourceAudioId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^stream:[0-9]{1,3}(?::(?:LEFT|RIGHT))?$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceaudioid"
           }
         },
         "additionalProperties": false,

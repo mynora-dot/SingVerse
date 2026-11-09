@@ -4,14 +4,14 @@ import { ElAlert, ElButton, ElDrawer, ElEmpty, ElPagination, ElProgress, ElTag }
 import { authRequest } from '../../../core/auth/api'
 import { confirmDanger } from '../../../shared/ui/confirm'
 import { base, type Backend, type Batch, type BatchItem } from '../api'
-import { backendName, batchProgress, batchStates, batchTones, executionStage, failure, itemStates, itemTones, time } from '../presentation'
+import { backendName, batchProgress, batchStates, batchTones, executionStage, failure, itemStates, itemTones, profileName, time } from '../presentation'
 
 const props = defineProps<{ batches: Batch[]; total: number; page: number; focus: string; backends: Backend[] }>()
 const emit = defineEmits<{ preview: [batch: Batch]; page: [page: number]; changed: []; songs: [] }>()
 const itemSize = 50
 const current = ref<Batch>(), itemPage = ref(0), busy = ref(false), error = ref('')
 let active = true, visible = true, sequence = 0
-function headline(batch: Batch) { return `${batch.total} 首歌曲` }
+function headline(batch: Batch) { return `${batch.total} 首歌曲${batch.separationProfile ? ' · ' + profileName(batch.separationProfile) : ''}` }
 function summary(batch: Batch) {
   if (batch.state === 'PREPARING') return `正在准备 ${batch.prepared || 0} / ${batch.selectionTotal ?? batch.total} 首歌曲`
   if (batch.state === 'FAILED') return batch.error || '准备失败，请重新选择歌曲'

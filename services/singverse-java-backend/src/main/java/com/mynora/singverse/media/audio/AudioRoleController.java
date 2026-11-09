@@ -45,7 +45,12 @@ public class AudioRoleController {
     }
 
     @PostMapping("/api/v1/media-songs/{song}/audio-jobs")
-    public ObjectNode submit(@PathVariable String song,@RequestBody JsonNode body){ return jobs.submit(song,body.path("kind").asText()); }
+    public ObjectNode submit(@PathVariable String song,@RequestBody JsonNode body){
+        if(body.has("sourceAudioId")&&(!body.path("sourceConfirmed").isBoolean()||!body.path("sourceConfirmed").asBoolean()))throw fail(400,"请试听并明确确认所选音轨或声道是伴奏");
+        return jobs.submit(song,body.path("kind").asText(),body.path("backend").asText(""),java.util.List.of(),AudioRecipe.from(body));
+    }
+    @PostMapping("/api/v1/media-songs/{song}/accompaniment/{id}/activate")
+    public ObjectNode activate(@PathVariable String song,@PathVariable String id){return jobs.activate(song,id);}
     @PostMapping("/api/v1/media-songs/{song}/audio-jobs/{id}/cancel")
     public void cancel(@PathVariable String song,@PathVariable String id){ jobs.cancel(song,id); }
     @RequestMapping(value="/api/v1/media-songs/{song}/accompaniment/{id}",method={RequestMethod.GET,RequestMethod.HEAD})

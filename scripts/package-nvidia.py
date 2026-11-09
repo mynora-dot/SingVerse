@@ -25,6 +25,11 @@ def contents():
         if path.is_file() and not path.is_symlink():
             files[str(path.relative_to(ROOT))] = path.read_bytes()
     files['部署说明.md'] = (ROOT/'infra/deploy/nvidia/README.md').read_bytes()
+    for relative in ['services/singverse-compute/AUDIO-SEPARATION.md',
+                     *('scripts/'+name for name in ('setup-separation-runtime.py', 'setup-uvr-model.py',
+                         'convert-separation-model.py', 'prepare-separation-calibration.py',
+                         'evaluate-separation-conversion.py', 'benchmark-separation.py', 'score-separation.py'))]:
+        files[relative] = (ROOT/relative).read_bytes()
     files['README.operations.md'] = (ROOT/'infra/docker/OPERATIONS.md').read_bytes()
     files['SHA256SUMS'] = ''.join(f'{hashlib.sha256(data).hexdigest()}  {name}\n' for name, data in sorted(files.items())).encode()
     return files

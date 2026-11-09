@@ -1,0 +1,2 @@
+-r requirements-separation-openvino.lock
+onnx==1.17.0

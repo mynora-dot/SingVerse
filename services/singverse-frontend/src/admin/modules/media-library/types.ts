@@ -6,6 +6,7 @@ export interface MediaSource {
   location: string
   username: string
   parserProfileId: string
+  useForLxDownloads?: boolean
   scanEnabled?: boolean
   scanCron?: string | null
   nextScanAt?: string | null
@@ -17,6 +18,7 @@ export interface MediaSource {
   updatedAt: string
 }
 export interface SourceInput {
+  useForLxDownloads?: boolean
   scanEnabled?: boolean
   scanCron?: string
   name: string
@@ -52,4 +54,8 @@ export interface ScanTask {
   error: string | null; createdAt: string; startedAt: string | null; finishedAt: string | null
 }
 
-export interface DirectoryPage { path: string; parent: string | null; items: { name: string; path: string }[]; hasMore: boolean }
+export interface DirectoryLocation { name: string; path: string; mounted: boolean; readable: boolean; writable: boolean }
+export interface DirectoryPage {
+  path: string; parent: string | null; items: { name: string; path: string }[]; hasMore: boolean
+  locations?: DirectoryLocation[]; containerized?: boolean
+}

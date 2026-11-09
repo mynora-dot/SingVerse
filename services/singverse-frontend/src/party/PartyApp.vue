@@ -113,7 +113,7 @@ onUnmounted(() => { stopped = true; operation++; generation++; sessionController
 </script>
 <template>
   <main class="party-shell">
-    <header><a class="brand" href="/party/">◉ <span>SingVerse</span></a><span class="eyebrow">客厅唱片</span></header>
+    <header><a class="brand" href="/party/"><img src="/assets/brand/logo-mark.png" width="34" height="34" alt=""><span>SingVerse</span></a><span class="eyebrow">客厅唱片</span></header>
     <section v-if="!snapshot || (preview && credential?.sessionId !== preview.sessionId)" class="join-panel">
       <p class="eyebrow">好歌，留给在场的你</p><h1>今晚，<br>一起唱首歌。</h1><p class="muted">歌曲来自家里的 NAS，与亲友共用电视上的演唱队列。</p>
       <template v-if="preview"><div class="server-card"><span>即将加入</span><strong>{{ preview.deviceName }}</strong><small>{{ serverHost }}</small></div><label for="nickname">大家怎么称呼你</label><input id="nickname" v-model="name" maxlength="30" placeholder="输入昵称，同名不会合并身份"><button class="primary" :disabled="busy || !name.trim()" @click="join">确认加入这场聚会</button></template>

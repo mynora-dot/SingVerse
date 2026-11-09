@@ -8,7 +8,7 @@ import { songCache, type CachePage, type CleanupJob } from '../src/admin/modules
 import { ApiError } from '../src/admin/core/auth/api'
 
 vi.mock('../src/admin/modules/song-cache/api')
-vi.mock('vue-router', async original => ({ ...await original<typeof import('vue-router')>(), onBeforeRouteLeave: vi.fn() }))
+vi.mock('vue-router', async original => ({ ...await original<typeof import('vue-router')>(), onBeforeRouteLeave: vi.fn(), useRoute: () => ({ query: {} }) }))
 const original: CachePage = {
   settings: { maxBytes: 10 * 1024 ** 3, policy: 'HYBRID', ttlHours: 72, revision: 2, highWatermarkPercent: 90, lowWatermarkPercent: 75 }, usageBytes: 1024 ** 3, entryCount: 2,
   page: 0, size: 20, totalElements: 2,

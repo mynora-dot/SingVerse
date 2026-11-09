@@ -38,11 +38,11 @@ class AudioProcessingServiceTest {
     @Test void unprobedSongsSeparateOnlyAfterSingleStreamProbe()throws Exception{
         when(mapper.pending()).thenReturn(List.of(item("PENDING","")));
         when(jobs.status("song")).thenReturn(json.readTree("{\"jobs\":[]}").deepCopy());
-        when(jobs.submit("song","PROBE","")).thenReturn(json.createObjectNode().put("id","probe"));service.tick();
+        when(jobs.submit("song","PROBE","",List.of(com.mynora.singverse.background.BackgroundTaskService.audioBatchId("batch")))).thenReturn(json.createObjectNode().put("id","probe"));service.tick();
         verify(mapper).updateItem(eq("batch"),eq("song"),eq("PROBING"),eq("probe"),eq(""),anyLong());
         when(mapper.pending()).thenReturn(List.of(item("PROBING","probe")));when(roles.job("probe")).thenReturn(Map.of("state","SUCCEEDED"));
         when(jobs.status("song")).thenReturn((com.fasterxml.jackson.databind.node.ObjectNode)json.readTree("{\"streams\":[{\"id\":\"stream:0\"}],\"jobs\":[]}"));
-        when(jobs.submit("song","SEPARATE","cpu")).thenReturn(json.createObjectNode().put("id","separate"));service.tick();
+        when(jobs.submit("song","SEPARATE","cpu",List.of(com.mynora.singverse.background.BackgroundTaskService.audioBatchId("batch")))).thenReturn(json.createObjectNode().put("id","separate"));service.tick();
         verify(mapper).updateItem(eq("batch"),eq("song"),eq("PROCESSING"),eq("separate"),eq(""),anyLong());
     }
     @Test void dualStreamsAfterProbeAreSkipped()throws Exception{
@@ -100,11 +100,11 @@ class AudioProcessingServiceTest {
         assertThat(service.row(song,json.createObjectNode()).path("coverAvailable").asBoolean()).isFalse();
         verify(jobs,never()).submit(anyString(),anyString());
     }
-    @Test void hardwarePresenceRejectsManualCpuAtBatchStart() throws Exception {
+    @Test void qualifiedCpuCanBeSelectedEvenWhenGpuIsDetected() throws Exception {
         when(mapper.batch("batch")).thenReturn(Map.of("id","batch","state","PREVIEW","backend","cpu","created_at",1L));
-        when(compute.call(any(),eq("/internal/v1/audio-roles/models"),eq("GET"),isNull())).thenReturn(json.readTree("{\"selected\":\"cpu\",\"backends\":[{\"id\":\"cuda\",\"detected\":true,\"state\":\"UNVERIFIED\"}]}"));
-        assertThatThrownBy(()->service.start("batch")).hasMessageContaining("CPU 仅用于自动降级");
-        verify(mapper,never()).start(anyString(),anyLong());
+        when(compute.call(any(),eq("/internal/v1/audio-roles/models"),eq("GET"),isNull())).thenReturn(json.readTree("{\"selected\":\"cpu\",\"backends\":[{\"id\":\"cpu\",\"state\":\"AVAILABLE\"},{\"id\":\"cuda\",\"detected\":true,\"state\":\"UNVERIFIED\"}]}"));
+        service.start("batch");
+        verify(mapper).start(eq("batch"),anyLong());
     }
 
     @Test void preparationIsChunkedAndMaterialChangesAreRecordedWithoutSubmittingJobs() {

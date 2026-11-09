@@ -20,8 +20,9 @@ public class MediaSourceController {
 
     @GetMapping("/local-directories")
     public com.mynora.singverse.media.service.LocalDirectoryService.DirectoryPage directories(
-            @RequestParam(defaultValue = "") String path, @RequestParam(defaultValue = "0") int page) {
-        return directories.list(path, page);
+            @RequestParam(defaultValue = "") String path, @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "") String q) {
+        return directories.list(path, page, q);
     }
 
     @GetMapping("")

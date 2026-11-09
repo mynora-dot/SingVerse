@@ -26,6 +26,10 @@ public class AudioJobService {
     private final ObjectMapper json;
     private final Path root;
     private String scanCursor="";
+    private String discoveryRound=UUID.randomUUID().toString();
+    private String scopeBatchCursor="",scopeSongCursor="";
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.mynora.singverse.background.BackgroundTaskService backgroundTasks;
     private final java.util.concurrent.atomic.AtomicBoolean ticking = new java.util.concurrent.atomic.AtomicBoolean();
     private final Map<String, InputStream> receiving = new HashMap<>();
     @org.springframework.beans.factory.annotation.Autowired private AudioDispatch dispatch;
@@ -39,6 +43,8 @@ public class AudioJobService {
         root=Path.of(directory).toAbsolutePath().normalize();
     }
     static String text(Map<String,Object> row,String key){return Objects.toString(row.get(key),"");}
+    AudioRecipe recipe(Map<String,Object> row){return AudioRecipe.stored(json,row.get("recipe_json"));}
+    Path artifactPath(Map<String,Object> row){return root.resolve(text(row,"id")+"."+recipe(row).extension());}
     static ResponseStatusException fail(int code,String message){return new ResponseStatusException(HttpStatus.valueOf(code),message);}
     String fingerprint(String song){return MediaSongRepository.fingerprint(songs.get(song));}
     public ObjectNode status(String song) {
@@ -47,43 +53,94 @@ public class AudioJobService {
     }
     ObjectNode status(com.mynora.singverse.media.dto.MediaSongDtos.Song song,
             Map<String,Object> role, List<Map<String,Object>> history) {
+        return status(song,role,history,mapper.selection(song.id()));
+    }
+    ObjectNode status(com.mynora.singverse.media.dto.MediaSongDtos.Song song,
+            Map<String,Object> role, List<Map<String,Object>> history, Map<String,Object> selection) {
         var result=roles.view(song, role);
         var list=result.putArray("jobs");
+        String selected=selection!=null&&text(selection,"fingerprint").equals(MediaSongRepository.fingerprint(song))?text(selection,"job_id"):"";
+        if(!selected.isEmpty()&&history.stream().noneMatch(row->text(row,"id").equals(selected))){
+            var active=mapper.job(selected);
+            if(active!=null&&text(active,"song_id").equals(song.id())&&text(active,"fingerprint").equals(MediaSongRepository.fingerprint(song))){history=new ArrayList<>(history);history.add(active);}
+        }
+        var versions=result.putArray("versions");
+        ObjectNode activeResource=null;
         for(var row:history){
             var view=list.addObject().put("id",text(row,"id")).put("kind",text(row,"kind")).put("state",text(row,"state")).put("error",text(row,"error"));
+            var specification=recipe(row);
+            if(text(row,"kind").equals("SEPARATE"))view.setAll(specification.view(json));
             try{var data=json.readTree(text(row,"result_json"));view.put("backend",data.path("backend").asText()).put("modelVersion",data.path("modelVersion").asText()).put("fallbackReason",data.path("fallbackReason").asText());
-                for(String field:List.of("stage","timingsMs","progress","inference"))if(data.has(field))view.set(field,data.get(field));
+                for(String field:List.of("stage","timingsMs","progress","inference","sourceReused","sourceOffsetSeconds","precision"))if(data.has(field))view.set(field,data.get(field));
                 if(Set.of("FAST","ANALYZE").contains(text(row,"kind"))){view.put("resultState",data.path("state").asText()).put("reason",data.path("reason").asText());if(data.path("evidence").isObject())view.set("evidence",data.get("evidence"));}if(!result.has("streams") && data.path("streams").isArray())result.set("streams",data.get("streams"));}catch(IOException ignored){}
-        }
-        if(result.path("streams").size()==1){
-            result.put("originalId",result.path("streams").get(0).path("id").asText()).put("state","CONFIRMED").put("origin","SOURCE");
-            for(var row:history)if(text(row,"kind").equals("SEPARATE")&&text(row,"state").equals("SUCCEEDED")&&Files.isRegularFile(root.resolve(text(row,"id")+".m4a"))){
-                var resource=result.putObject("backingResource").put("jobId",text(row,"id")).put("mediaType","audio/mp4");
+            if(text(row,"kind").equals("SEPARATE")&&text(row,"state").equals("SUCCEEDED")&&Files.isRegularFile(artifactPath(row))){
+                var resource=specification.view(json).put("jobId",text(row,"id")).put("mediaType",specification.outputFormat().equals("flac")?"audio/flac":"audio/mp4");
                 try{resource.set("duration",json.readTree(text(row,"result_json")).path("duration"));}catch(IOException ignored){}
-                break;
+                versions.add(resource);
+                if(specification.playable()&&(activeResource==null||text(row,"id").equals(selected)))activeResource=resource;
             }
         }
+        if(result.path("streams").size()==1){
+            if(!result.path("state").asText().equals("CONFIRMED"))result.put("originalId",result.path("streams").get(0).path("id").asText()).put("state","CONFIRMED").put("origin","SOURCE");
+        }
+        if(activeResource!=null){result.set("backingResource",activeResource);activeResource.put("active",true);}
         return result;
     }
     public synchronized ObjectNode submit(String song,String kind){
         return submit(song,kind,"");
     }
     public synchronized ObjectNode submit(String song,String kind,String backend){
-        if(!Set.of("","cpu","cuda","rocm","mps","openvino").contains(backend))throw fail(400,"未知推理后端");
+        return submit(song,kind,backend,List.of());
+    }
+    public synchronized ObjectNode submit(String song,String kind,String backend,List<String> origins){
+        return submit(song,kind,backend,origins,AudioRecipe.legacy());
+    }
+    public synchronized ObjectNode submit(String song,String kind,String backend,List<String> origins,AudioRecipe specification){
+        String chosen=backend==null||backend.equals("auto")?"":backend;
+        return backgroundTasks==null ? submitRecorded(song,kind,chosen,origins,specification)
+                : backgroundTasks.audioTransaction(()->submitRecorded(song,kind,chosen,origins,specification));
+    }
+    private ObjectNode submitRecorded(String song,String kind,String backend,List<String> origins,AudioRecipe specification){
+        specification.validateBackend(backend);
         if(!Set.of("PROBE","FAST","ANALYZE","SEPARATE").contains(kind))throw fail(400,"未知音轨任务");
+        if(!kind.equals("SEPARATE")&&!specification.legacyDefault())throw fail(400,"伴奏方案仅用于生成伴奏");
         String fingerprint=fingerprint(song);
-        var history=mapper.forSong(song,fingerprint).stream().filter(row->text(row,"kind").equals(kind)).toList();
-        for(var row:history)if(Set.of("QUEUED","RUNNING").contains(text(row,"state")))return jobView(row);
+        if(kind.equals("SEPARATE")){
+            var confirmed=roles.role(song);
+            String backing=confirmed!=null&&confirmed.path("state").asText().equals("CONFIRMED")?confirmed.path("backingId").asText(""):"";
+            if(specification.sourceAudioId()!=null&&!specification.sourceAudioId().equals(backing))validateSource(song,fingerprint,specification.sourceAudioId());
+            if(specification.sourceAudioId()==null&&!backing.isEmpty())specification=specification.source(backing);
+        }
+        AudioRecipe requested=specification;
+        var history=mapper.forSong(song,fingerprint).stream().filter(row->text(row,"kind").equals(kind)&&(!kind.equals("SEPARATE")||sameRecipe(row,requested,backend))).toList();
+        for(var row:history)if(Set.of("QUEUED","RUNNING").contains(text(row,"state")))return recordSubmission(row,song,fingerprint,origins,false);
         if(Set.of("FAST","ANALYZE").contains(kind)){
             // A completed UNKNOWN analysis must not permanently prevent explicit re-analysis.
             if(!history.isEmpty()&&text(history.get(0),"state").equals("SUCCEEDED"))try{
-                if(json.readTree(text(history.get(0),"result_json")).path("state").asText().equals("CONFIDENT"))return jobView(history.get(0));
+                if(json.readTree(text(history.get(0),"result_json")).path("state").asText().equals("CONFIDENT"))return recordSubmission(history.get(0),song,fingerprint,origins,false);
             }catch(IOException ignored){}
-        }else for(var row:history)if(text(row,"state").equals("SUCCEEDED")&&(!kind.equals("SEPARATE")||Files.isRegularFile(root.resolve(text(row,"id")+".m4a"))))return jobView(row);
+        }else for(var row:history)if(text(row,"state").equals("SUCCEEDED")&&(!kind.equals("SEPARATE")||Files.isRegularFile(artifactPath(row))))return recordSubmission(row,song,fingerprint,origins,false);
         var connection=compute.connection();String id=UUID.randomUUID().toString();
         var row=new HashMap<String,Object>();row.put("id",id);row.put("song_id",song);row.put("kind",kind);row.put("state","QUEUED");
         row.put("fingerprint",fingerprint);row.put("backend",backend);row.put("node_origin",connection.origin().toString());row.put("created_at",System.currentTimeMillis());row.put("updated_at",System.currentTimeMillis());
-        mapper.insertJob(row);wakeup();return jobView(row);
+        row.put("recipe_json",specification.view(json).toString());
+        mapper.insertJob(row);var result=recordSubmission(row,song,fingerprint,origins,true);wakeup();return result;
+    }
+    private boolean sameRecipe(Map<String,Object> row,AudioRecipe specification,String backend){
+        var previous=recipe(row);
+        return previous.legacyDefault()&&specification.legacyDefault()||previous.fingerprint(json,text(row,"backend")).equals(specification.fingerprint(json,backend));
+    }
+    private void validateSource(String song,String fingerprint,String identifier){
+        String[] parts=identifier.split(":");String stream=parts[0]+":"+parts[1];
+        for(var job:mapper.forSong(song,fingerprint))try{
+            for(var item:json.readTree(text(job,"result_json")).path("streams"))
+                if(item.path("id").asText().equals(stream)&&(parts.length==2||item.path("channels").asInt()==2))return;
+        }catch(IOException ignored){}
+        throw fail(422,"请先读取音轨，再试听确认所选伴奏音轨或声道");
+    }
+    private ObjectNode recordSubmission(Map<String,Object> row,String song,String fp,List<String> origins,boolean created){
+        if(backgroundTasks!=null)backgroundTasks.audioSubmitted(text(row,"id"),text(row,"kind"),song,fp,origins,created);
+        return jobView(row);
     }
     private ObjectNode jobView(Map<String,Object> row){
         return json.createObjectNode().put("id",text(row,"id")).put("kind",text(row,"kind")).put("state",text(row,"state"));
@@ -103,6 +160,13 @@ public class AudioJobService {
         var body=json.createObjectNode().put("id",text(row,"id")).put("mode",text(row,"kind"));
         if(!text(row,"backend").isEmpty())body.put("backend",text(row,"backend"));
         body.put("reference",text(row,"id"));
+        var specification=recipe(row);
+        if(text(row,"kind").equals("SEPARATE")&&!specification.legacyDefault()){
+            var node=compute.call(compute.connection(text(row,"node_origin")),"/internal/v1/audio-roles/models","GET",null);
+            if(node.path("separation").path("version").asInt()<1)throw fail(422,"计算节点尚不支持伴奏方案，请升级节点");
+            if(!specification.ready(node,text(row,"backend")))throw fail(429,"等待伴奏模型与独立 CPU 运行环境就绪");
+            var options=specification.view(json);options.remove(List.of("recipeVersion","precisionPolicy","modelDigest","dspFilterVersion"));body.setAll(options);
+        }
         return body;
     }
     @Scheduled(fixedDelay=3000,initialDelay=6000,scheduler="audioScheduler")
@@ -152,9 +216,11 @@ public class AudioJobService {
                         checkReceiving(id);
                         boolean matches=false;
                         try{matches=fingerprint(text(row,"song_id")).equals(text(row,"fingerprint"));}
-                        finally{if(!matches&&text(row,"kind").equals("SEPARATE"))Files.deleteIfExists(root.resolve(id+".m4a"));}
+                        finally{if(!matches&&text(row,"kind").equals("SEPARATE"))Files.deleteIfExists(artifactPath(row));}
                         if(!matches)throw fail(409,"源媒体已变化");
                         roles.verifyImported(text(row,"song_id"),text(row,"fingerprint"),result);
+                        result.withObject("/timingsMs").put("endToEnd",Math.max(0,System.currentTimeMillis()-((Number)row.getOrDefault("created_at",System.currentTimeMillis())).longValue()));
+                        if(text(row,"kind").equals("SEPARATE")&&recipe(row).playable())preserveSelection(row);
                         update(id,"SUCCEEDED",result.toString(),"");
                     }
                     if(text(row,"kind").equals("SEPARATE"))try{compute.call(connection,"/internal/v1/audio-roles/tasks/"+id+"/release","POST",null);}catch(Exception ignored){}
@@ -167,7 +233,7 @@ public class AudioJobService {
             }catch(ResponseStatusException e){
                 if(e.getStatusCode().value()==404)update(id,text(row,"state").equals("RUNNING")?"QUEUED":"FAILED","{}",text(row,"state").equals("RUNNING")?"节点重启后重新排队":"媒体文件不可读取");
                 else if(e.getStatusCode().value()==409)update(id,"FAILED","{}","节点配置或任务状态已变化，请重试");
-                else if(Set.of(400,403,413,422).contains(e.getStatusCode().value()))update(id,"FAILED","{}","素材或模型不支持此任务");
+                else if(Set.of(400,403,413,422).contains(e.getStatusCode().value()))update(id,"FAILED","{}",e.getReason()==null?"素材或模型不支持此任务":e.getReason());
                 else update(id,text(row,"state"),text(row,"result_json"),"等待计算节点或可用空间");
                 if(Set.of(429,502,503).contains(e.getStatusCode().value()))break;
             }catch(Exception e){update(id,text(row,"state"),text(row,"result_json"),"等待计算节点");}
@@ -190,32 +256,89 @@ public class AudioJobService {
     public void scheduledDiscover(){dispatch.background("discover",this::discover);}
     public void discover(){
         try {
+            if(backgroundTasks!=null && !compute.configured()){
+                backgroundTasks.skipPendingAudio("计算节点未配置或已停用");return;
+            }
             var capability=compute.call(compute.connection(),"/internal/v1/status","GET",null);
-            if(!capability.path("capabilities").toString().contains("media-probe"))return;
+            if(!capability.path("capabilities").toString().contains("media-probe")){
+                if(backgroundTasks!=null)backgroundTasks.skipPendingAudio("节点未启用音轨探测阶段");return;
+            }
             boolean fast=capability.path("capabilities").toString().contains("audio-role-fast");
             boolean classifier=capability.path("capabilities").toString().contains("audio-role-fast-classifier");
             boolean paired=capability.path("capabilities").toString().contains("audio-role-fast-v2");
             var candidates=mapper.candidates(scanCursor);
-            if(candidates.isEmpty()){scanCursor="";return;}
-            for(String song:candidates){
-                scanCursor=song;var history=mapper.forSong(song,fingerprint(song));
-                if(history.isEmpty()){submit(song,"PROBE");continue;}
-                if(!fast)continue;
-                var confirmed=roles.role(song);if(confirmed!=null&&confirmed.path("state").asText().equals("CONFIRMED"))continue;
-                var previous=history.stream().filter(row->text(row,"kind").equals("FAST")).findFirst();
-                // Retry once when an explicitly installed classifier becomes available; never loop on ambiguity.
-                boolean missing=previous.isPresent()&&text(previous.get(),"state").equals("SUCCEEDED")&&json.readTree(text(previous.get(),"result_json")).path("reason").asText().equals("FAST_MODEL_MISSING");
-                boolean obsolete=false;
-                if(paired&&previous.isPresent()&&text(previous.get(),"state").equals("SUCCEEDED")){
-                    var prior=json.readTree(text(previous.get(),"result_json"));
-                    obsolete=prior.path("state").asText().equals("UNKNOWN")&&!prior.path("evidence").path("analysisVersion").asText().equals("fast-vocal-v2");
-                }
-                if(previous.isPresent()&&!(missing&&classifier)&&!obsolete)continue;
-                for(var row:history)if(text(row,"kind").equals("PROBE")&&text(row,"state").equals("SUCCEEDED")){
-                    var probe=json.readTree(text(row,"result_json"));if(probe.path("streams").size()==2)submit(song,"FAST");break;
+            var work=new LinkedHashSet<>(candidates);
+            if(backgroundTasks!=null){
+                var pending=backgroundTasks.pendingScopes(scopeBatchCursor,scopeSongCursor);
+                if(pending.isEmpty()){scopeBatchCursor="";scopeSongCursor="";}
+                for(var scope:pending){
+                    scopeBatchCursor=text(scope,"batch_id");scopeSongCursor=text(scope,"song_id");
+                    try{
+                        if(fingerprint(scopeSongCursor).equals(text(scope,"fingerprint")))work.add(scopeSongCursor);
+                        else backgroundTasks.resolveAudioScopes(scopeSongCursor,text(scope,"fingerprint"),"INTERRUPTED","扫描后的源媒体已变化");
+                    }catch(ResponseStatusException missing){
+                        if(missing.getStatusCode().value()!=404)throw missing;
+                        backgroundTasks.resolveAudioScopes(scopeSongCursor,text(scope,"fingerprint"),"INTERRUPTED","关联歌曲已删除");
+                    }
                 }
             }
-        } catch(Exception unavailable){/* Optional compute must not block scans. */}
+            for(String song:work){
+                if(candidates.contains(song))scanCursor=song;
+                discoverSong(song,fast,classifier,paired);
+            }
+            if(candidates.isEmpty()){
+                scanCursor="";
+                if(backgroundTasks!=null)backgroundTasks.finishDiscoveryRound(discoveryRound);
+                discoveryRound=UUID.randomUUID().toString();
+            }else scanCursor=candidates.getLast();
+        } catch(Exception unavailable){
+            if(backgroundTasks!=null)backgroundTasks.waitingForAudioNode();
+            // Optional compute must not block scans or change their execution rules.
+        }
+    }
+    private void discoverSong(String song,boolean fast,boolean classifier,boolean paired)throws IOException{
+        String fp=fingerprint(song);
+        var history=mapper.forSong(song,fp);
+        var origins=backgroundTasks==null?List.<String>of():backgroundTasks.audioOrigins(song,fp);
+        if(history.isEmpty()){submitAutomatic(song,"PROBE",fp,origins);return;}
+        var probe=history.stream().filter(row->text(row,"kind").equals("PROBE")).findFirst();
+        if(probe.isPresent()){
+            attachExisting(probe.get(),song,fp,origins);
+            if(Set.of("QUEUED","RUNNING").contains(text(probe.get(),"state")))return;
+        }
+        if(!fast){resolveDiscovery(song,fp,"SKIPPED","未启用快速识别阶段");return;}
+        var confirmed=roles.role(song);
+        if(confirmed!=null&&confirmed.path("state").asText().equals("CONFIRMED")){
+            resolveDiscovery(song,fp,"SKIPPED","音轨角色已确认，无需快速识别");return;
+        }
+        var previous=history.stream().filter(row->text(row,"kind").equals("FAST")).findFirst();
+        // Preserve the existing one-time retry rules when a classifier is installed or upgraded.
+        boolean missing=previous.isPresent()&&text(previous.get(),"state").equals("SUCCEEDED")&&json.readTree(text(previous.get(),"result_json")).path("reason").asText().equals("FAST_MODEL_MISSING");
+        boolean obsolete=false;
+        if(paired&&previous.isPresent()&&text(previous.get(),"state").equals("SUCCEEDED")){
+            var prior=json.readTree(text(previous.get(),"result_json"));
+            obsolete=prior.path("state").asText().equals("UNKNOWN")&&!prior.path("evidence").path("analysisVersion").asText().equals("fast-vocal-v2");
+        }
+        if(previous.isPresent()&&!(missing&&classifier)&&!obsolete){
+            attachExisting(previous.get(),song,fp,origins);return;
+        }
+        for(var row:history)if(text(row,"kind").equals("PROBE")&&text(row,"state").equals("SUCCEEDED")){
+            if(json.readTree(text(row,"result_json")).path("streams").size()==2)submitAutomatic(song,"FAST",fp,origins);
+            else resolveDiscovery(song,fp,"SKIPPED","非双音轨，无需快速识别");
+            return;
+        }
+        resolveDiscovery(song,fp,probe.isPresent()?"FAILED":"SKIPPED",probe.isPresent()?"音轨探测未成功":"无需自动音轨处理");
+    }
+    private void submitAutomatic(String song,String kind,String fp,List<String> origins){
+        if(backgroundTasks!=null&&origins.isEmpty())origins=backgroundTasks.automaticOrigin(discoveryRound,song,fp);
+        submit(song,kind,"",origins);
+    }
+    private void attachExisting(Map<String,Object> job,String song,String fp,List<String> origins){
+        if(backgroundTasks!=null&&!origins.isEmpty()&&!text(job,"id").isBlank())
+            backgroundTasks.audioTransaction(()->{backgroundTasks.audioSubmitted(text(job,"id"),text(job,"kind"),song,fp,origins,false);return null;});
+    }
+    private void resolveDiscovery(String song,String fp,String state,String reason){
+        if(backgroundTasks!=null)backgroundTasks.resolveAudioScopes(song,fp,state,reason);
     }
     private void invalidate(Map<String,Object> row,String reason){
         if(text(row,"state").equals("RUNNING"))try{compute.call(compute.connection(text(row,"node_origin")),"/internal/v1/audio-roles/tasks/"+text(row,"id")+"/cancel","POST",null);}catch(Exception ignored){}
@@ -228,7 +351,7 @@ public class AudioJobService {
         try(var paths=Files.list(root)){
             for(Path path:paths.toList()){
                 String name=path.getFileName().toString();
-                if(!name.matches("[a-f0-9-]{36}\\.(m4a|part)")||Files.getLastModifiedTime(path).toMillis()>System.currentTimeMillis()-86400000)continue;
+                if(!name.matches("[a-f0-9-]{36}\\.(m4a|flac|part)")||Files.getLastModifiedTime(path).toMillis()>System.currentTimeMillis()-86400000)continue;
                 boolean remove=name.endsWith(".part");var job=mapper.job(name.substring(0,36));
                 if(job==null)remove=true;
                 else try{remove|=!text(job,"fingerprint").equals(fingerprint(text(job,"song_id")))||!text(job,"state").equals("SUCCEEDED");}
@@ -254,7 +377,13 @@ public class AudioJobService {
     }
     private void receive(Connection connection,String id,JsonNode result)throws IOException{
         long started=System.nanoTime();
-        if(!result.path("artifact").asText().equals(id+".m4a"))throw fail(422,"伴奏产物无效");
+        var stored=mapper.job(id);
+        var specification=stored==null?AudioRecipe.legacy():recipe(stored);
+        String filename=id+"."+specification.extension();
+        if(!result.path("artifact").asText().equals(filename))throw fail(422,"伴奏产物无效");
+        if(!specification.legacyDefault()&&(!result.path("separationProfile").asText().equals(specification.separationProfile())
+                ||!result.path("modelId").asText().equals(specification.modelId())||!result.path("outputFormat").asText().equals(specification.outputFormat())
+                ||!result.path("preview").isBoolean()||result.path("preview").asBoolean()!=specification.preview()))throw fail(422,"伴奏产物与任务方案不一致");
         Files.createDirectories(root);
         if(Files.getFileStore(root).getUsableSpace()<2L*1024*1024*1024)throw fail(507,"伴奏存储空间不足");
         Path temporary=root.resolve(id+".part");
@@ -272,7 +401,7 @@ public class AudioJobService {
         try {
             synchronized(this){
                 checkReceiving(id);
-                Files.move(temporary,root.resolve(id+".m4a"),StandardCopyOption.REPLACE_EXISTING,StandardCopyOption.ATOMIC_MOVE);
+                Files.move(temporary,root.resolve(filename),StandardCopyOption.REPLACE_EXISTING,StandardCopyOption.ATOMIC_MOVE);
             }
         } finally { Files.deleteIfExists(temporary); }
         if(result instanceof ObjectNode value)value.withObject("/timingsMs").put("transfer",(System.nanoTime()-started)/1_000_000d);
@@ -284,7 +413,7 @@ public class AudioJobService {
             row=require(song,id);if(Set.of("SUCCEEDED","FAILED","CANCELLED").contains(text(row,"state")))return;
             update(id,"CANCELLED","{}","");
             active=receiving.remove(id);
-            try{Files.deleteIfExists(root.resolve(id+".m4a"));}catch(IOException ignored){}
+            try{Files.deleteIfExists(artifactPath(row));}catch(IOException ignored){}
         }
         if(active!=null)try{active.close();}catch(IOException ignored){}
         if(text(row,"state").equals("RUNNING"))try{compute.call(compute.connection(text(row,"node_origin")),"/internal/v1/audio-roles/tasks/"+id+"/cancel","POST",null);}catch(Exception ignored){}
@@ -306,6 +435,25 @@ public class AudioJobService {
     public void accompaniment(String song,String id,String range,boolean head,HttpServletResponse response)throws IOException{
         var row=require(song,id);
         if(!text(row,"state").equals("SUCCEEDED")||!text(row,"kind").equals("SEPARATE")||!text(row,"fingerprint").equals(fingerprint(song)))throw fail(404,"伴奏版本已失效");
-        playback.playDerived(root,id+".m4a",range,head,response);
+        playback.playDerived(root,artifactPath(row).getFileName().toString(),range,head,response);
+    }
+    private void preserveSelection(Map<String,Object> completed){
+        String song=text(completed,"song_id"),fp=text(completed,"fingerprint");
+        var selection=mapper.selection(song);
+        if(selection!=null&&text(selection,"fingerprint").equals(fp))return;
+        String chosen=text(completed,"id");
+        // Preserve a pre-migration accompaniment before publishing a new alternative.
+        for(var previous:mapper.forSong(song,fp))if(text(previous,"kind").equals("SEPARATE")&&text(previous,"state").equals("SUCCEEDED")&&recipe(previous).playable()&&Files.isRegularFile(artifactPath(previous))){chosen=text(previous,"id");break;}
+        if(selection==null)mapper.insertSelection(song,fp,chosen,System.currentTimeMillis());
+        else mapper.updateSelection(song,fp,chosen,System.currentTimeMillis());
+    }
+    @org.springframework.transaction.annotation.Transactional
+    public synchronized ObjectNode activate(String song,String id){
+        var row=require(song,id);
+        if(!text(row,"state").equals("SUCCEEDED")||!text(row,"kind").equals("SEPARATE")||!text(row,"fingerprint").equals(fingerprint(song))||!recipe(row).playable()||!Files.isRegularFile(artifactPath(row)))throw fail(422,"请选择完整 AAC 伴奏；试听片段和 FLAC 导出不能设为播放版本");
+        if(mapper.selection(song)==null)mapper.insertSelection(song,text(row,"fingerprint"),id,System.currentTimeMillis());
+        else mapper.updateSelection(song,text(row,"fingerprint"),id,System.currentTimeMillis());
+        if(events!=null)events.publishEvent(new AudioCatalog.Changed(song));
+        return status(song);
     }
 }

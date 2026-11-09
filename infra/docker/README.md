@@ -87,6 +87,10 @@ docker compose --project-directory . \
 
 本地媒体与 GPU/AI 同时启用时，在完整命令中同时携带 `compose.media.yaml` 和所选 GPU/AI 覆盖文件。
 
+### 洛雪下载保存位置
+
+Java 默认另挂持久可写卷 `singverse-downloads:/downloads`。在媒体库添加本地目录 `/downloads` 并勾选「用于保存洛雪下载」后，再到歌曲下载导入自备音源。该目录与原件只读的 `/media` 分离。若使用 NAS 实际文件夹，在 `.env` 填写已有绝对路径 `SINGVERSE_DOWNLOAD_PATH`，授予容器 UID/GID `10001:10001` 写入及遍历权限，叠加 `infra/docker/compose/compose.downloads.yaml`；后续维护保持该组合。文件夹不存在时部署失败，不自动创建。操作、错误处理及限制见[歌曲下载](../../docs/lx-downloads.md)。
+
 ## 独立计算节点
 
 GPU 主机使用相同版本仓库，在其 `.env` 设置 `COMPUTE_HTTP_BIND` 为该主机的局域网地址，`COMPUTE_HTTP_PORT` 默认 `18090`。以下启动基础节点；AI 部署继续叠加 [GPU 指南](GPU.md) 中相同的音频配置：
@@ -126,6 +130,7 @@ SINGVERSE_TRUSTED_PROXIES=<Java实际看到的可信代理IP或CIDR>
 | `singverse-audio-models` | 下载/导入的模型权重与模型配置文件 | 保留，换环境后重新试跑 |
 | `singverse-transcode-cache` | compute 临时执行产物、任务记录、硬件设置、模型选择及试跑资格 | 保留；不能把整个卷当作可随意清空的缓存 |
 | `singverse-media` | 未添加媒体覆盖文件时的空媒体卷 | 本地歌曲通常改为只读宿主挂载 |
+| `singverse-downloads` | 洛雪下载音频、同名歌词/封面及私有临时区域 | 可写；随曲库备份，NAS 绑定时备份实际目录 |
 
 备份前暂停新任务，等待在途任务完成并停止相关服务写入；用 NAS 快照/备份工具保存业务数据卷和密钥卷、compute 身份/模型/设置卷、Compose 配置及私有 `.env`。不能只复制运行中的 SQLite 主文件；媒体原件另行备份。恢复时成套恢复原卷和权限，再启动原版本验证登录、媒体来源与播放。可执行的只读卷备份与空卷恢复示例见 [运维指南](OPERATIONS.md#停机备份示例)。
 

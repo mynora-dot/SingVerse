@@ -21,4 +21,8 @@ public interface AudioRoleMapper {
     List<Map<String,Object>> jobsForSongs(@org.apache.ibatis.annotations.Param("songs") java.util.List<java.util.Map<String,String>> songs);
     int insertJob(@Param("row") Map<String,Object> row);
     int updateJob(@Param("id") String id,@Param("state") String state,@Param("result") String result,@Param("error") String error,@Param("now") long now);
+    Map<String,Object> selection(@Param("song") String song);
+    List<Map<String,Object>> selectionsForSongs(@Param("ids") List<String> ids);
+    int insertSelection(@Param("song") String song,@Param("fingerprint") String fingerprint,@Param("job") String job,@Param("now") long now);
+    int updateSelection(@Param("song") String song,@Param("fingerprint") String fingerprint,@Param("job") String job,@Param("now") long now);
 }

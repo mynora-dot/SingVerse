@@ -1,0 +1,3 @@
+-r requirements-separation-cpu.lock
+openvino==2025.4.0
+openvino-telemetry==2025.2.0

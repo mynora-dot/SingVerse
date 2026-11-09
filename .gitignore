@@ -43,6 +43,7 @@ node_modules/
 *.hprof
 # Python local environment and build metadata
 .venv/
+.venv-audio-*/
 __pycache__/
 *.py[cod]
 *.egg-info/

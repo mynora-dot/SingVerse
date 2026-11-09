@@ -186,6 +186,10 @@ class WebDavScanHttpTest {
         var completed = await(start(source));
         assertThat(completed.path("status").asText()).isEqualTo("SUCCEEDED");
         assertThat(completed.path("totalSongs").asInt()).isEqualTo(extensions.size());
+        String sourceId = source.substring(source.lastIndexOf('/') + 1);
+        String batchId = db.queryForObject("SELECT id FROM background_task WHERE type='WEBDAV_SCAN' AND source_id=?", String.class, sourceId);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM background_scan_scope WHERE batch_id=?", Integer.class, batchId)).isEqualTo(extensions.size());
+        assertThat(db.queryForObject("SELECT scope_sealed FROM background_task WHERE id=?", Integer.class, batchId)).isOne();
         var page = body(request(source + "/songs?size=100", "GET", null, false));
         assertThat(page.path("items").size()).isEqualTo(extensions.size());
         for (var song : page.path("items")) {
@@ -336,8 +340,12 @@ class WebDavScanHttpTest {
         db.execute(sqlite ? "CREATE TRIGGER fail_webdav_insert BEFORE INSERT ON media_song BEGIN SELECT RAISE(ABORT, 'test insert failure'); END"
                 : "CREATE TRIGGER fail_webdav_insert BEFORE INSERT ON media_song FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'test insert failure'");
         listing = path -> xml(entry(href(path), true) + entry("新增-歌手.mkv", false));
-        try { assertThat(await(start(source)).path("status").asText()).isEqualTo("FAILED"); }
-        finally { db.execute("DROP TRIGGER fail_webdav_insert"); }
+        try {
+            var failed = await(start(source));
+            assertThat(failed.path("status").asText()).isEqualTo("FAILED");
+            String batchId = com.mynora.singverse.background.BackgroundTaskService.scanBatchId(failed.path("id").asText());
+            assertThat(db.queryForObject("SELECT COUNT(*) FROM background_scan_scope WHERE batch_id=?", Integer.class, batchId)).isZero();
+        } finally { db.execute("DROP TRIGGER fail_webdav_insert"); }
         assertThat(request(source + "/songs", "GET", null, false).body()).isEqualTo(before);
         listing = path -> xml(entry(href(path), true) + entry("child/", true) + entry("歌曲-歌手.mkv", false));
         assertThat(await(start(source)).path("status").asText()).isEqualTo("FAILED");

@@ -495,6 +495,33 @@ class OriginalMediaCacheHttpTest {
         assertThat(read("bytes=90-").statusCode()).isEqualTo(206); // The completed local copy now supports seek itself.
     }
 
+    @Test void unalignedSourceReadsPreserveCompletedBlockWhenPlayerStops() throws Exception {
+        bytes = indexedSize = 3 * BLOCK;
+        var cancelled = new AtomicBoolean();
+        Runnable guard = () -> {
+            if (cancelled.get()) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.GONE, "player stopped");
+        };
+        var input = new FilterInputStream(new ByteArrayInputStream(new byte[(int) bytes])) {
+            @Override public int read(byte[] data, int offset, int length) throws IOException {
+                return super.read(data, offset, Math.min(length, 65521));
+            }
+        };
+        var output = new OutputStream() {
+            long sent;
+            public void write(int value) { if (++sent > BLOCK) cancelled.set(true); }
+            @Override public void write(byte[] data, int offset, int length) {
+                sent += length; if (sent > BLOCK) cancelled.set(true);
+            }
+        };
+        try (var original = cache.original("song", "unaligned-fixture", bytes, true)) {
+            assertThat(original).isNotNull();
+            assertThatThrownBy(() -> org.springframework.test.util.ReflectionTestUtils.invokeMethod(playback,
+                    "tee", input, output, bytes, original, 0L, guard, false))
+                    .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+            assertThat(original.cachedBytes()).isEqualTo(BLOCK);
+        }
+    }
+
     @Test void knownIndexedLengthDoesNotMakeUnknownChunkedZeroStartFail() throws Exception {
         bytes = BLOCK + 123; indexedSize = bytes;
         handler = exchange -> {

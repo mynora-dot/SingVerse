@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { onBeforeRouteLeave } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { ElButton, ElMessageBox, ElPagination } from 'element-plus'
 import { ApiError } from '../../core/auth/api'
 import PageHeader from '../../shared/ui/PageHeader.vue'
 import { songCache, type CacheEntry, type CachePage, type CachePin, type CachePins, type CacheSettings, type CleanupJob, type CleanupRequest } from './api'
 
 const gib = 1024 ** 3
+const route = useRoute()
 const result = ref<CachePage | null>(null), settings = ref<CacheSettings | null>(null)
 const draft = reactive({ capacityGiB: '' as string | number, policy: 'HYBRID', high: 90 as string | number, low: 75 as string | number })
 const page = ref(1), loading = ref(false), busy = ref(false), error = ref(''), notice = ref(''), conflict = ref(false)
@@ -167,7 +168,8 @@ function format(entry: CacheEntry) {
 }
 function beforeUnload(event: BeforeUnloadEvent) { if (dirty.value || busy.value) { event.preventDefault(); event.returnValue = '' } }
 onBeforeRouteLeave(() => busy.value ? false : discard())
-onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void load(); void loadPins(); try { const id = sessionStorage.getItem(jobKey); if (id) void pollJob(id) } catch { /* Storage is optional. */ } })
+watch(() => route.query.job, id => { if (typeof id === 'string') void pollJob(id) })
+onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void load(); void loadPins(); if (typeof route.query.job === 'string') void pollJob(route.query.job); else try { const id = sessionStorage.getItem(jobKey); if (id) void pollJob(id) } catch { /* Storage is optional. */ } })
 onBeforeUnmount(() => { active = false; epoch++; pinEpoch++; jobEpoch++; clearTimeout(pollTimer); window.removeEventListener('beforeunload', beforeUnload) })
 </script>
 

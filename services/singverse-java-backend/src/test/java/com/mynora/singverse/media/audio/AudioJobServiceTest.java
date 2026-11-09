@@ -238,4 +238,16 @@ class AudioJobServiceTest {
         service.discover();verify(mapper,never()).insertJob(any());
     }
 
+    @Test void discoveryRetainsItsCursorAfterAnOptionalSongFailure() throws Exception {
+        var service=service("current");when(compute.connection()).thenReturn(connection);
+        when(connection.origin()).thenReturn(java.net.URI.create("http://compute.test"));
+        when(compute.call(connection,"/internal/v1/status","GET",null)).thenReturn(json.readTree("{\"capabilities\":[\"media-probe\"]}"));
+        when(mapper.candidates("")).thenReturn(List.of("bad-song","song"));
+        when(mapper.candidates("bad-song")).thenReturn(List.of("song"));
+        when(mapper.forSong("bad-song","current")).thenThrow(new IllegalStateException("unreadable fixture"));
+        service.discover();service.discover();
+        verify(mapper).candidates("bad-song");
+        verify(mapper).insertJob(argThat(row->row.get("song_id").equals("song")&&row.get("kind").equals("PROBE")));
+    }
+
 }

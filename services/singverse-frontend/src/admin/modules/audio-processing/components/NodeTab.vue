@@ -8,12 +8,12 @@ import { backendName, backendStates, bytes, failure, modelNames, operationStates
 const props = defineProps<{ node?: Node; nodeError: string; readiness: Readiness; reload: (refresh?: boolean) => Promise<void> }>()
 const busy = ref(false), error = ref('')
 const detected = computed(() => props.node?.backends.filter(item => !['cpu', 'xpu'].includes(item.id) && (item.detected || item.device)) || [])
-const visibleBackends = computed(() => props.node?.backends.filter(item => item.id === 'cpu' ? !detected.value.length || props.node?.cpuFallback !== false : detected.value.some(found => found.id === item.id)) || [])
+const visibleBackends = computed(() => props.node?.backends.filter(item => item.id === 'cpu' || detected.value.some(found => found.id === item.id)) || [])
 const modelBackends: Record<string, string[]> = { htdemucs: ['cpu', 'cuda', 'rocm', 'mps'], 'htdemucs-openvino': ['openvino'], 'uvr-mdxnet-9482-rknn': ['rknn'] }
 const localOnly = (model: Model) => model.localOnly || model.id === 'uvr-mdxnet-9482-rknn'
 const catalog = computed<Model[]>(() => [
   ...(props.node?.fastClassifier ? [props.node.fastClassifier] : []),
-  ...(props.node?.models || (props.node ? [{ ...props.node.model, id: props.node.model.id || 'htdemucs' }] : [])).filter(model => (model.backends || modelBackends[model.id] || []).some(id => visibleBackends.value.some(backend => backend.id === id))),
+  ...(props.node?.models || (props.node ? [{ ...props.node.model, id: props.node.model.id || 'htdemucs' }] : [])).filter(model => model.id === 'uvr-mdxnet-9482' || (model.backends || modelBackends[model.id] || []).some(id => visibleBackends.value.some(backend => backend.id === id))),
 ])
 const modelBusy = computed(() => ['DOWNLOADING', 'IMPORTING', 'VERIFYING', 'TESTING'].includes(props.node?.operation.state || ''))
 const auto = computed(() => props.node?.selection === 'auto')
@@ -77,7 +77,7 @@ function backendTone(state: string) { return state === 'AVAILABLE' ? 'success' :
           </div>
           <details v-if="!model.installed" class="model-files"><summary>{{ localOnly(model) ? '节点本地部署要求' : '无法联网？手动下载文件' }}</summary>
             <p v-if="model.id === 'uvr-mdxnet-9482-rknn'" class="muted">仅用于瑞芯微 NPU；需在节点模型目录下的 uvr-mdxnet-9482-rknn 子目录部署适配设备的 manifest.json 和 uvr.rknn。不支持网页下载或 ZIP 导入。</p>
-            <p v-else class="muted">仅接受下列官方文件{{ model.id === 'htdemucs' ? '（原始 .th 权重）' : model.id === 'panns-cnn6' ? '，将该 PTH 文件放在 ZIP 根目录后导入' : '，打包为 ZIP 后导入；ZIP 根目录必须恰好包含 XML 和 BIN 两个文件' }}。</p>
+            <p v-else class="muted">仅接受下列官方文件{{ model.id === 'htdemucs' ? '（原始 .th 权重）' : ['panns-cnn6', 'uvr-mdxnet-9482'].includes(model.id) ? '，将该文件放在 ZIP 根目录后导入' : '，打包为 ZIP 后导入；ZIP 根目录必须恰好包含 XML 和 BIN 两个文件' }}。</p>
             <div v-for="file in offlineFiles(model)" :key="file.name"><a :href="file.url" target="_blank" rel="noreferrer">下载 {{ file.name }}</a><p class="digest">SHA-256：{{ file.sha256 }}</p></div>
           </details>
         </div>
@@ -94,13 +94,24 @@ function backendTone(state: string) { return state === 'AVAILABLE' ? 'success' :
           <ElTag :type="backendTone(backend.state)" effect="light" size="small">{{ node.selected === backend.id ? '使用中' : backendStates[backend.state] || backend.state }}</ElTag>
           <div class="backend-actions">
             <ElButton v-if="['UNVERIFIED', 'FAILED', 'AVAILABLE'].includes(backend.state)" size="small" :disabled="busy || modelBusy" @click="backendAction('test', backend.id)">{{ backend.id === 'cpu' ? '验证自动降级' : backend.state === 'AVAILABLE' ? '重新试跑' : '试跑' }}</ElButton>
-
+            <ElButton v-if="backend.state === 'AVAILABLE' && node.selection !== backend.id" size="small" :disabled="busy || modelBusy" @click="backendAction('select', backend.id)">选用此设备</ElButton>
           </div>
         </div>
         <p v-if="detected.length && node.selected === 'cpu'" class="muted">加速设备暂不可用，已自动降级到 CPU。</p><p class="selection">{{ auto ? '自动选择可用设备' : '当前使用固定设备设置' }}<ElButton v-if="!auto" link type="primary" :disabled="busy" @click="backendAction('select', 'auto')">改为自动选择</ElButton></p>
       </li>
     </ol>
-    <section v-else class="sv-panel empty"><p>{{ nodeError || '正在读取计算节点…' }}</p><p class="muted">请先在“计算节点设置”中连接节点，即可准备模型。</p></section>
+    <section v-if="node?.separation" class="sv-panel step" aria-label="极速与轻量伴奏">
+      <header><h3>极速与轻量伴奏</h3></header>
+      <p class="muted">极速档只需要 FFmpeg。干净档需在节点配置独立 CPU 环境并安装轻量模型，先试跑 CPU，再试跑加速设备。高级模型沿用上方配置。</p>
+      <p v-if="node.separation.operation?.state === 'TESTING' || node.separation.operation?.state === 'WAITING'" role="status" class="muted">轻量模型正在等待或进行试跑…</p>
+      <p v-if="node.separation.operation?.error" class="inline-error">{{ node.separation.operation.error }}</p>
+      <div v-for="backend in node.separation.backends.filter(item => item.detected || item.id === 'cpu')" :key="backend.id" class="backend-row">
+        <div class="backend-copy"><strong>{{ backendName(backend.id) }}</strong><span class="muted">{{ backend.reason }}</span></div>
+        <ElTag :type="backendTone(backend.state)" size="small">{{ backendStates[backend.state] || backend.state }}</ElTag>
+        <ElButton v-if="['UNVERIFIED', 'FAILED', 'AVAILABLE'].includes(backend.state)" size="small" :disabled="busy || modelBusy || ['TESTING','WAITING'].includes(node.separation.operation?.state || '')" @click="run(() => call('test', { backend: backend.id, separationProfile: 'AI_CLEAN' }))">试跑轻量模型</ElButton>
+      </div>
+    </section>
+    <section v-if="!node" class="sv-panel empty"><p>{{ nodeError || '正在读取计算节点…' }}</p><p class="muted">请先在“计算节点设置”中连接节点，即可准备模型。</p></section>
 
   </div>
 </template>

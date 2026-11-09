@@ -40,7 +40,7 @@ WORKDIR /opt/singverse
 ENV DBMATE_BIN=/usr/local/bin/dbmate
 COPY --from=migration-tool /workspace/.tools/dbmate /usr/local/bin/dbmate
 COPY database/migrations/ ./database/migrations/
-RUN mkdir -p /data /secrets && chown 10001:10001 /data /secrets
+RUN mkdir -p /data /secrets /downloads && chown 10001:10001 /data /secrets /downloads
 COPY --from=backend-build --chown=10001:10001 /workspace/services/singverse-java-backend/target/singverse-java-backend-0.1.0-SNAPSHOT.jar ./app.jar
 ENV SPRING_PROFILES_ACTIVE=sqlite \
     SQLITE_PATH=/data/singverse.db \

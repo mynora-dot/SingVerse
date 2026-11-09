@@ -48,6 +48,13 @@ async function open() { wrapper = mount(View, { global: { stubs } }); await flus
 function button(text: string, scope: Pick<DOMWrapper<Element>, 'findAll'> = wrapper!) { return scope.findAll('button').find(item => item.text() === text)! }
 function requested(fragment: string) { return vi.mocked(authRequest).mock.calls.some(([path]) => path.includes(fragment)) }
 
+it('任务中心的批次深链接直接打开指定批次详情', async () => {
+  router.route.query = { tab: 'tasks', batch: 'batch' }
+  await open()
+  expect(wrapper!.get('.drawer').text()).toContain('任务详情')
+  expect(requested('/batches/batch?page=0')).toBe(true)
+})
+
 it('跨页勾选后确认生成，提交后进入生成任务并显示执行设备', async () => {
   await open(); await wrapper!.find('input[aria-label="选择a"]').setValue(true)
   await button('下一页').trigger('click'); await flushPromises()
@@ -330,12 +337,12 @@ it('表格展示封面音轨与任务信息，调整分页后回到首页', asyn
   pager.vm.$emit('size-change', 50); await flushPromises()
   expect(requested('page=0&size=50')).toBe(true)
 })
-it('硬件存在时歌曲和任务入口均不提供手选 CPU', async () => {
+it('硬件存在时仍允许主动选择已合格的 CPU', async () => {
   const previous = vi.mocked(authRequest).getMockImplementation()!
   vi.mocked(authRequest).mockImplementation(async (...args) => args[0].includes('/node') ? { ...node(), backends: [{ id: 'cpu', state: 'AVAILABLE' }, { id: 'cuda', state: 'AVAILABLE', detected: true }, { id: 'mps', state: 'AVAILABLE', detected: true }] } as never : previous(...args))
   await open()
   const choices = wrapper!.get('[aria-label="生成伴奏使用的设备"]')
-  expect(choices.find('option[value="cpu"]').exists()).toBe(false)
+  expect(choices.find('option[value="cpu"]').exists()).toBe(true)
   expect(choices.find('option[value="cuda"]').exists()).toBe(true)
 })
 it('刷新后总量缩减，自动回到最后有效页', async () => {

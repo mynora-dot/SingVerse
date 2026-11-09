@@ -1,0 +1,16 @@
+-- migrate:up
+ALTER TABLE media_audio_job ADD COLUMN recipe_json LONGTEXT NULL;
+ALTER TABLE audio_batch ADD COLUMN recipe_json LONGTEXT NULL;
+UPDATE media_audio_job SET recipe_json='{}' WHERE recipe_json IS NULL;
+UPDATE audio_batch SET recipe_json='{}' WHERE recipe_json IS NULL;
+CREATE TABLE media_audio_selection (
+  song_id VARCHAR(36) PRIMARY KEY,
+  fingerprint VARCHAR(128) NOT NULL,
+  job_id VARCHAR(36) NOT NULL,
+  updated_at BIGINT NOT NULL
+);
+
+-- migrate:down
+DROP TABLE media_audio_selection;
+ALTER TABLE audio_batch DROP COLUMN recipe_json;
+ALTER TABLE media_audio_job DROP COLUMN recipe_json;

@@ -9,6 +9,7 @@ from .application.lan_pairing import LanPairing
 from .application.audio_roles import AudioRoles
 from .application.fast_audio_roles import FastAudioRoles
 from .application.audio_models import AudioModels
+from .application.separation_engine import SeparationEngine
 from .application.transcoding import Transcoding
 from .infrastructure.transcoding.probe import MediaProbe
 from .infrastructure.transcoding.backends import Backends
@@ -32,6 +33,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app):
         execution.start()
         app.state.audio_roles.models.start()
+        app.state.audio_roles.separation.start()
         try:
             yield
         finally:
@@ -47,6 +49,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.transcoding = execution
     app.state.audio_roles = AudioRoles(execution)
     app.state.audio_roles.models = AudioModels(app.state.audio_roles)
+    app.state.audio_roles.separation = SeparationEngine(app.state.audio_roles)
     app.state.audio_roles.fast = FastAudioRoles(app.state.audio_roles)
     app.state.hardware_settings = hardware_settings
     register_errors(app)

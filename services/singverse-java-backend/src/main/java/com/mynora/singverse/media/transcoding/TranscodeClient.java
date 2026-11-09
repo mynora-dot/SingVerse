@@ -37,6 +37,8 @@ public class TranscodeClient {
         this.bodyIdleTimeout = bodyIdleTimeout;
     }
 
+    public boolean configured() { return settings.current() != null; }
+
     public Connection connection() {
         var c = settings.current();
         if (c == null) throw fail(503, "计算节点未配置或已停用");

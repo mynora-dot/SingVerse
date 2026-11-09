@@ -102,9 +102,9 @@ public class MediaPlaybackService {
     }
 
     public void playDerived(Path root, String name, String range, boolean head, HttpServletResponse response) throws IOException {
-        if (!name.matches("[a-f0-9-]{36}\\.(?:mp4|m4a)") || range != null && !range.matches("bytes=(?:[0-9]+-[0-9]*|-[0-9]+)"))
+        if (!name.matches("[a-f0-9-]{36}\\.(?:mp4|m4a|flac)") || range != null && !range.matches("bytes=(?:[0-9]+-[0-9]*|-[0-9]+)"))
             throw failure(HttpStatus.BAD_REQUEST, "无效的媒体范围");
-        response.setContentType(name.endsWith(".m4a") ? "audio/mp4" : "video/mp4");
+        response.setContentType(name.endsWith(".flac") ? "audio/flac" : name.endsWith(".m4a") ? "audio/mp4" : "video/mp4");
         response.setHeader("Cache-Control", "private, no-store");
         response.setHeader("X-Content-Type-Options", "nosniff");
         local(root.toString(), name, range, head, response, () -> {});
@@ -358,14 +358,17 @@ public class MediaPlaybackService {
         }
         try {
             if (strictCache && (writer == null || writer.capacityExhausted())) throw failure(HttpStatus.INSUFFICIENT_STORAGE, "原片缓存容量不足");
-            byte[] buffer = new byte[65536]; long nextCheck = 0;
+            byte[] buffer = new byte[65536]; long nextCheck = 0, position = start;
             while (remaining != 0) {
                 if (strictCache) {
                     boolean limited; synchronized (prefetchLock) { limited = foreground > 0; }
                     if (limited) java.util.concurrent.locks.LockSupport.parkNanos(250_000_000L); // At most 256 KiB/s while a foreground response remains open.
                 }
                 if (System.nanoTime() >= nextCheck) { guard.run(); nextCheck = System.nanoTime() + 250_000_000L; }
-                int count = input.read(buffer, 0, remaining < 0 ? buffer.length : (int) Math.min(buffer.length, remaining));
+                int limit = remaining < 0 ? buffer.length : (int) Math.min(buffer.length, remaining);
+                // Publish a completed cache block before the player receives bytes from the next one.
+                if (writer != null) limit = (int) Math.min(limit, original.blockEnd(position) - position + 1);
+                int count = input.read(buffer, 0, limit);
                 if (count < 0) { if (remaining > 0) throw new EOFException("Incomplete original media"); break; }
                 if (count == 0) continue;
                 if (System.nanoTime() >= nextCheck) { guard.run(); nextCheck = System.nanoTime() + 250_000_000L; }
@@ -381,6 +384,7 @@ public class MediaPlaybackService {
                     if (strictCache && remaining > count && writer != null && writer.capacityExhausted())
                         throw failure(HttpStatus.INSUFFICIENT_STORAGE, "原片缓存容量不足");
                 }
+                position += count;
                 if (remaining > 0) remaining -= count;
             }
             guard.run();

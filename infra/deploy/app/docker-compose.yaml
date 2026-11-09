@@ -27,6 +27,7 @@ services:
     volumes:
       - singverse-data:/data
       - singverse-secrets:/secrets
+      - singverse-downloads:/downloads
       - type: bind
         source: ./media
         target: /media
@@ -54,3 +55,4 @@ services:
 volumes:
   singverse-data:
   singverse-secrets:
+  singverse-downloads:

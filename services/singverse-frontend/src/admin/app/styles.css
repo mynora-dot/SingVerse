@@ -427,14 +427,11 @@ code, pre {
 .brand:hover { color: #fff; }
 
 .brand-mark {
-  display: grid;
+  display: block;
   flex: none;
-  place-items: center;
   width: 32px;
   height: 32px;
-  color: #fff;
-  background: var(--sv-accent-primary);
-  border-radius: var(--sv-radius-md);
+  object-fit: contain;
 }
 
 .brand strong {

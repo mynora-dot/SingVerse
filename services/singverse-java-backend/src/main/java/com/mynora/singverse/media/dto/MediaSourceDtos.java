@@ -7,7 +7,11 @@ public final class MediaSourceDtos {
     private MediaSourceDtos() {}
 
     public record Input(
-            String name, String type, String location, String username, String password, String parserProfileId, Boolean scanEnabled, String scanCron) {}
+            String name, String type, String location, String username, String password, String parserProfileId, Boolean scanEnabled, String scanCron, Boolean useForLxDownloads) {
+        public Input(String name,String type,String location,String username,String password,String parserProfileId,Boolean scanEnabled,String scanCron) {
+            this(name,type,location,username,password,parserProfileId,scanEnabled,scanCron,null);
+        }
+    }
 
     public record Source(
             String id,
@@ -20,7 +24,13 @@ public final class MediaSourceDtos {
             String createdAt,
             String updatedAt, boolean scanEnabled, String scanCron, String nextScanAt,
             String lastScanAt, String lastScanStatus, String lastScanError,
-            @com.fasterxml.jackson.annotation.JsonIgnore String configurationFingerprint) {
+            @com.fasterxml.jackson.annotation.JsonIgnore String configurationFingerprint, boolean useForLxDownloads) {
+        public Source(String id,String name,String type,String location,String username,String parserProfileId,
+                boolean passwordConfigured,String createdAt,String updatedAt,boolean scanEnabled,String scanCron,
+                String nextScanAt,String lastScanAt,String lastScanStatus,String lastScanError,String configurationFingerprint) {
+            this(id,name,type,location,username,parserProfileId,passwordConfigured,createdAt,updatedAt,scanEnabled,
+                    scanCron,nextScanAt,lastScanAt,lastScanStatus,lastScanError,configurationFingerprint,false);
+        }
         public Source(String id, String name, String type, String location, String username, String parserProfileId,
                 boolean passwordConfigured, String createdAt, String updatedAt, boolean scanEnabled, String scanCron,
                 String nextScanAt, String lastScanAt, String lastScanStatus, String lastScanError) {

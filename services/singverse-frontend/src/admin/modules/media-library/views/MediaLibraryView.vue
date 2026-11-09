@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, reactive, ref, computed } from 'vue'
+import { onMounted, onBeforeUnmount, reactive, ref, computed, watch } from 'vue'
 import { ElIcon, ElLoading, ElAlert, ElButton, ElCard, ElDialog, ElEmpty, ElForm, ElFormItem, ElInput, ElMessage, ElMessageBox, ElTag, ElCheckbox } from 'element-plus'
 import { FolderOpened, Plus, RefreshRight } from '@element-plus/icons-vue'
 import { parserProfiles } from '../../filename-parser/api/rules'
 import type { ParserWorkspace } from '../../filename-parser/types'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '../../../shared/ui/PageHeader.vue'
-import { media, type MediaSource, type SourceType, type ScanTask, type DirectoryPage } from '../api/media'
+import { media, type MediaSource, type SourceType, type ScanTask } from '../api/media'
 
 import WebDavMetadataDialog from '../components/WebDavMetadataDialog.vue'
+import LocalFolderPicker from '../components/LocalFolderPicker.vue'
+import { lx } from '../../lx-downloads/api'
 const metadataSource = ref<MediaSource | null>(null)
 const router = useRouter()
 const route = useRoute()
@@ -19,32 +21,16 @@ function displayLocation(row: MediaSource) {
   try { return decodeURI(row.location) } catch { return row.location }
 }
 const moreSources = ref(false), sourcePage = ref(0)
-const advanced = ref(false), picker = ref(false), directoryLoading = ref(false), directoryError = ref('')
-const directory = ref<DirectoryPage | null>(null), selectedDirectory = ref(''), directoryPage = ref(0)
-let directoryGeneration = 0
-async function browse(path = '', page = 0) {
-  const token = ++directoryGeneration
-  directoryLoading.value = true; directoryError.value = ''; selectedDirectory.value = ''; directory.value = null
-  try {
-    const result = await media.directories(path, page)
-    if (!active || token !== directoryGeneration || !picker.value) return
-    directory.value = result; directoryPage.value = page; selectedDirectory.value = result.path
-  } catch (e) { if (active && token === directoryGeneration) directoryError.value = e instanceof Error ? e.message : '读取文件夹失败' }
-  finally { if (active && token === directoryGeneration) directoryLoading.value = false }
-}
-function chooseFolder() { picker.value = true; void browse(draft.location) }
-function confirmFolder() {
-  if (!selectedDirectory.value || directoryLoading.value || directoryError.value) return
-  draft.location = selectedDirectory.value
-  picker.value = false; directoryGeneration++
-}
+const advanced = ref(false), picker = ref(false)
+function chooseFolder() { picker.value = true }
+function confirmFolder(path: string) { draft.location = path; picker.value = false }
 function changeType(type: SourceType) {
   if (editing.value || saving.value || draft.type === type) return
-  Object.assign(draft, { type, location: '', username: '', password: '' }); clearPassword.value = false
+  Object.assign(draft, { type, location: '', username: '', password: '', useForLxDownloads: false }); clearPassword.value = false
 }
 const loading = ref(false), saving = ref(false), loaded = ref(false), dialog = ref(false)
 const error = ref(''), formError = ref(''), editing = ref<MediaSource | null>(null), clearPassword = ref(false)
-const draft = reactive({ scanEnabled: false, scanCron: '0 3 * * *', parserProfileId: 'default', name: '', type: 'LOCAL' as SourceType, location: '', username: '', password: '' })
+const draft = reactive({ useForLxDownloads: false, scanEnabled: false, scanCron: '0 3 * * *', parserProfileId: 'default', name: '', type: 'LOCAL' as SourceType, location: '', username: '', password: '' })
 const profileWorkspace = ref<ParserWorkspace | null>(null), profilesLoading = ref(false), profilesError = ref('')
 const selectedProfile = computed(() => profileWorkspace.value?.profiles.find(p => p.id === draft.parserProfileId))
 const enabledEntries = computed(() => selectedProfile.value?.entries.filter(e => e.enabled) ?? [])
@@ -138,6 +124,13 @@ async function load(append = false) {
     const result = await media.list(next, 100)
     if (!active || token !== loadGeneration) return
     items.value = append ? [...items.value, ...result.items] : result.items
+    const selectedSource = route.query.source
+    if (!append && typeof selectedSource === 'string') {
+      const selected = items.value.find(item => item.id === selectedSource) ?? await media.get(selectedSource)
+      if (!active || token !== loadGeneration) return
+      if (!items.value.some(item => item.id === selected.id)) items.value.unshift(selected)
+      metadataSource.value = selected
+    }
     sourcePage.value = next; moreSources.value = (next + 1) * 100 < result.totalElements; loaded.value = true
     clearTimeout(taskTimer); taskGeneration++; void refreshTasks(true)
   } catch (e) { if (active && token === loadGeneration) error.value = e instanceof Error ? e.message : '读取媒体库失败' }
@@ -146,9 +139,10 @@ async function load(append = false) {
 function open(type: SourceType, item?: MediaSource) {
   editing.value = item ?? null
   Object.assign(draft, { scanEnabled: item?.scanEnabled ?? false, scanCron: item?.scanCron ?? '0 3 * * *', name: item?.name ?? '', type, location: item?.location ?? '', username: item?.username ?? '', password: '', parserProfileId: item?.parserProfileId ?? 'default' })
+  draft.useForLxDownloads = item?.useForLxDownloads ?? route.query.download === '1'
   advanced.value = false; clearPassword.value = false; formError.value = ''; dialog.value = true; void loadProfiles()
 }
-function closed() { picker.value = false; directoryGeneration++; draft.password = ''; formError.value = ''; editing.value = null }
+function closed() { picker.value = false; draft.password = ''; formError.value = ''; editing.value = null }
 async function save() {
   if (saving.value) return
   if (!draft.location.trim()) { formError.value = draft.type === 'LOCAL' ? '请选择歌曲文件夹' : '请填写 WebDAV 目录地址'; return }
@@ -156,7 +150,16 @@ async function save() {
   if (draft.scanEnabled && draft.scanCron.trim().split(/\s+/).length !== 5) { formError.value = '请输入五段 cron：分 时 日 月 周'; return }
   saving.value = true; formError.value = ''
   try {
+    if (draft.type === 'LOCAL' && draft.useForLxDownloads) {
+      const current = await lx.status()
+      if (!active) return
+      if (current.target.id && (current.target.id !== editing.value?.id || current.target.path !== draft.location)) {
+        try { await ElMessageBox.confirm(`原保存位置：${current.target.path}。新保存位置：${draft.location}。保存后，新下载会使用新位置。`, '更改下载保存位置', { confirmButtonText: '更改并保存', cancelButtonText: '返回', type: 'warning' }) }
+        catch { return }
+      }
+    }
     const saved = await media.save({ name: draft.name.trim() || (draft.type === 'LOCAL' ? draft.location.split(/[\\/]/).filter(Boolean).pop() || '本地歌曲' : 'WebDAV 歌曲').slice(0, 100), type: draft.type, location: draft.location, parserProfileId: draft.parserProfileId,
+      ...(draft.type === 'LOCAL' ? { useForLxDownloads: draft.useForLxDownloads } : {}),
       ...(draft.scanEnabled || editing.value?.scanEnabled || editing.value?.scanCron ? { scanEnabled: draft.scanEnabled, scanCron: draft.scanCron.trim() } : {}),
       ...(draft.type === 'WEBDAV' ? { username: draft.username,
         password: clearPassword.value ? '' : draft.password || (editing.value ? undefined : '') } : {}) }, editing.value?.id)
@@ -171,13 +174,14 @@ async function remove(item: MediaSource) {
   try { await media.remove(item.id); ElMessage.success('已移除媒体库配置'); await load() }
   catch (e) { error.value = e instanceof Error ? e.message : '移除失败' }
 }
+watch(() => route.query.source, id => { if (typeof id === 'string') void load() })
 onMounted(() => {
   void load(); void loadProfiles()
   // 概览等入口通过 ?add=LOCAL|WEBDAV 直接打开添加弹窗，打开后移除参数避免刷新重复弹出。
   const add = route.query.add
-  if (add === 'LOCAL' || add === 'WEBDAV') { open(add); const query = { ...route.query }; delete query.add; void router.replace({ query }) }
+  if (add === 'LOCAL' || add === 'WEBDAV') { open(add); const query = { ...route.query }; delete query.add; delete query.download; void router.replace({ query }) }
 })
-onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; loadGeneration++; directoryGeneration++; clearTimeout(taskTimer); draft.password = '' })
+onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; loadGeneration++; clearTimeout(taskTimer); draft.password = '' })
 </script>
 
 <template>
@@ -192,7 +196,7 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
         <div class="source-content">
           <span class="source-icon"><ElIcon><FolderOpened /></ElIcon></span>
           <div class="source-info">
-            <div class="source-title"><h2>{{ row.name }}</h2><ElTag type="info" effect="plain">{{ row.type === 'LOCAL' ? '本地目录' : 'WebDAV' }}</ElTag></div>
+            <div class="source-title"><h2>{{ row.name }}</h2><ElTag v-if="row.useForLxDownloads" type="success" effect="plain">下载保存位置</ElTag><ElTag type="info" effect="plain">{{ row.type === 'LOCAL' ? '本地目录' : 'WebDAV' }}</ElTag></div>
             <p class="source-location">{{ displayLocation(row) }}</p>
             <div v-if="tasks[row.id]" class="scan-progress" aria-live="polite">
               <strong>{{ taskLabel(tasks[row.id]!) }}</strong>
@@ -224,7 +228,8 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
         <div v-if="!editing" class="source-types" aria-label="位置类型"><ElButton :type="draft.type === 'LOCAL' ? 'primary' : 'default'" :disabled="saving" @click="changeType('LOCAL')">本地目录</ElButton><ElButton :type="draft.type === 'WEBDAV' ? 'primary' : 'default'" :disabled="saving" @click="changeType('WEBDAV')">WebDAV</ElButton></div>
         <template v-if="draft.type === 'LOCAL'">
           <ElFormItem label="歌曲文件夹" required><div class="folder-selection"><span>{{ draft.location || '尚未选择文件夹' }}</span><ElButton :disabled="saving" @click="chooseFolder">选择文件夹</ElButton></div></ElFormItem>
-          <p class="profile-help">浏览 NAS / 服务器上可访问的文件夹。Docker 部署需先将歌曲目录只读挂载到容器。</p>
+          <ElFormItem><ElCheckbox v-model="draft.useForLxDownloads" :disabled="saving">用于保存洛雪下载</ElCheckbox><p class="profile-help">仅能指定一个本地媒体库。启用后检查实际写入权限，下载完成自动加入曲库。有未完成任务时不能修改保存位置。</p></ElFormItem>
+          <p class="profile-help">选择后端可访问的目录。Docker 使用挂载后的路径，例如 /media；下载可使用可写的 /downloads。</p>
         </template>
         <template v-else>
           <ElFormItem label="WebDAV 目录地址" required><ElInput v-model="draft.location" placeholder="https://nas.example/dav/歌曲目录/" maxlength="2048" :disabled="saving" /></ElFormItem>
@@ -254,22 +259,7 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
       </ElForm>
     </ElDialog>
 
-    <ElDialog v-model="picker" title="选择歌曲文件夹" width="min(560px, calc(100vw - 32px))" append-to-body :close-on-click-modal="false" @closed="directoryGeneration++">
-      <p class="panel-description">选择歌曲所在的文件夹，包含子文件夹。仅显示服务端可访问的目录。</p>
-      <ElAlert v-if="directoryError" :title="directoryError" type="error" :closable="false"><ElButton @click="browse()">返回根目录</ElButton></ElAlert>
-      <div v-loading="directoryLoading" class="directory-browser">
-        <template v-if="directory">
-          <div class="directory-toolbar"><ElButton :disabled="directory.parent === null" @click="browse(directory.parent ?? '')">返回上一级</ElButton><span>{{ directory.path || '文件系统' }}</span></div>
-          <p v-if="!directory.items.length" class="panel-description">此文件夹没有可浏览的子文件夹。</p>
-          <div v-for="entry in directory.items" :key="entry.path" class="directory-row">
-            <label><input v-model="selectedDirectory" type="radio" :value="entry.path" :aria-label="`选择 ${entry.name}`" /><ElIcon><FolderOpened /></ElIcon><span>{{ entry.name }}</span></label><ElButton text @click="browse(entry.path)">打开</ElButton>
-          </div>
-          <div class="directory-toolbar"><ElButton :disabled="directoryPage === 0" @click="browse(directory.path, directoryPage - 1)">上一页</ElButton><ElButton :disabled="!directory.hasMore" @click="browse(directory.path, directoryPage + 1)">下一页</ElButton></div>
-        </template>
-      </div>
-      <p class="source-location">已选择：{{ selectedDirectory || '请选择文件夹' }}</p>
-      <template #footer><ElButton @click="picker = false; directoryGeneration++">取消</ElButton><ElButton type="primary" :disabled="directoryLoading || !!directoryError || !selectedDirectory" @click="confirmFolder">选择此文件夹</ElButton></template>
-    </ElDialog>
+    <LocalFolderPicker v-if="picker" :initial-path="draft.location" :sources="items" :download="draft.useForLxDownloads" @select="confirmFolder" @close="picker = false" />
   </div>
 </template>
 
@@ -315,9 +305,5 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
 .source-advanced summary { cursor: pointer; font-weight: 600; }
 .source-advanced summary span { font-weight: normal; color: var(--el-text-color-secondary); margin-left: 8px; }
 .source-advanced[open] summary { margin-bottom: 20px; }
-.directory-browser { min-height: 120px; margin-top: 16px; }
-.directory-toolbar { display: flex; align-items: center; gap: 12px; overflow-wrap: anywhere; margin: 12px 0; }
-.directory-row { display: flex; justify-content: space-between; border-bottom: 1px solid var(--el-border-color-lighter); padding: 10px 0; gap: 12px; }
-.directory-row label { display: flex; align-items: center; gap: 12px; cursor: pointer; overflow-wrap: anywhere; min-width: 0; }
 @media (max-width: 900px) { .source-content { flex-wrap: wrap; gap: 12px; } .source-actions { width: 100%; } .source-icon { padding: 12px; } }
 </style>

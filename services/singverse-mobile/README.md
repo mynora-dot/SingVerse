@@ -4,6 +4,8 @@ Flutter 3.47.5 / Dart 3.13.4，Android application ID `com.mynora.singverse.mobi
 
 ## 开发与构建
 
+APK 启动图标统一使用[项目 Logo](../../assets/branding/README.md)：传统图标位于 `android/app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/`，Android 8+ 使用 `mipmap-anydpi-v26/ic_launcher.xml` 的独立透明前景与深色背景，圆形图标指向同一资源。正常 debug/release 构建自动包含工程内图标资源，无需额外生成步骤。
+
 ```sh
 flutter pub get
 dart format --output=none --set-exit-if-changed .

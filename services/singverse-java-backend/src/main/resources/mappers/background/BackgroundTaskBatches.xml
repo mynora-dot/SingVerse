@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mynora.singverse.background.BackgroundTaskMapper">
+  <sql id="batchStatus">CASE WHEN t.is_batch=1 THEN COALESCE(t.batch_status,t.status) ELSE t.status END</sql>
+  <sql id="batchExpiry">CASE WHEN t.is_batch=1 THEN t.batch_expires_at ELSE t.expires_at END</sql>
+  <sql id="priority">
+    CASE <include refid="batchStatus"/> WHEN 'RUNNING' THEN 0 WHEN 'CANCELLING' THEN 1 WHEN 'QUEUED' THEN 2
+      WHEN 'PAUSED' THEN 3 WHEN 'AWAITING_CONFIRMATION' THEN 4 ELSE 5 END
+  </sql>
+  <sql id="childPriority">
+    CASE t.status WHEN 'RUNNING' THEN 0 WHEN 'CANCELLING' THEN 1 WHEN 'QUEUED' THEN 2
+      WHEN 'PAUSED' THEN 3 WHEN 'AWAITING_CONFIRMATION' THEN 4 ELSE 5 END
+  </sql>
+  <sql id="childFilter">
+    WHERE EXISTS(SELECT 1 FROM background_task_relation r WHERE r.batch_id=#{taskId} AND r.task_id=t.id)
+    <if test="type != null">AND t.type=#{type}</if><if test="status != null">AND t.status=#{status}</if>
+  </sql>
+  <select id="children" resultType="map">
+    SELECT t.*,<include refid="subject"/> FROM background_task t <include refid="childFilter"/>
+    ORDER BY <include refid="childPriority"/>,t.created_at DESC,t.id DESC LIMIT #{size} OFFSET #{offset}
+  </select>
+  <select id="childCount" resultType="long">SELECT COUNT(*) FROM background_task t <include refid="childFilter"/></select>
+  <select id="childStates" resultType="map">
+    SELECT t.status,COUNT(*) AS amount FROM background_task t
+    WHERE EXISTS(SELECT 1 FROM background_task_relation r WHERE r.batch_id=#{taskId} AND r.task_id=t.id)
+    GROUP BY t.status
+  </select>
+  <select id="memberships" resultType="map">
+    SELECT b.id,b.name FROM background_task b JOIN background_task_relation r ON b.id=r.batch_id
+    WHERE r.task_id=#{id} AND (b.batch_expires_at IS NULL OR b.batch_expires_at &gt; #{now})
+    ORDER BY b.created_at DESC,b.id DESC
+  </select>
+  <insert id="linkTask">
+    INSERT INTO background_task_relation(batch_id,task_id,created_at) VALUES(#{batchId},#{taskId},#{now})
+    <choose><when test="_databaseId == 'mysql'">ON DUPLICATE KEY UPDATE task_id=task_id</when>
+      <otherwise>ON CONFLICT(batch_id,task_id) DO NOTHING</otherwise></choose>
+  </insert>
+  <update id="assignTask">
+    UPDATE background_task SET parent_id=#{batchId},is_batch=0 WHERE id=#{taskId}
+      AND (parent_id IS NULL OR parent_id=#{batchId})
+  </update>
+  <update id="initializeBatch">
+    UPDATE background_task SET batch_kind=#{kind},scope_sealed=#{sealed},
+      is_batch=CASE WHEN parent_id IS NULL THEN 1 ELSE 0 END
+    WHERE id=#{id} AND batch_kind='UNCLASSIFIED'
+  </update>
+  <update id="updateBatch">
+    UPDATE background_task SET batch_status=#{batch_status},batch_stage=#{batch_stage},batch_counts_json=#{batch_counts_json},
+      batch_finished_at=#{batch_finished_at},batch_expires_at=#{batch_expires_at},batch_updated_at=#{batch_updated_at}
+    WHERE id=#{id}
+  </update>
+  <update id="sealScope">UPDATE background_task SET scope_sealed=1 WHERE id=#{id}</update>
+  <update id="sealAutomatic">
+    UPDATE background_task SET scope_sealed=1 WHERE batch_kind='AUTOMATIC' AND scope_sealed=0
+    <if test="round != null">AND business_id LIKE #{round} ESCAPE '!'</if>
+  </update>
+  <select id="batchKeys" resultType="map">
+    SELECT id FROM background_task WHERE is_batch=1 AND id &gt; #{cursor} ORDER BY id LIMIT 100
+  </select>
+  <select id="localRecoveries" resultType="map">
+    SELECT id FROM background_task WHERE type='LOCAL_SCAN' AND status='INTERRUPTED' AND id &gt; #{cursor} ORDER BY id LIMIT 100
+  </select>
+  <select id="unclassified" resultType="map">
+    SELECT * FROM background_task WHERE batch_kind='UNCLASSIFIED' ORDER BY id LIMIT 100
+  </select>
+  <select id="relationCounts" resultType="map">
+    SELECT t.status,COUNT(*) AS amount,MAX(t.finished_at) AS last_finished,MAX(t.expires_at) AS last_expiry,
+      SUM(CASE WHEN t.finished_at IS NULL THEN 1 ELSE 0 END) AS missing_finished,
+      SUM(CASE WHEN t.statistics_json LIKE '%&quot;resultState&quot;:&quot;UNKNOWN&quot;%' THEN 1 ELSE 0 END) AS uncertain
+    FROM background_task_relation r JOIN background_task t ON t.id=r.task_id
+    WHERE r.batch_id=#{id} GROUP BY t.status
+  </select>
+  <select id="scopeReason" resultType="map">
+    SELECT reason FROM background_scan_scope WHERE batch_id=#{id} AND state IN ('PENDING','PROBING','FAST')
+      AND reason &lt;&gt; '' ORDER BY updated_at DESC,song_id LIMIT 1
+  </select>
+  <select id="scopeFailure" resultType="map">
+    SELECT reason FROM background_scan_scope WHERE batch_id=#{id} AND state IN ('FAILED','INTERRUPTED','CANCELLED')
+      AND reason &lt;&gt; '' ORDER BY updated_at DESC,song_id LIMIT 1
+  </select>
+  <select id="sourceLabel" resultType="map">SELECT name FROM media_source WHERE id=#{sourceId}</select>
+  <select id="scopeCounts" resultType="map">
+    SELECT state,COUNT(*) AS amount,SUM(uncertain) AS uncertain FROM background_scan_scope WHERE batch_id=#{id} GROUP BY state
+  </select>
+  <select id="scopeSongs" resultType="map">
+    SELECT s.id,s.source_id,
+      CASE WHEN r.song_id IS NOT NULL THEN r.identity_size ELSE s.file_size END AS file_size,
+      CASE WHEN r.song_id IS NOT NULL THEN r.identity_modified ELSE s.modified_at END AS modified_at
+    FROM media_song s LEFT JOIN webdav_resource r ON r.song_id=s.id AND r.archived_at IS NULL
+    WHERE s.source_id=#{sourceId} AND s.id &gt; #{cursor}
+    <if test="scanBusiness != null">AND EXISTS(SELECT 1 FROM media_scan_song staged WHERE staged.task_id=#{scanBusiness} AND staged.id=s.id)</if>
+    ORDER BY s.id LIMIT 200
+  </select>
+  <select id="scopeSong" resultType="map">
+    SELECT s.id,s.source_id,src.name AS source_name FROM media_song s JOIN media_source src ON src.id=s.source_id WHERE s.id=#{songId}
+  </select>
+  <insert id="admitScope">
+    INSERT INTO background_scan_scope(batch_id,song_id,fingerprint,state,current_job_id,reason,uncertain,updated_at)
+    VALUES(#{batchId},#{songId},#{fingerprint},'PENDING',NULL,'等待后续发现',0,#{now})
+    <choose><when test="_databaseId == 'mysql'">ON DUPLICATE KEY UPDATE song_id=song_id</when>
+      <otherwise>ON CONFLICT(batch_id,song_id,fingerprint) DO NOTHING</otherwise></choose>
+  </insert>
+  <insert id="admitScopes">
+    INSERT INTO background_scan_scope(batch_id,song_id,fingerprint,state,current_job_id,reason,uncertain,updated_at) VALUES
+    <foreach collection="rows" item="r" separator=",">(#{r.batchId},#{r.songId},#{r.fingerprint},'PENDING',NULL,'等待后续发现',0,#{r.now})</foreach>
+    <choose><when test="_databaseId == 'mysql'">ON DUPLICATE KEY UPDATE song_id=song_id</when>
+      <otherwise>ON CONFLICT(batch_id,song_id,fingerprint) DO NOTHING</otherwise></choose>
+  </insert>
+  <select id="pendingScopeBatches" resultType="map">
+    SELECT DISTINCT batch_id FROM background_scan_scope WHERE state IN ('PENDING','PROBING','FAST') AND batch_id &gt; #{cursor} ORDER BY batch_id LIMIT 100
+  </select>
+  <update id="skipBatchScopes">
+    UPDATE background_scan_scope SET state='SKIPPED',current_job_id=NULL,reason=#{reason},updated_at=#{now}
+    WHERE batch_id=#{batchId} AND state IN ('PENDING','PROBING','FAST')
+  </update>
+  <select id="origins" resultType="map">
+    SELECT s.* FROM background_scan_scope s JOIN background_task b ON b.id=s.batch_id
+    WHERE s.song_id=#{songId} AND s.fingerprint=#{fingerprint} AND s.state IN ('PENDING','PROBING','FAST')
+    ORDER BY b.created_at,s.batch_id
+  </select>
+  <select id="pendingScopes" resultType="map">
+    SELECT s.* FROM background_scan_scope s
+    WHERE s.state IN ('PENDING','PROBING','FAST') AND (s.batch_id &gt; #{batchCursor}
+      OR (s.batch_id=#{batchCursor} AND s.song_id &gt; #{songCursor}))
+    ORDER BY s.batch_id,s.song_id LIMIT 50
+  </select>
+  <update id="resolveScope">
+    UPDATE background_scan_scope SET state=#{state},current_job_id=#{jobId},reason=#{reason},uncertain=#{uncertain},updated_at=#{now}
+    WHERE batch_id=#{batchId} AND song_id=#{songId} AND fingerprint=#{fingerprint} AND state IN ('PENDING','PROBING','FAST')
+  </update>
+  <update id="waitingScopes">
+    UPDATE background_scan_scope SET reason=#{reason},updated_at=#{now} WHERE state='PENDING' AND reason &lt;&gt; #{reason}
+  </update>
+  <update id="advanceScope">
+    UPDATE background_scan_scope SET state=#{state},current_job_id=NULL,reason=#{reason},uncertain=#{uncertain},updated_at=#{now}
+    WHERE current_job_id=#{jobId} AND state IN ('PROBING','FAST')
+  </update>
+  <select id="scopeOwners" resultType="map">
+    SELECT DISTINCT batch_id AS id FROM background_scan_scope WHERE current_job_id=#{jobId} AND state IN ('PROBING','FAST')
+  </select>
+  <select id="relationOwners" resultType="map">SELECT batch_id AS id FROM background_task_relation WHERE task_id=#{id}</select>
+  <delete id="deleteRelations">DELETE FROM background_task_relation WHERE batch_id=#{id} OR task_id=#{id}</delete>
+  <delete id="deleteScopes">DELETE FROM background_scan_scope WHERE batch_id=#{id}</delete>
+</mapper>

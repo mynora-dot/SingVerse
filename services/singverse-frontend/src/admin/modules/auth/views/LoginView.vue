@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElButton, ElInput, ElAlert, ElForm, ElFormItem, ElIcon } from 'element-plus'
-import { ArrowRight, Headset } from '@element-plus/icons-vue'
+import { ArrowRight } from '@element-plus/icons-vue'
 import { authRequest, refreshAccount } from '../../../core/auth/api'
 const route = useRoute(), router = useRouter()
 const username = ref('admin')
@@ -28,7 +28,7 @@ function restart() { stage.value = false; code.value = ''; password.value = ''; 
   <div class="login-page">
     <aside class="login-aside" aria-hidden="true">
       <div class="login-brand">
-        <span class="brand-mark"><ElIcon :size="22"><Headset /></ElIcon></span>
+        <img class="brand-mark" src="/assets/brand/logo-mark.png" width="32" height="32" alt="">
         <span><strong>SingVerse<span class="brand-dot">.</span></strong><small>NAS 管理中心</small></span>
       </div>
       <div>

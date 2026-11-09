@@ -9,6 +9,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
                         .UserDetailsServiceAutoConfiguration.class)
 public class SingVerseApplication {
     public static void main(String[] args) {
+        if (java.util.Arrays.asList(args).contains("--lx-worker")) {
+            com.mynora.singverse.media.download.LxWorker.run();
+            return;
+        }
         if (java.util.Arrays.asList(args).contains("--reset-admin")) {
             com.mynora.singverse.auth.recovery.AuthRecovery.prompt();
             var application = new SpringApplication(SingVerseApplication.class);

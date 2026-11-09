@@ -4,6 +4,8 @@
 
 包名 `com.mynora.singverse.tv`。Kotlin / Jetpack Compose TV，授权后的业务页面采用近黑背景、中性炭灰选中标记与白色遥控焦点，顶部导航为「首页 / 点歌 / 已点 / 设置」。已接入 NAS 地址检测、管理员批准的设备授权、正式分类/歌手署名浏览、歌曲查询、本地/WebDAV 原始媒体直放、聚会队列、扫码邀请和本机主持操作。
 
+安装图标、桌面横幅与应用内品牌标识统一使用[项目 Logo](../../assets/branding/README.md)。Manifest 的 `@mipmap/ic_launcher` 包含五档传统图标和 Android 8+ 自适应前景；`@drawable/tv_banner` 使用 `drawable-xhdpi/tv_banner.png` 中的 320 × 180 横版 Logo。debug/release 构建均自动包含这些工程内资源。
+
 版本沿用 AGP 8.9.2、Gradle 8.11.1、Kotlin 2.1.20、Compose BOM 2025.04.01、TV Material 1.0.0；新增 Media3 1.5.1 和 ZXing Core 3.5.3。compile/target SDK 35、minSdk 23；构建 JDK 21，字节码目标 17。
 
 ```sh

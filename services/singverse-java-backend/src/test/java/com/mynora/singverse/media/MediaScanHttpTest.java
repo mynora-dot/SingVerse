@@ -405,6 +405,12 @@ class MediaScanHttpTest {
         var second = body(request(endpoint + query + "&page=1", "GET", null, false));
         assertThat(second.path("items").size()).isEqualTo(2);
         assertThat(second.path("hasMore").asBoolean()).isFalse();
+        var filtered = body(request(endpoint + query + "&q=folder-100", "GET", null, false));
+        assertThat(filtered.path("items").size()).isEqualTo(1);
+        assertThat(filtered.at("/items/0/name").asText()).isEqualTo("folder-100");
+        var home = body(request(endpoint, "GET", null, false));
+        assertThat(home.path("locations").isArray()).isTrue();
+        assertThat(home.path("containerized").isBoolean()).isTrue();
     }
 
     @Test void localScanPersistsSelectedProfileResultsAndRescanReplacesIndexWithoutTouchingOriginals() throws Exception {
@@ -422,6 +428,10 @@ class MediaScanHttpTest {
         var summary = request(path + "/scan", "POST", null, true);
         assertThat(summary.statusCode()).isEqualTo(200);
         assertThat(body(summary).path("totalSongs").asInt()).isEqualTo(3);
+        String sourceId = path.substring(path.lastIndexOf('/') + 1);
+        String batchId = db.queryForObject("SELECT id FROM background_task WHERE type='LOCAL_SCAN' AND source_id=?", String.class, sourceId);
+        assertThat(db.queryForObject("SELECT scope_sealed FROM background_task WHERE id=?", Integer.class, batchId)).isOne();
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM background_scan_scope WHERE batch_id=?", Integer.class, batchId)).isEqualTo(3);
         assertThat(body(summary).path("matchedSongs").asInt()).isEqualTo(2);
         assertThat(body(summary).path("needsReviewSongs").asInt()).isEqualTo(1);
         assertThat(body(summary).path("parserProfileId").asText()).isEqualTo(profileId);

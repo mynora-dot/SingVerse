@@ -13,11 +13,15 @@ export interface AudioExecution {
   progress?: { completedFrames: number; frames: number; completedForwards?: number }
   inference?: { modelReused?: boolean; sampledPeakRssBytes?: number; timingsMs?: Record<string, number> }
 }
-export interface AudioJob extends AudioExecution { id: string; kind: string; state: string; error?: string; resultState?: string; reason?: string; evidence?: AnalysisEvidence }
+export type SeparationProfile = 'DSP_FAST' | 'AI_CLEAN' | 'LEGACY_DEMUCS'
+export interface SeparationRecipe { separationProfile?: SeparationProfile; modelId?: string; outputFormat?: 'aac' | 'flac'; preview?: boolean }
+export interface AudioVersion extends SeparationRecipe { jobId: string; mediaType?: string; duration?: number; active?: boolean }
+export interface AudioJob extends AudioExecution, SeparationRecipe { id: string; kind: string; state: string; error?: string; resultState?: string; reason?: string; evidence?: AnalysisEvidence }
 /** `/api/v1/media-songs/{id}/audio-roles` 与列表行 `audio` 共用的音轨角色视图。 */
 export interface AudioRoles {
   state: string; revision?: number; origin?: string; originalId?: string; backingId?: string
-  backingResource?: { jobId: string; mediaType?: string; duration?: number }
+  backingResource?: AudioVersion
+  versions?: AudioVersion[]
   streams?: AudioStream[]; jobs: AudioJob[]
 }
 export interface AudioRow {
@@ -26,7 +30,7 @@ export interface AudioRow {
 }
 export interface Filter { title: string; artist: string; sourceId: string; streams: string; state: string; songId: string }
 export interface BatchItem { batch_id: string; song_id: string; title: string; state: string; category: string; job_id?: string; job_state?: string; execution?: AudioExecution; error: string }
-export interface Batch {
+export interface Batch extends SeparationRecipe {
   id: string; state: string; backend: string; createdAt?: number; total: number; counts: Record<string, number>; categories: Record<string, number>
   items?: BatchItem[]
   prepared?: number; selectionTotal?: number; error?: string
@@ -36,7 +40,13 @@ export interface Model {
   files?: { name: string; size: number; sha256: string; url: string }[]
 }
 export interface Backend { id: string; state: string; reason: string; detected?: boolean; device?: { name: string }; elapsedMs?: number }
+export interface SeparationCapabilities {
+  version: number; profiles: { id: SeparationProfile; ready: boolean; modelId: string; backend?: string; reason?: string }[]
+  backends: Backend[]; selected?: string; previewSeconds?: number
+  operation?: { state: string; backend?: string; error?: string }
+}
 export interface Node {
+  separation?: SeparationCapabilities
   startupCheck?: { state: string; backend?: string; reason?: string }
   fastClassifier?: Model & { ready: boolean }
   environment: { system: string; architecture: string; processor: string; hardware?: { vendor?: string; device?: string; board?: string }[]; versions: Record<string, string>; error?: string }

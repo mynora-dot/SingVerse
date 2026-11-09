@@ -22,6 +22,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class WebDavScanService {
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.mynora.singverse.background.BackgroundTaskService backgroundTasks;
     private record Context(Source source, FilenameParserConfigService.ProfileSnapshot profile, String encrypted) {}
     private final com.mynora.singverse.media.webdav.metadata.WebDavMetadataService embedded;
     private final com.mynora.singverse.media.webdav.metadata.WebDavAccess access;
@@ -181,6 +183,8 @@ public class WebDavScanService {
                     throw conflict("媒体来源已修改，本次扫描未保存，请重新扫描");
                 metadata.lock();
                 embedded.publish(source,id,traversal.total);
+                if (backgroundTasks != null) backgroundTasks.registerScanScope(
+                        com.mynora.singverse.background.BackgroundTaskService.scanBatchId(id), source.id());
                 tasks.finish(id, "SUCCEEDED", null, Instant.now().toString());
                 tasks.clearSongs(id); tasks.clearDirectories(id);
             });

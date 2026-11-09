@@ -11,12 +11,14 @@
     meta.track_json AS metadata_track, meta.fields_json AS metadata_fields,
     meta.applied_at AS metadata_applied_at, meta.origins_json AS metadata_origins,
     meta.fingerprint AS metadata_fingerprint, artist_override.source_id AS override_source,
-    artist_override.artists_json AS override_artists
+    artist_override.artists_json AS override_artists,
+    download.track_json AS download_track_json,download.created_at AS download_created_at
   </sql>
   <sql id="joins">
     JOIN media_source source ON source.id = song.source_id
     LEFT JOIN webdav_resource remote ON remote.song_id=song.id AND remote.archived_at IS NULL
     LEFT JOIN song_metadata meta ON meta.song_id = song.id
+    LEFT JOIN lx_download_asset download ON download.song_id=song.id AND download.file_size=song.file_size AND download.modified_at=song.modified_at
     LEFT JOIN classification_song cls ON cls.song_id = song.id
     LEFT JOIN song_artist_override artist_override
       ON artist_override.source_id=song.source_id AND artist_override.path_key=song.path_hash

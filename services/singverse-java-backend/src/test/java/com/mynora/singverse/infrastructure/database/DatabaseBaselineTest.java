@@ -100,7 +100,7 @@ class DatabaseBaselineTest {
             try {
                 var jdbc = new JdbcTemplate(source);
                 assertThat(jdbc.queryForList("SELECT version FROM schema_migrations", String.class))
-                        .containsExactly(InitialSchemaFixture.VERSION);
+                        .containsExactlyInAnyOrder(InitialSchemaFixture.VERSIONS);
                 jdbc.update("UPDATE song_cache_settings SET max_bytes=67108864,revision=7 WHERE id=1");
                 jdbc.update("UPDATE tv_home_settings SET rotation_seconds=12,revision=4 WHERE id=1");
                 jdbc.update("INSERT INTO song_playback_profile(song_id,pinned,pin_revision) VALUES('kept-song',1,3)");
@@ -110,7 +110,7 @@ class DatabaseBaselineTest {
             var second = new DatabaseInitializer(source, environment);
             try {
                 assertThat(jdbc.queryForList("SELECT version FROM schema_migrations", String.class))
-                        .containsExactly(InitialSchemaFixture.VERSION);
+                        .containsExactlyInAnyOrder(InitialSchemaFixture.VERSIONS);
                 assertThat(seedCounts(jdbc)).isEqualTo(before);
                 assertThat(jdbc.queryForObject("SELECT max_bytes FROM song_cache_settings WHERE id=1", Long.class)).isEqualTo(67108864L);
                 assertThat(jdbc.queryForObject("SELECT revision FROM song_cache_settings WHERE id=1", Long.class)).isEqualTo(7L);

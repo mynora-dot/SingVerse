@@ -5,7 +5,8 @@ export type { MediaSource, SourceInput, SourcePage, SourceType, ScanTask, Direct
 
 const base = '/api/v1/media-sources'
 export const media = {
-  directories: (path = '', page = 0) => authRequest<DirectoryPage>(`${base}/local-directories?${new URLSearchParams({ path, page: String(page) })}`),
+  get: (id: string) => authRequest<MediaSource>(base + '/' + encodeURIComponent(id)),
+  directories: (path = '', page = 0, q = '') => authRequest<DirectoryPage>(`${base}/local-directories?${new URLSearchParams({ path, page: String(page), q })}`),
   list: (page = 0, size = 20, filters?: { q: string; type: string; profileId: string }) => {
     const query = new URLSearchParams({ page: String(page), size: String(size) })
     if (filters) for (const [key, value] of Object.entries(filters)) if (value.trim()) query.set(key, value.trim())

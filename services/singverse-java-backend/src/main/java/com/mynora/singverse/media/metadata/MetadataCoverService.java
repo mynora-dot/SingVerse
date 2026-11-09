@@ -26,6 +26,8 @@ public class MetadataCoverService {
     private final MediaSongRepository songs;
     private final Path cache;
     private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).followRedirects(HttpClient.Redirect.NEVER).build();
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.mynora.singverse.media.download.LxCoverService downloads;
     private static final Map<MusicProvider, Set<String>> HOSTS = Map.of(
             MusicProvider.NETEASE, Set.of("music.126.net"), MusicProvider.QQ, Set.of("y.gtimg.cn"),
             MusicProvider.KUGOU, Set.of("kugou.com", "kugoucdn.com", "kgimg.com"));
@@ -39,6 +41,7 @@ public class MetadataCoverService {
         if (metadata == null || metadata.stale() || !metadata.fields().contains("cover") || !metadata.origins().containsKey("cover")) throw missing();
         if (metadata.track().coverUrl()!=null && metadata.track().coverUrl().startsWith("asset:")) return assets.image(metadata.track().coverUrl().substring(6));
         if(metadata.track().coverUrl()!=null && metadata.track().coverUrl().startsWith("embedded:")) return new Cover(embedded.cover(songId),MediaType.IMAGE_PNG);
+        if(downloads!=null && "DOWNLOAD".equals(metadata.origins().get("cover").kind())) return downloads.song(songId);
         return load(metadata.origins().get("cover").provider(), metadata.track().coverUrl());
     }
     private Cover load(MusicProvider provider, String url) {

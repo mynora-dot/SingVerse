@@ -15,6 +15,9 @@ import { adminBasePath } from '../../core/hosting/mount-path'
 export const router = createRouter({
   history: createWebHashHistory(adminBasePath),
   routes: [
+    { path: '/library/downloads', component: () => import('../../modules/lx-downloads/DownloadsView.vue'), meta: { title: '歌曲下载' } },
+    { path: '/system/tasks', component: () => import('../../modules/background-tasks/BackgroundTasksView.vue'), meta: { title: '后台任务' } },
+    { path: '/system/tasks/:id', component: () => import('../../modules/background-tasks/BackgroundTasksView.vue'), meta: { title: '任务详情', activeMenu: '/system/tasks' } },
     { path: '/library/cache', component: () => import('../../modules/song-cache/SongCacheView.vue'), meta: { title: '歌曲缓存' } },
     { path: '/system/tv-settings', component: () => import('../../modules/tv-settings/TvSettingsView.vue'), meta: { title: '电视设置' } },
     { path: "/system/tv-devices", component: () => import("../../modules/tv-devices/TvDevicesView.vue"), meta: { title: "电视设备" } },

@@ -11,6 +11,8 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = "202611070001_initial_schema.sql"
 VERSION = BASELINE.split("_", 1)[0]
+MIGRATIONS = (BASELINE, "202611080001_background_tasks.sql", "202611090001_background_task_batches.sql", "202611090002_audio_separation_profiles.sql", "202611090003_lx_downloads.sql")
+VERSIONS = sorted((name.split("_", 1)[0],) for name in MIGRATIONS)
 
 
 def require(condition, message):
@@ -35,14 +37,15 @@ def snapshot(path):
 
 def verify_fresh(path):
   schema, data = snapshot(path)
-  require(data["schema_migrations"] == [(VERSION,)], "Expected exactly the initial migration")
+  require(data["schema_migrations"] == VERSIONS, "Unexpected migration versions")
   with sqlite3.connect(path) as db:
     db.execute("PRAGMA foreign_keys=ON")
     require(db.execute("SELECT policy,revision,high_watermark_percent,low_watermark_percent FROM song_cache_settings WHERE id=1").fetchone()
             == ("HYBRID", 0, 90, 75), "Wrong fresh cache defaults")
     require(db.execute("SELECT ready,phase,cursor_started_at,cursor_id FROM playback_activity_state WHERE id=1").fetchone()
             == (1, "READY", 0, ""), "Fresh playback statistics must be ready")
-    for table in ("auth_account", "media_source", "media_song", "playback_history", "playback_attempt", "song_cache_entry", "song_playback_profile"):
+    require(data["lx_download_settings"] == [(1, None, None, 0)], "Wrong download binding defaults")
+    for table in ("lx_script", "lx_catalog_track", "lx_download_batch", "lx_download_item", "lx_download_asset", "auth_account", "media_source", "media_song", "playback_history", "playback_attempt", "song_cache_entry", "song_playback_profile", "background_task", "background_task_item", "background_task_relation", "background_scan_scope"):
       require(not data[table], f"Fresh database unexpectedly contains {table} data")
     for table in ("media_song", "media_scan_song"):
       columns = {row[1]: row for row in db.execute(f"PRAGMA table_info({table})")}
@@ -69,7 +72,10 @@ def verify_fresh(path):
 def main():
   for dialect in ("sqlite", "mysql"):
     files = sorted(path.name for path in (ROOT / "database/migrations" / dialect).glob("*.sql"))
-    require(files == [BASELINE], f"{dialect}: expected one fresh baseline, found {files}")
+    require(files == list(MIGRATIONS), f"{dialect}: unexpected migration sequence: {files}")
+    for name in MIGRATIONS:
+      migration = (ROOT / "database/migrations" / dialect / name).read_text()
+      require(migration.count("-- migrate:up") == 1 and migration.count("-- migrate:down") == 1, f"{dialect}: invalid sections in {name}")
     source = (ROOT / "database/migrations" / dialect / BASELINE).read_text()
     require(source.count("-- migrate:up") == 1 and source.count("-- migrate:down") == 1, f"{dialect}: invalid dbmate sections")
     up = source.split("-- migrate:down", 1)[0]
@@ -99,6 +105,39 @@ def main():
     require(snapshot(path) == initial, "Second migrate changed schema or seeds")
     migrate("down")
     with sqlite3.connect(path) as db:
+      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-1], "LX rollback must retain prior features")
+      require(not db.execute("SELECT name FROM sqlite_master WHERE name LIKE 'lx_%'").fetchall(), "LX rollback left download tables")
+    migrate("down")
+    with sqlite3.connect(path) as db:
+      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-2], "Audio rollback must retain background tasks")
+      require(not db.execute("SELECT name FROM sqlite_master WHERE name='media_audio_selection'").fetchall(), "Audio rollback left selection table")
+      for table in ("media_audio_job", "audio_batch"):
+        require("recipe_json" not in {row[1] for row in db.execute(f"PRAGMA table_info({table})")}, "Audio rollback left recipe column")
+    migrate("down")
+    with sqlite3.connect(path) as db:
+      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-3], "Batch rollback must retain prior schema")
+      require(not db.execute("SELECT name FROM sqlite_master WHERE name IN ('background_task_relation','background_scan_scope')").fetchall(), "Batch rollback left relation tables")
+      columns = {row[1] for row in db.execute("PRAGMA table_info(background_task)")}
+      require("is_batch" not in columns, "Batch rollback left columns")
+      for task_id, parent in (("kept-batch", None), ("kept-child", "kept-batch")):
+        db.execute("INSERT INTO background_task(id,type,business_id,parent_id,name,subject_name,status,business_status,stage,progress_unit,statistics_json,error,created_at,updated_at,items_available,time_incomplete,fingerprint) VALUES(?,'AUDIO_JOB',?,?,'既有记录','歌曲','QUEUED','QUEUED','QUEUED','ITEMS','{}','',1,1,0,1,'fp')", (task_id,task_id,parent))
+      db.execute("INSERT INTO song_playback_profile(song_id,pinned,pin_revision) VALUES('upgrade-preserved',1,3)")
+      db.execute("UPDATE song_cache_settings SET max_bytes=67108864,revision=7 WHERE id=1")
+    migrate("migrate")
+    with sqlite3.connect(path) as db:
+      require(db.execute("SELECT pinned,pin_revision FROM song_playback_profile WHERE song_id='upgrade-preserved'").fetchone() == (1,3), "Feature upgrade changed song data")
+      require(db.execute("SELECT max_bytes,revision FROM song_cache_settings WHERE id=1").fetchone() == (67108864,7), "Feature upgrade changed settings")
+      require(db.execute("SELECT id,is_batch FROM background_task ORDER BY id").fetchall() == [("kept-batch",1),("kept-child",0)], "Batch upgrade lost original tasks")
+      require(db.execute("SELECT batch_id,task_id FROM background_task_relation").fetchall() == [("kept-batch","kept-child")], "Batch upgrade lost confirmed ancestry")
+    migrate("down")
+    migrate("down")
+    migrate("down")
+    with sqlite3.connect(path) as db:
+      require(db.execute("SELECT pinned,pin_revision FROM song_playback_profile WHERE song_id='upgrade-preserved'").fetchone() == (1,3), "Feature rollback changed song data")
+      require(db.execute("SELECT COUNT(*) FROM background_task").fetchone() == (2,), "Batch rollback changed task records")
+    migrate("down")
+    migrate("down")
+    with sqlite3.connect(path) as db:
       remaining = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall()
       require(remaining == [("schema_migrations",)], f"Rollback left business tables: {remaining}")
       require(not db.execute("SELECT * FROM schema_migrations").fetchall(), "Rollback left a migration version")
@@ -106,7 +145,7 @@ def main():
     require(verify_fresh(path) == initial, "Recreating baseline changed schema or seeds")
     tables = sum(row[0] == "table" and row[1] != "schema_migrations" for row in initial[0])
     indexes = sum(row[0] == "index" and row[3] is not None for row in initial[0])
-    print(f"通过：SQLite 从零建库、重复迁移、回退、重建及约束；{tables} 张业务表，{indexes} 个显式索引。MySQL 需单独运行真实集成检查。")
+    print(f"通过：SQLite 从零建库、重复迁移、增量升级保留数据、逐级回退、重建及约束；{tables} 张业务表，{indexes} 个显式索引。MySQL 需单独运行真实集成检查。")
 
 
 if __name__ == "__main__":

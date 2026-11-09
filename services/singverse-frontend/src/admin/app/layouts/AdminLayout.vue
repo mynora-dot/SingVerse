@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { ElButton, ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon, ElMessage } from 'element-plus'
-import { ArrowDown, Close, Headset, Key, Menu, SwitchButton, TopRight } from '@element-plus/icons-vue'
+import { ArrowDown, Close, Key, Menu, SwitchButton, TopRight } from '@element-plus/icons-vue'
 import AssistantWidget from '../../modules/ai-settings/components/AssistantWidget.vue'
 import { navigationContext, navigationGroups, overviewEntry } from '../navigation'
 import { auth, authRequest } from '../../core/auth/api'
@@ -48,7 +48,7 @@ function focusMainContent() {
   <div class="admin-shell">
     <aside class="sidebar" :class="{ 'sidebar-open': navigationOpen }" aria-label="管理中心导航" @keydown.esc="closeNavigation">
       <RouterLink to="/overview" class="brand" aria-label="SingVerse 管理中心首页">
-        <span class="brand-mark"><ElIcon :size="18"><Headset /></ElIcon></span>
+        <img class="brand-mark" src="/assets/brand/logo-mark.png" width="32" height="32" alt="">
         <span><strong>SingVerse</strong><small>管理中心</small></span>
       </RouterLink>
       <nav id="admin-navigation" ref="navigationList" class="navigation" aria-label="主导航">

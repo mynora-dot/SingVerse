@@ -13,6 +13,8 @@ import java.util.*;
 
 @Service
 public class MediaSourceService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.mynora.singverse.media.download.LxTargetService downloads;
     private final com.mynora.singverse.media.webdav.metadata.WebDavMetadataService embedded;
     private final FilenameParserConfigService profiles;
     private final com.mynora.singverse.media.repository.MediaSongRepository songs;
@@ -45,12 +47,14 @@ public class MediaSourceService {
     @org.springframework.transaction.annotation.Transactional
     public Source create(Input input) {
         profiles.lockBindings();
+        if(downloads!=null)downloads.lockBindings();
         return save(UUID.randomUUID().toString(), input, null);
     }
 
     @org.springframework.transaction.annotation.Transactional
     public Source update(String id, Input input) {
         profiles.lockBindings();
+        if(downloads!=null)downloads.lockBindings();
         return save(id, input, repository.find(id));
     }
 
@@ -61,6 +65,8 @@ public class MediaSourceService {
     @org.springframework.transaction.annotation.Transactional
     public void delete(String id) {
         profiles.lockBindings();
+        if(downloads!=null)downloads.lockBindings();
+        if(downloads!=null)downloads.change(id,"", "",false,true);
         songs.delete(id);
         embedded.reset(id);
         repository.delete(id);
@@ -158,6 +164,7 @@ public class MediaSourceService {
         if(previous!=null && !location.equals(previous.get("location"))) {
             songs.delete(id); embedded.reset(id);
         }
+        if(downloads!=null)downloads.change(id,type,location,input.useForLxDownloads(),false);
         repository.save(id, name, type, location, username, encrypted, profileId, now, previous == null);
         if (changed) schedules.schedule(id, enabled, cron, next);
         return repository.get(id);

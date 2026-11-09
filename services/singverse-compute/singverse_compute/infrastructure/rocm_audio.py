@@ -41,13 +41,24 @@ def load_official_model(model_dir):
 
 
 def _device(backend):
-    if audio_runtime_profile() != 'rocm-native':
-        raise RuntimeError('The exact native ROCm audio runtime is required')
-    if backend not in ('rocm', 'cpu'):
-        raise ValueError('Expected an explicit rocm or cpu backend')
+    profile = audio_runtime_profile()
+    if profile not in ('rocm-native', 'legacy'):
+        raise RuntimeError('The exact pinned audio runtime is required')
+    if backend not in ('rocm', 'cpu', 'cuda', 'mps'):
+        raise ValueError('Expected an explicit inference backend')
+    import torch
+    if profile == 'legacy':
+        if backend == 'mps':
+            if not torch.backends.mps.is_available():
+                raise RuntimeError('Apple MPS is unavailable')
+            return torch.device('mps')
+        if backend in ('cuda', 'rocm'):
+            if not torch.cuda.is_available() or (backend == 'rocm') != bool(torch.version.hip):
+                raise RuntimeError('Requested GPU runtime is unavailable or mismatched')
+            return torch.device('cuda:0')
+        return torch.device('cpu')
     if os.environ.get('HSA_OVERRIDE_GFX_VERSION'):
         raise RuntimeError('Forged GPU architecture overrides are forbidden')
-    import torch
     if not torch.version.hip or torch.version.cuda:
         raise RuntimeError('Expected an unambiguous HIP runtime')
     device = torch.device('cuda:0' if backend == 'rocm' else 'cpu')
@@ -86,7 +97,7 @@ class NativeRuntime:
 
     def resources(self):
         import torch
-        return {'freeMemoryBytes': torch.cuda.mem_get_info(self.device)[0]} if self.backend == 'rocm' else {}
+        return {'freeMemoryBytes': torch.cuda.mem_get_info(self.device)[0]} if self.backend in ('rocm', 'cuda') else {}
 
     def separate(self, source, output, *, backing_only=False, progress=None):
         import numpy as np
@@ -96,14 +107,18 @@ class NativeRuntime:
         started = time.monotonic()
         reused = self.model is not None
         if self.model is None:
-            self.model = load_official_model(self.model_dir).to(self.device)
+            self.model = load_official_model(self.model_dir)
+            if self.backend == 'mps':
+                from .mps_audio import adapt_convolutions
+                adapt_convolutions(self.model)
+            self.model = self.model.to(self.device)
         model, device = self.model, self.device
         if any(parameter.device != device for parameter in model.parameters()):
             raise RuntimeError('Model parameters left the explicitly selected device')
         timings = {'modelLoad': round((time.monotonic() - started) * 1000, 3)}
         evidence = {'backend': self.backend, 'device': str(device), 'cpuInferenceFallback': False,
                     'modelReused': reused, 'startedForwards': 0, 'completedForwards': 0}
-        if self.backend == 'rocm':
+        if self.backend in ('rocm', 'cuda'):
             torch.cuda.reset_peak_memory_stats(device)
 
         def before(module, inputs):
@@ -184,12 +199,12 @@ class NativeRuntime:
                     if progress:
                         progress({'event': 'AUDIO_INFERENCE_PROGRESS', 'completedFrames': offset+ready,
                                   'frames': frames, 'completedForwards': evidence['completedForwards']})
-                if self.backend == 'rocm':
+                if self.backend in ('rocm', 'cuda'):
                     torch.cuda.synchronize(device)
                 timings.update(inference=round(inference*1000, 3), stemWrite=round(writing*1000, 3))
                 evidence.update(frames=frames, bufferFrames=length, timingsMs=timings,
                                 elapsedSeconds=round(time.monotonic()-started, 3))
-                if self.backend == 'rocm':
+                if self.backend in ('rocm', 'cuda'):
                     evidence.update(peakGpuAllocatedBytes=torch.cuda.max_memory_allocated(device),
                                     peakGpuReservedBytes=torch.cuda.max_memory_reserved(device))
                 if evidence['startedForwards'] != evidence['completedForwards'] or not evidence['completedForwards']:
@@ -199,7 +214,7 @@ class NativeRuntime:
             for hook in hooks:
                 hook.remove()
             # Keep the model, release per-song GPU workspaces between jobs.
-            if self.backend == 'rocm':
+            if self.backend in ('rocm', 'cuda'):
                 torch.cuda.empty_cache()
 
 
@@ -235,7 +250,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model-dir', required=True)
     parser.add_argument('--output', required=True)
-    parser.add_argument('--backend', choices=('rocm', 'cpu'), required=True)
+    parser.add_argument('--backend', choices=('rocm', 'cpu', 'cuda', 'mps'), required=True)
     parser.add_argument('--backing-only', action='store_true')
     parser.add_argument('--worker', action='store_true')
     parser.add_argument('source', nargs='?')

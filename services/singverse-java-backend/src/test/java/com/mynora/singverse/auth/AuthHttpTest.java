@@ -527,6 +527,7 @@ class AuthHttpTest {
         for (var controller :
                 List.of(
                         AuthController.class,
+                        com.mynora.singverse.media.download.LxDownloadController.class,
                         com.mynora.singverse.media.audio.AudioRoleController.class,
                         com.mynora.singverse.media.audio.AudioProcessingController.class,
                         com.mynora.singverse.ai.AiController.class,
@@ -543,6 +544,7 @@ class AuthHttpTest {
                         com.mynora.singverse.media.artist.ArtistController.class,
                         com.mynora.singverse.media.playlist.PlaylistController.class,
                         com.mynora.singverse.media.playbackhistory.PlaybackHistoryController.class,
+                        com.mynora.singverse.background.BackgroundTaskController.class,
                         com.mynora.singverse.media.playbackhistory.PlaybackActivityController.class,
                         com.mynora.singverse.media.missingfeedback.MissingFeedbackController.class,
                         com.mynora.singverse.mobile.MobileLibraryController.class,

@@ -43,7 +43,7 @@ docker compose -f docker-compose.yaml logs --tail 100 singverse-java-backend sin
 docker compose -f docker-compose.yaml down
 ```
 
-停止不加 `-v`。`singverse-data` 保存 SQLite 与业务衍生文件，`singverse-secrets` 保存凭据加密主密钥；实际卷名带项目名前缀。备份前停止写入，成套保存两卷、部署 YAML 及媒体原件。不能只复制运行中的 SQLite 主文件，也不能用新密钥替换原密钥。MySQL 数据不会自动迁移为 SQLite。
+停止不加 `-v`。`singverse-data` 保存 SQLite 与业务衍生文件，`singverse-secrets` 保存凭据加密主密钥，`singverse-downloads` 保存洛雪下载歌曲与附件；实际卷名带项目名前缀。在后台将 `/downloads` 添加为本地媒体库并指定为下载保存位置后，才可配合自备音源使用歌曲下载。备份前停止写入，成套保存这些卷、部署 YAML 及媒体原件。不能只复制运行中的 SQLite 主文件，也不能用新密钥替换原密钥。MySQL 数据不会自动迁移为 SQLite。
 
 更新前记录版本、镜像 ID 和项目名，备份后用同版本完整源码重新 build/up；restart 不会更换镜像。回退需确认数据库契约兼容，必要时恢复原配套备份。首次源码构建、镜像构建或本机测试不能替代 NAS 上真实歌曲和跨主机验收。
 

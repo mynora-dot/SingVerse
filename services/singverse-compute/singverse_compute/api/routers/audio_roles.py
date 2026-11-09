@@ -17,12 +17,18 @@ class Submit(Input):
     model_config = ConfigDict(extra='forbid')
     id: str = Field(pattern=ID)
     mode: Literal['PROBE', 'FAST', 'ANALYZE', 'SEPARATE']
-    backend: Literal['cpu', 'cuda', 'rocm', 'mps', 'openvino'] | None = None
+    backend: Literal['cpu', 'cuda', 'rocm', 'mps', 'openvino', 'openvino-cpu', 'tensorrt', 'migraphx', 'coreml', 'directml', 'rknn', 'mlx'] | None = None
+    separationProfile: Literal['DSP_FAST', 'AI_CLEAN', 'LEGACY_DEMUCS'] | None = None
+    modelId: Literal['uvr-mdxnet-9482', 'center-cancel-v1', 'htdemucs'] | None = None
+    outputFormat: Literal['aac', 'flac'] = 'aac'
+    preview: bool = False
+    sourceAudioId: str | None = Field(default=None, pattern=r'^stream:[0-9]{1,3}(?::(?:LEFT|RIGHT))?$')
 
 
 @router.post('/tasks', status_code=202, description='FAST reads paired explicit role labels first; otherwise compares paired vocal scores on three short dual-track excerpts with optional PANNs Cnn6 (fast-vocal-v2), adding up to three excerpts only for sparse evidence. Missing classifier or ambiguous evidence remains UNKNOWN, with no automatic separation fallback. ANALYZE is explicit deep recognition and uses up to five disjoint windows, first trying two. Task result includes state, reason for UNKNOWN, and evidence with analysisVersion=vocal-activity-v2, vocalRatio pairs, votes, informativeWindows and window activity. Silent intervals abstain; conflicting directions or labels remain UNKNOWN. Ratios are evidence, not probabilities. Existing task identifiers retain idempotency; Java creates a new identifier for explicit re-analysis of an UNKNOWN result.')
 def submit(request: Request, body: Submit):
-    return request.app.state.audio_roles.submit(body.id, body.reference, body.mode, body.backend, body.callbackOrigin)
+    return request.app.state.audio_roles.submit(body.id, body.reference, body.mode, body.backend, body.callbackOrigin,
+        body.separationProfile, body.modelId, body.outputFormat, body.preview, body.sourceAudioId)
 
 
 @router.get('/models')
@@ -32,7 +38,8 @@ def models(request: Request, refresh: bool = False):
 
 class Backend(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    backend: Literal['auto', 'cpu', 'cuda', 'rocm', 'mps', 'openvino', 'xpu', 'rknn']
+    backend: Literal['auto', 'cpu', 'cuda', 'rocm', 'mps', 'openvino', 'openvino-cpu', 'xpu', 'rknn', 'tensorrt', 'migraphx', 'coreml', 'directml', 'mlx']
+    separationProfile: Literal['AI_CLEAN', 'LEGACY_DEMUCS'] | None = None
 
 
 @router.post('/models/download', status_code=202)
@@ -47,6 +54,8 @@ def stop_model(request: Request):
 
 @router.post('/models/test', status_code=202)
 def test_model(request: Request, body: Backend):
+    if body.separationProfile == 'AI_CLEAN':
+        return request.app.state.audio_roles.separation.test(body.backend)
     return request.app.state.audio_roles.models.test(body.backend)
 
 
@@ -105,7 +114,8 @@ def cancel(request: Request, identifier: str):
 
 @router.get('/tasks/{identifier}/artifact')
 def artifact(request: Request, identifier: str):
-    return FileResponse(request.app.state.audio_roles.artifact(identifier), media_type='audio/mp4',
+    path = request.app.state.audio_roles.artifact(identifier)
+    return FileResponse(path, media_type='audio/flac' if path.suffix == '.flac' else 'audio/mp4',
                         headers={'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff'})
 
 

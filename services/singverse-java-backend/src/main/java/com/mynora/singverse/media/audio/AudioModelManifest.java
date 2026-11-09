@@ -8,6 +8,7 @@ public final class AudioModelManifest {
             case "panns-cnn6" -> 32L * 1024 * 1024;
             case "htdemucs" -> 100L * 1024 * 1024;
             case "htdemucs-openvino" -> 128L * 1024 * 1024;
+            case "uvr-mdxnet-9482" -> 40L * 1024 * 1024;
             default -> throw AudioJobService.fail(400, "未知音频模型");
         };
     }

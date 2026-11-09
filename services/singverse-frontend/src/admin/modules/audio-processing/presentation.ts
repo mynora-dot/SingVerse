@@ -1,4 +1,4 @@
-import type { AudioExecution, AudioRoles, AudioStream, Batch, Node } from './api'
+import type { AudioExecution, AudioRoles, AudioStream, Batch, Node, SeparationCapabilities, SeparationProfile } from './api'
 
 /** 原唱与伴奏的用户文案集中在这里，列表、单曲面板和歌曲详情共用同一套说法。 */
 export type Tone = 'success' | 'warning' | 'danger' | 'info' | 'primary'
@@ -21,7 +21,7 @@ export function analysisReason(reason?: string) {
 export function latestJob(roles: AudioRoles | undefined, kind: string) { return roles?.jobs.find(job => job.kind === kind) }
 
 export function executionStage(execution?: AudioExecution) {
-  const labels: Record<string, string> = { probe: '读取歌曲', extract: '准备音频', separate: '生成伴奏', encode: '保存伴奏', validate: '检查伴奏', hash: '检查伴奏' }
+  const labels: Record<string, string> = { probe: '读取歌曲', extract: '准备音频', separate: '生成伴奏', filterEncode: '处理并保存伴奏', encode: '保存伴奏', validate: '检查伴奏', hash: '检查伴奏' }
   const label = labels[execution?.stage || '']
   if (!label) return ''
   const progress = execution?.progress
@@ -57,7 +57,7 @@ export function rolesSummary(roles: AudioRoles | undefined): RolesSummary {
     if (analyze && active(analyze.state)) return { tag: '识别中', title: '正在识别哪条是原唱', hint: '识别完成后会自动标记；不确定时需要你来确认。', tone: 'primary' }
     return { tag: '待标记', title: '有两条音轨，需要确认哪条是原唱', hint: analyze?.state === 'SUCCEEDED' ? analysisReason(analyze.reason) : analyze?.state === 'FAILED' ? analyze.error || '音轨识别失败，可以检查节点后重试。' : '选出原唱，另一条会作为伴奏。', tone: 'warning' }
   }
-  return { tag: '多条音轨', title: `有 ${streams.length} 条音轨`, hint: '目前只支持两条音轨的原唱/伴奏标记，也不会为多音轨歌曲生成伴奏。', tone: 'info' }
+  return { tag: '多条音轨', title: `有 ${streams.length} 条音轨`, hint: '请先试听确认可用的源伴奏音轨。混合音乐分离仅支持单音轨，共享原唱/伴奏标记仅支持双音轨。', tone: 'info' }
 }
 
 export function originLabel(origin?: string) {
@@ -84,13 +84,23 @@ export const batchTones: Record<string, Tone> = { PREPARING: 'primary', FAILED: 
 export const itemTones: Record<string, Tone> = { PENDING: 'info', PROBING: 'primary', PROCESSING: 'primary', SUCCEEDED: 'success', SKIPPED: 'info', FAILED: 'danger', CANCELLED: 'info' }
 export const backendStates: Record<string, string> = { AVAILABLE: '可用', UNVERIFIED: '待试跑', FAILED: '试跑失败', TESTING: '试跑中', IMAGE_MISSING: '当前镜像未包含', RUNTIME_MISSING: '缺少运行环境', MODEL_MISSING: '缺少模型或固定版本依赖', MODEL_UNSUPPORTED: '当前模型未适配' }
 export const operationStates: Record<string, string> = { IDLE: '空闲', DOWNLOADING: '下载中', IMPORTING: '导入中', VERIFYING: '校验中', TESTING: '试跑中', SUCCEEDED: '已完成', FAILED: '失败', CANCELLED: '已取消' }
-const backendNames: Record<string, string> = { cpu: 'CPU', cuda: 'NVIDIA 显卡 (CUDA)', rocm: 'AMD 显卡 (ROCm)', mps: 'Apple 芯片 (MPS)', openvino: 'Intel 核显 (OpenVINO)', rknn: '瑞芯微 NPU (RKNN)' }
+const backendNames: Record<string, string> = { cpu: 'CPU', cuda: 'NVIDIA 显卡 (CUDA)', tensorrt: 'NVIDIA 显卡 (TensorRT)', rocm: 'AMD 显卡 (ROCm)', migraphx: 'AMD 显卡 (MIGraphX)', mps: 'Apple 芯片 (MPS)', coreml: 'Apple 芯片 (Core ML)', mlx: 'Apple 芯片 (MLX)', directml: '显卡 (DirectML)', openvino: 'Intel 核显 (OpenVINO)', 'openvino-cpu': 'CPU (OpenVINO)', rknn: '瑞芯微 NPU (RKNN)' }
 export function backendName(id?: string | null) { return id ? backendNames[id] || id.toUpperCase() : '' }
 export const modelNames: Record<string, { name: string; hint: string }> = {
   'panns-cnn6': { name: '快速人声分类模型', hint: '扫描时识别双音轨，不分离人声，无需 GPU' },
   htdemucs: { name: '标准分离模型', hint: '适用于 CPU、NVIDIA、AMD 和 Apple 芯片' },
   'htdemucs-openvino': { name: 'Intel 优化模型', hint: '用于 Intel 核显的 OpenVINO 转换版本' },
   'uvr-mdxnet-9482-rknn': { name: '瑞芯微 NPU 分离模型', hint: '仅适用于 RKNN，需在节点本地部署转换模型' },
+  'uvr-mdxnet-9482': { name: '轻量两轨分离模型', hint: '干净档；先验证独立 CPU，再启用对应加速设备' },
+}
+export const profileNames: Record<SeparationProfile, string> = { DSP_FAST: '极速档 · 中心抵消', AI_CLEAN: '干净档 · 轻量 AI', LEGACY_DEMUCS: '高级 · HTDemucs' }
+export function profileName(profile?: SeparationProfile) { return profileNames[profile || 'LEGACY_DEMUCS'] }
+export function profileReady(capabilities: SeparationCapabilities | undefined, profile: SeparationProfile, legacyReady: boolean) {
+  return capabilities ? capabilities.profiles.some(item => item.id === profile && item.ready) : profile === 'LEGACY_DEMUCS' && legacyReady
+}
+export function profileBackends(capabilities: SeparationCapabilities | undefined, profile: SeparationProfile, legacy: import('./api').Backend[]) {
+  if (profile === 'DSP_FAST') return [{ id: 'cpu', state: 'AVAILABLE', reason: '' }]
+  return (profile === 'AI_CLEAN' ? capabilities?.backends || [] : legacy).filter(item => item.state === 'AVAILABLE')
 }
 
 /** 批次进度：已完成/跳过/失败/取消都算处理完毕。 */

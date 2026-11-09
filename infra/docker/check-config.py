@@ -134,6 +134,20 @@ def main():
         count += 1
 
     app = COMPOSE / 'compose.app.yaml'
+    config = render([app])
+    downloads = mount(config['services']['singverse-java-backend'], '/downloads')
+    require(downloads['type'] == 'volume' and downloads['source'] == 'singverse-downloads'
+            and not downloads.get('read_only'), 'Downloads need a separate persistent writable volume')
+    require(mount(config['services']['singverse-java-backend'], '/media')['read_only'], 'Original media must stay read-only')
+    count += 1
+    config = render([app, COMPOSE / 'compose.media.yaml', COMPOSE / 'compose.downloads.yaml'],
+                    SINGVERSE_MEDIA_PATH=str(ROOT), SINGVERSE_DOWNLOAD_PATH=str(ROOT))
+    downloads = mount(config['services']['singverse-java-backend'], '/downloads')
+    require(downloads['type'] == 'bind' and downloads['source'] == str(ROOT)
+            and not downloads.get('read_only'), 'NAS download bind must be writable')
+    require(not downloads.get('bind', {}).get('create_host_path', False), 'A missing download directory must fail')
+    require(mount(config['services']['singverse-java-backend'], '/media')['read_only'], 'Download override changed original media permissions')
+    count += 1
     config = render([app, COMPOSE / 'compose.media.yaml'], SINGVERSE_MEDIA_PATH=str(ROOT))
     media = mount(config['services']['singverse-java-backend'], '/media')
     require(media['type'] == 'bind' and media['read_only'] and media['source'] == str(ROOT), 'Local media must replace the empty volume read-only')
@@ -158,6 +172,7 @@ def main():
     require(set(config['services']) == {'singverse-java-backend', 'singverse-frontend'}, 'Business-only package gained compute')
     private_port(config['services']['singverse-frontend'], 80, 18080)
     require(config['services']['singverse-java-backend']['environment']['SINGVERSE_CALLBACK_ORIGIN'] == '', 'Template must not contain a personal callback address')
+    require(mount(config['services']['singverse-java-backend'], '/downloads')['source'] == 'singverse-downloads', 'Business package lost download persistence')
     count += 1
     spec = importlib.util.spec_from_file_location('package_offline', ROOT / 'scripts/package-app-offline.py')
     package = importlib.util.module_from_spec(spec)

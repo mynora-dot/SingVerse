@@ -276,11 +276,14 @@ private val LoginMuted = Muted
 
 @Composable private fun LoginIcon(kind: String, modifier: Modifier, color: Color = Color.Unspecified) {
     val tint = if (color == Color.Unspecified) androidx.tv.material3.LocalContentColor.current else color
+    if (kind == "brand") {
+        HomeGlyph(kind, modifier, tint)
+        return
+    }
     Canvas(modifier) {
         val unit = size.width / 24f
         fun line(x: Float, y: Float, a: Float, b: Float) = drawLine(tint, Offset(x * unit, y * unit), Offset(a * unit, b * unit), 1.4f * unit, StrokeCap.Round)
         when (kind) {
-            "brand" -> (0..4).forEach { i -> val h = listOf(8f, 15f, 23f, 15f, 8f)[i]; line(3f + i * 4.5f, (24f - h) / 2, 3f + i * 4.5f, (24f + h) / 2) }
             "nas" -> listOf(3f, 14f).forEach { y -> drawRoundRect(tint, Offset(3 * unit, y * unit), Size(18 * unit, 7 * unit), androidx.compose.ui.geometry.CornerRadius(2 * unit), style = Stroke(1.4f * unit)); line(6f, y + 3.5f, 11f, y + 3.5f); drawCircle(tint, unit, Offset(17 * unit, (y + 3.5f) * unit)) }
             "user" -> { drawCircle(tint, 4 * unit, Offset(12 * unit, 7 * unit), style = Stroke(1.4f * unit)); drawArc(tint, 180f, 180f, false, Offset(4 * unit, 13 * unit), Size(16 * unit, 16 * unit), style = Stroke(1.4f * unit)) }
             "eye", "eyeOff" -> { drawOval(tint, Offset(2 * unit, 6 * unit), Size(20 * unit, 12 * unit), style = Stroke(1.4f * unit)); drawCircle(tint, 3 * unit, Offset(12 * unit, 12 * unit), style = Stroke(1.4f * unit)); if (kind == "eyeOff") line(3f, 3f, 21f, 21f) }

@@ -28,7 +28,7 @@ curl --fail http://127.0.0.1:18080/api/health
 
 ## 数据保留与升级
 
-SQLite 与业务衍生文件保存在 `singverse-data`，加密主密钥在 `singverse-secrets`，实际卷名带项目名前缀。停止使用 `docker compose -f docker-compose.yaml down`，不加 `-v`。备份前停止写入，成套备份两卷及配置，媒体另行保存；不能只复制运行中的 SQLite 主文件。此包不会迁移 MySQL 数据，也不操作原计算节点项目。
+SQLite 与业务衍生文件保存在 `singverse-data`，加密主密钥在 `singverse-secrets`，洛雪下载歌曲与附件在可写的 `singverse-downloads:/downloads`，实际卷名带项目名前缀。使用歌曲下载前，在后台添加 `/downloads` 本地媒体库并指定下载用途，再导入自备音源。停止使用 `docker compose -f docker-compose.yaml down`，不加 `-v`。备份前停止写入，成套备份这些卷及配置，媒体另行保存；不能只复制运行中的 SQLite 主文件。此包不会迁移 MySQL 数据，也不操作原计算节点项目。
 
 更新时先备份、记录原镜像 ID，加载相同架构及配套版本的新镜像，再用原项目和配置执行 `up -d --no-build --pull never`。若复用相同镜像标签，请加 `--force-recreate` 保证容器更新；`restart` 不会使用新镜像。数据库不兼容时不能仅回退镜像，需恢复原配套备份。
 

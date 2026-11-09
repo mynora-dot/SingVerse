@@ -53,13 +53,24 @@ class AudioRuntimeProfileTest(unittest.TestCase):
                 folder = output / 'htdemucs' / 'input'; folder.mkdir(parents=True)
                 for name in ('vocals.wav', 'no_vocals.wav'):
                     (folder / name).touch()
-                worker = SimpleNamespace(repo=Path('/model'), _run=Mock())
+                worker = SimpleNamespace(repo=Path('/model'), settings=SimpleNamespace(audio_cpu_python=None), _run=Mock())
                 with patch('singverse_compute.application.audio_roles.audio_runtime_profile', return_value='rocm-native'):
                     AudioRoles._separate_once(worker, Path('input.wav'), output, SimpleNamespace(backend=backend))
                 command = worker._run.call_args.args[0]
                 self.assertIn('singverse_compute.infrastructure.rocm_audio', command)
                 self.assertEqual(command[command.index('--backend') + 1], backend)
                 worker._run.assert_called_once()
+
+    def test_cpu_uses_independent_interpreter_even_without_service_torch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory); folder = output/'htdemucs'/'input'; folder.mkdir(parents=True)
+            for name in ('vocals.wav', 'no_vocals.wav'):
+                (folder/name).touch()
+            worker = SimpleNamespace(repo=Path('/model'), settings=SimpleNamespace(audio_cpu_python=Path('/cpu/bin/python')),
+                                     cpu_python=lambda: '/cpu/bin/python', native_worker=None, _run=Mock())
+            with patch('singverse_compute.application.audio_roles.audio_runtime_profile', return_value=None):
+                AudioRoles._separate_once(worker, Path('input.wav'), output, SimpleNamespace(backend='cpu'))
+            self.assertEqual(worker._run.call_args.args[0][0], '/cpu/bin/python')
 
     def test_legacy_rocm_keeps_its_existing_cli(self):
         with tempfile.TemporaryDirectory() as temporary:

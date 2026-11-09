@@ -65,7 +65,13 @@ def remote_input(origin, reference, token, resource='transcode-input'):
                     self.end_headers()
                     if not head:
                         while active.is_set() and (chunk := response.read(65536)):
-                            self.wfile.write(chunk)
+                            try:
+                                self.wfile.write(chunk)
+                            except (BrokenPipeError, ConnectionResetError):
+                                # FFprobe/FFmpeg can stop a range early after reading enough.
+                                # A reader closing normally is not a failed business origin.
+                                self.close_connection = True
+                                return
             except HTTPError as error:
                 failure.append(f'Media callback returned HTTP {error.code}')
                 self.send_error(error.code)

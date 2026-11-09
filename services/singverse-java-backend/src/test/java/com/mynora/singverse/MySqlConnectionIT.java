@@ -37,11 +37,104 @@ class MySqlConnectionIT {
     @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     @Autowired com.mynora.singverse.media.playbackhistory.PlaybackActivityService activity;
     @Autowired com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper activityMapper;
+    @Autowired com.mynora.singverse.background.BackgroundTaskService backgroundTasks;
+    @Autowired com.mynora.singverse.background.BackgroundTaskMapper backgroundMapper;
+    @Autowired com.mynora.singverse.media.metadata.MetadataMapper metadataTasks;
+    @Autowired com.mynora.singverse.media.download.LxMapper lx;
+
+    @Test void lxDownloadBindingsQueuesAssetsAndProjectionWorkOnRealMysql() {
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(tx -> {
+            var id=java.util.UUID.randomUUID().toString();var script=java.util.UUID.randomUUID().toString();var batch=java.util.UUID.randomUUID().toString();var item=java.util.UUID.randomUUID().toString();var now=java.time.Instant.now().toString();
+            java.util.function.Function<Object[],java.util.Map<String,Object>> a=com.mynora.singverse.media.download.LxTypes::args;
+            jdbc.update("INSERT INTO media_source(id,name,source_type,location,location_hash,username,created_at,updated_at) VALUES(?,?,'LOCAL','/isolated-lx',?,'',?,?)",id,"MySQL 下载",id,now,now);
+            lx.lockSettings();lx.bind(java.util.Map.of("sourceId",id));assertThat(lx.settings()).containsEntry("source_id",id);
+            lx.insertScript(java.util.Map.of("id",script,"name","隔离音源","version","1","environment","mobile","hash",script,"secret","test-only-ciphertext","capabilities","{\"wy\":[\"128k\"]}","now",now));lx.activate(java.util.Map.of("id",script));
+            String trackKey="a".repeat(64),trackJson="{\"id\":\""+trackKey+"\",\"platform\":\"wy\",\"remoteId\":\"101\",\"title\":\"MySQL 歌曲\",\"artists\":[\"歌手\"],\"album\":\"专辑\",\"durationMs\":1000,\"coverUrl\":\"\",\"musicInfo\":{}}";
+            lx.insertTrack(java.util.Map.of("id",trackKey,"platform","wy","remoteId","101","json",trackJson,"now",now));assertThat(lx.track(java.util.Map.of("id",trackKey))).containsEntry("remote_id","101");
+            lx.insertBatch(java.util.Map.of("id",batch,"name","MySQL 下载批次","sourceId",id,"path","/isolated-lx","scriptId",script,"quality","auto","now",now));
+            lx.insertItem(a.apply(new Object[]{"id",item,"batchId",batch,"trackKey",trackKey,"trackJson",trackJson,"quality","auto","activeKey",id+":"+trackKey+":auto","status","QUEUED","message","","songId",null,"now",now}));
+            assertThat(lx.activeSource(java.util.Map.of("sourceId",id))).isOne();assertThat(lx.activeItem(java.util.Map.of("activeKey",id+":"+trackKey+":auto"))).containsEntry("id",item);
+            lx.claim(java.util.Map.of("id",item,"now",now));lx.reserveQuality(java.util.Map.of("id",item,"quality","128k","key",id+":"+trackKey+":128k","now",now));assertThat(lx.qualityOwner(java.util.Map.of("key",id+":"+trackKey+":128k"))).containsEntry("id",item);
+            lx.progress(java.util.Map.of("id",item,"received",100,"total",100,"now",now));
+            lx.insertSong(a.apply(new Object[]{"songId",item,"sourceId",id,"relativePath","song.wav","pathHash",item,"size",100,"modified",now,"now",now,"profileId","default","revision",0,"result","{}"}));
+            lx.insertAsset(a.apply(new Object[]{"id",trackKey,"sourceId",id,"trackKey",trackKey,"quality","128k","relativePath","song.wav","songId",item,"size",100,"modified",now,"hash",trackKey,"trackJson",trackJson,"now",now}));
+            assertThat(lx.asset(java.util.Map.of("sourceId",id,"trackKey",trackKey,"quality","128k"))).containsEntry("modified_at",now);assertThat(lx.assetsForTrack(java.util.Map.of("trackKey",trackKey))).hasSize(1);
+            lx.cancel(java.util.Map.of("id",batch,"now",now));assertThat(lx.qualityOwner(java.util.Map.of("key",id+":"+trackKey+":128k"))).isNull();assertThat(lx.retryItems(java.util.Map.of("id",batch))).hasSize(1);
+            lx.updateBatch(a.apply(new Object[]{"id",batch,"status","CANCELLED","now",now,"started",now,"finished",now}));
+            var page=backgroundTasks.list("ALL","LX_DOWNLOAD",null,batch,0,20);assertThat(((Number)page.get("totalElements")).intValue()).isEqualTo(1);
+            tx.setRollbackOnly();
+        });
+    }
+
+    @Test void backgroundTaskProjectionPaginationAndDuplicateImportWorkOnRealMysql() {
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(tx -> {
+            String business = java.util.UUID.randomUUID().toString(), now = java.time.Instant.now().toString();
+            metadataTasks.insertBatch(business, "MISSING", "[]", false, .9, 0, now);
+            metadataTasks.insertItem(business, business, business, "fingerprint", "MySQL 任务", "[]", now);
+            metadataTasks.itemStatus(business, "PENDING", "FAILED", "[]", "已有结果", now);
+            metadataTasks.batchStatus(business, "RUNNING", "COMPLETED", now);
+            var page = backgroundTasks.list("HISTORY", "METADATA", "PARTIAL", business, 0, 20);
+            assertThat(((Number) page.get("totalElements")).longValue()).isEqualTo(1);
+            var row = ((java.util.List<java.util.Map<String, Object>>) page.get("items")).getFirst();
+            String taskId = row.get("id").toString();
+            assertThat(backgroundTasks.detail(taskId)).containsEntry("status", "PARTIAL");
+            assertThat(((Number) backgroundTasks.items(taskId, "FAILED", 0, 20).get("totalElements")).longValue()).isEqualTo(1);
+            var snapshot = backgroundMapper.find(java.util.Map.of("id", taskId));
+            sqlSessions.insert("com.mynora.singverse.background.BackgroundTaskMapper.insertProjected", snapshot);
+            sqlSessions.insert("com.mynora.singverse.background.BackgroundTaskMapper.insertProjected", snapshot);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM background_task WHERE id=?", Integer.class, taskId)).isEqualTo(1);
+            tx.setRollbackOnly();
+        });
+    }
+
+    @Test void batchScopeChainSortingReuseAndChildPagingWorkOnRealMysql() {
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(tx -> {
+            String source = java.util.UUID.randomUUID().toString(), song = java.util.UUID.randomUUID().toString();
+            String now = java.time.Instant.now().toString(), prefix = "mysql-batch-" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0,16);
+            long millis = System.currentTimeMillis();
+            jdbc.update("INSERT INTO media_source(id,name,source_type,location,location_hash,username,created_at,updated_at) VALUES(?,?,'LOCAL','/isolated',?,'',?,?)", source, "MySQL 隔离批次", source, now, now);
+            jdbc.update("INSERT INTO media_song(id,source_id,relative_path,path_hash,file_size,modified_at,scanned_at,parser_profile_id,parser_revision,result_json,needs_review) VALUES(?,?,'song.mkv',?,100,?,?,'default',0,'{}',0)", song, source, song, now, now);
+            String batch = backgroundTasks.startLocal(source);
+            backgroundTasks.registerScanScope(batch, source);
+            String fingerprint = jdbc.queryForObject("SELECT fingerprint FROM background_scan_scope WHERE batch_id=?", String.class, batch);
+            for (int i = 0; i < 25; i++) {
+                String job = prefix + "-" + i;
+                audioRoles.insertJob(java.util.Map.of("id", job, "song_id", song, "kind", "PROBE", "state", "QUEUED", "fingerprint", fingerprint, "node_origin", "isolated", "backend", "", "created_at", millis + i, "updated_at", millis + i));
+                backgroundTasks.audioSubmitted(job, "PROBE", song, fingerprint, java.util.List.of(batch), true);
+            }
+            backgroundTasks.finishLocal(batch, new com.mynora.singverse.media.dto.MediaSongDtos.Scan(source, "default", "默认", 0, 1, 1, 0, 0, now), null);
+            audioRoles.updateJob(prefix + "-0", "RUNNING", "{}", "", millis + 30);
+            assertThat(backgroundTasks.detail(batch)).containsEntry("status", "RUNNING");
+            var children = backgroundTasks.children(batch, "AUDIO_JOB", null, 0, 20);
+            assertThat(((Number) children.get("totalElements")).intValue()).isEqualTo(25);
+            var first = ((java.util.List<java.util.Map<String,Object>>) children.get("items")).getFirst();
+            assertThat(first.get("businessId")).isEqualTo(prefix + "-0");
+            assertThat(((java.util.List<?>) backgroundTasks.children(batch, null, null, 1, 20).get("items"))).hasSize(5);
+            assertThat(((Number) backgroundTasks.list("ACTIVE", null, null, prefix, 0, 20).get("totalElements")).intValue()).isOne();
+            for (int i = 0; i < 25; i++) audioRoles.updateJob(prefix + "-" + i, "SUCCEEDED", "{\"streams\":[{},{}]}", "", millis + 40);
+            assertThat(backgroundTasks.detail(batch)).containsEntry("status", "QUEUED").containsEntry("finishedAt", null);
+            backgroundTasks.resolveAudioScopes(song, fingerprint, "SKIPPED", "无需后续处理");
+            assertThat(backgroundTasks.detail(batch)).containsEntry("status", "COMPLETED");
+            var row = backgroundMapper.find(java.util.Map.of("id", batch));
+            assertThat(((Number) row.get("batch_expires_at")).longValue() - ((Number) row.get("batch_finished_at")).longValue()).isEqualTo(30L * 86400_000);
+
+            String oldJob = prefix + "-legacy";
+            long oldUpdate = millis - 25L * 86400_000;
+            jdbc.update("INSERT INTO media_audio_job(id,song_id,kind,state,fingerprint,node_origin,result_json,error,created_at,updated_at) VALUES(?,?,'PROBE','RUNNING',?,'isolated','{}','',?,?)",
+                    oldJob, song, fingerprint, oldUpdate, oldUpdate);
+            audioRoles.updateJob(oldJob, "SUCCEEDED", "{}", "", oldUpdate);
+            String legacy = jdbc.queryForObject("SELECT parent_id FROM background_task WHERE type='AUDIO_JOB' AND business_id=?", String.class, oldJob);
+            assertThat(backgroundTasks.detail(legacy)).containsEntry("batchKind", "LEGACY").containsEntry("finishedAt", null);
+            assertThat(jdbc.queryForObject("SELECT batch_expires_at FROM background_task WHERE id=?", Long.class, legacy))
+                    .isEqualTo(oldUpdate + 30L * 86400_000);
+            tx.setRollbackOnly();
+        });
+    }
 
     @Test void mysqlProfileConnectsToRealMysql() throws Exception {
         assertThat(jdbc.queryForObject("SELECT 1", Integer.class)).isEqualTo(1);
         assertThat(jdbc.queryForList("SELECT version FROM schema_migrations", String.class))
-                .containsExactly(com.mynora.singverse.infrastructure.database.InitialSchemaFixture.VERSION);
+                .containsExactlyInAnyOrder(com.mynora.singverse.infrastructure.database.InitialSchemaFixture.VERSIONS);
         try (var connection = dataSource.getConnection()) {
             assertThat(connection.getMetaData().getDatabaseProductName()).isEqualTo("MySQL");
         }

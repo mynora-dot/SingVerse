@@ -70,4 +70,10 @@ jobs:
         run: ./mvnw -B -Dtest=WebWelcomeTest,AdminWebTest test
       - run: ./mvnw -B package -DskipTests
       - run: ./mvnw -B -Dtest=SQLiteConnectionTest test
-      - run: ./mvnw -B -Pmysql-check verify
+      - name: Verify MySQL business integration
+        env:
+          MYSQL_PWD: ci_only_root_password
+        run: |
+          # Fault-injection tests create triggers inside this disposable CI database.
+          docker exec -e MYSQL_PWD "${{ job.services.mysql.id }}" mysql -uroot -e 'SET GLOBAL log_bin_trust_function_creators=1;'
+          ./mvnw -B -Pmysql-check verify

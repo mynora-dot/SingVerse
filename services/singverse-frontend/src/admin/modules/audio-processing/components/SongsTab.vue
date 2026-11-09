@@ -4,10 +4,11 @@ import { ElAlert, ElButton, ElDrawer, ElEmpty, ElInput, ElPagination, ElSkeleton
 import { Search } from '@element-plus/icons-vue'
 import AudioRolesPanel from '../../song-management/components/AudioRolesPanel.vue'
 import { authRequest } from '../../../core/auth/api'
-import { base, payload, query, type AudioRow, type Backend, type Batch, type Filter } from '../api'
-import { backendName, failure, rolesSummary, type Readiness } from '../presentation'
+import { base, payload, query, type AudioRow, type Backend, type Batch, type Filter, type SeparationCapabilities, type SeparationProfile } from '../api'
+import { backendName, failure, profileBackends, profileReady, rolesSummary, type Readiness } from '../presentation'
+import SeparationControls from './SeparationControls.vue'
 
-const props = defineProps<{ songId: string; readiness: Readiness; backends: Backend[] }>()
+const props = defineProps<{ songId: string; readiness: Readiness; backends: Backend[]; separation?: SeparationCapabilities }>()
 const emit = defineEmits<{ preview: [batch: Batch]; setup: []; showAll: [] }>()
 const pageSize = ref(30)
 const states = [
@@ -23,7 +24,11 @@ const editor = ref<AudioRow>(), opened = ref('')
 let active = true, visible = true, sequence = 0
 let retryTimer: ReturnType<typeof setTimeout> | undefined
 const indexPreparing = ref(false), indexBuilding = ref(false)
-const available = computed(() => props.backends.filter(item => item.state === 'AVAILABLE' && item.id !== 'cpu'))
+const profile = ref<SeparationProfile>('LEGACY_DEMUCS')
+let profileInitialized = false
+watch(() => props.separation, value => { if (value && !profileInitialized) { profile.value = 'DSP_FAST'; profileInitialized = true } }, { immediate: true })
+const available = computed(() => profileBackends(props.separation, profile.value, props.backends))
+const ready = computed(() => profileReady(props.separation, profile.value, props.readiness.ready))
 watch(available, items => { if (!items.some(item => item.id === preferred.value)) preferred.value = '' })
 const coverErrors = reactive(new Set<string>())
 function latest(row: AudioRow) { return row.audio.jobs.find(job => job.kind === 'SEPARATE') }
@@ -72,7 +77,7 @@ function clear() { all.value = false; selected.clear() }
 async function makePreview(ids?: string[]) {
   busy.value = true; error.value = ''
   try {
-    const value = await authRequest<Batch>(`${base}/batches/preview`, 'POST', { ids: ids || [...selected], all: !ids && all.value, filter: payload(applied.value), backend: preferred.value }, 120000)
+    const value = await authRequest<Batch>(`${base}/batches/preview`, 'POST', { ids: ids || [...selected], all: !ids && all.value, filter: payload(applied.value), backend: preferred.value, ...(props.separation ? { separationProfile: profile.value, outputFormat: 'aac' } : {}) }, 120000)
     if (active) emit('preview', value)
   } catch (failed) { if (active) error.value = failure(failed, '无法准备生成任务') }
   finally { if (active) busy.value = false }
@@ -106,7 +111,7 @@ defineExpose({ refresh: loadRows, clear })
 
 <template>
   <div class="songs-tab">
-    <ElAlert v-if="!readiness.ready" type="warning" :closable="false" show-icon class="ready-alert" :title="readiness.title">
+    <ElAlert v-if="!ready" type="warning" :closable="false" show-icon class="ready-alert" :title="separation ? '当前伴奏方案尚未就绪' : readiness.title">
       <p>{{ readiness.hint || '准备好之后才能生成伴奏。' }}人工标记原唱不受影响。</p>
       <ElButton type="warning" plain size="small" @click="emit('setup')">去准备环境</ElButton>
     </ElAlert>
@@ -138,8 +143,9 @@ defineExpose({ refresh: loadRows, clear })
       <ElButton v-else-if="total > rows.length && total > 0" link type="primary" :disabled="loading" @click="all = true; selected.clear()">选择全部 {{ total }} 首</ElButton>
       <ElButton v-if="selectedCount" link @click="clear">清空</ElButton>
       <span class="spacer" />
-      <label v-if="available.length > 1" class="device">使用<select v-model="preferred" class="native-select" aria-label="生成伴奏使用的设备"><option value="">自动选择</option><option v-for="backend in available" :key="backend.id" :value="backend.id">{{ backendName(backend.id) }}</option></select></label>
-      <ElButton type="primary" :loading="busy" :disabled="busy || !readiness.ready || !selectedCount || loading" @click="makePreview()">为所选歌曲生成伴奏</ElButton>
+      <SeparationControls v-if="separation" v-model:profile="profile" v-model:backend="preferred" :backends="available" :disabled="busy" />
+      <label v-else-if="available.length > 1" class="device">使用<select v-model="preferred" class="native-select" aria-label="生成伴奏使用的设备"><option value="">自动选择</option><option v-for="backend in available" :key="backend.id" :value="backend.id">{{ backendName(backend.id) }}</option></select></label>
+      <ElButton type="primary" :loading="busy" :disabled="busy || !ready || !selectedCount || loading" @click="makePreview()">为所选歌曲生成伴奏</ElButton>
     </div>
 
     <p v-if="indexPreparing" role="status">正在准备歌曲列表，稍后自动重试…</p>
@@ -159,7 +165,7 @@ defineExpose({ refresh: loadRows, clear })
         <td class="song-state"><ElTag :type="rolesSummary(row.audio).tone" effect="light" round size="small">{{ rolesSummary(row.audio).tag }}</ElTag><p v-if="rolesSummary(row.audio).tone === 'danger'" class="inline-error">{{ rolesSummary(row.audio).hint }}</p></td>
         <td class="song-task"><template v-if="latest(row)"><span>{{ taskLabels[latest(row)!.state] || latest(row)!.state }}</span><p v-if="latest(row)!.backend">{{ backendName(latest(row)!.backend!) }}</p><p v-if="latest(row)!.fallbackReason">已自动降级到 CPU</p><p v-if="latest(row)!.error" class="task-error" :title="latest(row)!.error">{{ latest(row)!.error }}</p></template><span v-else>暂无生成任务</span></td>
         <td class="song-actions">
-          <ElButton v-if="action(row) === 'generate'" size="small" :aria-label="'为' + row.title + '生成伴奏'" :disabled="busy || !readiness.ready" @click="makePreview([row.id])">生成伴奏</ElButton>
+          <ElButton v-if="action(row) === 'generate'" size="small" :aria-label="'为' + row.title + '生成伴奏'" :disabled="busy || !ready" @click="makePreview([row.id])">生成伴奏</ElButton>
           <ElButton v-else-if="action(row) === 'label'" size="small" type="primary" plain @click="editor = row">标记原唱</ElButton>
           <ElButton v-else-if="action(row) === 'relabel'" size="small" @click="editor = row">修改标记</ElButton>
           <ElButton v-else-if="action(row) === 'listen'" size="small" @click="editor = row">试听伴奏</ElButton>
@@ -173,7 +179,7 @@ defineExpose({ refresh: loadRows, clear })
 
     <ElDrawer :model-value="!!editor" :title="editor ? (editor.title || editor.relativePath) : ''" size="min(560px, 100vw)" :append-to-body="false" class="roles-drawer" @close="editor = undefined">
       <p v-if="editor" class="drawer-sub">{{ editor.artists.join('、') || '未知歌手' }} · {{ editor.sourceName }}</p>
-      <AudioRolesPanel v-if="editor" :song-id="editor.id" :can-process="readiness.ready" @changed="loadRows" @setup="editor = undefined; emit('setup')" />
+      <AudioRolesPanel v-if="editor" :song-id="editor.id" :can-process="readiness.ready" :separation="separation" :backends="backends" @changed="loadRows" @setup="editor = undefined; emit('setup')" />
     </ElDrawer>
   </div>
 </template>

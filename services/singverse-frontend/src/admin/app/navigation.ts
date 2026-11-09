@@ -1,4 +1,4 @@
-import { ChatLineSquare, Clock, Collection, CollectionTag, Connection, Document, Files, FolderOpened, Headset, House, Key, MagicStick, Microphone, Monitor, Odometer, Setting, Tools } from '@element-plus/icons-vue'
+import { ChatLineSquare, Clock, Collection, CollectionTag, Connection, Document, Download, Files, FolderOpened, Headset, House, Key, MagicStick, Microphone, Monitor, Odometer, Setting, Tools } from '@element-plus/icons-vue'
 
 /** 按管理员日常任务分组；URL 保持不变以兼容已保存的链接。 */
 export const overviewEntry = { path: '/overview', label: '概览', icon: House }
@@ -21,6 +21,7 @@ export const navigationGroups = [
     id: 'sources', label: '来源与导入',
     children: [
       { path: '/library/media', label: '媒体库', icon: FolderOpened },
+      { path: '/library/downloads', label: '歌曲下载', icon: Download },
       { path: '/library/filename-parser-profiles', label: '解析方案', icon: Document },
       { path: '/library/filename-parser', label: '自定义规则', icon: Tools, advanced: true },
     ],
@@ -29,6 +30,7 @@ export const navigationGroups = [
     id: 'devices', label: '设备与服务',
     children: [
       { path: '/system/tv-devices', label: '电视设备', icon: Monitor },
+      { path: '/system/tasks', label: '后台任务', icon: Clock },
       { path: '/system', label: '服务状态', icon: Odometer },
       { path: '/system/compute', label: '性能节点配置', icon: Connection },
     ],

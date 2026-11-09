@@ -9,6 +9,15 @@ FAST = 'panns-cnn6'
 REVISION = 'efb3d2bc54f93899b13b72b12c57001e19f09ae2'
 OV_SOURCE = f'https://huggingface.co/Intel/demucs-openvino/resolve/{REVISION}/htdemucs_v4/'
 MODELS = {
+    'uvr-mdxnet-9482': {
+        'id': 'uvr-mdxnet-9482', 'version': '9482-9d78f8566fa8', 'format': 'onnx',
+        'license': 'See upstream UVR model terms; personal use only until independently reviewed',
+        'backends': ['cpu', 'cuda', 'tensorrt', 'openvino', 'openvino-cpu', 'migraphx', 'coreml', 'directml', 'rknn'],
+        'sampleRate': 44100, 'sources': ['vocals', 'no_vocals'], 'maxBytes': 40*1024**2,
+        'files': [{'name': 'UVR_MDXNET_9482.onnx', 'size': 29704738,
+                   'sha256': '9d78f8566fa8198065214ab628be1de966a500c57786695aa4b13e2b27a7727d',
+                   'url': 'https://github.com/k2-fsa/sherpa-onnx/releases/download/source-separation-models/UVR_MDXNET_9482.onnx'}],
+    },
     RKNN: {
         'id': RKNN, 'version': '9482-local-v1', 'format': 'rknn', 'license': 'See upstream UVR model terms',
         'backends': ['rknn'], 'sampleRate': 44100,

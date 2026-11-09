@@ -6,6 +6,9 @@
   <name>SingVerse Java Backend</name>
   <properties><java.version>21</java.version><sqlite-jdbc.version>3.49.1.0</sqlite-jdbc.version></properties>
   <dependencies>
+    <dependency><groupId>org.graalvm.polyglot</groupId><artifactId>polyglot</artifactId><version>25.0.3</version></dependency>
+    <dependency><groupId>org.graalvm.polyglot</groupId><artifactId>js-community</artifactId><version>25.0.3</version><type>pom</type><scope>runtime</scope></dependency>
+    <dependency><groupId>com.squareup.okhttp3</groupId><artifactId>okhttp</artifactId><version>4.12.0</version></dependency>
     <dependency><groupId>org.jmdns</groupId><artifactId>jmdns</artifactId><version>3.5.10</version></dependency>
     <dependency><groupId>com.belerweb</groupId><artifactId>pinyin4j</artifactId><version>2.5.1</version></dependency>
     <dependency><groupId>com.google.re2j</groupId><artifactId>re2j</artifactId><version>1.8</version></dependency>

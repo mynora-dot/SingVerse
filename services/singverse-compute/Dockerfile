@@ -16,6 +16,11 @@ RUN --mount=type=cache,id=singverse-compute-apt,target=/var/cache/apt,sharing=lo
 WORKDIR /opt/singverse-compute
 COPY services/singverse-compute/requirements*.lock ./
 RUN --mount=type=cache,target=/root/.cache/pip python -m pip install -r requirements.lock
+# Driver-independent ONNX CPU worker is present even in accelerator images.
+RUN --mount=type=cache,target=/root/.cache/pip python -m venv /opt/singverse-audio-cpu && \
+    /opt/singverse-audio-cpu/bin/python -m pip install -r requirements-separation-cpu.lock && \
+    /opt/singverse-audio-cpu/bin/python -m pip check
+ENV COMPUTE_AUDIO_CPU_PYTHON=/opt/singverse-audio-cpu/bin/python
 COPY services/singverse-compute/singverse_compute/ ./singverse_compute/
 RUN chmod 755 /opt/singverse-compute && \
     find /opt/singverse-compute/singverse_compute -type d -exec chmod 755 {} + && \
@@ -41,22 +46,32 @@ HEALTHCHECK --interval=5s --timeout=3s --start-period=20s --retries=6 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health',timeout=2)"
 CMD ["python", "-m", "singverse_compute", "--host", "0.0.0.0", "--port", "8090"]
 
+# Advanced Demucs has its own driver-independent CPU worker in every legacy variant.
+FROM base AS legacy-base
+USER root
+RUN --mount=type=cache,target=/root/.cache/pip /opt/singverse-audio-cpu/bin/python -m pip install -r requirements-audio.lock && \
+    /opt/singverse-audio-cpu/bin/python -m pip check
+USER 10001:10001
+
 # Runtime variants contain no model weights. Download/import is an administrator operation.
-FROM base AS cpu
+FROM legacy-base AS cpu
 USER root
 RUN --mount=type=cache,target=/root/.cache/pip python -m pip install -r requirements-audio.lock
 ENV SINGVERSE_COMPUTE_VARIANT=cpu
 USER 10001:10001
 
-FROM base AS cuda
+FROM legacy-base AS cuda
 USER root
 ARG TARGETARCH
 RUN test "$TARGETARCH" = amd64
 RUN --mount=type=cache,target=/root/.cache/pip python -m pip install -r requirements-audio-cuda.lock
+RUN --mount=type=cache,target=/root/.cache/pip python -m venv /opt/singverse-audio-accelerator && \
+    /opt/singverse-audio-accelerator/bin/python -m pip install -r requirements-separation-cuda.lock
+ENV COMPUTE_AUDIO_ACCELERATOR_PYTHON=/opt/singverse-audio-accelerator/bin/python
 ENV SINGVERSE_COMPUTE_VARIANT=cuda NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
 USER 10001:10001
 
-FROM base AS rocm
+FROM legacy-base AS rocm
 USER root
 ARG TARGETARCH
 RUN test "$TARGETARCH" = amd64
@@ -64,7 +79,7 @@ RUN --mount=type=cache,target=/root/.cache/pip python -m pip install -r requirem
 ENV SINGVERSE_COMPUTE_VARIANT=rocm
 USER 10001:10001
 
-FROM base AS openvino
+FROM legacy-base AS openvino
 USER root
 ARG TARGETARCH
 RUN test "$TARGETARCH" = amd64
@@ -76,7 +91,7 @@ USER 10001:10001
 
 # gfx1103 requires native device libraries absent from the legacy ROCm 6.2 wheels.
 # Keep this explicit profile separate from CPU/CUDA/legacy ROCm dependencies.
-FROM base AS rocm-native
+FROM legacy-base AS rocm-native
 USER root
 ARG TARGETARCH
 RUN test "$TARGETARCH" = amd64

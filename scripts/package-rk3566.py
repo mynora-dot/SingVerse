@@ -45,7 +45,10 @@ def main():
         files[str(path.relative_to(ROOT))] = path.read_bytes()
     for path in sorted(compute.glob('requirements*.lock')):
         files[str(path.relative_to(ROOT))] = path.read_bytes()
-    for relative in ['services/singverse-compute/Dockerfile', 'scripts/convert-rknn-audio.py']:
+    for relative in ['services/singverse-compute/Dockerfile', 'services/singverse-compute/AUDIO-SEPARATION.md',
+                     'scripts/convert-rknn-audio.py', 'scripts/setup-separation-runtime.py', 'scripts/setup-uvr-model.py',
+                     'scripts/convert-separation-model.py', 'scripts/prepare-separation-calibration.py',
+                     'scripts/evaluate-separation-conversion.py', 'scripts/benchmark-separation.py', 'scripts/score-separation.py']:
         files[relative] = (ROOT/relative).read_bytes()
     files['.dockerignore'] = (ROOT/'infra/docker/build/.dockerignore').read_bytes()
     files['models/uvr-mdxnet-9482/UVR_MDXNET_9482.onnx'] = args.model.read_bytes()

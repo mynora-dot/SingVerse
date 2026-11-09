@@ -67,9 +67,9 @@ class AudioRoles:
         self.model_stamp = None
         self.model_valid = False
         self.native_worker = None
-        if audio_runtime_profile() == 'rocm-native' and self.settings.audio_worker_idle_seconds:
+        if (audio_runtime_profile() in ('rocm-native', 'legacy') or self.settings.audio_cpu_python) and self.settings.audio_worker_idle_seconds:
             from ..infrastructure.audio_worker import AudioWorker
-            self.native_worker = AudioWorker(lambda key: [sys.executable, '-m',
+            self.native_worker = AudioWorker(lambda key: [self.cpu_python() if key[0] == 'cpu' else sys.executable, '-m',
                 'singverse_compute.infrastructure.rocm_audio', '--worker', '--model-dir', str(self.repo),
                 '--output', str(self.root), '--backend', key[0]], env=self._environment(),
                 memory_limit=self.settings.audio_memory_bytes, idle_seconds=self.settings.audio_worker_idle_seconds)
@@ -120,6 +120,8 @@ class AudioRoles:
         return self.transcoding.available and audio_runtime_profile() is not None
 
     def backend_runtime_available(self, backend):
+        if backend == 'cpu' and getattr(self.settings, 'audio_cpu_python', None):
+            return self.runtime_available and self.cpu_runtime().get('valid', False)
         if backend == 'rknn':
             try:
                 return self.dependencies_available and version('rknn-toolkit-lite2') == '2.3.2' and self.models.model_valid('uvr-mdxnet-9482-rknn')
@@ -134,12 +136,14 @@ class AudioRoles:
 
     @property
     def runtime_available(self):
+        independent = bool(getattr(self.settings, 'audio_cpu_python', None) and self.cpu_runtime().get('valid'))
         try:
-            if version("demucs") != "4.0.1":
+            if version("demucs") != "4.0.1" and not independent:
                 return False
         except PackageNotFoundError:
-            return False
-        if not (self.transcoding.available and self.repo and importlib.util.find_spec('demucs')):
+            if not independent:
+                return False
+        if not (self.transcoding.available and self.repo and (independent or importlib.util.find_spec('demucs'))):
             return False
         try:
             model = self.repo / '955717e8-8726e21a.th'
@@ -150,13 +154,34 @@ class AudioRoles:
                 self.model_valid = (config.read_text() == "models: ['955717e8']\n" and self.digest(model) ==
                     '8726e21a993978c7ba086d3872e7608d7d5bfca646ca4aca459ffda844faa8b4')
                 self.model_stamp = stamp
-            return self.model_valid and audio_runtime_profile() is not None
+            return self.model_valid and (independent or audio_runtime_profile() is not None)
         except (OSError, PackageNotFoundError):
             return False
 
+    def cpu_python(self):
+        return str(getattr(self.settings, 'audio_cpu_python', None) or sys.executable)
+
+    def cpu_runtime(self, refresh=False):
+        """Legacy CPU is optional alongside ORT, but never borrowed from a CUDA/HIP wheel."""
+        if not hasattr(self, '_legacy_cpu_environment') or refresh:
+            try:
+                self._legacy_cpu_environment = json.loads(run([self.cpu_python(), '-c',
+                    "import json,torch; from importlib.metadata import version; "
+                    "print(json.dumps({'valid':not torch.version.cuda and not torch.version.hip and "
+                    "version('demucs')=='4.0.1' and version('torch').split('+')[0]=='2.5.1' and "
+                    "version('torchaudio').split('+')[0]=='2.5.1', "
+                    "'versions':{n:version(n) for n in ('torch','torchaudio','demucs')}}))"],
+                    timeout=30, limit=4096, memory_limit=self.settings.audio_memory_bytes, env=self._environment()))
+            except Exception:
+                self._legacy_cpu_environment = {'valid': False, 'versions': {}}
+        return self._legacy_cpu_environment
+
     def _environment(self):
-        return {**os.environ, 'OMP_NUM_THREADS': str(self.settings.audio_threads),
-                'MKL_NUM_THREADS': str(self.settings.audio_threads), 'PYTORCH_ENABLE_MPS_FALLBACK': '0'}
+        from ..domain.audio_separation import threads
+        count = str(threads(self.settings.audio_threads))
+        return {**os.environ, 'OMP_NUM_THREADS': count,
+                'MKL_NUM_THREADS': count, 'OPENBLAS_NUM_THREADS': count, 'PYTORCH_ENABLE_MPS_FALLBACK': '0',
+                'PYTHONPATH': str(Path(__file__).resolve().parents[2])}
 
     def native_key(self, backend):
         model = self.repo / '955717e8-8726e21a.th'
@@ -227,6 +252,8 @@ class AudioRoles:
             if (getattr(task, 'backend', 'cpu') == 'cpu' or not getattr(task, 'cpu_fallback', False)
                     or task.result.get('fallbackReason') or task.cancel.is_set() or not accelerator_failure(error.message)):
                 raise
+            if task.backend == 'rknn':
+                raise ComputeError(503, 'RKNN MDX requires the AI_CLEAN recipe for same-model ONNX CPU recovery') from error
             if not self.backend_runtime_available('cpu') or not any(item['id'] == 'cpu' and item['state'] == 'AVAILABLE' for item in self.models.entries()):
                 raise ComputeError(503, 'CPU 降级不可用，请安装 CPU 模型并完成试跑') from error
             self.models.check_resources('cpu')
@@ -238,7 +265,11 @@ class AudioRoles:
 
     def _separate_once(self, wav: Path, output: Path, task: AudioTask):
         backend = getattr(task, 'backend', 'cpu')
-        if backend == 'rknn':
+        if backend == 'cpu' and getattr(self.settings, 'audio_cpu_python', None) and not getattr(self, 'native_worker', None):
+            self._run([self.cpu_python(), '-m', 'singverse_compute.infrastructure.rocm_audio',
+                       '--model-dir', str(self.repo), '--output', str(output), '--backend', 'cpu',
+                       *(['--backing-only'] if getattr(task, 'mode', '') == 'SEPARATE' else []), str(wav)], task)
+        elif backend == 'rknn':
             self._run([sys.executable, '-m', 'singverse_compute.infrastructure.rknn_audio',
                        '--model-dir', str(self.models.model_path('uvr-mdxnet-9482-rknn')),
                        '--output', str(output), str(wav)], task)
@@ -256,10 +287,10 @@ class AudioRoles:
             if not all((folder/name).is_file() for name in ('vocals.wav', 'no_vocals.wav')):
                 raise ComputeError(422, 'Model did not produce both stems')
             return folder/'vocals.wav', folder/'no_vocals.wav'
-        elif backend == 'mps':
+        elif backend == 'mps' and not getattr(self, 'native_worker', None):
             self._run([sys.executable, '-m', 'singverse_compute.infrastructure.mps_audio',
                        '--model-dir', str(self.repo), '--output', str(output), str(wav)], task)
-        elif backend in ('rocm', 'cpu') and audio_runtime_profile() == 'rocm-native':
+        elif backend in ('rocm', 'cpu', 'cuda', 'mps') and (audio_runtime_profile() == 'rocm-native' or getattr(self, 'native_worker', None)):
             backing_only = getattr(task, 'mode', '') == 'SEPARATE'
             native = getattr(self, 'native_worker', None)
             if native:
@@ -282,10 +313,11 @@ class AudioRoles:
 
     def _extract(self, source, network, stream, start, seconds, output, task):
         with self.stage(task, 'extract'):
-            self._run([self.settings.ffmpeg, '-nostdin', '-v', 'error', '-protocol_whitelist',
+            floating = getattr(task, 'recipe', {}).get('separationProfile', 'LEGACY_DEMUCS') != 'LEGACY_DEMUCS'
+            self._run([self.settings.ffmpeg, '-nostdin', '-v', 'error', '-xerror', '-protocol_whitelist',
                        'file,http,tcp' if network else 'file', '-ss', str(start), '-i', source,
                        '-map', f'0:{stream}', '-t', str(seconds), '-vn', '-ac', '2', '-ar', '44100',
-                       '-af', 'aresample=async=1:first_pts=0,apad', '-c:a', 'pcm_s16le', '-y', str(output)], task)
+                       '-af', 'aresample=async=1:first_pts=0,apad', '-c:a', 'pcm_f32le' if floating else 'pcm_s16le', '-y', str(output)], task)
 
     def _fast_analyze(self, source, network, audio, duration, task):
         def unknown(reason):
@@ -334,13 +366,26 @@ class AudioRoles:
         result.update(backend='cpu', model=FAST, modelVersion=manifest(FAST)['version'], modelDigest=file['sha256'])
         return result
 
-    def submit(self, identifier, reference, mode, backend=None, callback_origin=None):
+    def submit(self, identifier, reference, mode, backend=None, callback_origin=None,
+               separation_profile=None, model_id=None, output_format='aac', preview=False, source_audio_id=None):
         submitted = time.monotonic()
         if str(uuid.UUID(identifier)) != identifier or mode not in ('PROBE', 'FAST', 'ANALYZE', 'SEPARATE'):
             raise ComputeError(400, 'Invalid audio task')
-        if mode in ('ANALYZE', 'SEPARATE') and backend == 'cpu' and hasattr(self, 'models') and any(item.get('detected') for item in self.models.entries()):
-            raise ComputeError(422, '检测到加速硬件，CPU 仅用于自动降级')
-        signature = hashlib.sha256(json.dumps([reference, callback_origin, mode, backend]).encode()).hexdigest()
+        from ..domain.audio_separation import LEGACY, recipe
+        enhanced = mode == 'SEPARATE' and (separation_profile not in (None, LEGACY) or source_audio_id is not None)
+        specification = None
+        extra = separation_profile is not None or model_id is not None or output_format != 'aac' or preview or source_audio_id is not None
+        if extra:
+            if mode != 'SEPARATE':
+                raise ComputeError(400, 'Separation options apply only to SEPARATE tasks')
+            try:
+                specification = recipe(separation_profile or LEGACY, model_id, output_format, preview, source_audio_id)
+            except ValueError as error:
+                raise ComputeError(400, str(error)) from error
+        signature_input = [reference, callback_origin, mode, backend]
+        if extra:
+            signature_input.append(specification)
+        signature = hashlib.sha256(json.dumps(signature_input).encode()).hexdigest()
         with self.lock:
             if identifier in self.tasks:
                 if getattr(self.tasks[identifier], 'signature', signature) != signature:
@@ -350,17 +395,18 @@ class AudioRoles:
             # before checking resources so the next batch member stays queued.
             if self.active:
                 raise ComputeError(429, 'Audio model worker busy')
-        selected = None if mode in ('PROBE', 'FAST') else backend or (self.models.selected() if hasattr(self, 'models') else 'cpu')
-        if mode in ('ANALYZE', 'SEPARATE') and hasattr(self, 'models'):
+        selected = (self.separation.admit(separation_profile, backend, source_audio_id) if enhanced else
+                    None if mode in ('PROBE', 'FAST') else backend or (self.models.selected() if hasattr(self, 'models') else 'cpu'))
+        if not enhanced and mode in ('ANALYZE', 'SEPARATE') and hasattr(self, 'models'):
             available = {item['id'] for item in self.models.entries() if item['state'] == 'AVAILABLE'}
             if selected not in available and getattr(self.transcoding.backends, 'cpu_fallback', True) and 'cpu' in available:
                 selected = 'cpu'
-        if self.stopping or not self.transcoding.available or (mode in ('ANALYZE', 'SEPARATE') and not ((self.backend_runtime_available(selected) if selected else False) if hasattr(self, 'models') else self.available)):
+        if self.stopping or not self.transcoding.available or (not enhanced and mode in ('ANALYZE', 'SEPARATE') and not ((self.backend_runtime_available(selected) if selected else False) if hasattr(self, 'models') else self.available)):
             raise ComputeError(503, 'Audio model is not installed and configured')
         if self.root is None or shutil.disk_usage(self.root).free < self.settings.minimum_free_bytes:
             raise ComputeError(507, 'Insufficient audio working space')
         # GPU/runtime subprocess queries must not hold the realtime scheduling lock.
-        if mode in ('ANALYZE', 'SEPARATE') and hasattr(self, 'models'):
+        if not enhanced and mode in ('ANALYZE', 'SEPARATE') and hasattr(self, 'models'):
             if not any(item['id'] == selected and item['state'] == 'AVAILABLE' for item in self.models.entries()):
                 raise ComputeError(422, 'Selected inference backend has not passed qualification')
             try:
@@ -383,14 +429,20 @@ class AudioRoles:
             self.active = True
             task = AudioTask(identifier)
             task.mode = mode
+            task.recipe = specification or (recipe() if mode == 'SEPARATE' else {})
             task.result['timingsMs'] = {'admission': round((time.monotonic()-submitted)*1000, 3)}
             task.backend = selected
             task.cpu_fallback = getattr(self.transcoding.backends, 'cpu_fallback', True)
-            if mode in ('ANALYZE', 'SEPARATE') and selected == 'cpu' and hasattr(self, 'models') and any(item.get('detected') for item in self.models.entries()):
+            if enhanced and specification['separationProfile'] == 'AI_CLEAN' and backend not in (None, '', 'auto', 'cpu') and selected == 'cpu':
+                task.fallback_reason = 'ACCELERATOR_UNAVAILABLE'
+                task.result['fallbackReason'] = task.fallback_reason
+            if not enhanced and backend != 'cpu' and mode in ('ANALYZE', 'SEPARATE') and selected == 'cpu' and hasattr(self, 'models') and any(item.get('detected') for item in self.models.entries()):
                 task.fallback_reason = 'ACCELERATOR_NOT_READY'
                 task.result['fallbackReason'] = task.fallback_reason
-            if mode in ('ANALYZE', 'SEPARATE'):
+            if mode in ('ANALYZE', 'SEPARATE') and not enhanced:
                 task.result.update(self.execution(selected))
+            if mode == 'SEPARATE':
+                task.result.update(task.recipe)
             task.signature = signature
             self.tasks[identifier] = task
             try:
@@ -435,14 +487,16 @@ class AudioRoles:
                         task.result.update(state='UNKNOWN', reason='NOT_DUAL_AUDIO', streams=[asdict(s) for s in audio], duration=media.duration)
                         task.state = 'CANCELLED' if task.cancel.is_set() else 'SUCCEEDED'
                         return
-                    if len(audio) != expected or media.duration <= 0:
+                    if (len(audio) != expected and not (enhanced and source_audio_id is not None)) or media.duration <= 0:
                         raise ComputeError(422, 'Unexpected audio stream count or duration')
                     if mode == 'ANALYZE' and media.duration < 60:
                         task.result.update(state='UNKNOWN', reason='INSUFFICIENT_DURATION', streams=[asdict(s) for s in audio], duration=media.duration)
                         task.state = 'CANCELLED' if task.cancel.is_set() else 'SUCCEEDED'
                         return
                     estimate = int(media.duration * 44100 * 2 * 2 * 8)
-                    if estimate + sum(p.stat().st_size for p in self.root.glob("*.m4a")) > self.settings.cache_bytes or shutil.disk_usage(self.root).free < estimate + self.settings.minimum_free_bytes:
+                    if enhanced and (separation_profile == 'DSP_FAST' or source_audio_id):
+                        estimate = int((min(12, media.duration) if preview else media.duration) * (352800 if output_format == 'flac' else 32000) + 65536)
+                    if estimate + sum(p.stat().st_size for suffix in ('*.m4a', '*.flac') for p in self.root.glob(suffix)) > self.settings.cache_bytes or shutil.disk_usage(self.root).free < estimate + self.settings.minimum_free_bytes:
                         raise ComputeError(507, 'Audio task exceeds disk budget')
                     with tempfile.TemporaryDirectory(prefix='work-'+identifier+'-', dir=self.root) as temp:
                         work = Path(temp)
@@ -472,20 +526,29 @@ class AudioRoles:
                             result['duration'] = media.duration
                             task.result.update(result)
                         else:
-                            wav = work / 'source.wav'
-                            self._extract(source, network, audio[0].index, 0, media.duration, wav, task)
-                            with self.stage(task, 'separate'):
-                                _, backing = self._separate(wav, work / 'out', task)
-                            target = self.root / f'{identifier}.m4a'
+                            extension = 'flac' if output_format == 'flac' else 'm4a'
+                            target = self.root / f'{identifier}.{extension}'
                             temporary = self.root / f'{identifier}.part'
-                            with self.stage(task, 'encode'):
-                                self._run([self.settings.ffmpeg, '-nostdin', '-v', 'error', '-i', str(backing),
-                                           '-c:a', 'aac', '-b:a', '192k', '-f', 'ipod', '-y', str(temporary)], task)
+                            if enhanced:
+                                selected_stream, expected_duration, offset = self.separation.process(
+                                    source, network, audio, media.duration, work, temporary, task)
+                            else:
+                                expected_duration = min(12, media.duration) if preview else media.duration
+                                offset = max(0, (media.duration-expected_duration)*.35) if preview else 0
+                                selected_stream = audio[0]
+                                wav = work / 'source.wav'
+                                self._extract(source, network, audio[0].index, offset, expected_duration, wav, task)
+                                with self.stage(task, 'separate'):
+                                    _, backing = self._separate(wav, work / 'out', task)
+                                codec = ['-c:a', 'flac', '-compression_level', '0', '-f', 'flac'] if output_format == 'flac' else ['-c:a', 'aac', '-b:a', '192k', '-f', 'ipod']
+                                with self.stage(task, 'encode'):
+                                    self._run([self.settings.ffmpeg, '-nostdin', '-v', 'error', '-i', str(backing),
+                                               *codec, '-y', str(temporary)], task)
                             if not temporary.is_file() or temporary.stat().st_size == 0:
                                 raise ComputeError(422, 'Empty accompaniment output')
                             with self.stage(task, 'validate'):
                                 output_media = self.transcoding.probe.read_audio(str(temporary), cancel=task.cancel)
-                            if abs(output_media.duration - media.duration) > .25 or not any(s.kind == 'audio' for s in output_media.streams):
+                            if abs(output_media.duration - expected_duration) > .25 or not any(s.kind == 'audio' for s in output_media.streams):
                                 raise ComputeError(422, 'Accompaniment timeline mismatch')
                             if abs(output_media.start_time) > .025:
                                 raise ComputeError(422, 'Accompaniment starts outside original timeline')
@@ -494,25 +557,27 @@ class AudioRoles:
                             temporary.replace(target)
                             with self.stage(task, 'hash'):
                                 digest = self.digest(target)
-                            task.result.update(state='READY', duration=media.duration, audioId=audio[0].id,
-                                sha256=digest, size=target.stat().st_size, artifact=f'{identifier}.m4a', streams=[asdict(s) for s in audio])
+                            task.result.update(state='READY', duration=expected_duration, sourceDuration=media.duration,
+                                sourceOffsetSeconds=offset, audioId=selected_stream.id,
+                                mediaType='audio/flac' if output_format == 'flac' else 'audio/mp4',
+                                sha256=digest, size=target.stat().st_size, artifact=f'{identifier}.{extension}', streams=[asdict(s) for s in audio])
                 task.state = 'CANCELLED' if task.cancel.is_set() else 'SUCCEEDED'
             except Exception as error:
                 task.result['diagnostic'] = error.message if isinstance(error, ComputeError) else 'Audio worker failed unexpectedly'
                 task.error = task.error or ('AUDIO_MEMORY_LIMIT' if isinstance(error, ComputeError) and 'memory budget' in error.message else 'AUDIO_EXECUTION_FAILED')
                 task.state = 'CANCELLED' if task.cancel.is_set() else 'FAILED'
-                for suffix in ('.part', '.m4a'):
+                for suffix in ('.part', '.m4a', '.flac'):
                     (self.root / f'{identifier}{suffix}').unlink(missing_ok=True)
             finally:
                 task.result.setdefault('timingsMs', {})['total'] = round((time.monotonic()-submitted)*1000, 3)
                 task.result['stage'] = task.state
-                if mode in ('ANALYZE', 'SEPARATE'):
+                if mode in ('ANALYZE', 'SEPARATE') and not enhanced:
                     if getattr(task, 'fallback_reason', ''): task.result['fallbackReason'] = task.fallback_reason
                     task.result.update(self.execution(task.backend))
                     if task.backend == 'mps':
                         task.result['pipeline'] = 'mps+cpu-stft'
                 if task.state != 'SUCCEEDED':
-                    for suffix in ('.part', '.m4a'):
+                    for suffix in ('.part', '.m4a', '.flac'):
                         (self.root / f'{identifier}{suffix}').unlink(missing_ok=True)
                 try:
                     self.save(task)
@@ -543,13 +608,15 @@ class AudioRoles:
                 task.cancel.set()
         if self.native_worker:
             self.native_worker.interrupt()
+        if hasattr(self, 'separation'):
+            self.separation.worker.interrupt()
 
     def collect(self):
         # Java acknowledges successful transfers; orphaned output expires after one day.
         if not self.collection_lock.acquire(blocking=False):
             return
         try:
-            for record in self.root.glob('*.m4a'):
+            for record in (*self.root.glob('*.m4a'), *self.root.glob('*.flac')):
                 try:
                     if time.time() - record.stat().st_mtime > 86400:
                         record.unlink(missing_ok=True)
@@ -581,7 +648,7 @@ class AudioRoles:
             raise ComputeError(404, 'Audio task not found')
         if task.state not in ('SUCCEEDED', 'FAILED', 'CANCELLED'):
             raise ComputeError(409, 'Audio task is still active')
-        for suffix in ('.m4a', '.part'):
+        for suffix in ('.m4a', '.flac', '.part'):
             (self.root / f'{task.id}{suffix}').unlink(missing_ok=True)
         self.transcoding.storage_dirty.set()
         return task.view()
@@ -603,6 +670,8 @@ class AudioRoles:
                 task.cancel.set()
         if self.native_worker:
             self.native_worker.close()
+        if hasattr(self, 'separation'):
+            self.separation.close()
 
         if self.thread:
             self.thread.join(timeout=5)
@@ -628,7 +697,8 @@ class AudioRoles:
     def artifact(self, identifier):
         if self.view(identifier)['state'] != 'SUCCEEDED':
             raise ComputeError(409, 'Audio artifact is not ready')
-        path = self.root / f'{identifier}.m4a'
+        extension = 'flac' if self.tasks[identifier].result.get('outputFormat') == 'flac' else 'm4a'
+        path = self.root / f'{identifier}.{extension}'
         if not path.is_file():
             raise ComputeError(404, 'Audio artifact is missing')
         return path

@@ -1,0 +1,11 @@
+# Optional NAS bind mount; replaces the /downloads named-volume target.
+# Use with --project-directory at the repository root and --env-file .env.
+services:
+  singverse-java-backend:
+    volumes:
+      - type: bind
+        source: '${SINGVERSE_DOWNLOAD_PATH:?Set an absolute writable NAS download directory}'
+        target: /downloads
+        read_only: false
+        bind:
+          create_host_path: false

@@ -12,7 +12,7 @@
     WHERE password_encrypted IS NOT NULL
   </select>
   <select id="list" resultType="map">
-    SELECT id, name, source_type, location, location_hash, username, password_encrypted, parser_profile_id, created_at, updated_at, scan_enabled, scan_cron, next_scan_at, last_scan_at, last_scan_status, last_scan_error
+    SELECT CASE WHEN EXISTS(SELECT 1 FROM lx_download_settings lx WHERE lx.source_id=media_source.id) THEN 1 ELSE 0 END AS use_for_lx_downloads, id, name, source_type, location, location_hash, username, password_encrypted, parser_profile_id, created_at, updated_at, scan_enabled, scan_cron, next_scan_at, last_scan_at, last_scan_status, last_scan_error
     FROM media_source
     ORDER BY created_at DESC, id ASC
     LIMIT #{limit}
@@ -28,7 +28,7 @@
     <if test="profileId != null">AND parser_profile_id = #{profileId}</if>
   </where></sql>
   <select id="search" resultType="map">
-    SELECT source.id, source.name, source.source_type, source.location, source.username,
+    SELECT CASE WHEN EXISTS(SELECT 1 FROM lx_download_settings lx WHERE lx.source_id=source.id) THEN 1 ELSE 0 END AS use_for_lx_downloads, source.id, source.name, source.source_type, source.location, source.username,
            source.password_encrypted, source.parser_profile_id, source.created_at, source.updated_at,
            source.scan_enabled, source.scan_cron, source.next_scan_at, source.last_scan_at, source.last_scan_status, source.last_scan_error
     FROM media_source source JOIN (
@@ -39,7 +39,7 @@
   </select>
   <select id="searchCount" resultType="long">SELECT COUNT(*) FROM media_source <include refid="searchFilter" /></select>
   <select id="find" resultType="map">
-    SELECT id, name, source_type, location, location_hash, username, password_encrypted, parser_profile_id, created_at, updated_at, scan_enabled, scan_cron, next_scan_at, last_scan_at, last_scan_status, last_scan_error
+    SELECT CASE WHEN EXISTS(SELECT 1 FROM lx_download_settings lx WHERE lx.source_id=media_source.id) THEN 1 ELSE 0 END AS use_for_lx_downloads, id, name, source_type, location, location_hash, username, password_encrypted, parser_profile_id, created_at, updated_at, scan_enabled, scan_cron, next_scan_at, last_scan_at, last_scan_status, last_scan_error
     FROM media_source
     WHERE id=#{id}
   </select>

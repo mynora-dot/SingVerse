@@ -63,7 +63,8 @@ it('关闭详情时，尚未完成的请求不能重新启动轮询', async () =
   wrapper = mount(AudioRolesPanel, { props: { songId: 'song' } })
   wrapper.unmount(); wrapper = undefined
   finish(result); await flushPromises(); await vi.advanceTimersByTimeAsync(10000)
-  expect(authRequest).toHaveBeenCalledTimes(1)
+  expect(vi.mocked(authRequest).mock.calls.filter(call => call[0].endsWith('/audio-roles'))).toHaveLength(1)
+  expect(vi.mocked(authRequest).mock.calls.filter(call => call[0].endsWith('/node'))).toHaveLength(1)
 })
 it('切换歌曲忽略旧探测结果，并且只保留一个轮询', async () => {
   let finish: (value: typeof result) => void = () => undefined

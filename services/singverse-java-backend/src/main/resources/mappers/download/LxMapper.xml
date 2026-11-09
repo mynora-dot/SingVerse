@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mynora.singverse.media.download.LxMapper">
+  <select id="settings" resultType="map">SELECT c.*,s.name AS source_name,s.location AS source_path,s.source_type FROM lx_download_settings c LEFT JOIN media_source s ON s.id=c.source_id WHERE c.id=1</select>
+  <update id="lockSettings">UPDATE lx_download_settings SET revision=revision WHERE id=1</update>
+  <update id="bind">UPDATE lx_download_settings SET source_id=#{sourceId},revision=revision+1 WHERE id=1</update>
+  <update id="activate">UPDATE lx_download_settings SET active_script_id=#{id},revision=revision+1 WHERE id=1</update>
+  <select id="scripts" resultType="map">SELECT id,name,version,environment,capabilities_json,created_at FROM lx_script WHERE deleted=0 ORDER BY created_at DESC,id</select>
+  <select id="script" resultType="map">SELECT * FROM lx_script WHERE id=#{id}</select>
+  <select id="sameScript" resultType="map">SELECT * FROM lx_script WHERE content_hash=#{hash} AND environment=#{environment}</select>
+  <insert id="insertScript">INSERT INTO lx_script(id,name,version,environment,content_hash,secret_encrypted,capabilities_json,created_at) VALUES(#{id},#{name},#{version},#{environment},#{hash},#{secret},#{capabilities},#{now})</insert>
+  <update id="deleteScript">UPDATE lx_script SET deleted=#{deleted} WHERE id=#{id}</update>
+  <select id="secrets" resultType="string">SELECT secret_encrypted FROM lx_script</select>
+  <select id="activeSource" resultType="int">SELECT COUNT(*) FROM lx_download_batch WHERE source_id=#{sourceId} AND status IN ('QUEUED','RUNNING','CANCELLING')</select>
+  <select id="activeScript" resultType="int">SELECT COUNT(*) FROM lx_download_batch WHERE script_id=#{id} AND status IN ('QUEUED','RUNNING','CANCELLING')</select>
+  <select id="track" resultType="map">SELECT * FROM lx_catalog_track WHERE id=#{id}</select>
+  <delete id="deleteTrack">DELETE FROM lx_catalog_track WHERE id=#{id}</delete>
+  <insert id="insertTrack">INSERT INTO lx_catalog_track(id,platform,remote_id,track_json,updated_at) VALUES(#{id},#{platform},#{remoteId},#{json},#{now})</insert>
+  <delete id="pruneTracks">DELETE FROM lx_catalog_track WHERE updated_at &lt; #{before}</delete>
+  <insert id="insertBatch">INSERT INTO lx_download_batch(id,name,source_id,source_path,script_id,quality,status,created_at,updated_at) VALUES(#{id},#{name},#{sourceId},#{path},#{scriptId},#{quality},'QUEUED',#{now},#{now})</insert>
+  <insert id="insertItem">INSERT INTO lx_download_item(id,batch_id,track_key,track_json,requested_quality,active_key,status,message,updated_at,song_id) VALUES(#{id},#{batchId},#{trackKey},#{trackJson},#{quality},#{activeKey},#{status},#{message},#{now},#{songId})</insert>
+  <select id="activeItem" resultType="map">SELECT id,batch_id FROM lx_download_item WHERE active_key=#{activeKey}</select>
+  <select id="qualityOwner" resultType="map">SELECT id FROM lx_download_item WHERE resolved_active_key=#{key}</select>
+  <update id="reserveQuality">UPDATE lx_download_item SET resolved_quality=#{quality},resolved_active_key=#{key},updated_at=#{now} WHERE id=#{id} AND status='RESOLVING'</update>
+  <select id="batches" resultType="map">SELECT * FROM lx_download_batch ORDER BY CASE WHEN status IN ('RUNNING','CANCELLING') THEN 0 WHEN status='QUEUED' THEN 1 ELSE 2 END,created_at DESC,id DESC LIMIT #{size} OFFSET #{offset}</select>
+  <select id="batchCount" resultType="long">SELECT COUNT(*) FROM lx_download_batch</select>
+  <select id="batch" resultType="map">SELECT * FROM lx_download_batch WHERE id=#{id}</select>
+  <select id="items" resultType="map">SELECT * FROM lx_download_item WHERE batch_id=#{id} ORDER BY CASE WHEN status IN ('RESOLVING','DOWNLOADING','PUBLISHING') THEN 0 WHEN status='QUEUED' THEN 1 ELSE 2 END,id LIMIT #{size} OFFSET #{offset}</select>
+  <select id="itemCount" resultType="long">SELECT COUNT(*) FROM lx_download_item WHERE batch_id=#{id}</select>
+  <select id="counts" resultType="map">SELECT status,COUNT(*) AS amount FROM lx_download_item WHERE batch_id=#{id} GROUP BY status</select>
+  <select id="queued" resultType="map">SELECT i.id,i.batch_id FROM lx_download_item i JOIN lx_download_batch b ON b.id=i.batch_id WHERE i.status='QUEUED' AND b.status IN ('QUEUED','RUNNING') ORDER BY b.created_at,i.id LIMIT 2</select>
+  <update id="claim">UPDATE lx_download_item SET status='RESOLVING',updated_at=#{now} WHERE id=#{id} AND status='QUEUED'</update>
+  <select id="item" resultType="map">SELECT i.*,b.source_id,b.source_path,b.script_id,b.status AS batch_status FROM lx_download_item i JOIN lx_download_batch b ON b.id=i.batch_id WHERE i.id=#{id}</select>
+  <update id="progress">UPDATE lx_download_item SET status='DOWNLOADING',received_bytes=#{received},total_bytes=#{total},updated_at=#{now} WHERE id=#{id} AND status IN ('RESOLVING','DOWNLOADING')</update>
+  <update id="updateItem">UPDATE lx_download_item SET status=#{status},resolved_quality=#{resolvedQuality},relative_path=#{relativePath},song_id=#{songId},content_hash=#{hash},message=#{message},updated_at=#{now},active_key=#{activeKey},resolved_active_key=#{resolvedActiveKey} WHERE id=#{id}</update>
+  <update id="updateBatch">UPDATE lx_download_batch SET status=#{status},updated_at=#{now},started_at=COALESCE(started_at,#{started}),finished_at=#{finished} WHERE id=#{id}</update>
+  <update id="cancel">UPDATE lx_download_item SET status='CANCELLED',active_key=NULL,resolved_active_key=NULL,message='已取消',updated_at=#{now} WHERE batch_id=#{id} AND status IN ('QUEUED','RESOLVING','DOWNLOADING')</update>
+  <select id="recovering" resultType="map">SELECT id FROM lx_download_item WHERE status='PUBLISHING'</select>
+  <select id="transferring" resultType="map">SELECT id FROM lx_download_item WHERE status IN ('RESOLVING','DOWNLOADING','FAILED','INTERRUPTED','CANCELLED')</select>
+  <update id="interrupt">UPDATE lx_download_item SET status='INTERRUPTED',active_key=NULL,resolved_active_key=NULL,message='服务重启，重新尝试将从头下载',updated_at=#{now} WHERE status IN ('RESOLVING','DOWNLOADING')</update>
+  <select id="activeBatches" resultType="map">SELECT id FROM lx_download_batch WHERE status IN ('QUEUED','RUNNING','CANCELLING')</select>
+  <select id="asset" resultType="map">SELECT * FROM lx_download_asset WHERE source_id=#{sourceId} AND track_key=#{trackKey} AND quality=#{quality}</select>
+  <select id="assetsForTrack" resultType="map">SELECT a.*,s.location AS source_path FROM lx_download_asset a JOIN media_source s ON s.id=a.source_id WHERE a.track_key=#{trackKey}</select>
+  <select id="songAsset" resultType="map">SELECT * FROM lx_download_asset WHERE song_id=#{songId}</select>
+  <select id="sourceAssets" resultType="map">SELECT * FROM lx_download_asset WHERE source_id=#{sourceId}</select>
+  <select id="activeTrack" resultType="int">SELECT COUNT(*) FROM lx_download_item WHERE track_key=#{trackKey} AND active_key IS NOT NULL</select>
+  <select id="retryItems" resultType="map">SELECT track_key,track_json FROM lx_download_item WHERE batch_id=#{id} AND status IN ('FAILED','INTERRUPTED','CANCELLED') ORDER BY id LIMIT 1000</select>
+  <delete id="deleteAsset">DELETE FROM lx_download_asset WHERE id=#{id}</delete>
+  <insert id="insertAsset">INSERT INTO lx_download_asset(id,source_id,track_key,quality,relative_path,song_id,file_size,modified_at,content_hash,track_json,created_at) VALUES(#{id},#{sourceId},#{trackKey},#{quality},#{relativePath},#{songId},#{size},#{modified},#{hash},#{trackJson},#{now})</insert>
+  <insert id="insertSong">INSERT INTO media_song(id,source_id,relative_path,path_hash,file_size,modified_at,scanned_at,parser_profile_id,parser_revision,selected_rule_id,result_json,needs_review) SELECT #{songId},#{sourceId},#{relativePath},#{pathHash},#{size},#{modified},#{now},#{profileId},#{revision},NULL,#{result},0 WHERE NOT EXISTS(SELECT 1 FROM media_song WHERE id=#{songId})</insert>
+</mapper>

@@ -186,7 +186,7 @@ SINGVERSE_TEST_FAST_MODEL_REPO="$PWD/.tools/demucs-htdemucs" \
 - ANALYZE 是管理员显式选择的“深度识别”，只接受两条源音轨。`vocal-activity-v2` 把歌曲分为五个区域，先分析两个、不确定时最多五个互不重叠的片段（每段最长 20 秒，60～100 秒歌曲缩短片段）；全曲不足 60 秒仍保留 UNKNOWN。按半秒帧计算人声/输入 RMS 比，在排除静音后取中位数，至少四帧有声才有有效数值，减少间奏、静音及瞬时强音干扰。强方向判断继续要求人声比 ≥0.25、另一轨 ≤0.06、两轨比例 ≥6；至少两个一致片段且占非弱人声片段的 2/3，无反向强证据，才能自动标记。弱人声片段不投票，方向或标签冲突保留 UNKNOWN；深度识别中的标签不会单独决定角色，`No Vocals` 不再被当作原唱标签。立体声左右声道不会被当作两条音轨。
 - 完成采样的正常/不确定分析均保存版本、片段起点/时长、人声比及活跃帧数，供 Java 管理界面诊断。两轨均有较强人声也保留 UNKNOWN。能量比不是准确率，也未校准为概率；真实歌曲的自动标记覆盖率与标反率仍须分别验收。不确定歌曲允许管理员重新分析，后台发现任务不会循环自动重试；FAST_MODEL_MISSING 在安装分类器后允许自动再识别一次；新版节点具备 `audio-role-fast-v2` 时，旧版 FAST 的 UNKNOWN 也由 Java 自动补跑一次，同版本不循环重试。快速识别不覆盖任何已确认角色，深度识别仍保护人工/共享确认结果。
 - SEPARATE 仅对单音轨执行，保持原始时间线的前置静音和尾部填充，输出独立 AAC M4A；校验起点、时长、体积与 SHA-256。临时工作目录、取消/失败产物清理；重启后未完成任务报告 NODE_RESTARTED，Java 展示失败并允许管理员重试。
-- 音频任务一次一个，默认 CPU 线程 2、进程 RSS 上限 4 GiB（`COMPUTE_AUDIO_THREADS`、`COMPUTE_AUDIO_MEMORY_BYTES`），共享磁盘预算及最小空余限制，超时 2 小时。实时播放先终止音频任务，再重试获取执行容量；音频任务不能进入实时预留期间。compute被抢占任务显示 CANCELLED / REALTIME_PREEMPTED，Java记录为失败，批量页面可显式重试；默认开启的统一 CPU 自动降级仅对明确的加速后端故障重试一次，记录实际设备及原因；关闭后不切换。无效媒体、磁盘不足、取消和进程内存预算错误不重试。
+- 音频任务一次一个，CPU 线程默认按有效核心与配额自动选择（最多 8，RK3566 初值最多 2）、进程 RSS 上限 4 GiB（`COMPUTE_AUDIO_THREADS`、`COMPUTE_AUDIO_MEMORY_BYTES`），共享磁盘预算及最小空余限制，超时 2 小时。实时播放先终止音频任务，再重试获取执行容量；音频任务不能进入实时预留期间。compute被抢占任务显示 CANCELLED / REALTIME_PREEMPTED，Java记录为失败，批量页面可显式重试；默认开启的统一 CPU 自动降级仅对明确的加速后端故障重试一次，记录实际设备及原因；关闭后不切换。无效媒体、磁盘不足、取消和进程内存预算错误不重试。
 - Java 校验下载的产物后保存至自己的衍生目录，确认成功后释放 compute 副本；未收到确认的 compute 音频在后续任务回收时保留最长一天。不要把衍生目录放入原始媒体目录。
 
 Compose默认不安装音频运行环境或下载权重，但已提供持久卷 `singverse-audio-models`，默认模型目录 `/var/lib/singverse-models/htdemucs`。CPU部署使用 `infra/docker/compose/compose.audio-cpu.yaml`，叠加该覆盖文件后重建并重新创建 compute（覆盖文件已选择 CPU target 和默认 6g 容器上限）；随后从网页下载模型和试跑。原有只读模型挂载可通过override继续使用。默认2g容器不满足默认4GiB音频预算，不会因识别到CPU就启用任务。Java的 `AUDIO_DERIVED_PATH` 为持久卷 `/data/audio-roles`；原媒体卷只读。
@@ -259,9 +259,9 @@ CPU 镜像由 Docker 清单选择 amd64／arm64，GPU 后端需要显式选择�
 
 该配置通过专用适配器读取既有官方权重与 44.1kHz 双声道 PCM，保持模型原始 7.8 秒分段、0.25 重叠和 shifts=0。每次工作进程从同一已核验大小/SHA256的文件描述符加载官方 checkpoint，局部使用 `weights_only=False`，不全局修改 Torch 加载行为；音频读写使用 SoundFile，避免新 torchaudio 对额外 TorchCodec 的要求。实际模型参数和每次 forward 的输入/输出必须留在指定设备；GPU 不可用或架构不符立即失败，不在适配器内隐式转 CPU。CPU 仅接受显式选择或上层已有的、带结果标记的降级流程。
 
-原生 ROCm 的连续任务复用一个独立子进程和已校验模型，空闲默认 60 秒后退出；`COMPUTE_AUDIO_WORKER_IDLE_SECONDS` 范围 0～3600，0 使用每次独立启动。模型文件的设备、inode、大小、mtime/ctime 或后端变化会重启进程并完整校验权重；不缓存不同后端的多份模型。GPU 空闲显存查询复用此进程，但仍在每次准入时检查。取消、执行失败、120 秒无推理进展、内存超限、节点停止及实时播放抢占都会销毁进程，后续任务重新启动。播放抢占同时释放闲置模型，不在播放调度锁内等待进程回收。
+原生 ROCm 与固定旧版 CPU／CUDA／MPS 的连续任务复用一个独立子进程和已校验模型，空闲默认 60 秒后退出；`COMPUTE_AUDIO_WORKER_IDLE_SECONDS` 范围 0～3600，0 使用每次独立启动。模型文件的设备、inode、大小、mtime/ctime 或后端变化会重启进程并完整校验权重；不缓存不同后端的多份模型。GPU 空闲显存查询复用此进程，但仍在每次准入时检查。取消、执行失败、120 秒无推理进展、内存超限、节点停止及实时播放抢占都会销毁进程，后续任务重新启动。播放抢占同时释放闲置模型，不在播放调度锁内等待进程回收。
 
-适配器先分块计算整首歌曲的全局均值及无偏标准差，再按原始分段、三角重叠权重与尾段上下文推理并逐段写出，CPU 不再持有整首四条音轨。只生成伴奏时不写无人使用的人声 WAV；模型试跑和深度识别仍输出人声。源 PCM、伴奏 WAV、AAC 编码及完整校验仍按顺序执行，尚不是边生成边播放。其它运行时保留原适配器，不宣称已获得相同的模型驻留优化。
+适配器先分块计算整首歌曲的全局均值及无偏标准差，再按原始分段、三角重叠权重与尾段上下文推理并逐段写出，CPU 不再持有整首四条音轨。只生成伴奏时不写无人使用的人声 WAV；模型试跑和深度识别仍输出人声。源 PCM、伴奏 WAV、AAC 编码及完整校验仍按顺序执行，尚不是边生成边播放。此机制已扩展至固定旧版运行时的 CPU／CUDA／MPS；新 MDX 配方另用独立 worker。真机收益须分别测量。
 
 音频任务使用专用、可取消的 ffprobe 投影，跳过视频帧/HDR 检查，并在一次产物探测中校验时长和起点。任务结果增加 `stage`、`progress`、`timingsMs` 和原生 `inference` 证据：`queue` 为 Java 本地采集并合并的排队时间，不扩展内部提交请求；`admission/probe/extract/separate/encode/validate/hash/total` 为单调时钟毫秒，Java 接收后补充 `transfer`。`extract` 包含回源和解码；`separate` 包含 IPC、模型加载、推理及 WAV 写出，嵌套 `inference.timingsMs` 为其中的细分，不能将所有字段直接相加。`progress` 只表示当前分离任务已完成重叠合并的音频帧，不是整任务进度。旧节点缺省这些字段仍兼容。
 
@@ -363,7 +363,7 @@ SINGVERSE_TEST_OPENVINO_MODEL_REPO=/absolute/path/to/.tools/htdemucs-openvino \
 
 官方参考：Immich 的硬件镜像与远程 ML 文档、Intel `demucs-openvino` 模型库。镜像构建、合成音试跑不替代真实歌曲质量、长曲、NAS 和对应 GPU 真机验收。
 
-模型状态查询共用一次后端快照。RKNN 权重校验按 manifest 与模型的设备、inode、大小、mtime／ctime 缓存，使用独立锁避免等待环境探测；文件变化立即失效，实际执行前仍重新验证完整摘要。视频转码与伴奏推理共用节点 `hardware-settings.json` 的 `cpuFallback`，旧配置默认开启；通过现有硬件设置 API 保存并校验 revision，只对新任务生效。返回 `detectedBackends`，音频后端返回 `detected` 区分物理存在与运行就绪；仅安装编码器不算硬件存在。有加速硬件时拒绝手选 CPU，旧固定 CPU 配置按硬件优先解析。降级须满足 CPU 运行条件，推理还需独立试跑；任务结果记录 `fallbackReason`。HLS 已发布播放清单后不切换后端。
+模型状态查询共用一次后端快照。RKNN 权重校验按 manifest 与模型的设备、inode、大小、mtime／ctime 缓存，使用独立锁避免等待环境探测；文件变化立即失效，实际执行前仍重新验证完整摘要。视频转码与伴奏推理共用节点 `hardware-settings.json` 的 `cpuFallback`，旧配置默认开启；通过现有硬件设置 API 保存并校验 revision，只对新任务生效。返回 `detectedBackends`，音频后端返回 `detected` 区分物理存在与运行就绪；仅安装编码器不算硬件存在。允许主动选择已合格的 CPU，不再因发现加速硬件而拒绝。降级须满足 CPU 运行条件，推理还需独立试跑；任务结果记录 `fallbackReason`。HLS 已发布播放清单后不切换后端。
 
 节点启动后在后台检测推理环境，自动为已安装模型的未验证设备执行一次真实分离试跑，优先加速设备；允许 CPU 自动降级时同时验证 CPU。复用当前环境与权重仍匹配的资格，不自动下载模型，也不循环重试已失败的设备；缺失依赖或模型继续给出配置原因。实时播放或模型操作占用时等待，取消试跑或停止节点会中止后续自动检查。模型状态返回 `startupCheck`（检测、等待、试跑、完成、失败或取消）；启动健康检查不等待模型推理完成。
 
@@ -382,7 +382,7 @@ cd services/singverse-compute
   --output /absolute/path/to/test-output /absolute/path/to/stereo-44100.wav
 ```
 
-输入须为双声道 44.1kHz WAV，输出为 `test-output/htdemucs/<文件名>/vocals.wav` 与 `no_vocals.wav`（目录名沿用现有任务约定）。独立 CLI 的 ONNX CPU 基准不参与管理端后端自动选择，也不替换既有 Demucs CPU 降级。DSP 使用模型内置参数：4096 点 Hann FFT、1024 hop、2048 频率 bin、256 帧；保留双声道，分块重建，伴奏由源信号减去预测人声生成。
+输入须为双声道 44.1kHz WAV，输出为 `test-output/htdemucs/<文件名>/vocals.wav` 与 `no_vocals.wav`（目录名沿用现有任务约定）。原独立 CLI 保留；管理端新增 AI_CLEAN 配方，使用独立 ORT CPU worker 并参加统一试跑与自动降级，不能与旧 Demucs CPU 资格混用。DSP 使用模型内置参数：4096 点 Hann FFT、1024 hop、2048 频率 bin、256 帧；保留双声道，分块重建，伴奏由源信号减去预测人声生成。
 
 RKNN 转换必须在独立的、RKNN Toolkit2 支持的转换环境执行，不在飞牛网页请求中安装工具：
 
@@ -421,3 +421,7 @@ services/singverse-compute/.venv/bin/python scripts/package-rk3566.py \
 打包使用文件白名单，内含 Compose、配置示例、源码、锁文件、固定 ONNX、操作说明及 `SHA256SUMS`，不收集本地 `.env`、凭据、数据库或 Python 缓存。解压后按包内 README 填写 NAS 局域网 IP，执行 `docker compose --project-directory . up -d --build`；首次构建需要网络。
 
 NVIDIA 源码上传包可用 `make compute-package-nvidia` 生成，或执行 `python3 scripts/package-nvidia.py --output /tmp/SingVerse-NVIDIA.zip`。包内 `docker-compose.yaml` 固定配置、无曲库目录、无 `.env`，包含构建依赖源码和部署说明，并统一目录 755／文件 644。输出文件已存在时失败，避免覆盖正在使用的包；重新打包请指定新输出路径。
+
+## 跨平台快速伴奏引擎（2026-11-09）
+
+新增源伴奏复用、无 AI 的 DSP 极速档、固定 MDX 干净档、12 秒试听、FLAC 导出及伴奏版本切换。独立 CPU ORT/Torch 环境、后端试跑、GPU/NPU 同模型故障重试、MLX/ORT/OpenVINO 适配及转换、校准、Benchmark 工具见 [完整实施说明](AUDIO-SEPARATION.md)。新入口 `make compute-separation-cpu-setup` 与 `make compute-separation-mlx-setup` 不覆盖服务环境；硬件尚未验收的适配器不自动标为可用。
