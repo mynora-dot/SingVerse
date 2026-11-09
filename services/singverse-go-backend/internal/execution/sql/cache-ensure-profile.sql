@@ -1,0 +1,1 @@
+INSERT INTO song_playback_profile(song_id,last_played_at,heat,heat_updated_at,pinned,pin_revision) SELECT @{song},NULL,0,NULL,0,0 WHERE NOT EXISTS(SELECT 1 FROM song_playback_profile WHERE song_id=@{song})

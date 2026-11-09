@@ -11,7 +11,7 @@
 
 ## 结构与初始值
 
-业务表覆盖认证、媒体来源与解析、歌曲索引和扫描、元数据审核与分享、AI 与分类、歌手与图片、TV 与聚会、歌单、转码与音轨、缓存、真实播放统计及缺歌反馈。SQLite/MySQL 保留各自适用的文本、二进制、自增及索引定义；Java 不自动建表，业务 SQL 继续放在 MyBatis Mapper XML。
+业务表覆盖认证、媒体来源与解析、歌曲索引和扫描、元数据审核与分享、AI 与分类、歌手与图片、TV 与聚会、歌单、转码与音轨、缓存、真实播放统计及缺歌反馈。SQLite/MySQL 保留各自适用的文本、二进制、自增及索引定义；Go 不自动建表，业务 SQL 继续放在 模块内嵌 SQL。
 
 - WebDAV 的文件大小和修改时间允许为空；扫描暂存与正式索引采用相同语义。
 - 缓存策略直接默认 `HYBRID`，设置 revision 从 `0` 开始，高/低水位为 `90/75`。
@@ -25,22 +25,20 @@
 # 无需启动后端、前端或 Docker；仅使用临时 SQLite，结束自动清理。
 make db-fresh-check
 
-# 从临时 SQLite 启动真实 Java 服务并验证 HTTP、Mapper 和业务结构。
+# 从临时 SQLite 启动真实 Go 服务并验证 HTTP、显式 SQL 和业务结构。
 make db-sqlite-check
 
-# 完整 Java 业务回归；各测试使用各自隔离数据。
-make java-backend-test
+# 完整 Go 业务回归；各测试使用各自隔离数据。
+make go-backend-test
 ```
 
-`db-fresh-check` 使用真实 dbmate，验证首次 `up`、重复 `migrate`、逐级 `down` 和再次建库，比较完整结构及种子，并检查外键、热度/固定约束、空业务数据和默认值；还验证增量迁移及其回退保留原曲库和任务记录、真实 parent 关系被导入。它固定使用自身临时目录，不读取本地 `.env`、不使用 `SQLITE_PATH`、不操作任何已有数据库。此检查也接入 `db-sqlite-check` 和 Java CI。
+`db-fresh-check` 使用真实 dbmate，验证首次 `up`、重复 `migrate`、逐级 `down` 和再次建库，比较完整结构及种子，并检查外键、热度/固定约束、空业务数据和默认值；还验证增量迁移及其回退保留原曲库和任务记录、真实 parent 关系被导入。它固定使用自身临时目录，不读取本地 `.env`、不使用 `SQLITE_PATH`、不操作任何已有数据库。此检查也接入 `db-sqlite-check` 和 Go CI。
 
-MySQL 必须使用**另外创建的空数据库**，通过 `MYSQL_HOST/MYSQL_PORT/MYSQL_DATABASE/MYSQL_USER/MYSQL_PASSWORD` 指向隔离实例，再运行 `make db-mysql-check`。该命令会执行业务写入测试，不能指向实际使用的数据库。连接成功不等于业务兼容，未运行真实 MySQL 检查时应明确标记未验证。
-
-专项测试的 MySQL Profile 使用 60 秒读取预算，容纳十万首歌曲暂存与发布夹具；生产连接仍保留原有预算。回滚用例需要在隔离库创建触发器，MySQL 开启二进制日志时，须由该测试实例的管理员设置 `log_bin_trust_function_creators=1`，CI 在自身临时实例中完成此配置。
+`make db-mysql-check` 自动启动独占的 MySQL Docker 容器，绑定本机随机端口并使用隔离数据；执行真实 SQL、事务与 HTTP 业务回归后只清理该测试实例。它不读取已有业务 MySQL 配置，也不操作已有库。连接成功不等于业务兼容，未运行该检查时应明确标记未验证。
 
 手工从零启动可给 `SQLITE_PATH` 指定一个全新文件路径，或使用新的 Docker Compose 项目与其独立数据卷；不要用旧库验证这份基线。现有命名卷和实际数据库由使用者保留或另行处理，本次整理不删除它们。
 
-连接及 Profile 见[数据库策略](../docs/database-strategy.md)，账号与主密钥见[认证说明](../docs/authentication.md)。数据库、WAL/SHM、凭据和主密钥不得提交；切换 Profile 不自动迁移数据。
+连接及驱动选择 见[数据库策略](../docs/database-strategy.md)，账号与主密钥见[认证说明](../docs/authentication.md)。数据库、WAL/SHM、凭据和主密钥不得提交；切换驱动 不自动迁移数据。
 
 ## 洛雪下载增量迁移
 

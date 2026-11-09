@@ -1,9 +1,9 @@
 name: singverse-backend
 on:
   push:
-    paths: ['services/singverse-compute/**', 'services/singverse-java-backend/**', 'services/singverse-frontend/**', 'contracts/openapi/compute-internal.openapi.json', '.github/workflows/singverse-backend.yml', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh', 'scripts/check-database-baseline.py', 'scripts/setup-transcode-tools.py', 'scripts/setup-audio-model.py', '.editorconfig', '.gitignore']
+    paths: ['services/singverse-compute/**', 'services/singverse-go-backend/**', 'services/singverse-frontend/**', 'contracts/openapi/compute-internal.openapi.json', '.github/workflows/singverse-backend.yml', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh', 'scripts/check-database-baseline.py', 'scripts/setup-transcode-tools.py', 'scripts/setup-audio-model.py', 'scripts/*go*', 'infra/docker/check-go-mysql.py', 'infra/docker/check-go-container.py', 'scripts/check-backend-contract.py', 'VERSION', '.editorconfig', '.gitignore']
   pull_request:
-    paths: ['services/singverse-compute/**', 'services/singverse-java-backend/**', 'services/singverse-frontend/**', 'contracts/openapi/compute-internal.openapi.json', '.github/workflows/singverse-backend.yml', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh', 'scripts/check-database-baseline.py', 'scripts/setup-transcode-tools.py', 'scripts/setup-audio-model.py', '.editorconfig', '.gitignore']
+    paths: ['services/singverse-compute/**', 'services/singverse-go-backend/**', 'services/singverse-frontend/**', 'contracts/openapi/compute-internal.openapi.json', '.github/workflows/singverse-backend.yml', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh', 'scripts/check-database-baseline.py', 'scripts/setup-transcode-tools.py', 'scripts/setup-audio-model.py', 'scripts/*go*', 'infra/docker/check-go-mysql.py', 'infra/docker/check-go-container.py', 'scripts/check-backend-contract.py', 'VERSION', '.editorconfig', '.gitignore']
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,7 +13,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -35,12 +35,11 @@ jobs:
         run: make -C "${{ github.workspace }}" dbmate-setup
       - name: Verify fresh database baseline
         run: make -C "${{ github.workspace }}" db-fresh-check
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-go@v5
         with:
-          distribution: temurin
-          java-version: '21'
-          cache: maven
-          cache-dependency-path: services/singverse-java-backend/pom.xml
+          go-version: '1.27.3'
+          cache-dependency-path: services/singverse-go-backend/go.sum
+      - run: make go-tools-setup
       - run: make compute-setup
-      - name: Verify Java and Python backend integration
+      - name: Verify Go and Python backend integration
         run: make backend-check

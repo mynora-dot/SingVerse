@@ -1,4 +1,4 @@
-"""Task-scoped loopback reader for authenticated Java callback references."""
+"""Task-scoped loopback reader for authenticated Go callback references."""
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.request import Request, build_opener, HTTPRedirectHandler

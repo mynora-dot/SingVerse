@@ -1,6 +1,6 @@
 """Local administrator CLI using the production recipe and worker lifecycle.
 
-This accepts local paths only. HTTP callers continue to use Java-authorized references.
+This accepts local paths only. HTTP callers continue to use Go-authorized references.
 No song is downloaded, and original files are read-only.
 """
 import argparse

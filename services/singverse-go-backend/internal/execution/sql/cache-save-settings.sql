@@ -1,0 +1,1 @@
+UPDATE song_cache_settings SET max_bytes=@{maxBytes},policy=@{policy},ttl_hours=@{ttlHours},high_watermark_percent=@{highWatermarkPercent},low_watermark_percent=@{lowWatermarkPercent},revision=revision+1 WHERE id=1 AND revision=@{revision}

@@ -1,0 +1,1 @@
+SELECT t.id,t.dimension,t.name,t.revision,c.version,(SELECT COUNT(*) FROM classification_assignment a JOIN media_song s ON s.id=a.song_id WHERE a.tag_id=t.id) FROM classification_tag t LEFT JOIN classification_tag_cover c ON c.tag_id=t.id WHERE t.active=1 ORDER BY t.dimension,t.name,t.id;

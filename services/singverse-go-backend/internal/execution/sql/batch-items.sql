@@ -1,0 +1,1 @@
+SELECT item.*,job.result_json AS execution,job.state AS job_state FROM audio_batch_item item LEFT JOIN media_audio_job job ON job.id=item.job_id WHERE item.batch_id=@{id} ORDER BY item.song_id LIMIT @{limit} OFFSET @{offset}

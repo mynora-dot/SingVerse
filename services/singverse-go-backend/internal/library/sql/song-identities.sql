@@ -1,0 +1,1 @@
+SELECT song.id,CASE WHEN remote.song_id IS NOT NULL THEN remote.identity_size ELSE song.file_size END,CASE WHEN remote.song_id IS NOT NULL THEN remote.identity_modified ELSE song.modified_at END FROM media_song song LEFT JOIN webdav_resource remote ON remote.song_id=song.id AND remote.archived_at IS NULL

@@ -1,0 +1,1 @@
+UPDATE webdav_metadata_source SET blocked_reason=CASE WHEN blocked_until IS NULL OR blocked_until<@{until} THEN @{reason} ELSE blocked_reason END,blocked_until=CASE WHEN blocked_until IS NULL OR blocked_until<@{until} THEN @{until} ELSE blocked_until END WHERE source_id=@{sourceId}

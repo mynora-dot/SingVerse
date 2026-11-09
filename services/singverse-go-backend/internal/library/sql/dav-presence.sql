@@ -1,0 +1,1 @@
+SELECT COALESCE(SUM(CASE WHEN archived_at IS NULL AND missing_scans>0 THEN 1 ELSE 0 END),0) AS missing,COALESCE(SUM(CASE WHEN archived_at IS NOT NULL THEN 1 ELSE 0 END),0) AS archived,COALESCE(SUM(changed),0) AS changed FROM webdav_resource WHERE source_id=#{sourceId}

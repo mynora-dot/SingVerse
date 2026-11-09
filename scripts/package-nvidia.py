@@ -30,6 +30,7 @@ def contents():
                          'convert-separation-model.py', 'prepare-separation-calibration.py',
                          'evaluate-separation-conversion.py', 'benchmark-separation.py', 'score-separation.py'))]:
         files[relative] = (ROOT/relative).read_bytes()
+    files['VERSION'] = (ROOT/'VERSION').read_bytes()
     files['README.operations.md'] = (ROOT/'infra/docker/OPERATIONS.md').read_bytes()
     files['SHA256SUMS'] = ''.join(f'{hashlib.sha256(data).hexdigest()}  {name}\n' for name, data in sorted(files.items())).encode()
     return files

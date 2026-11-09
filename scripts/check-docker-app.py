@@ -57,8 +57,8 @@ for authorized, expected in [(False,401),(True,422)]:
   else:
     command = compose + ["exec", "-T", "singverse-compute", "python", "-c", compute_check, "http://127.0.0.1:8090", "/run/singverse-compute/token"]
   subprocess.run(command, check=True)
-  subprocess.run(compose + ["exec", "-T", "singverse-java-backend", "sh", "-c", "! command -v ffmpeg && ! command -v ffprobe"], check=True)
-  print("通过：独立计算服务标签能力、内部鉴权和拒绝本地路径；Java镜像无FFmpeg")
+  subprocess.run(compose + ["exec", "-T", "singverse-go-backend", "sh", "-c", "! command -v java && ! command -v javac && ! command -v mvn && ! command -v node && ! command -v ffmpeg && ! command -v ffprobe"], check=True)
+  print("通过：独立计算服务标签能力、内部鉴权和拒绝本地路径；Go镜像无FFmpeg")
   smoke = (root / "services/singverse-compute/tests/callback_source.py").read_text() + "\n" + (root / "services/singverse-compute/tests/smoke/container_media_tags.py").read_text()
   if macos:
     # This mode uses the native node above; its separate base-image smoke remains explicit.
@@ -113,7 +113,7 @@ for authorized, expected in [(False,401),(True,422)]:
   with request("/api/health") as response:
     assert response.status == 200
     assert json.load(response) == {"status": "UP"}
-  print("通过：Nginx → Java /api/health 为 UP")
+  print("通过：Nginx → Go /api/health 为 UP")
 
   with request("/api/v1/auth/login", "POST", {"username": "admin", "password": os.environ.get("SINGVERSE_CHECK_PASSWORD", "admin")}) as response:
     state = json.load(response)["state"]
@@ -123,7 +123,7 @@ for authorized, expected in [(False,401),(True,422)]:
     with request("/api/v1/auth/mfa/verify", "POST", {"code": code}) as response:
       assert json.load(response)["state"] == "authenticated"
   print("通过：管理员登录与 Cookie 会话")
-  # A >16KiB invalid image must reach Java's format validation without writing data.
+  # A >16KiB invalid image must reach Go's format validation without writing data.
   with request("/api/v1/auth/csrf") as response:
     csrf = json.load(response)["token"]
   boundary = "singverse-classification-cover-check"
@@ -135,7 +135,7 @@ for authorized, expected in [(False,401),(True,422)]:
     assert error.code == 400, "Classification cover upload must pass Nginx's managed multipart route"
     assert "图片" in json.load(error)["detail"]
     error.close()
-  print("通过：分类封面大请求到达Java格式校验；未写入图片或修改词表")
+  print("通过：分类封面大请求到达Go格式校验；未写入图片或修改词表")
 
 
   with request("/api/v1/compute-node") as response:

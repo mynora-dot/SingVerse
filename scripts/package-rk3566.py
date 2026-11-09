@@ -50,6 +50,7 @@ def main():
                      'scripts/convert-separation-model.py', 'scripts/prepare-separation-calibration.py',
                      'scripts/evaluate-separation-conversion.py', 'scripts/benchmark-separation.py', 'scripts/score-separation.py']:
         files[relative] = (ROOT/relative).read_bytes()
+    files['VERSION'] = (ROOT/'VERSION').read_bytes()
     files['.dockerignore'] = (ROOT/'infra/docker/build/.dockerignore').read_bytes()
     files['models/uvr-mdxnet-9482/UVR_MDXNET_9482.onnx'] = args.model.read_bytes()
     files['SHA256SUMS'] = ''.join(f'{hashlib.sha256(data).hexdigest()}  {name}\n' for name, data in sorted(files.items())).encode()

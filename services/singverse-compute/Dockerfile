@@ -30,15 +30,16 @@ ENV PATH="/usr/lib/jellyfin-ffmpeg:${PATH}"
 ENV COMPUTE_AUTH_TOKEN_FILE=/run/singverse-compute/token \
     COMPUTE_TRANSCODE_ROOT=/var/cache/singverse-transcode \
     COMPUTE_FFMPEG=/usr/lib/jellyfin-ffmpeg/ffmpeg COMPUTE_FFPROBE=/usr/lib/jellyfin-ffmpeg/ffprobe
-ARG SINGVERSE_VERSION=0.1.0-SNAPSHOT
+COPY VERSION ./VERSION
+ARG SINGVERSE_VERSION
 ARG SOURCE_REVISION=local
-RUN python -c "import json,os,hashlib,pathlib; p=pathlib.Path('singverse_compute/core/build.json'); p.write_text(json.dumps(dict(version=os.environ['SINGVERSE_VERSION'],revision=os.environ['SOURCE_REVISION'],variant='base',runtimeLock=hashlib.sha256(b''.join(f.read_bytes() for f in sorted(pathlib.Path('.').glob('requirements*.lock')))).hexdigest(),sourceDigest=hashlib.sha256(b''.join(str(f).encode()+f.read_bytes() for f in sorted(pathlib.Path('singverse_compute').rglob('*.py')))).hexdigest())))"
+RUN python -c "import json,os,hashlib,pathlib; p=pathlib.Path('singverse_compute/core/build.json'); p.write_text(json.dumps(dict(version=os.environ.get('SINGVERSE_VERSION') or pathlib.Path('VERSION').read_text().strip(),revision=os.environ['SOURCE_REVISION'],variant='base',runtimeLock=hashlib.sha256(b''.join(f.read_bytes() for f in sorted(pathlib.Path('.').glob('requirements*.lock')))).hexdigest(),sourceDigest=hashlib.sha256(b''.join(str(f).encode()+f.read_bytes() for f in sorted(pathlib.Path('singverse_compute').rglob('*.py')))).hexdigest())))"
 # Generated metadata comes after COPY normalization; normalize it and every lock
 # explicitly even when the builder/extractor uses umask 077.
 RUN chmod 644 /opt/singverse-compute/requirements*.lock /opt/singverse-compute/singverse_compute/core/build.json
 ENV SINGVERSE_COMPUTE_VARIANT=base
 LABEL org.opencontainers.image.title="SingVerse Compute" \
-      org.opencontainers.image.version="${SINGVERSE_VERSION}" \
+      org.singverse.image.version-source="VERSION or explicit SINGVERSE_VERSION build argument" \
       org.opencontainers.image.revision="${SOURCE_REVISION}"
 USER 10001:10001
 RUN python -c "from pathlib import Path; from singverse_compute.core.build_info import build_info; assert build_info()['variant'] == 'base'; [p.read_bytes() for p in Path('.').glob('requirements*.lock')]"

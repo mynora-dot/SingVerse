@@ -2,9 +2,9 @@
 
 [项目 Logo 与打包图标](assets/branding/README.md)
 
-家庭KTV多端基础工程：Flutter Android手机端、Android TV、独立NAS管理前端、Java业务主服务、Python计算节点，以及亲友H5点歌页。亲友入口已调整为**微信扫一扫打开NAS网页**，不再使用小程序。当前已具备曲库管理及多端点唱基础，已增加单管理员登录与可选TOTP二次验证；已支持管理端本地/WebDAV 原始音视频在线播放；已增加电视设备授权、原始媒体直放、聚会队列与亲友 H5 扫码点歌；已支持计算节点转码、全曲库音轨角色及可选离线伴奏分离，真实电视/微信/NAS 验收见验证记录。
+家庭KTV多端基础工程：Flutter Android手机端、Android TV、独立NAS管理前端、Go业务主服务、Python计算节点，以及亲友H5点歌页。亲友入口已调整为**微信扫一扫打开NAS网页**，不再使用小程序。当前已具备曲库管理及多端点唱基础，已增加单管理员登录与可选TOTP二次验证；已支持管理端本地/WebDAV 原始音视频在线播放；已增加电视设备授权、原始媒体直放、聚会队列与亲友 H5 扫码点歌；已支持计算节点转码、全曲库音轨角色及可选离线伴奏分离，真实电视/微信/NAS 验收见验证记录。
 
-WebDAV 原片按需分块缓存，完整成功的音视频解码结果也由 Java 服务节点保存，可跨播放复用；管理端「曲库 → 歌曲缓存」可查看、删除部分或完整缓存并配置容量，以及最近使用优先、热门歌曲优先、到期清理或手动清理策略。命中缓存与缓存管理无需计算节点在线；计算节点只保留临时执行产物。正在播放的数据受保护，媒体原件保持只读，详见[转码与缓存说明](docs/transcoding.md#任务缓存和恢复)。
+WebDAV 原片按需分块缓存，完整成功的音视频解码结果也由 Go 服务节点保存，可跨播放复用；管理端「曲库 → 歌曲缓存」可查看、删除部分或完整缓存并配置容量，以及最近使用优先、热门歌曲优先、到期清理或手动清理策略。命中缓存与缓存管理无需计算节点在线；计算节点只保留临时执行产物。正在播放的数据受保护，媒体原件保持只读，详见[转码与缓存说明](docs/transcoding.md#任务缓存和恢复)。
 
 管理端「曲库 → 播放记录」将热门排行、逐次播放明细和单曲历史合并在一个入口；「曲库 → 缺歌反馈」支持管理员登记缺歌、跟进处理并关联已补齐的曲库歌曲。本阶段完成后台页面、管理接口和存储，尚未接入手机或 TV 上报，播放记录初始为空，旧播放历史不回填；缺歌登记不会自动下载歌曲。详见[播放记录与缺歌反馈](contracts/song-activity.md)。
 
@@ -18,7 +18,7 @@ WebDAV 原片按需分块缓存，完整成功的音视频解码结果也由 Jav
 |---|---|---|
 | 手机App | Flutter 3.47.5 / Dart 3.13.4，Android优先 | `services/singverse-mobile` |
 | 电视 | Kotlin 2.1.20 / Compose / TV Material 1.0.0 / Gradle 8.11.1 | `services/singverse-tv` |
-| 业务主服务 | Java21 / Spring Boot 3.5.16 / MyBatis XML / Maven Wrapper 3.9.16 | `services/singverse-java-backend` |
+| 业务主服务 | Go 1.27.3 / Gin / database/sql + sqlx / 显式嵌入 SQL | `services/singverse-go-backend` |
 | 计算节点 | Python 3.12+ / FastAPI 0.121.3 / Uvicorn 0.38.0；媒体探测、转码及可选音轨分析/伴奏分离 | `services/singverse-compute` |
 | 网页前端 | Vue 3 / TypeScript / Vite / Element Plus 管理端 + Vue 亲友点歌页，同一工程构建 | `services/singverse-frontend` |
 | 数据库 | 默认SQLite，MySQL保留可选连接验证 | `infra/docker/compose/compose.yaml`仅开发MySQL |
@@ -28,23 +28,29 @@ services/
   singverse-frontend/      统一网页前端：亲友入口/party/，管理入口/admin/
   singverse-mobile/        Flutter手机端及Android宿主
   singverse-tv/            独立Android TV工程
-  singverse-java-backend/  Java业务主服务
+  singverse-go-backend/  Go业务主服务
   singverse-compute/       内部媒体探测、转码与音频计算服务
 contracts/openapi/        业务API约定与计算节点内部探测契约
 database/                 数据库约定
 infra/docker/             Compose配置、Bake镜像矩阵与构建忽略规则
 infra/deploy/             NAS部署包模板
 docs/                     架构、开发、验证与research调研
-.github/workflows/        singverse-frontend、singverse-mobile、singverse-tv、singverse-java-backend、singverse-backend
+.github/workflows/        singverse-frontend、singverse-mobile、singverse-tv、singverse-go-backend、singverse-backend
 ```
 
-`services/`是本仓库统一工程目录，各模块使用`singverse-模块名`命名并独立构建。亲友点歌页面与NAS管理页面同属`singverse-frontend`；Java工程、Maven制品及Spring应用名统一为`singverse-java-backend`。目录迁移明细见[仓库布局](docs/repository-layout.md)。
+`services/`是本仓库统一工程目录，各模块使用`singverse-模块名`命名并独立构建。亲友点歌页面与NAS管理页面同属`singverse-frontend`；业务模块名为 `singverse-go-backend`，版本由根 `VERSION` 注入。目录迁移明细见[仓库布局](docs/repository-layout.md)。
 
-统一前端以Vite多页面方式构建：`party/index.html`加载亲友点歌 Vue 应用，`admin/index.html`加载Vue/Element Plus管理页面。管理端提供概览、系统状态、真实健康检查及失败重试。整个`services/singverse-frontend/dist`可交给Java或未来Go托管；浏览器通过同源HTTP访问主服务，不依赖Java内部类型。当前Java将产物打入JAR，生产不需要Node进程；默认 Docker 交付由 Nginx 前端、Java 后端和基础 compute 三个容器组成。详见[前端说明](services/singverse-frontend/README.md)与[托管契约](contracts/frontend-hosting.md)。
+统一前端以Vite多页面方式构建：`party/index.html`加载亲友点歌 Vue 应用，`admin/index.html`加载Vue/Element Plus管理页面。管理端提供概览、系统状态、真实健康检查及失败重试。整个`services/singverse-frontend/dist`由 Go 嵌入托管；浏览器通过同源HTTP访问主服务，不依赖Go内部类型。Go 构建将完整 dist 嵌入原生二进制，生产不需要Node进程；默认 Docker 交付由 Nginx 前端、Go 后端和基础 compute 三个容器组成。详见[前端说明](services/singverse-frontend/README.md)与[托管契约](contracts/frontend-hosting.md)。
 
 亲友H5使用本地构建的 Vue/TypeScript 与 CSS，入口为`/party/`；管理端直接托管在`/admin/`，Nginx对外映射到`/`；无CDN、微信JS-SDK、小程序AppID或微信网页登录。
 
-后端[Nginx配置](services/singverse-java-backend/nginx/README.md)已提供静态页面映射和API转发约定。前端请求统一带`/api`前缀，健康检查为`/api/health`，业务接口后续使用`/api/v1`；代理保留该前缀。
+后端[Nginx配置](infra/docker/build/nginx/nginx.conf)已提供静态页面映射和API转发约定。前端请求统一带`/api`前缀，健康检查为`/api/health`，业务接口使用`/api/v1`；代理保留该前缀。
+
+## Go 切换与数据保护
+
+默认生产链路已改为 Go，不包含 JVM。此次为全新部署，不迁移已有 Java 数据库或账号。默认 Compose 项目 `singverse-go-app` 与旧 `singverse-app` 使用各自的卷；独立部署包使用 `singverse-go-business`。禁止给 Go 指定旧项目名/旧数据库，旧数据与命名卷继续保留。
+
+Java 源码和 Maven 构建入口已退休，已保存镜像仅用于明确回退：`make java-rollback-up` 使用 `compose.java-rollback.yaml` 与旧卷。Java 读取自身旧数据，Go 上线后新建的数据不自动回流，也不承诺 Go 写入后的库可交给 Java。步骤见 [切换与回退](docs/go-migration.md)，实际结果见 [Go 验证](docs/go-migration-verification.md)。
 
 ## 管理员账号
 
@@ -63,53 +69,50 @@ make docker-check
 make docker-down
 ```
 
-构建启动只需 Docker、Buildx 和 Compose 插件 2.24.4+；检查脚本另需 Python 3。管理页访问 http://localhost:18080/ ，亲友入口为 http://localhost:18080/party/ 。默认仅本机可访问，后端不发布端口，SQLite 使用独立命名卷。默认三个容器为 Nginx、Java 和基础 compute；AI 运行库与模型需要按上述指南另选配置，不随默认镜像安装。
+构建启动只需 Docker、Buildx 和 Compose 插件 2.24.4+；检查脚本另需 Python 3。管理页访问 http://localhost:18080/ ，亲友入口为 http://localhost:18080/party/ 。默认仅本机可访问，后端不发布端口，SQLite 使用独立命名卷。默认三个容器为 Nginx、Go 和基础 compute；AI 运行库与模型需要按上述指南另选配置，不随默认镜像安装。
 
 ## 环境与命令
 
-安装Node.js 22.19+、Flutter、JDK21、Python 3.12+、Android SDK35/36及对应工具。Node用于管理前端构建，依赖通过npm锁定；Maven/Gradle使用各工程Wrapper，MySQL验证需要Docker/Compose。Flutter Android当前minSdk24；TV当前minSdk23，研究中的Android5/API21目标尚待后续实现和实机验证。
+业务开发安装 Go 1.27.3、Node.js 22.19+ 和 Python 3.12+。Flutter/TV 另需 Flutter、JDK21、Android SDK35/36及对应工具；JDK只用于Android工程。Node依赖由npm锁定，Go依赖由go.mod/go.sum锁定，Gradle使用Wrapper；MySQL验证需要Docker/Compose。Flutter Android当前minSdk24；TV当前minSdk23，研究中的Android5/API21目标尚待后续实现和实机验证。
 
 ```sh
 make help
 make frontend-check
-make frontend-dev       # 可选：127.0.0.1:5173/admin/，代理到已启动的Java
+make frontend-dev       # 可选：127.0.0.1:5173/admin/，代理到已启动的Go
 make mobile-check
 make mobile-build
 make web-check
 make tv-build
-make java-backend-test
+make go-backend-test
 make db-sqlite-check
 make compute-setup  # 首次创建项目虚拟环境、安装锁定依赖
 make compute-check
-make backend-check # Java/Python整体联动验证；需要JDK21
+make backend-check # Go/Python/FFmpeg 真实联动；先安装项目计算环境与工具
 make compute-run    # 单独终端运行，默认127.0.0.1:8090
 ```
 
 构建管理端后启动服务（以下从仓库根目录执行）：
 
 ```sh
-make frontend-build
-cd services/singverse-java-backend
-./mvnw spring-boot:run
-# 或先打包再启动
-./mvnw -B package
-java -jar target/singverse-java-backend-0.1.0-SNAPSHOT.jar
+make dbmate-setup
+make go-backend-build
+make go-backend-run
 ```
 
-在“系统设置 → 性能节点配置”管理计算服务。应用 Compose 自动提供同套 `singverse-compute` 地址与共享凭据；独立部署仅配置节点地址和加密凭据，无需给性能节点挂载曲库，或选择暂不使用。连接检查验证节点身份、认证、实际能力及业务回源，不发起媒体任务。节点离线不影响 Java/管理端健康，扫描保留文件名回退；音视频标签读取由 Python 执行。独立部署见[计算节点说明](services/singverse-compute/README.md)。
+在“系统设置 → 性能节点配置”管理计算服务。应用 Compose 自动提供同套 `singverse-compute` 地址与共享凭据；独立部署仅配置节点地址和加密凭据，无需给性能节点挂载曲库，或选择暂不使用。连接检查验证节点身份、认证、实际能力及业务回源，不发起媒体任务。节点离线不影响 Go/管理端健康，扫描保留文件名回退；音视频标签读取由 Python 执行。独立部署见[计算节点说明](services/singverse-compute/README.md)。
 
-管理中心访问 `http://localhost:8080/admin/`，亲友欢迎页 `http://localhost:8080/party/`，健康检查 `http://localhost:8080/api/health`。直接执行Maven也需先构建前端；缺少产物会明确失败。后续在NAS实际部署后，手机必须使用其可达地址，例如 `http://<NAS局域网IP>:8080/`；二维码不能写localhost或容器内部IP。
+管理中心访问 `http://localhost:8080/admin/`，亲友欢迎页 `http://localhost:8080/party/`，健康检查 `http://localhost:8080/api/health`。Go 构建先准备完整前端，缺少任一入口时明确失败。后续在NAS实际部署后，手机必须使用其可达地址，例如 `http://<NAS局域网IP>:8080/`；二维码不能写localhost或容器内部IP。
 
 TV 已提供设备授权与聚会邀请二维码，亲友扫码进入同一 NAS 的 H5 点歌、队列及授权遥控。Android/iOS 微信真机的导航、安全提示、网络权限和前后台恢复仍需单独验收，普通浏览器检查不替代微信结果。
 
-两个入口的页面、脚本与样式随JAR交付；独立admin CI检查前端，Java CI验证H5与管理端HTTP及资源。无需小程序开发者工具、上传或发布流程。compose.yaml提供开发MySQL；compose.app.yaml 提供 Nginx、Java 与基础 compute 容器，本地运行不代表NAS实机已验收。
+两个入口的页面、脚本与样式随原生二进制交付；独立admin CI检查前端，Go CI验证H5与管理端HTTP及资源。无需小程序开发者工具、上传或发布流程。compose.yaml提供开发MySQL；compose.app.yaml 提供 Nginx、Go 与基础 compute 容器，本地运行不代表NAS实机已验收。
 
 ## 数据库
 
-默认SQLite：`SQLITE_PATH`缺省`./data/singverse.db`，相对于服务进程工作目录，必要父目录自动创建；应用启动执行真实`SELECT 1`并通过dbmate初始化全部业务表。SQLite/MySQL 以 `202611070001_initial_schema.sql` 从空库初始化，后续递增迁移（包含 `202611080001_background_tasks.sql` 和 `202611090001_background_task_batches.sql`）自动应用；不支持更早的旧迁移链升级。`make db-fresh-check` 可在临时库验证从零建库、增量迁移保留数据及逐级回退重建，详见[数据库说明](database/README.md)。默认从服务目录启动时数据在`services/singverse-java-backend/data/`。
+默认SQLite：`SQLITE_PATH`缺省`./data/singverse.db`，相对于服务进程工作目录，必要父目录自动创建；应用启动执行真实`SELECT 1`并通过dbmate初始化全部业务表。SQLite/MySQL 以 `202611070001_initial_schema.sql` 从空库初始化，后续递增迁移（包含 `202611080001_background_tasks.sql` 和 `202611090001_background_task_batches.sql`）自动应用；不支持更早的旧迁移链升级。`make db-fresh-check` 可在临时库验证从零建库、增量迁移保留数据及逐级回退重建，详见[数据库说明](database/README.md)。默认从服务目录启动时数据在`services/singverse-go-backend/data/`。
 
 ```sh
-(cd services/singverse-java-backend && SQLITE_PATH=/tmp/singverse-dev/app.db ./mvnw spring-boot:run)
+SQLITE_PATH=/tmp/singverse-go-dev/app.db make go-backend-run
 ```
 
 MySQL开发验证：
@@ -122,20 +125,20 @@ set -a
 . ./.env
 set +a
 make db-mysql-check
-(cd services/singverse-java-backend && SPRING_PROFILES_ACTIVE=mysql ./mvnw spring-boot:run)
+SINGVERSE_DB_DRIVER=mysql make go-backend-run
 ```
 
-Spring Boot不会自动读取`.env`；Compose会读取，主机Java必须导出变量。MySQL默认仅绑定`127.0.0.1:3306`，使用命名卷；更改初始化密码不会自动更新已有卷账号。停止使用`docker compose --project-directory . -f infra/docker/compose/compose.yaml stop mysql`，不自动删除数据卷。
+Go 不会自动读取 `.env`；Compose会读取，主机Go必须导出变量。MySQL默认仅绑定`127.0.0.1:3306`，使用命名卷；更改初始化密码不会自动更新已有卷账号。停止使用`docker compose --project-directory . -f infra/docker/compose/compose.yaml stop mysql`，不自动删除数据卷。
 
-首次执行`make compute-setup`并正确配置环境后，`make verify`依次验证手机、NAS管理前端、H5、TV、Java/Python整体联动及SQLite/MySQL。任一步失败返回非零；不会跳过数据库或自动删除卷。
+首次执行`make compute-setup`并正确配置环境后，`make verify`依次验证手机、NAS管理前端、H5、TV、Go/Python整体联动及SQLite/MySQL。任一步失败返回非零；不会跳过数据库或自动删除卷。
 
 ## 当前边界与文档
 
-已实现欢迎页、NAS管理基础界面与健康查询、构建/静态分析/基础测试、两个网页入口托管、健康检查、两种数据库真实连接验证、Python节点健康/能力探测、Java内部探测客户端、根命令和六个CI工作流（含Docker交付检查）。服务端转解码、可选本地模型的双轨识别与单轨伴奏分离统一由 Python 节点执行；Java保留授权、曲库、会话、队列与业务数据库职责。已实现管理员登录、修改登录账号、改密与MFA、媒体来源配置管理、文件名共享规则库与解析方案管理页及SQL迁移。已继续实现扫码配对、曲库扫描、歌曲与歌手管理、共享歌单、聚会队列、原件及转码播放、离线兼容版本；各模块的实际验收范围见验证记录。手机端现已增加管理员登录、NAS 选歌、本机练唱/录唱、混音回听、本机作品与导出、后台媒体/录音服务、收藏历史及扫码承载同一 H5。K 歌改版仍有宿主真实麦克风输入未通过，不能视为已完成设备验收，详见手机端 README 与验证记录。Go 等后续能力不在本轮范围。
+已实现欢迎页、NAS管理基础界面与健康查询、构建/静态分析/基础测试、两个网页入口托管、健康检查、两种数据库真实连接验证、Python节点健康/能力探测、Go内部探测客户端、根命令和CI工作流（含Docker交付检查）。服务端转解码、可选本地模型的双轨识别与单轨伴奏分离统一由 Python 节点执行；Go保留授权、曲库、会话、队列与业务数据库职责。已实现管理员登录、修改登录账号、改密与MFA、媒体来源配置管理、文件名共享规则库与解析方案管理页及SQL迁移。已继续实现扫码配对、曲库扫描、歌曲与歌手管理、共享歌单、聚会队列、原件及转码播放、离线兼容版本；各模块的实际验收范围见验证记录。手机端现已增加管理员登录、NAS 选歌、本机练唱/录唱、混音回听、本机作品与导出、后台媒体/录音服务、收藏历史及扫码承载同一 H5。K 歌改版仍有宿主真实麦克风输入未通过，不能视为已完成设备验收，详见手机端 README 与验证记录。业务服务已全量改为 Go，实际检查与剩余真机边界见 [Go 验证](docs/go-migration-verification.md)。
 
 Taro工程、锁文件、相关Make目标和工作流已移除。Flutter/TV包名仍为`com.mynora.singverse.mobile`与`.tv`，未来iOS扩展见手机端README。
 
-常见问题：Java版本错误检查`JAVA_HOME`；Android设置`ANDROID_HOME`；局域网页打不开检查手机网络/隔离、NAS端口、服务绑定和微信提示，不全局关闭证书验证；MySQL检查导出变量、健康状态与已有卷账号。
+常见问题：业务 Go 使用固定工具链与仓库缓存；Android JDK问题检查 `JAVA_HOME`；Android设置`ANDROID_HOME`；局域网页打不开检查手机网络/隔离、NAS端口、服务绑定和微信提示，不全局关闭证书验证；MySQL检查导出变量、健康状态与已有卷账号。
 
 详见[开发指南](docs/development.md)、[架构](docs/architecture.md)、[数据库策略](docs/database-strategy.md)、[验证记录](docs/verification.md)和[产品需求文档（PRD）](docs/research/PRD.md)。
 
@@ -143,7 +146,7 @@ Taro工程、锁文件、相关Make目标和工作流已移除。Flutter/TV包�
 
 曲库菜单包含“解析规则”和“解析方案”：前者维护模板/高级正则及引用情况，后者组合共享规则、启停排序并输入文本预览。配置全局保存，旧配置映射默认方案，媒体来源可引用方案，本地扫描按启用规则顺序解析并保存歌曲元数据。详见[规则说明](docs/filename-rules.md)。
 
-Java 后端业务 SQL 统一使用 MyBatis Mapper XML，仓库后续开发遵守根 `AGENTS.md` 的 SQL 约定；dbmate 继续管理数据库迁移。详见[数据库策略](docs/database-strategy.md#mybatis-xml-约定)。
+Go 后端业务 SQL 显式位于所属 `internal/<domain>/sql/*.sql`，通过 `database/sql + sqlx` 和绑定参数执行，跨模块复用事务执行器；dbmate 管理数据库迁移。详见[数据库策略](docs/database-strategy.md#显式-sql-与事务约定)。
 
 “曲库 → 歌曲管理”集中查看各媒体库扫描生成的歌曲，支持来源、文件名与复核状态筛选，以及解析详情。扫描完成后自动跳转对应来源列表；数据更新仍通过媒体库重扫完成。
 
@@ -151,7 +154,7 @@ Java 后端业务 SQL 统一使用 MyBatis Mapper XML，仓库后续开发遵守
 
 歌曲分类现支持后台词表维护、人工/批量打标、可配置文本 AI 分类任务、按维度自动应用、审核与历史撤回；模型默认关闭。使用方法与边界见[歌曲分类](docs/song-classification.md)。
 
-本地与 WebDAV 歌曲支持只读提取常见音视频文件内嵌歌名、歌手、专辑和发行日期，文件标签优先，缺失回退文件名；Java 提供短期授权 Range 回源，compute 不持有曲库路径或 WebDAV 凭据。独立 singverse-compute 镜像包含 Python/FFmpeg，Java 镜像不包含。详见[后端说明](services/singverse-java-backend/README.md)。
+本地与 WebDAV 歌曲支持只读提取常见音视频文件内嵌歌名、歌手、专辑和发行日期，文件标签优先，缺失回退文件名；Go 提供短期授权 Range 回源，compute 不持有曲库路径或 WebDAV 凭据。独立 singverse-compute 镜像包含 Python/FFmpeg，Go 镜像不包含。详见[后端说明](services/singverse-go-backend/README.md)。
 
 歌手库入口为管理端「曲库管理 → 歌手库」：随歌曲自动汇总，首次自动抓图，支持上传头像/背景图；在歌手详情订正歌曲后自动同步，无需维护人物档案。使用与数据设计见 [歌手库说明](docs/artist-library.md)。
 
@@ -159,7 +162,7 @@ Java 后端业务 SQL 统一使用 MyBatis Mapper XML，仓库后续开发遵守
 
 视频兼容播放、离线版本、工具安装及硬件边界见 [转码说明](docs/transcoding.md)。
 
-TV／手机播放按可用解码器的实际 AVC profile、level 和尺寸能力协商，解码／格式错误可自动尝试一次兼容播放；切歌会取消旧请求，准备轮询与旧会话清理分离。已生成且可寻址的 HLS 时间范围内直接跳转，范围外再按原始时间轴协商；实时转码使用 2 秒目标分段，各轨首片齐备后可播，整曲缓存后台复制。该链路需同步更新 Java、compute、Nginx 和两端 APK。WebDAV 原流仍要求直接 GET／Range，下载跳转或不支持定位的来源需调整配置；真实 NAS 与设备效果见各模块 README 和验证记录。`make nginx-media-check` 可隔离检查全部媒体代理路径的首段流式传输。
+TV／手机播放按可用解码器的实际 AVC profile、level 和尺寸能力协商，解码／格式错误可自动尝试一次兼容播放；切歌会取消旧请求，准备轮询与旧会话清理分离。已生成且可寻址的 HLS 时间范围内直接跳转，范围外再按原始时间轴协商；实时转码使用 2 秒目标分段，各轨首片齐备后可播，整曲缓存后台复制。该链路需同步更新 Go、compute、Nginx 和两端 APK。WebDAV 原流仍要求直接 GET／Range，下载跳转或不支持定位的来源需调整配置；真实 NAS 与设备效果见各模块 README 和验证记录。`make nginx-media-check` 可隔离检查全部媒体代理路径的首段流式传输。
 
 WebDAV 原片直放也会按需缓存在 NAS，无需等待整首下载；原片与 HLS 结果共用「曲库 → 歌曲缓存」的容量及清理策略，管理页区分部分缓存和完整缓存。TV 聚会队列在当前歌剩余约 30 秒时预取下一首，优先文件头和尾部索引，再补齐其余内容；排序、撤歌、停止和散场会更新或撤销预取。手机扫码点歌复用同一队列，本机播放器仍为单曲模式。原片预取不依赖 compute，已有未缓存内容继续按需回源。
 
@@ -192,7 +195,7 @@ COMPUTE_HARDWARE_BACKEND=videotoolbox make compute-run
 
 Docker 必须在部署时配置设备、驱动和组权限。Intel/AMD 使用 `infra/docker/compose/compose.compute.dri.yaml`，NVIDIA 使用 `infra/docker/compose/compose.compute.nvidia.yaml`，Rockchip 使用 `infra/docker/compose/compose.compute.rockchip.yaml`；覆盖文件会向容器传入对应 `COMPUTE_HARDWARE_BACKEND`。仅把变量写入根 `.env` 不会自动传入未声明该变量的容器；使用上述覆盖文件或显式增加 Compose environment。后台不能自动透传 GPU、安装驱动或赋予设备权限。
 
-独立业务节点上传包使用 `make app-package`，包含完整前端、Java 源码和 SQLite 数据库迁移。
+独立业务节点上传包使用 `make app-package`，包含完整前端、Go 源码、版本与 SQLite 数据库迁移。
 所有部署参数位于包内 Compose，曲库只读挂载解压目录下的 `media/`；数据库与密钥分别持久化到命名卷。
 默认仅监听 `127.0.0.1:18080`，局域网部署时按说明改为 NAS 实际地址，并在管理页连接已有性能节点；包内不携带本机业务数据或凭据。
 部署、回源地址及数据保留说明见 [业务节点上传包](infra/deploy/app/README.md)。
@@ -205,12 +208,12 @@ macOS + Docker Desktop 使用原生 GPU 节点：先确保现有应用已启动�
 
 ```sh
 services/singverse-compute/.venv/bin/python scripts/macos-compute.py start
-docker compose --project-directory . -f infra/docker/compose/compose.app.yaml -f infra/docker/compose/compose.compute.macos.yaml up -d singverse-java-backend singverse-frontend
+docker compose --project-directory . -f infra/docker/compose/compose.app.yaml -f infra/docker/compose/compose.compute.macos.yaml up -d singverse-go-backend singverse-frontend
 docker compose --project-directory . -f infra/docker/compose/compose.app.yaml stop singverse-compute
 SINGVERSE_MACOS_COMPUTE=1 make docker-check
 ```
 
-后台性能节点连接方式使用“自动识别”。Java 经 `host.docker.internal:18090` 连接仅监听回环的 Mac 节点，复用现有内部凭据，使用 VideoToolbox；WebDAV 仍通过 Java 读取。本地曲库只需挂载到 Java，Mac 节点通过任务授权回源读取，无需相同路径。节点缓存与凭据也保存在被忽略的 `data/macos-compute`，均不放入媒体目录。启动器使用当前用户的 launchd 保持节点运行，并在 `~/Library/LaunchAgents` 注册指向本地运行配置的登录启动项；保留本仓库及虚拟环境路径。`scripts/macos-compute.py status` 查询、`stop` 停止节点并移除本启动器自己的登录启动项。Java HTTP 入口需为本机默认 18080；其他端口部署请调整 macOS Compose 覆盖文件中 Java 的业务回源地址。重启应用继续带上 macOS 覆盖文件，以保留此连接配置。
+后台性能节点连接方式使用“自动识别”。Go 经 `host.docker.internal:18090` 连接仅监听回环的 Mac 节点，复用现有内部凭据，使用 VideoToolbox；WebDAV 仍通过 Go 读取。本地曲库只需挂载到 Go，Mac 节点通过任务授权回源读取，无需相同路径。节点缓存与凭据也保存在被忽略的 `data/macos-compute`，均不放入媒体目录。启动器使用当前用户的 launchd 保持节点运行，并在 `~/Library/LaunchAgents` 注册指向本地运行配置的登录启动项；保留本仓库及虚拟环境路径。`scripts/macos-compute.py status` 查询、`stop` 停止节点并移除本启动器自己的登录启动项。Go HTTP 入口需为本机默认 18080；其他端口部署请调整 macOS Compose 覆盖文件中 Go 的业务回源地址。重启应用继续带上 macOS 覆盖文件，以保留此连接配置。
 
 Mac 启动器会把当前 shell 的 `COMPUTE_LAN_PAIRING_ENABLED=true|false` 写入 launchd 配置；未设置时保留上次配置，首次默认 `true`。例如 `COMPUTE_LAN_PAIRING_ENABLED=false services/singverse-compute/.venv/bin/python scripts/macos-compute.py restart` 关闭自动配对，后续普通重启继续保留；原有 Bearer 连接不受影响。仅接受 `true` / `false`，非法值会在停止现有节点前报错。
 

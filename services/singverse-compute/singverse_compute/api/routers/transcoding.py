@@ -1,4 +1,4 @@
-"""Authenticated internal execution API. Business authorization remains in Java."""
+"""Authenticated internal execution API. Business authorization remains in Go."""
 from dataclasses import asdict
 from typing import Literal
 from fastapi import APIRouter, Depends, Request

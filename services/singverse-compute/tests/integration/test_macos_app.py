@@ -1,4 +1,4 @@
-"""Opt-in real Java -> native Mac -> MPS -> Java derivative/batch verification."""
+"""Opt-in real Go -> native Mac -> MPS -> Go derivative/batch verification."""
 import hashlib
 from http.cookiejar import CookieJar
 import json
@@ -20,14 +20,16 @@ def free_port():
         return sock.getsockname()[1]
 
 
-@unittest.skipUnless(os.environ.get('SINGVERSE_TEST_MACOS_APP_JAR'), 'Explicit built Java JAR and local model required')
+@unittest.skipUnless(platform.system() == 'Darwin' and os.environ.get('SINGVERSE_TEST_MACOS_APP_BINARY')
+                     and os.environ.get('SINGVERSE_TEST_MPS_MODEL_REPO'),
+                     'Explicit Go binary, native macOS and local MPS model required')
 class MacosAppSmokeTest(unittest.TestCase):
-    def test_batch_separation_derivative_and_playback_through_java(self):
+    def test_batch_separation_derivative_and_playback_through_go(self):
         self.assertEqual(platform.system(), 'Darwin')
         root = Path(__file__).resolve().parents[4]
-        jar = Path(os.environ['SINGVERSE_TEST_MACOS_APP_JAR']).resolve(strict=True)
+        binary = Path(os.environ['SINGVERSE_TEST_MACOS_APP_BINARY']).resolve(strict=True)
+        self.assertTrue(binary.is_file() and os.access(binary, os.X_OK), 'Build a native Go backend binary first')
         model = Path(os.environ['SINGVERSE_TEST_MPS_MODEL_REPO']).resolve(strict=True)
-        java = str(Path(os.environ['JAVA_HOME'])/'bin/java') if os.environ.get('JAVA_HOME') else 'java'
         with tempfile.TemporaryDirectory() as temporary:
             work = Path(temporary)
             media = work/'media'
@@ -41,24 +43,33 @@ class MacosAppSmokeTest(unittest.TestCase):
                 originals[source] = hashlib.sha256(source.read_bytes()).hexdigest()
             token = work/'token'
             token.write_text('a'*64)
-            compute_port, java_port = free_port(), free_port()
-            origin = f'http://127.0.0.1:{java_port}'
+            token.chmod(0o600)
+            compute_port, backend_port = free_port(), free_port()
+            origin = f'http://127.0.0.1:{backend_port}'
             environment = {**os.environ, 'COMPUTE_AUTH_TOKEN_FILE': str(token),
                            'COMPUTE_AUDIO_MODEL_REPO': str(model),
                            'COMPUTE_AUDIO_MEMORY_BYTES': str(2*1024**3), 'COMPUTE_TRANSCODE_ROOT': str(work/'cache'),
                            'COMPUTE_MINIMUM_FREE_BYTES': '0',
-                           'COMPUTE_NODE_URL': f'http://127.0.0.1:{compute_port}', 'SERVER_PORT': str(java_port),
-                           'SPRING_PROFILES_ACTIVE': 'sqlite', 'SQLITE_PATH': str(work/'app.db'),
+                           'COMPUTE_NODE_URL': f'http://127.0.0.1:{compute_port}', 'SERVER_PORT': str(backend_port),
+                           'COMPUTE_LAN_PAIRING_ENABLED': 'false',
+                           'SINGVERSE_DB_DRIVER': 'sqlite', 'SINGVERSE_BIND_ADDRESS': '127.0.0.1',
+                           'SQLITE_PATH': str(work/'app.db'), 'SINGVERSE_CALLBACK_ORIGIN': origin,
+                           'SINGVERSE_COMPUTE_AUTO_CALLBACK_ORIGIN': '', 'SINGVERSE_PUBLIC_ORIGIN': '',
+                           'SINGVERSE_TRUSTED_PROXIES': '', 'SINGVERSE_DIAGNOSTICS_ADDRESS': '',
+                           'SINGVERSE_TV_DISCOVERY_ADDRESS': '', 'SINGVERSE_TV_RELEASE_DIRECTORY': '',
+                           'SINGVERSE_MIGRATIONS_DIR': str(root/'database/migrations'),
                            'SINGVERSE_AUTH_KEY_FILE': str(work/'master.key'), 'AUDIO_DERIVED_PATH': str(work/'derived'),
                            'TRANSCODE_VERSION_PATH': str(work/'versions'), 'METADATA_CACHE_PATH': str(work/'covers'),
+                           'SINGVERSE_SONG_CACHE_PATH': str(work/'song-cache'),
+                           'SINGVERSE_SONG_CACHE_MINIMUM_FREE_BYTES': '0',
                            'WEBDAV_METADATA_PATH': str(work/'metadata'), 'DBMATE_BIN': str(root/'.tools/dbmate')}
             processes = []
-            with (work/'compute.log').open('wb') as compute_log, (work/'java.log').open('wb') as java_log:
+            with (work/'compute.log').open('wb') as compute_log, (work/'go.log').open('wb') as backend_log:
                 try:
                     processes.append(subprocess.Popen([sys.executable, '-m', 'singverse_compute', '--port', str(compute_port)],
                         cwd=root/'services/singverse-compute', env=environment, stdout=compute_log, stderr=subprocess.STDOUT))
-                    processes.append(subprocess.Popen([java, '-jar', str(jar), '--singverse.classification.worker-enabled=false'],
-                        cwd=root/'services/singverse-java-backend', env=environment, stdout=java_log, stderr=subprocess.STDOUT))
+                    processes.append(subprocess.Popen([str(binary)], cwd=root, env=environment,
+                        stdout=backend_log, stderr=subprocess.STDOUT))
                     opener = build_opener(HTTPCookieProcessor(CookieJar()))
 
                     def request(path, method='GET', body=None, binary=False):
@@ -76,7 +87,9 @@ class MacosAppSmokeTest(unittest.TestCase):
                         self.assertTrue(all(p.poll() is None for p in processes), 'Isolated service exited before ready')
                         try:
                             if request('/api/health')['status'] == 'UP':
-                                break
+                                with urlopen(f'http://127.0.0.1:{compute_port}/health', timeout=3) as ready:
+                                    if json.load(ready)['status'] == 'UP':
+                                        break
                         except OSError:
                             time.sleep(.25)
                     else:
@@ -100,6 +113,12 @@ class MacosAppSmokeTest(unittest.TestCase):
                                     {'ids': [song['id'] for song in songs], 'backend': 'mps'})
                     self.assertEqual(batch['total'], 2)
                     batch_path = '/api/v1/audio-processing/batches/'+batch['id']
+                    for _ in range(240):
+                        batch = request(batch_path)
+                        if batch['state'] != 'PREPARING':
+                            break
+                        time.sleep(.25)
+                    self.assertEqual(batch['state'], 'PREVIEW', batch)
                     request(batch_path+'/submit', 'POST')
                     for _ in range(600):
                         batch = request(batch_path)
@@ -125,8 +144,14 @@ class MacosAppSmokeTest(unittest.TestCase):
                     # A second snapshot must skip both completed resources.
                     repeated = request('/api/v1/audio-processing/batches/preview', 'POST',
                                        {'ids': [song['id'] for song in songs], 'backend': 'mps'})
+                    for _ in range(240):
+                        repeated = request('/api/v1/audio-processing/batches/'+repeated['id'])
+                        if repeated['state'] != 'PREPARING':
+                            break
+                        time.sleep(.25)
+                    self.assertEqual(repeated['state'], 'PREVIEW', repeated)
                     self.assertEqual(repeated['categories'].get('READY'), 2, repeated)
-                    print('Mac Java batch: 8s + 60s MPS, derivatives, timeline, original hashes and duplicate skip passed', flush=True)
+                    print('Mac Go batch: 8s + 60s MPS, derivatives, timeline, original hashes and duplicate skip passed', flush=True)
                 finally:
                     for process in reversed(processes):
                         process.terminate()

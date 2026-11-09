@@ -16,26 +16,30 @@ def contents():
         '部署说明.md': (ROOT/'infra/deploy/app/README.md').read_bytes(),
         'README.offline.md': (ROOT/'infra/deploy/app/README.offline.md').read_bytes(),
         'README.operations.md': (ROOT/'infra/docker/OPERATIONS.md').read_bytes(),
-        '.dockerignore': (ROOT/'infra/docker/build/.dockerignore').read_bytes(),
+        '.dockerignore': (ROOT/'infra/docker/build/go.Dockerfile.dockerignore').read_bytes(),
     }
     trees = (
         'services/singverse-frontend/src/', 'services/singverse-frontend/admin/',
         'services/singverse-frontend/party/', 'services/singverse-frontend/public/',
-        'services/singverse-frontend/tests/', 'services/singverse-java-backend/src/',
-        'services/singverse-java-backend/.mvn/', 'database/migrations/',
+        'services/singverse-frontend/tests/', 'services/singverse-go-backend/cmd/',
+        'services/singverse-go-backend/internal/', 'database/migrations/',
     )
     exact = {
         'services/singverse-frontend/'+name for name in
         ('package.json', 'package-lock.json', 'tsconfig.json', 'vite.config.ts')
     } | {
-        'services/singverse-java-backend/'+name for name in
-        ('Dockerfile', 'mvnw', 'pom.xml', 'nginx/nginx.conf', 'nginx/proxy-scheme.conf')
+        'services/singverse-go-backend/'+name for name in
+        ('go.mod', 'go.sum')
     } | {
         'scripts/setup-dbmate.sh', 'scripts/check-database-baseline.py', 'database/README.md',
         'database/migrations/sqlite/202611070001_initial_schema.sql',
         'database/migrations/mysql/202611070001_initial_schema.sql',
         'contracts/openapi/auth-test-vectors.json',
         'contracts/openapi/singverse.openapi.json',
+        'contracts/go-migration-baseline.json',
+        'VERSION', 'infra/docker/build/go.Dockerfile',
+        'infra/docker/build/go.Dockerfile.dockerignore',
+        'infra/docker/build/nginx/nginx.conf', 'infra/docker/build/nginx/proxy-scheme.conf',
     }
     sources = subprocess.check_output(
         ['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], cwd=ROOT,
@@ -78,7 +82,7 @@ def main():
         for name, data in sorted(files.items()):
             info = zipfile.ZipInfo(PREFIX+name)
             info.create_system = 3
-            mode = 0o100755 if name.endswith('/mvnw') or name == 'scripts/setup-dbmate.sh' else 0o100644
+            mode = 0o100755 if name == 'scripts/setup-dbmate.sh' else 0o100644
             info.external_attr = mode << 16
             info.compress_type = zipfile.ZIP_DEFLATED
             bundle.writestr(info, data)

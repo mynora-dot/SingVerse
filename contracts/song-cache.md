@@ -1,6 +1,6 @@
 # 歌曲缓存混合淘汰与生命周期
 
-适用于 Java 服务节点持久化的 WebDAV 原片块和实时 HLS，不管理媒体原件、用户收藏、播放历史或独立离线兼容版本。业务 SQL 统一位于 `mappers/transcoding/SongCacheMapper.xml` 与 `mappers/playbackhistory/PlaybackActivityMapper.xml`。计算节点继续只管理执行临时产物。
+适用于 Go 服务节点持久化的 WebDAV 原片块和实时 HLS，不管理媒体原件、用户收藏、播放历史或独立离线兼容版本。业务 SQL 统一位于 `internal/execution/sql/` 与 `internal/playback/sql/`。计算节点继续只管理执行临时产物。
 
 ## 现状问题与修复
 
@@ -105,4 +105,4 @@ SQLite/MySQL 各使用 `202611070001_initial_schema.sql` 从空库一次创建�
 
 针对性用例覆盖评分半衰/边界、近期保护、固定/下载/暂停/预取保护、容量水位、重复触发、取消、并发保护重检、四阶段恢复、删除失败/数据库回滚、原片滚动预留/容量恢复和真实 HTTP 授权。`CacheScaleTest` 用 1 万/10 万轻量记录测量真实 XML 查询、生产排序、20 条分页与热文件检查；只创建一份微小 HLS 夹具，不冒充真实 NAS 吞吐基准。
 
-实际本轮结果、制品及真机限制单独记录于 `docs/verification.md`。前端完整测试、Java/SQLite、隔离 MySQL、TV/手机检查及 Java/Python 联动按各自工具链执行；本机编译与仪器编译不代表实体 NAS/TV/手机验收。
+实际本轮结果、制品及真机限制单独记录于 `docs/verification.md`。前端完整测试、Go/SQLite、隔离 MySQL、TV/手机检查及 Go/Python 联动按各自工具链执行；本机编译与仪器编译不代表实体 NAS/TV/手机验收。

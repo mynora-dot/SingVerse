@@ -1,5 +1,11 @@
 variable "REGISTRY" { default = "singverse-compute" }
-variable "VERSION" { default = "0.1.0-SNAPSHOT" }
+variable "VERSION" {
+  default = ""
+  validation {
+    condition = VERSION != ""
+    error_message = "Run make compute-images or set VERSION from the repository root VERSION file"
+  }
+}
 variable "REVISION" { default = "local" }
 
 group "default" { targets = ["cpu", "cuda", "rocm", "openvino"] }

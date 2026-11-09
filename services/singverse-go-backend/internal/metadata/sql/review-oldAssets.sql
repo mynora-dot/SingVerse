@@ -1,0 +1,1 @@
+SELECT asset.id FROM metadata_cover_asset asset WHERE asset.created_at < @{before} AND NOT EXISTS (SELECT 1 FROM song_metadata meta WHERE INSTR(meta.track_json, asset.id) > 0) ORDER BY asset.created_at,asset.id LIMIT 100

@@ -1,14 +1,15 @@
-name: singverse-business
+name: singverse-go-business
 
 services:
-  singverse-java-backend:
-    image: singverse-java-backend:remote
+  singverse-go-backend:
+    image: singverse-go-backend:remote
     build:
       context: .
-      dockerfile: services/singverse-java-backend/Dockerfile
-      target: singverse-java-backend
+      dockerfile: infra/docker/build/go.Dockerfile
+      target: singverse-go-backend
     environment:
-      SPRING_PROFILES_ACTIVE: sqlite
+      SINGVERSE_DB_DRIVER: sqlite
+      SINGVERSE_BIND_ADDRESS: 0.0.0.0
       SQLITE_PATH: /data/singverse.db
       SERVER_PORT: '8080'
       COMPUTE_NODE_URL: ''
@@ -41,13 +42,13 @@ services:
     image: singverse-frontend:remote
     build:
       context: .
-      dockerfile: services/singverse-java-backend/Dockerfile
+      dockerfile: infra/docker/build/go.Dockerfile
       target: singverse-frontend
     ports:
       # Change only the host IP to this NAS's private LAN IP for TV/mobile access.
       - '127.0.0.1:18080:80'
     depends_on:
-      singverse-java-backend:
+      singverse-go-backend:
         condition: service_healthy
         restart: true
     restart: unless-stopped

@@ -1,0 +1,1 @@
+UPDATE audio_batch SET state='COMPLETED',updated_at=@{now} WHERE id=@{id} AND state='QUEUED' AND NOT EXISTS(SELECT 1 FROM audio_batch_item WHERE batch_id=@{id} AND state IN ('PENDING','PROBING','PROCESSING'))

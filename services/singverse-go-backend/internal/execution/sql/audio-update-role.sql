@@ -1,0 +1,1 @@
+UPDATE media_audio_role SET fingerprint=@{fingerprint},original_id=@{original_id},backing_id=@{backing_id},origin=@{origin},revision=@{revision},updated_at=@{updated_at} WHERE song_id=@{song_id} AND revision=@{previous_revision}

@@ -1,0 +1,1 @@
+INSERT INTO lx_download_asset(id,source_id,track_key,quality,relative_path,song_id,file_size,modified_at,content_hash,track_json,created_at) VALUES(@{id},@{sourceId},@{trackKey},@{quality},@{relativePath},@{songId},@{size},@{modified},@{hash},@{trackJson},@{now})

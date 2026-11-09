@@ -1,7 +1,7 @@
 name: singverse-compute-images
 on:
   pull_request:
-    paths: ['services/singverse-compute/**', 'infra/docker/build/.dockerignore', 'infra/docker/build/docker-bake.hcl', 'infra/docker/**', '.github/workflows/singverse-compute-images.yml']
+    paths: ['VERSION', '.dockerignore', 'services/singverse-compute/**', 'infra/docker/build/.dockerignore', 'infra/docker/build/docker-bake.hcl', 'infra/docker/**', '.github/workflows/singverse-compute-images.yml']
   workflow_dispatch:
   release:
     types: [published]
@@ -23,11 +23,11 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           python3 - <<'PY'
-          import os, pathlib, re, xml.etree.ElementTree as ET
-          version = ET.parse('services/singverse-java-backend/pom.xml').getroot().find('{http://maven.apache.org/POM/4.0.0}version').text
+          import os, pathlib, re
+          version = pathlib.Path('VERSION').read_text().strip()
           if os.environ.get('RELEASE_TAG'):
               version = version.removesuffix('-SNAPSHOT')
-              assert os.environ['RELEASE_TAG'] == 'v' + version, 'Release tag must match Java version'
+              assert os.environ['RELEASE_TAG'] == 'v' + version, 'Release tag must match VERSION'
           assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:-SNAPSHOT)?', version)
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write(f'version={version}\nimage=ghcr.io/{os.environ["GITHUB_REPOSITORY_OWNER"].lower()}/singverse-compute\n')

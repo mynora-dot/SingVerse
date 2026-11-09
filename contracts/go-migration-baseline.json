@@ -1,0 +1,5946 @@
+{
+  "schemaVersion": 1,
+  "publicOperations": [
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/device-authorizations/{id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/device-authorizations/{id}/approve"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tv-devices"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/tv-devices/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tv-settings"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/admin/tv-settings"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/tv-settings/banners"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/tv-settings/banners/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tv-settings/banners/{id}/image"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ai/features"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/ai/features/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ai/models"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai/models"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/ai/models/{id}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/ai/models/{id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai/models/{id}/test"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ai/providers"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ai/search-services"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai/search-services"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/ai/search-services/{id}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/ai/search-services/{id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai/search-services/{id}/test"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/artists"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/artists/artwork-settings"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/artists/artwork-settings"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/artists/song-overrides/{songId}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/artists/song-overrides/{songId}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/artists/{id}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/artists/{id}/category"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/artists/{id}/images/retry"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/artists/{id}/images/{kind}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/artists/{id}/images/{kind}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/artists/{id}/images/{kind}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/artists/{id}/images/{kind}/candidates"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/artists/{id}/images/{kind}/candidates/{provider}/{externalId}/preview"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/artists/{id}/images/{kind}/selection"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/artists/{id}/songs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/audio-processing/batches"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audio-processing/batches/preview"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/audio-processing/batches/{id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audio-processing/batches/{id}/cancel"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audio-processing/batches/{id}/items/{song}/cancel"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audio-processing/batches/{id}/retry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audio-processing/batches/{id}/submit"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audio-processing/model/cancel"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audio-processing/model/download"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audio-processing/model/import"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audio-processing/model/select"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audio-processing/model/test"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/audio-processing/node"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/audio-processing/songs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/csrf"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/logout"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/mfa/verify"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/password"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/session"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/username"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/background-tasks"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/background-tasks/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/background-tasks/{id}/children"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/background-tasks/{id}/items"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/classification/history/{id}/undo"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/classification/preview"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/classification/settings"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/classification/settings"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/classification/settings/test"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/classification/songs/{id}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/classification/songs/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/classification/songs/{id}/history"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/classification/tags"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/classification/tags"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/classification/tags/{id}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/classification/tags/{id}/cover"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/classification/tags/{id}/cover"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/classification/tags/{id}/cover"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/classification/tasks"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/classification/tasks"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/classification/tasks/{id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/classification/tasks/{id}/cancel"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/classification/tasks/{id}/pause"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/classification/tasks/{id}/resume"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/classification/tasks/{taskId}/items/{id}/apply"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/classification/tasks/{taskId}/items/{id}/retry"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/compute-node"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/compute-node"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/compute-node/discovery"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/compute-node/pair"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/compute-node/test"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/device-authorizations"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/device-authorizations/{id}/poll"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/filename-parser/preview"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/filename-parser/profiles"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/filename-parser/profiles"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/filename-parser/profiles/preview"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/filename-parser/profiles/{id}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/filename-parser/profiles/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/filename-parser/rule-definitions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/filename-parser/rule-definitions"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/filename-parser/rule-definitions/{id}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/filename-parser/rule-definitions/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/filename-parser/rules"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/filename-parser/rules"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/internal/audio-input/{id}"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/internal/audio-input/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/internal/compute-callback/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/internal/metadata-input/{id}"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/internal/metadata-input/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/internal/transcode-input/{id}"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/internal/transcode-input/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lx-downloads/batches"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lx-downloads/batches"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lx-downloads/batches/{id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lx-downloads/batches/{id}/cancel"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lx-downloads/batches/{id}/items"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lx-downloads/batches/{id}/retry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lx-downloads/catalog/preview"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lx-downloads/catalog/search"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lx-downloads/catalog/states"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lx-downloads/catalog/tracks/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lx-downloads/covers/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lx-downloads/sources"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lx-downloads/sources"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/lx-downloads/sources/{id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lx-downloads/sources/{id}/activate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lx-downloads/sources/{id}/test"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lx-downloads/status"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-songs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-songs/embedded-metadata/refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-songs/{id}/embedded-metadata"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-songs/{id}/embedded-metadata/cover"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-songs/{id}/video"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/media-songs/{id}/video"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-songs/{song}/accompaniment/{id}"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/media-songs/{song}/accompaniment/{id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-songs/{song}/accompaniment/{id}/activate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-songs/{song}/audio-jobs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-songs/{song}/audio-jobs/{id}/cancel"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-songs/{song}/audio-roles"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/media-songs/{song}/audio-roles"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-sources"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/local-directories"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/media-sources/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/media-sources/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata/confirm-empty"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata/share"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata/share-jobs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/latest"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/{jobId}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/{jobId}/deletions/{part}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/{jobId}/download"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/{jobId}/index"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/{jobId}/parts/{part}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/{jobId}/resume"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-sources/{id}/scan"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-sources/{id}/scan-tasks"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}/scan-tasks/latest"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}/scan-tasks/{taskId}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-sources/{id}/scan-tasks/{taskId}/cancel"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}/songs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/batches"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/metadata/batches/latest"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/metadata/batches/{id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/batches/{id}/cancel"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/batches/{id}/items/{itemId}/apply"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/batches/{id}/items/{itemId}/retry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/batches/{id}/items/{itemId}/review/apply"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/batches/{id}/pause"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/batches/{id}/resume"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/metadata/candidates/{id}/cover"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/metadata/cover-assets/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/metadata/settings"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/metadata/settings"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/songs/{songId}/apply"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/metadata/songs/{songId}/cover"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/songs/{songId}/covers/search"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/songs/{songId}/covers/upload"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/metadata/songs/{songId}/review"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/songs/{songId}/review/apply"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/songs/{songId}/search"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/missing-song-feedback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/missing-song-feedback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/missing-song-feedback/{id}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/missing-song-feedback/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/mobile/library/songs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/mobile/library/songs/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/mobile/library/songs/{id}/text-tracks"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/mobile/playback-attempts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/mobile/playback-attempts/{id}/events"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/party/audio-roles/songs/{song}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/party/audio-roles/songs/{song}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/party/invitations/preview"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/party/join"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/party/library/classification-tags"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/party/library/songs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/party/sessions/{id}/commands"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/party/sessions/{id}/snapshot"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/playback-attempts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/playback-attempts/{id}/events"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/playback-history"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/playback-history/popular"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/playback-history/summary"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/playlists"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/playlists"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/playlists/generate"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/playlists/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/playlists/{id}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/playlists/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/server-info"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/system/parameters"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/system/parameters/mfa/confirm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/system/parameters/mfa/disable"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/system/parameters/mfa/recovery-codes"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/system/parameters/mfa/setup"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/system/parameters/mfa/setup"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/transcoding/cache"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/transcoding/cache/cleanup-jobs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/transcoding/cache/cleanup-jobs/{id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/transcoding/cache/cleanup-jobs/{id}/cancel"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/transcoding/cache/clear"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/transcoding/cache/pins"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/transcoding/cache/settings"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/transcoding/cache/songs/{songId}/pin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/transcoding/cache/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/transcoding/capabilities"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/transcoding/hardware-settings"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/transcoding/hardware-settings"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/transcoding/hardware-settings/test"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/transcoding/offline"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/transcoding/offline"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/transcoding/offline/{id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/transcoding/offline/{id}/cancel"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/transcoding/playback/{song}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/transcoding/sessions/versions/{id}/{song}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/transcoding/sessions/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/transcoding/sessions/{id}/artifacts/{name}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/transcoding/sessions/{id}/cancel"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/audio-roles/songs/{song}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/tv/audio-roles/songs/{song}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/audio-roles/songs/{song}/accompaniment/{id}"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/tv/audio-roles/songs/{song}/accompaniment/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/home"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/home/banners/{id}/image"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/artists"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/artists/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/artists/{id}/images/{kind}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/artists/{id}/songs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/classification-tags"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/classification-tags/{id}/cover"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/playlists"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/playlists/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/playlists/{id}/songs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/songs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/songs/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/songs/{id}/cover"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/songs/{id}/text-tracks"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/media/{id}"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/tv/media/{id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tv/playback-resources"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/releases/apk"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/releases/current"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tv/sessions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tv/sessions/{id}/commands"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tv/sessions/{id}/invitations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/sessions/{id}/participants"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tv/sessions/{id}/playback-events"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tv/sessions/{id}/recover"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/sessions/{id}/snapshot"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/transcoding/versions/{id}/{song}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/transcoding/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/transcoding/{id}/artifacts/{name}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tv/transcoding/{id}/cancel"
+    }
+  ],
+  "javaRoutes": [
+    {
+      "method": "GET",
+      "path": "/api/v1/ai/providers",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/ai/AiController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ai/models",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/ai/AiController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ai/search-services",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/ai/AiController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai/models",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/ai/AiController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/ai/models/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/ai/AiController.java"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/ai/models/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/ai/AiController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai/search-services",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/ai/AiController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/ai/search-services/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/ai/AiController.java"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/ai/search-services/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/ai/AiController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ai/features",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/ai/AiController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/ai/features/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/ai/AiController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai/models/{id}/test",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/ai/AiController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai/search-services/{id}/test",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/ai/AiController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/csrf",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/auth/controller/AuthController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/auth/controller/AuthController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/mfa/verify",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/auth/controller/AuthController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/session",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/auth/controller/AuthController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/auth/controller/AuthController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/password",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/auth/controller/AuthController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/username",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/auth/controller/AuthController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/system/parameters",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/auth/controller/AuthController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/system/parameters/mfa/setup",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/auth/controller/AuthController.java"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/system/parameters/mfa/setup",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/auth/controller/AuthController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/system/parameters/mfa/confirm",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/auth/controller/AuthController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/system/parameters/mfa/disable",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/auth/controller/AuthController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/system/parameters/mfa/recovery-codes",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/auth/controller/AuthController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/background-tasks",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/background/BackgroundTaskController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/background-tasks/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/background/BackgroundTaskController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/background-tasks/{id}/children",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/background/BackgroundTaskController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/background-tasks/{id}/items",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/background/BackgroundTaskController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/internal/compute-callback/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/compute/ComputeCallbackController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/compute-node/discovery",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/compute/ComputeLanController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/compute-node/pair",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/compute/ComputeLanController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/compute-node",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/compute/ComputeNodeController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/compute-node",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/compute/ComputeNodeController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/compute-node/test",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/compute/ComputeNodeController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/artists/artwork-settings",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/artist/ArtistController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/artists/artwork-settings",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/artist/ArtistController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/artists",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/artist/ArtistController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/artists/{id}/category",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/artist/ArtistController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/artists/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/artist/ArtistController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/artists/{id}/songs",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/artist/ArtistController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/artists/{id}/images/retry",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/artist/ArtistController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/artists/{id}/images/{kind}/candidates",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/artist/ArtistController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/artists/{id}/images/{kind}/selection",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/artist/ArtistController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/artists/{id}/images/{kind}/candidates/{provider}/{externalId}/preview",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/artist/ArtistController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/artists/song-overrides/{songId}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/artist/ArtistController.java"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/artists/song-overrides/{songId}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/artist/ArtistController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/artists/{id}/images/{kind}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/artist/ArtistController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/artists/{id}/images/{kind}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/artist/ArtistController.java"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/artists/{id}/images/{kind}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/artist/ArtistController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/audio-processing/songs",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioProcessingController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audio-processing/batches/preview",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioProcessingController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/audio-processing/batches",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioProcessingController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/audio-processing/batches/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioProcessingController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audio-processing/batches/{id}/submit",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioProcessingController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audio-processing/batches/{id}/cancel",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioProcessingController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audio-processing/batches/{id}/items/{song}/cancel",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioProcessingController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audio-processing/batches/{id}/retry",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioProcessingController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/audio-processing/node",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioProcessingController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audio-processing/model/download",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioProcessingController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audio-processing/model/cancel",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioProcessingController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audio-processing/model/test",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioProcessingController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audio-processing/model/select",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioProcessingController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audio-processing/model/import",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioProcessingController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-songs/{song}/audio-roles",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioRoleController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/media-songs/{song}/audio-roles",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioRoleController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/party/audio-roles/songs/{song}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioRoleController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/party/audio-roles/songs/{song}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioRoleController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/audio-roles/songs/{song}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioRoleController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/tv/audio-roles/songs/{song}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioRoleController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-songs/{song}/audio-jobs",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioRoleController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-songs/{song}/accompaniment/{id}/activate",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioRoleController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-songs/{song}/audio-jobs/{id}/cancel",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioRoleController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-songs/{song}/accompaniment/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioRoleController.java"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/media-songs/{song}/accompaniment/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioRoleController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/audio-roles/songs/{song}/accompaniment/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioRoleController.java"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/tv/audio-roles/songs/{song}/accompaniment/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioRoleController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/internal/audio-input/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioRoleController.java"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/internal/audio-input/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioRoleController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/classification/settings",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/classification/settings",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/classification/settings/test",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/classification/tags",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/classification/tags",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/classification/tags/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/classification/tags/{id}/cover",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/classification/tags/{id}/cover",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/classification/tags/{id}/cover",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/classification/songs/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/classification/songs/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/classification/songs/{id}/history",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/classification/history/{id}/undo",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/classification/preview",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/classification/tasks",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/classification/tasks",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/classification/tasks/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/classification/tasks/{id}/pause",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/classification/tasks/{id}/resume",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/classification/tasks/{id}/cancel",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/classification/tasks/{taskId}/items/{id}/retry",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/classification/tasks/{taskId}/items/{id}/apply",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/filename-parser/rules",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/FilenameParserController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/filename-parser/rules",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/FilenameParserController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/filename-parser/preview",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/FilenameParserController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/filename-parser/rule-definitions",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/FilenameParserController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/filename-parser/profiles",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/FilenameParserController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/filename-parser/rule-definitions",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/FilenameParserController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/filename-parser/rule-definitions/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/FilenameParserController.java"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/filename-parser/rule-definitions/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/FilenameParserController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/filename-parser/profiles",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/FilenameParserController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/filename-parser/profiles/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/FilenameParserController.java"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/filename-parser/profiles/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/FilenameParserController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/filename-parser/profiles/preview",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/FilenameParserController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-songs/{id}/video",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MediaSongController.java"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/media-songs/{id}/video",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MediaSongController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-songs",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MediaSongController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/local-directories",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MediaSourceController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MediaSourceController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-sources",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MediaSourceController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/media-sources/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MediaSourceController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MediaSourceController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-sources/{id}/scan",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MediaSourceController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}/songs",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MediaSourceController.java"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/media-sources/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MediaSourceController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/metadata/songs/{songId}/review",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MetadataController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/songs/{songId}/review/apply",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MetadataController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/songs/{songId}/covers/search",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MetadataController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/songs/{songId}/covers/upload",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MetadataController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/metadata/cover-assets/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MetadataController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/metadata/settings",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MetadataController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/metadata/settings",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MetadataController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/songs/{songId}/search",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MetadataController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/songs/{songId}/apply",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MetadataController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/batches",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MetadataController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/metadata/batches/latest",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MetadataController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/metadata/batches/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MetadataController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/batches/{id}/pause",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MetadataController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/batches/{id}/resume",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MetadataController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/batches/{id}/cancel",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MetadataController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/batches/{id}/items/{itemId}/retry",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MetadataController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/batches/{id}/items/{itemId}/apply",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MetadataController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/metadata/batches/{id}/items/{itemId}/review/apply",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MetadataController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/metadata/candidates/{id}/cover",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MetadataController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/metadata/songs/{songId}/cover",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/controller/MetadataController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lx-downloads/covers/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/download/LxDownloadController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lx-downloads/status",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/download/LxDownloadController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lx-downloads/sources",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/download/LxDownloadController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lx-downloads/sources",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/download/LxDownloadController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lx-downloads/sources/{id}/activate",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/download/LxDownloadController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lx-downloads/sources/{id}/test",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/download/LxDownloadController.java"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/lx-downloads/sources/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/download/LxDownloadController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lx-downloads/catalog/search",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/download/LxDownloadController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lx-downloads/catalog/preview",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/download/LxDownloadController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lx-downloads/catalog/tracks/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/download/LxDownloadController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lx-downloads/catalog/states",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/download/LxDownloadController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lx-downloads/batches",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/download/LxDownloadController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lx-downloads/batches",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/download/LxDownloadController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lx-downloads/batches/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/download/LxDownloadController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lx-downloads/batches/{id}/items",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/download/LxDownloadController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lx-downloads/batches/{id}/cancel",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/download/LxDownloadController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lx-downloads/batches/{id}/retry",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/download/LxDownloadController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/missing-song-feedback",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/missingfeedback/MissingFeedbackController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/missing-song-feedback",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/missingfeedback/MissingFeedbackController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/missing-song-feedback/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/missingfeedback/MissingFeedbackController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/missing-song-feedback/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/missingfeedback/MissingFeedbackController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/playback-attempts",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/playbackhistory/PlaybackActivityController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/mobile/playback-attempts",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/playbackhistory/PlaybackActivityController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/playback-attempts/{id}/events",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/playbackhistory/PlaybackActivityController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/mobile/playback-attempts/{id}/events",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/playbackhistory/PlaybackActivityController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/playback-history",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/playbackhistory/PlaybackHistoryController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/playback-history/popular",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/playbackhistory/PlaybackHistoryController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/playback-history/summary",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/playbackhistory/PlaybackHistoryController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/playlists",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/playlist/PlaylistController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/playlists",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/playlist/PlaylistController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/playlists/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/playlist/PlaylistController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/playlists/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/playlist/PlaylistController.java"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/playlists/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/playlist/PlaylistController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/playlists/generate",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/playlist/PlaylistController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/transcoding/cache",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/SongCacheController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/transcoding/cache/settings",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/SongCacheController.java"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/transcoding/cache/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/SongCacheController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/transcoding/cache/clear",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/SongCacheController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/transcoding/cache/pins",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/SongCacheController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/transcoding/cache/songs/{songId}/pin",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/SongCacheController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/transcoding/cache/cleanup-jobs",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/SongCacheController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/transcoding/cache/cleanup-jobs/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/SongCacheController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/transcoding/cache/cleanup-jobs/{id}/cancel",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/SongCacheController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/transcoding/capabilities",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/TranscodeController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/transcoding/hardware-settings",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/TranscodeController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/transcoding/hardware-settings",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/TranscodeController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/transcoding/hardware-settings/test",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/TranscodeController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/transcoding/playback/{song}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/TranscodeController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/transcoding/sessions/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/TranscodeController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/transcoding/sessions/{id}/cancel",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/TranscodeController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/transcoding/sessions/{id}/artifacts/{name}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/TranscodeController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/transcoding/sessions/versions/{id}/{song}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/TranscodeController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/transcoding/offline",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/TranscodeController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/transcoding/offline",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/TranscodeController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/transcoding/offline/{id}/cancel",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/TranscodeController.java"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/transcoding/offline/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/TranscodeController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/internal/transcode-input/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/TranscodeInputController.java"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/internal/transcode-input/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/TranscodeInputController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-sources/{id}/scan-tasks",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/ScanTaskController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}/scan-tasks/latest",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/ScanTaskController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}/scan-tasks/{taskId}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/ScanTaskController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-sources/{id}/scan-tasks/{taskId}/cancel",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/ScanTaskController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata/share",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/metadata/WebDavMetadataController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata/share-jobs",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/metadata/WebDavMetadataController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/latest",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/metadata/WebDavMetadataController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/{jobId}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/metadata/WebDavMetadataController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/{jobId}/resume",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/metadata/WebDavMetadataController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/{jobId}/index",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/metadata/WebDavMetadataController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/{jobId}/parts/{part}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/metadata/WebDavMetadataController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/{jobId}/deletions/{part}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/metadata/WebDavMetadataController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/{jobId}/download",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/metadata/WebDavMetadataController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/metadata/WebDavMetadataController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/metadata/WebDavMetadataController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-sources/{id}/embedded-metadata/confirm-empty",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/metadata/WebDavMetadataController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-songs/{id}/embedded-metadata",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/metadata/WebDavMetadataController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media-songs/{id}/embedded-metadata/cover",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/metadata/WebDavMetadataController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-songs/embedded-metadata/refresh",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/metadata/WebDavMetadataController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/internal/metadata-input/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/metadata/WebDavMetadataController.java"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/internal/metadata-input/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/metadata/WebDavMetadataController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/mobile/library/songs",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/mobile/MobileLibraryController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/mobile/library/songs/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/mobile/MobileLibraryController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/mobile/library/songs/{id}/text-tracks",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/mobile/MobileLibraryController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/server-info",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/device-authorizations",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/device-authorizations/{id}/poll",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tv-devices",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/device-authorizations/{id}/approve",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/device-authorizations/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/tv-devices/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/songs",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/party/library/songs",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/classification-tags",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/party/library/classification-tags",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/classification-tags/{id}/cover",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/releases/current",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/releases/apk",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/home",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/home/banners/{id}/image",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/songs/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/songs/{id}/text-tracks",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/playlists",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/playlists/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/playlists/{id}/songs",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/artists",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/artists/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/artists/{id}/images/{kind}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/artists/{id}/songs",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/library/songs/{id}/cover",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tv/playback-resources",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/media/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/tv/media/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/transcoding/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tv/transcoding/{id}/cancel",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/transcoding/{id}/artifacts/{name}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/transcoding/versions/{id}/{song}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tv/sessions",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tv/sessions/{id}/recover",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/sessions/{id}/snapshot",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/party/sessions/{id}/snapshot",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tv/sessions/{id}/commands",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/party/sessions/{id}/commands",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tv/sessions/{id}/playback-events",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tv/sessions/{id}/invitations",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tv/sessions/{id}/participants",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/party/invitations/preview",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/party/join",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tv-settings",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvHomeSettingsController.java"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/admin/tv-settings",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvHomeSettingsController.java"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/tv-settings/banners",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvHomeSettingsController.java"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/tv-settings/banners/{id}",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvHomeSettingsController.java"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tv-settings/banners/{id}/image",
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvHomeSettingsController.java"
+    }
+  ],
+  "scheduledJobs": [
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/background/BackgroundTaskService.java",
+      "line": 64,
+      "schedule": "fixedDelay = 60000, initialDelay = 60000"
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/background/BackgroundTaskService.java",
+      "line": 76,
+      "schedule": "fixedDelay = 1000, initialDelay = 1000"
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioCatalog.java",
+      "line": 78,
+      "schedule": "fixedDelay = 1000, initialDelay = 3000, scheduler = \"audioScheduler\""
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioJobService.java",
+      "line": 172,
+      "schedule": "fixedDelay=3000,initialDelay=6000,scheduler=\"audioScheduler\""
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioJobService.java",
+      "line": 255,
+      "schedule": "fixedDelay=10000,initialDelay=15000,scheduler=\"audioScheduler\""
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioJobService.java",
+      "line": 347,
+      "schedule": "fixedDelay=3600000,initialDelay=60000,scheduler=\"audioScheduler\""
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioProcessingService.java",
+      "line": 217,
+      "schedule": "fixedDelay=3000,initialDelay=9000,scheduler=\"audioScheduler\""
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/audio/AudioProcessingService.java",
+      "line": 266,
+      "schedule": "fixedDelay=3600000,initialDelay=60000,scheduler=\"audioScheduler\""
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/classification/ClassificationWorker.java",
+      "line": 23,
+      "schedule": "fixedDelay=1000,scheduler=\"classificationScheduler\""
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/download/LxDownloadService.java",
+      "line": 161,
+      "schedule": "fixedDelay=1000"
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/metadata/CoverAssetService.java",
+      "line": 68,
+      "schedule": "fixedDelay=3600000,initialDelay=60000"
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/metadata/MetadataFileService.java",
+      "line": 50,
+      "schedule": "fixedDelay=2000,initialDelay=5000"
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/metadata/MetadataWorker.java",
+      "line": 40,
+      "schedule": "fixedDelay = 1000, initialDelay = 2000"
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/playbackhistory/PlaybackActivityService.java",
+      "line": 310,
+      "schedule": "scheduler = \"transcodeScheduler\", fixedDelay = 1000, initialDelay = 5000"
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/service/MediaPlaybackService.java",
+      "line": 454,
+      "schedule": "fixedDelay = 1000, initialDelay = 2000, scheduler = \"transcodeScheduler\""
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/service/MediaScanScheduler.java",
+      "line": 31,
+      "schedule": "fixedDelay = 10000, initialDelay = 10000"
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/SongCacheService.java",
+      "line": 609,
+      "schedule": "fixedDelay = 10000, initialDelay = 10000, scheduler = \"transcodeScheduler\""
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/transcoding/TranscodeService.java",
+      "line": 765,
+      "schedule": "fixedDelay = 2000, initialDelay = 3000, scheduler = \"transcodeScheduler\""
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/metadata/WebDavMetadataService.java",
+      "line": 157,
+      "schedule": "fixedDelay=5000,initialDelay=10000"
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/metadata/WebDavMetadataService.java",
+      "line": 307,
+      "schedule": "fixedDelay=3600000,initialDelay=60000"
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/metadata/WebDavShareJobs.java",
+      "line": 136,
+      "schedule": "fixedDelay=2000,initialDelay=5000"
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/media/webdav/metadata/WebDavShareJobs.java",
+      "line": 180,
+      "schedule": "fixedDelay=3600000,initialDelay=60000"
+    },
+    {
+      "source": "services/singverse-java-backend/src/main/java/com/mynora/singverse/tv/TvPrefetchService.java",
+      "line": 140,
+      "schedule": "fixedDelay = 5000, initialDelay = 5000, scheduler = \"transcodeScheduler\""
+    }
+  ],
+  "sqlStatements": [
+    {
+      "namespace": "com.mynora.singverse.ai.AiMapper",
+      "id": "lock",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.ai.AiMapper",
+      "id": "services",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.ai.AiMapper",
+      "id": "service",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.ai.AiMapper",
+      "id": "secrets",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.ai.AiMapper",
+      "id": "insert",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.ai.AiMapper",
+      "id": "update",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.ai.AiMapper",
+      "id": "remove",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.ai.AiMapper",
+      "id": "references",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.ai.AiMapper",
+      "id": "features",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.ai.AiMapper",
+      "id": "feature",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.ai.AiMapper",
+      "id": "saveFeature",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "lock",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "list",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "find",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "category",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "insert",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "image",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "insertImage",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "updateImage",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "removeImage",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "byName",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "override",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "deleteOverride",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "insertOverride",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "clearSource",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "policy",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "deletePolicy",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "insertPolicy",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "retry",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "imageSource",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "attribution",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "ensureFetch",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "pendingImage",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "imageFetch",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "imageCandidates",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "imageFetchState",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "retryImage",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "fanartKey",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "saveFanartKey",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.artist.ArtistMapper",
+      "id": "requeueMissingBackgrounds",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "insertBatch",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "setRecipe",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "insertItems",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "lockPreparing",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "prepared",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "ready",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "preparationFailed",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "recoverPreparing",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "batch",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "item",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "batches",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "batchCount",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "counts",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "items",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "failedSongs",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "pending",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "start",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "cancel",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "finish",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "updateItem",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "skipCancelled",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "collectPreviewItems",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioProcessingMapper",
+      "id": "collectPreviews",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioRoleMapper",
+      "id": "candidates",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioRoleMapper",
+      "id": "insertClaim",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioRoleMapper",
+      "id": "claim",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioRoleMapper",
+      "id": "role",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioRoleMapper",
+      "id": "insertRole",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioRoleMapper",
+      "id": "updateRole",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioRoleMapper",
+      "id": "forSong",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioRoleMapper",
+      "id": "job",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioRoleMapper",
+      "id": "jobsByIds",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioRoleMapper",
+      "id": "pending",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioRoleMapper",
+      "id": "rolesForSongs",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioRoleMapper",
+      "id": "jobsForSongs",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioRoleMapper",
+      "id": "insertJob",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioRoleMapper",
+      "id": "selection",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioRoleMapper",
+      "id": "selectionsForSongs",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioRoleMapper",
+      "id": "insertSelection",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioRoleMapper",
+      "id": "updateSelection",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.audio.AudioRoleMapper",
+      "id": "updateJob",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "setCsrf",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "countRecovery",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "deleteExpiredTokens",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "insertToken",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "findToken",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "touchToken",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "deleteToken",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "findThrottle",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "insertThrottle",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "updateThrottle",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "clearLimits",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "acceptTotpStep",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "consumeRecovery",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "incrementTokenAttempts",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "tokenAttempts",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "startMfaSetup",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "cancelMfaSetup",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "incrementSetupAttempts",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "confirmMfa",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "deleteRecovery",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "insertRecovery",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "disableMfa",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "changePassword",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "changeUsername",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "invalidateAccount",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "deleteTokens",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "countAccounts",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "insertInitialAccount",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "account",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "insertEvent",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "deleteOldEvents",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "recoverAccount",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.auth.repository.AuthMapper",
+      "id": "deleteThrottle",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "children",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "childCount",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "childStates",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "memberships",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "linkTask",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "assignTask",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "initializeBatch",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "updateBatch",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "sealScope",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "sealAutomatic",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "batchKeys",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "localRecoveries",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "unclassified",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "relationCounts",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "scopeReason",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "scopeFailure",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "sourceLabel",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "scopeCounts",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "scopeSongs",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "scopeSong",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "admitScope",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "admitScopes",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "pendingScopeBatches",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "skipBatchScopes",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "origins",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "pendingScopes",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "resolveScope",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "waitingScopes",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "advanceScope",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "scopeOwners",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "relationOwners",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "deleteRelations",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "deleteScopes",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "list",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "count",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "find",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "items",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "itemCount",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "itemStates",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "insert",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "insertProjected",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "update",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "findItem",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "insertItem",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "insertProjectedItem",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "updateItem",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "active",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "expired",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "lockExpired",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "deleteItems",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "deleteTask",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "interruptLocal",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "localSource",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "source",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "sourceKeys",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "sourceCounts",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "sourceItems",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "owner",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.background.BackgroundTaskMapper",
+      "id": "parents",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "taskConfigs",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "settings",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "cooldown",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "lock",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "saveSettings",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "tags",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "tagCover",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "insertCover",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "updateCover",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "deleteCover",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "insertTag",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "updateTag",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "songIds",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "state",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "insertState",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "updateState",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "clearAssignments",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "assign",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "insertHistory",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "history",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "historyOne",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "reverted",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "receipt",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "receiptSave",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "insertTask",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "insertItem",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "task",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "tasks",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "items",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "itemCount",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "counts",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "item",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "next",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "itemState",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "retry",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "taskState",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "cancelItems",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "recoverItems",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "recoverTasks",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.classification.ClassificationMapper",
+      "id": "pauseAll",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.compute.ComputeNodeMapper",
+      "id": "settings",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.compute.ComputeNodeMapper",
+      "id": "secrets",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.compute.ComputeNodeMapper",
+      "id": "save",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.compute.ComputePairingIdentityMapper",
+      "id": "find",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.compute.ComputePairingIdentityMapper",
+      "id": "insert",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "settings",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "lockSettings",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "bind",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "activate",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "scripts",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "script",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "sameScript",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "insertScript",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "deleteScript",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "secrets",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "activeSource",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "activeScript",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "track",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "deleteTrack",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "insertTrack",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "pruneTracks",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "insertBatch",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "insertItem",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "activeItem",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "qualityOwner",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "reserveQuality",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "batches",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "batchCount",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "batch",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "items",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "itemCount",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "counts",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "queued",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "claim",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "item",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "progress",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "updateItem",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "updateBatch",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "cancel",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "recovering",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "transferring",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "interrupt",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "activeBatches",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "asset",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "assetsForTrack",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "songAsset",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "sourceAssets",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "activeTrack",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "retryItems",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "deleteAsset",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "insertAsset",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.download.LxMapper",
+      "id": "insertSong",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.infrastructure.database.DatabaseProbeMapper",
+      "id": "check",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.FilenameParserConfigMapper",
+      "id": "read",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.FilenameParserConfigMapper",
+      "id": "insert",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.FilenameParserConfigMapper",
+      "id": "update",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.FilenameParserConfigMapper",
+      "id": "lockBindings",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSongMapper",
+      "id": "list",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSongMapper",
+      "id": "batchAfter",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSongMapper",
+      "id": "byIds",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSongMapper",
+      "id": "count",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSongMapper",
+      "id": "delete",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSongMapper",
+      "id": "insert",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSongMapper",
+      "id": "search",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSongMapper",
+      "id": "searchCount",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSongMapper",
+      "id": "find",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSourceMapper",
+      "id": "countEncryptedPasswords",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSourceMapper",
+      "id": "encryptedPasswords",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSourceMapper",
+      "id": "list",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSourceMapper",
+      "id": "count",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSourceMapper",
+      "id": "search",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSourceMapper",
+      "id": "searchCount",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSourceMapper",
+      "id": "find",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSourceMapper",
+      "id": "delete",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSourceMapper",
+      "id": "insert",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSourceMapper",
+      "id": "update",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSourceMapper",
+      "id": "references",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSourceMapper",
+      "id": "touch",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSourceMapper",
+      "id": "schedule",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSourceMapper",
+      "id": "due",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSourceMapper",
+      "id": "claim",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.repository.MediaSourceMapper",
+      "id": "scanResult",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataFileMapper",
+      "id": "touch",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataFileMapper",
+      "id": "retrySource",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataFileMapper",
+      "id": "previous",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataFileMapper",
+      "id": "attachments",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataFileMapper",
+      "id": "enqueue",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataFileMapper",
+      "id": "enqueueSource",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataFileMapper",
+      "id": "touchPath",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataFileMapper",
+      "id": "enqueuePath",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataFileMapper",
+      "id": "failures",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataFileMapper",
+      "id": "pending",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataFileMapper",
+      "id": "complete",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataFileMapper",
+      "id": "failed",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataFileMapper",
+      "id": "pendingSource",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "recover",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "prune",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "clearAbandonedSongs",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "clearAbandonedDirectories",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "activeCount",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "activeSource",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "find",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "latest",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "insert",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "start",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "cancel",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "committing",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "finish",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "progress",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "directory",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "nextDirectory",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "hasDirectory",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "processed",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "stage",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "stagedIds",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "clearSongs",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "clearDirectories",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.ScanTaskMapper",
+      "id": "publish",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "config",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "configInsert",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "configSave",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "sourceDelete",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "resourcesDelete",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "sourceTasksDelete",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "resource",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "bootstrap",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "newResources",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "observed",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "missing",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "archive",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "removeArchivedSongs",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "emptyScan",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "notEmpty",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "confirmEmpty",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "insertSongs",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "counters",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "counts",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "presence",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "queue",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "pending",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "claim",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "running",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "finishTask",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "finishResource",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "applyTags",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "refresh",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "deep",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "blockSource",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "recover",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "recoverResources",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "budget",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "budgetInsert",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "budgetReset",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "fileStart",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "bytes",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "nextRequest",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "blockGroup",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "pruneTasks",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "pruneResources",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "updateSongs",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "resourceState",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "assetReferences",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "pruneMetadata",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "pruneClassification",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "pruneAssignments",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "pruneCredits",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "metrics",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "lockSource",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "clearSourceClassification",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "clearSourceAssignments",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "clearSourceCredits",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "clearSourceOverrides",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "pruneOverrides",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "restorePending",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "queueManual",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavMetadataMapper",
+      "id": "makeManual",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "insert",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "snapshot",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "count",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "sourceCount",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "snapshotCount",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "find",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "latest",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "pending",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "page",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "deleted",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "progress",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "asset",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "assetInsert",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "receipt",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "receiptInsert",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "receiptUpdate",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "lock",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "active",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "expired",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "deleteEntries",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "deleteAssets",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "deleteJob",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.webdav.metadata.WebDavShareJobMapper",
+      "id": "receiptLock",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "settings",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "lock",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "saveSettings",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "pauseActive",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "recoverItems",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "active",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "latest",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "batch",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "insertBatch",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "batchStatus",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "targetSongs",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "insertItem",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "counts",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "items",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "viewItems",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "viewCount",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "itemCount",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "item",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "itemStatus",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "insertCandidate",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "candidate",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "deleteApplied",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "insertApplied",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "pruneCandidates",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "cleanupSource",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.MetadataMapper",
+      "id": "cleanupOrphans",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.SingleReviewMapper",
+      "id": "receipt",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.SingleReviewMapper",
+      "id": "receiptSave",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.SingleReviewMapper",
+      "id": "asset",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.SingleReviewMapper",
+      "id": "assetSave",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.SingleReviewMapper",
+      "id": "oldAssets",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.SingleReviewMapper",
+      "id": "references",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.SingleReviewMapper",
+      "id": "assetDelete",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.metadata.SingleReviewMapper",
+      "id": "pruneReceipts",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.missingfeedback.MissingFeedbackMapper",
+      "id": "lock",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.missingfeedback.MissingFeedbackMapper",
+      "id": "find",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.missingfeedback.MissingFeedbackMapper",
+      "id": "currentSongIds",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.missingfeedback.MissingFeedbackMapper",
+      "id": "count",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.missingfeedback.MissingFeedbackMapper",
+      "id": "list",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.missingfeedback.MissingFeedbackMapper",
+      "id": "insert",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.missingfeedback.MissingFeedbackMapper",
+      "id": "update",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper",
+      "id": "ensureProfile",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper",
+      "id": "lockProfile",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper",
+      "id": "profile",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper",
+      "id": "currentProfile",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper",
+      "id": "updateProfile",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper",
+      "id": "insertAttempt",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper",
+      "id": "attempt",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper",
+      "id": "currentAttempt",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper",
+      "id": "updateAttempt",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper",
+      "id": "insertHistory",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper",
+      "id": "updateHistory",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper",
+      "id": "history",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper",
+      "id": "currentHistory",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper",
+      "id": "appliedHeatTimes",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper",
+      "id": "markAggregated",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper",
+      "id": "unpreparedHistory",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper",
+      "id": "prepareHistory",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper",
+      "id": "pendingHistory",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper",
+      "id": "expired",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper",
+      "id": "aggregationState",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackActivityMapper",
+      "id": "checkpoint",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackHistoryMapper",
+      "id": "history",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackHistoryMapper",
+      "id": "countHistory",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackHistoryMapper",
+      "id": "popular",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackHistoryMapper",
+      "id": "countPopular",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playbackhistory.PlaybackHistoryMapper",
+      "id": "summary",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playlist.PlaylistMapper",
+      "id": "lock",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playlist.PlaylistMapper",
+      "id": "list",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playlist.PlaylistMapper",
+      "id": "find",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playlist.PlaylistMapper",
+      "id": "insert",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playlist.PlaylistMapper",
+      "id": "update",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.playlist.PlaylistMapper",
+      "id": "remove",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "settings",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "initialize",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "saveSettings",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "entries",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "find",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "byKey",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "insert",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "delete",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "hit",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "touch",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "addBytes",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "repairOriginalBytes",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "target",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "lease",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "active",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "bind",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "renew",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "release",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "releaseCache",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "expire",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "totals",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "paths",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "page",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "candidates",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "profile",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "ensureProfile",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "lockProfile",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "pin",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "pins",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "pinCount",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "deletingForSong",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "playing",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "activeSong",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "statisticsReady",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "claimDelete",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "failedDelete",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "pendingDeletes",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "insertJob",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "updateJob",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "job",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "interruptedJobs",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.SongCacheMapper",
+      "id": "pruneJobs",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.TranscodeMapper",
+      "id": "find",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.TranscodeMapper",
+      "id": "list",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.TranscodeMapper",
+      "id": "pending",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.TranscodeMapper",
+      "id": "versions",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.TranscodeMapper",
+      "id": "insert",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.TranscodeMapper",
+      "id": "update",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.TranscodeMapper",
+      "id": "renew",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.TranscodeMapper",
+      "id": "expireRealtime",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.TranscodeMapper",
+      "id": "saveActiveCache",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.TranscodeMapper",
+      "id": "plan",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.TranscodeMapper",
+      "id": "requeue",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.media.transcoding.TranscodeMapper",
+      "id": "delete",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.tv.TvHomeMapper",
+      "id": "settings",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.tv.TvHomeMapper",
+      "id": "banners",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.tv.TvHomeMapper",
+      "id": "image",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.tv.TvHomeMapper",
+      "id": "lock",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.tv.TvHomeMapper",
+      "id": "bump",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.tv.TvHomeMapper",
+      "id": "save",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.tv.TvHomeMapper",
+      "id": "insert",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.tv.TvHomeMapper",
+      "id": "updateBanner",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.tv.TvHomeMapper",
+      "id": "remove",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.tv.TvMapper",
+      "id": "find",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.tv.TvMapper",
+      "id": "secret",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.tv.TvMapper",
+      "id": "list",
+      "dialect": null,
+      "kind": "select"
+    },
+    {
+      "namespace": "com.mynora.singverse.tv.TvMapper",
+      "id": "insert",
+      "dialect": null,
+      "kind": "insert"
+    },
+    {
+      "namespace": "com.mynora.singverse.tv.TvMapper",
+      "id": "save",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.tv.TvMapper",
+      "id": "lock",
+      "dialect": null,
+      "kind": "update"
+    },
+    {
+      "namespace": "com.mynora.singverse.tv.TvMapper",
+      "id": "delete",
+      "dialect": null,
+      "kind": "delete"
+    },
+    {
+      "namespace": "com.mynora.singverse.tv.TvMapper",
+      "id": "library",
+      "dialect": null,
+      "kind": "select"
+    }
+  ]
+}

@@ -17,7 +17,7 @@
 
 表中的文件均在 `infra/docker/compose/`。`base` 不含 AI 运行库；`cpu`、`cuda`、`rocm`、`rocm-native`、`openvino` 均不内置模型权重。OpenVINO、CUDA 与其它 AMD GPU 的完整效果/长曲以各设备实际验收为准。Apple GPU 应使用 macOS 原生计算节点，Docker 内不能使用 MPS；RKNN 属实验性原生路径，见 [compute README](../../services/singverse-compute/README.md)。
 
-默认 AI 覆盖文件将 compute 内存上限改为 6GiB，音频进程预算仍为 4GiB。可在 `.env` 调整 `COMPUTE_CONTAINER_MEMORY_LIMIT`、`COMPUTE_AUDIO_MEMORY_BYTES`、`COMPUTE_PROCESS_MEMORY_BYTES`、`COMPUTE_AUDIO_THREADS` 和 `COMPUTE_CPU_LIMIT`。工作进程预算不能顶满容器；视频与音频并发、运行时常驻、Java 和 NAS 系统也需要余量。默认先保持单路视频任务，不以增加并发作为起播优化方式。
+默认 AI 覆盖文件将 compute 内存上限改为 6GiB，音频进程预算仍为 4GiB。可在 `.env` 调整 `COMPUTE_CONTAINER_MEMORY_LIMIT`、`COMPUTE_AUDIO_MEMORY_BYTES`、`COMPUTE_PROCESS_MEMORY_BYTES`、`COMPUTE_AUDIO_THREADS` 和 `COMPUTE_CPU_LIMIT`。工作进程预算不能顶满容器；视频与音频并发、运行时常驻、Go 和 NAS 系统也需要余量。默认先保持单路视频任务，不以增加并发作为起播优化方式。
 
 权重放在模型卷，模型选择/试跑资格及视频硬件设置放在 `singverse-transcode-cache`，升级保留两卷。首次完成后按 [验收、备份与更新](OPERATIONS.md) 维护；分离总耗时还包括进程启动、回源和编码，GPU 利用率低时先定位各阶段，不直接提高并发或声称未使用 GPU。
 
@@ -96,7 +96,7 @@ PyTorch 的 ROCm 接口也使用 `torch.cuda` 命名；应用任务报告的实�
 
 ### 3. 这次 GPU Hang 修复的适用范围
 
-2026-11-08 的 Radeon 780M（gfx1103）/ PVE NAS 单机验证表明：旧运行库缺失原生算子；换为原生运行库后仍曾触发 MES/GPU Hang。该机 GC IP 为 11.0.1，更新匹配的 ME、MEC、MES_2、PFP 固件（MES 版本由 `0x8b` 到 `0x94`），在不改变 PVE 直通配置的条件下完成驱动重载后，通过多次完整 112 秒真实歌曲分离、Java 回源/入库以及同时 VA-API 转码测试，无隐式 CPU 回退。
+2026-11-08 的 Radeon 780M（gfx1103）/ PVE NAS 单机验证表明：旧运行库缺失原生算子；换为原生运行库后仍曾触发 MES/GPU Hang。该机 GC IP 为 11.0.1，更新匹配的 ME、MEC、MES_2、PFP 固件（MES 版本由 `0x8b` 到 `0x94`），在不改变 PVE 直通配置的条件下完成驱动重载后，通过多次完整 112 秒真实歌曲分离、Go 回源/入库以及同时 VA-API 转码测试，无隐式 CPU 回退。
 
 所用上游固件固定在 [linux-firmware 提交 9ec083c3](https://gitlab.com/kernel-firmware/linux-firmware/-/tree/9ec083c3aba932190e3c160e52cbb7e264148b61/amdgpu)。**这不是通用固件安装脚本或所有 gfx1103 的兼容承诺**。另一台 NAS 应由管理员核对真实 IP block、内核支持及厂商固件更新方式，保留原固件和启动镜像。PVE 下缺 VBIOS/VFCT 的初始化问题与 MES 运行时挂死是不同阶段，不能互相代替修复；不要复制其他设备的 ROM 或 VFCT。
 
@@ -144,7 +144,7 @@ AMD 使用 `vaapi`，Intel 使用 `qsv`，然后在基础 Compose 后追加 `com
 1. 在管理端“设备与服务 → 性能节点配置”完成连接测试；同栈选择自动识别，独立节点检查双向回源。
 2. 在“伴奏模型”区域检查运行环境，下载或导入所选固定模型。模型进入 `singverse-audio-models`，重建容器后仍保留。不要将模型放到媒体原件目录，也不要将宿主模型路径直接填成容器内不存在的路径。
 3. 等待校验结束，对所选后端执行“试跑”，达到可用状态。测试 ROCm/CUDA 时先关闭“加速不可用时自动降级到 CPU”，明确选择已试跑的设备，防止把 CPU 成功当作 GPU 成功；此设置也影响视频任务。
-4. 使用自己允许处理的一首完整歌曲，最好包含实际播放过的 WebDAV 素材，在音频处理页生成伴奏。检查任务的**实际后端、模型版本、是否回退、错误及完整时长**，确认 Java 已接收衍生结果。
+4. 使用自己允许处理的一首完整歌曲，最好包含实际播放过的 WebDAV 素材，在音频处理页生成伴奏。检查任务的**实际后端、模型版本、是否回退、错误及完整时长**，确认 Go 已接收衍生结果。
 5. 播放完整伴奏，确认原唱和伴奏均可切换、时长/采样率合理；检查内存、磁盘、GPU 使用及内核日志。再测试重复任务、多首/较长歌曲，以及同时播放时的负载。
 6. 若需要视频加速，另用实际视频素材执行硬件方式测试和播放，核对实际后端与是否发生软件回退。AI 试跑不能替代视频验收。
 

@@ -1,0 +1,1 @@
+SELECT r.*,s.enabled,s.paused,s.access_group,s.private_origins,s.blocked_until,s.blocked_reason FROM webdav_resource r JOIN webdav_metadata_source s ON s.source_id=r.source_id AND s.binding=r.binding WHERE r.song_id=@{songId}

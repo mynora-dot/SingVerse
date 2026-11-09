@@ -1,0 +1,1 @@
+INSERT INTO media_song(id,source_id,relative_path,path_hash,file_size,modified_at,scanned_at,parser_profile_id,parser_revision,selected_rule_id,result_json,needs_review) SELECT @{songId},@{sourceId},@{relativePath},@{pathHash},@{size},@{modified},@{now},@{profileId},@{revision},NULL,@{result},0 WHERE NOT EXISTS(SELECT 1 FROM media_song WHERE id=@{songId})

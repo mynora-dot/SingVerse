@@ -1,9 +1,9 @@
 name: singverse-docker
 on:
   push:
-    paths: ['services/singverse-compute/**', 'services/singverse-frontend/**', 'services/singverse-java-backend/**', 'infra/docker/**', 'infra/deploy/**', '.env.example', '.gitignore', 'scripts/package-*.py', 'scripts/check-docker-app.py', 'scripts/check-nginx-media.py', 'scripts/check-auth-docker.py', '.github/workflows/singverse-docker.yml', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh']
+    paths: ['services/singverse-compute/**', 'services/singverse-frontend/**', 'services/singverse-go-backend/**', 'infra/docker/**', 'infra/deploy/**', '.env.example', '.gitignore', '.dockerignore', 'scripts/package-*.py', 'scripts/check-docker-app.py', 'scripts/check-nginx-media.py', 'scripts/check-auth-docker.py', 'infra/docker/check-build-context.py', 'infra/docker/check-go-container.py', 'scripts/check-backend-contract.py', '.github/workflows/singverse-docker.yml', 'Makefile', 'VERSION', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh']
   pull_request:
-    paths: ['services/singverse-compute/**', 'services/singverse-frontend/**', 'services/singverse-java-backend/**', 'infra/docker/**', 'infra/deploy/**', '.env.example', '.gitignore', 'scripts/package-*.py', 'scripts/check-docker-app.py', 'scripts/check-nginx-media.py', 'scripts/check-auth-docker.py', '.github/workflows/singverse-docker.yml', 'Makefile', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh']
+    paths: ['services/singverse-compute/**', 'services/singverse-frontend/**', 'services/singverse-go-backend/**', 'infra/docker/**', 'infra/deploy/**', '.env.example', '.gitignore', '.dockerignore', 'scripts/package-*.py', 'scripts/check-docker-app.py', 'scripts/check-nginx-media.py', 'scripts/check-auth-docker.py', 'infra/docker/check-build-context.py', 'infra/docker/check-go-container.py', 'scripts/check-backend-contract.py', '.github/workflows/singverse-docker.yml', 'Makefile', 'VERSION', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh']
   workflow_dispatch:
 permissions:
   contents: read
@@ -25,17 +25,23 @@ jobs:
           python -m openapi_spec_validator contracts/openapi/singverse.openapi.json
       - name: Validate Docker deployment matrix and build inputs
         run: make docker-config-check
+      - name: Audit actual Docker context filtering
+        run: make docker-context-check
       - name: Verify deployment archive inputs, permissions and digests
         run: python -m unittest discover -s services/singverse-compute/tests/unit -p test_deployment_archive.py -v
       - name: Verify media streams without proxy buffering
         run: |
-          node_image="$(sed -n 's/^ARG NODE_IMAGE=//p' services/singverse-java-backend/Dockerfile)"
-          nginx_image="$(sed -n 's/^ARG NGINX_IMAGE=//p' services/singverse-java-backend/Dockerfile)"
+          node_image="$(sed -n 's/^ARG NODE_IMAGE=//p' infra/docker/build/go.Dockerfile)"
+          nginx_image="$(sed -n 's/^ARG NGINX_IMAGE=//p' infra/docker/build/go.Dockerfile)"
           docker pull "$node_image"
           docker pull "$nginx_image"
           python scripts/check-nginx-media.py --nginx-image "$nginx_image" --backend-image "$node_image"
-      - name: Build and start application
-        run: make docker-up
+      - name: Build application images
+        run: make docker-build
+      - name: Verify actual Go and Nginx images in isolated containers
+        run: make go-container-check
+      - name: Start application from verified images
+        run: docker compose --project-directory . -f infra/docker/compose/compose.app.yaml up -d --no-build --wait --wait-timeout 180
       - name: Verify public HTTP routes
         run: make docker-check
       - name: Verify MFA and local recovery in isolated containers

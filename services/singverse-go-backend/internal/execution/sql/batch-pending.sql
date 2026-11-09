@@ -1,0 +1,1 @@
+SELECT item.*,batch.state AS batch_state,batch.backend,batch.recipe_json FROM audio_batch_item item JOIN audio_batch batch ON batch.id=item.batch_id WHERE batch.state IN ('QUEUED','CANCELLED') AND item.state IN ('PENDING','PROBING','PROCESSING') ORDER BY item.updated_at,item.batch_id,item.song_id LIMIT 50

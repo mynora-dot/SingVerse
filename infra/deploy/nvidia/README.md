@@ -16,9 +16,9 @@ make compute-package-nvidia NVIDIA_PACKAGE_OUTPUT=/tmp/SingVerse-NVIDIA-source.z
 
 ## 配置与启动
 
-1. 业务 Java、前端与 compute 使用配套版本。升级时在管理页停止新任务并等待或取消在途任务，保留原认证、模型和缓存卷。
+1. 业务 Go、前端与 compute 使用配套版本。升级时在管理页停止新任务并等待或取消在途任务，保留原认证、模型和缓存卷。
 2. 所有节点参数直接写在 YAML，无需 `.env`。默认只监听 `127.0.0.1:18090`；跨主机连接时，将端口绑定的 `127.0.0.1` 替换为 **GPU 主机实际的局域网 IP**，限制入站仅业务主机可访问，不开放公网。
-3. 无需 media 目录、曲库挂载或在 compute 中配置 Java 地址。默认容器上限 6GiB、音频进程预算 4GiB；调整时为系统、运行时和视频任务保留内存。
+3. 无需 media 目录、曲库挂载或在 compute 中配置 Go 地址。默认容器上限 6GiB、音频进程预算 4GiB；调整时为系统、运行时和视频任务保留内存。
 4. 源码包先校验 `sha256sum -c SHA256SUMS`，然后执行：
 
 ```sh
@@ -33,11 +33,11 @@ docker compose --project-directory . -f docker-compose.yaml logs --tail 80 singv
 
 ## 配对、模型和验收
 
-Java 访问 `http://<GPU主机IP>:18090`；compute 还需反向访问业务入口。业务部署的 `SINGVERSE_CALLBACK_ORIGIN` 配置为 compute 可达的 `http://<NAS-IP>:18080`，无尾部 `/`，不使用 localhost 或 Docker 临时 IP。配置只放业务侧，重建 Java 容器使其生效。
+Go 访问 `http://<GPU主机IP>:18090`；compute 还需反向访问业务入口。业务部署的 `SINGVERSE_CALLBACK_ORIGIN` 配置为 compute 可达的 `http://<NAS-IP>:18080`，无尾部 `/`，不使用 localhost 或 Docker 临时 IP。配置只放业务侧，重建 Go 容器使其生效。
 
 在业务管理页“设备与服务 → 性能节点配置 → 连接设置”扫描局域网并连接，或手工填写节点地址及已有连接密钥。首次配对信任受限局域网；已配对节点按持久身份校验。连接测试会验证反向认证回源，只有节点健康不够。
 
-本地曲库只读挂载给 Java，WebDAV 凭据也只保存在业务节点。compute 按任务授权和 HTTP Range 取媒体，不接受用户文件路径。模型在管理页下载/导入到模型卷，校验后对 CUDA 执行试跑。
+本地曲库只读挂载给 Go，WebDAV 凭据也只保存在业务节点。compute 按任务授权和 HTTP Range 取媒体，不接受用户文件路径。模型在管理页下载/导入到模型卷，校验后对 CUDA 执行试跑。
 
 验收 GPU 时关闭自动 CPU 降级，选择已通过试跑的 CUDA，处理一首完整实际歌曲，检查任务实际后端、无回退、输出时长与完整伴奏播放。视频 NVENC 单独使用实际视频素材测试；CUDA 可用不代表视频编解码或音质验收完成。
 

@@ -1,0 +1,1 @@
+SELECT id,source_id,status,phase,directories,entries,total_songs,matched_songs,review_songs,skipped_files,cancel_requested,error,created_at,started_at,finished_at,added_songs,reused_songs,missing_songs,removed_songs FROM media_scan_task WHERE source_id=? AND id=?

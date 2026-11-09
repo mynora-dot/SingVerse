@@ -23,6 +23,7 @@ def environment(**overrides):
     prefixes = ('COMPOSE_', 'COMPUTE_', 'SINGVERSE_', 'MYSQL_', 'SPRING_', 'RKNPU_')
     result = {key: value for key, value in os.environ.items() if not key.startswith(prefixes) and key != 'NAS_BIND_IP'}
     result.update(COMPUTE_RENDER_GID='101', SINGVERSE_RENDER_GID='101', SINGVERSE_VIDEO_GID='102')
+    result.update(VERSION=(ROOT / "VERSION").read_text().strip())
     result.update(overrides)
     return result
 
@@ -77,11 +78,11 @@ def validate_compute(config, target, standalone):
         require(config['name'] == 'singverse-compute-node', 'Standalone project name changed')
         private_port(service, 8090, 18090)
     else:
-        require(config['name'] == 'singverse-app', 'Application project name changed')
+        require(config['name'] == 'singverse-go-app', 'Application project name changed')
         require(not service.get('ports'), 'Same-stack compute must not publish a host port')
-        backend = config['services']['singverse-java-backend']
-        require(not backend.get('ports'), 'Java must stay on the private network')
-        require(mount(backend, '/run/singverse-compute')['read_only'], 'Java must read the shared credential read-only')
+        backend = config['services']['singverse-go-backend']
+        require(not backend.get('ports'), 'Go must stay on the private network')
+        require(mount(backend, '/run/singverse-compute')['read_only'], 'Go must read the shared credential read-only')
         private_port(config['services']['singverse-frontend'], 80, 18080)
     if target != 'base':
         require(int(service['mem_limit']) == 6 * 1024**3, 'Audio default memory limit changed')
@@ -135,21 +136,23 @@ def main():
 
     app = COMPOSE / 'compose.app.yaml'
     config = render([app])
-    downloads = mount(config['services']['singverse-java-backend'], '/downloads')
+    require(config['name'] == 'singverse-go-app', 'Go application must use its new isolated project')
+    require('singverse-java-backend' not in config['services'], 'Default application must not contain Java')
+    downloads = mount(config['services']['singverse-go-backend'], '/downloads')
     require(downloads['type'] == 'volume' and downloads['source'] == 'singverse-downloads'
             and not downloads.get('read_only'), 'Downloads need a separate persistent writable volume')
-    require(mount(config['services']['singverse-java-backend'], '/media')['read_only'], 'Original media must stay read-only')
+    require(mount(config['services']['singverse-go-backend'], '/media')['read_only'], 'Original media must stay read-only')
     count += 1
     config = render([app, COMPOSE / 'compose.media.yaml', COMPOSE / 'compose.downloads.yaml'],
                     SINGVERSE_MEDIA_PATH=str(ROOT), SINGVERSE_DOWNLOAD_PATH=str(ROOT))
-    downloads = mount(config['services']['singverse-java-backend'], '/downloads')
+    downloads = mount(config['services']['singverse-go-backend'], '/downloads')
     require(downloads['type'] == 'bind' and downloads['source'] == str(ROOT)
             and not downloads.get('read_only'), 'NAS download bind must be writable')
     require(not downloads.get('bind', {}).get('create_host_path', False), 'A missing download directory must fail')
-    require(mount(config['services']['singverse-java-backend'], '/media')['read_only'], 'Download override changed original media permissions')
+    require(mount(config['services']['singverse-go-backend'], '/media')['read_only'], 'Download override changed original media permissions')
     count += 1
     config = render([app, COMPOSE / 'compose.media.yaml'], SINGVERSE_MEDIA_PATH=str(ROOT))
-    media = mount(config['services']['singverse-java-backend'], '/media')
+    media = mount(config['services']['singverse-go-backend'], '/media')
     require(media['type'] == 'bind' and media['read_only'] and media['source'] == str(ROOT), 'Local media must replace the empty volume read-only')
     require(not media.get('bind', {}).get('create_host_path', False), 'A missing media directory must fail')
     count += 1
@@ -159,20 +162,20 @@ def main():
                     SINGVERSE_PUBLIC_ORIGIN='https://singverse.example', SINGVERSE_TRUSTED_PROXIES='172.31.250.0/24',
                     SINGVERSE_HTTP_BIND='192.0.2.1', SINGVERSE_HTTP_PORT='28080')
     private_port(config['services']['singverse-frontend'], 80, 28080)
-    require(config['services']['singverse-java-backend']['environment']['SINGVERSE_PUBLIC_ORIGIN'] == 'https://singverse.example', 'HTTPS origin lost')
-    require(mount(config['services']['singverse-java-backend'], '/media')['read_only'], 'Combined media protection lost')
+    require(config['services']['singverse-go-backend']['environment']['SINGVERSE_PUBLIC_ORIGIN'] == 'https://singverse.example', 'HTTPS origin lost')
+    require(mount(config['services']['singverse-go-backend'], '/media')['read_only'], 'Combined media protection lost')
     require(config['services']['singverse-compute']['build']['target'] == 'rocm-native', 'Combined runtime lost')
     count += 1
     config = render([app, COMPOSE / 'compose.compute.macos.yaml'])
-    require(config['services']['singverse-java-backend']['environment']['COMPUTE_NODE_URL'] == 'http://host.docker.internal:18090', 'Native macOS route lost')
+    require(config['services']['singverse-go-backend']['environment']['COMPUTE_NODE_URL'] == 'http://host.docker.internal:18090', 'Native macOS route lost')
     count += 1
 
     config = render([ROOT / 'infra/deploy/app/docker-compose.yaml'])
     validate_builds(config)
-    require(set(config['services']) == {'singverse-java-backend', 'singverse-frontend'}, 'Business-only package gained compute')
+    require(set(config['services']) == {'singverse-go-backend', 'singverse-frontend'}, 'Business-only package gained compute')
     private_port(config['services']['singverse-frontend'], 80, 18080)
-    require(config['services']['singverse-java-backend']['environment']['SINGVERSE_CALLBACK_ORIGIN'] == '', 'Template must not contain a personal callback address')
-    require(mount(config['services']['singverse-java-backend'], '/downloads')['source'] == 'singverse-downloads', 'Business package lost download persistence')
+    require(config['services']['singverse-go-backend']['environment']['SINGVERSE_CALLBACK_ORIGIN'] == '', 'Template must not contain a personal callback address')
+    require(mount(config['services']['singverse-go-backend'], '/downloads')['source'] == 'singverse-downloads', 'Business package lost download persistence')
     count += 1
     spec = importlib.util.spec_from_file_location('package_offline', ROOT / 'scripts/package-app-offline.py')
     package = importlib.util.module_from_spec(spec)
@@ -205,9 +208,26 @@ def main():
         require(service['build']['target'] == ('rknn' if experimental else 'uvr'), 'RK target changed')
         count += 1
 
+    legacy = COMPOSE / 'compose.java-rollback.yaml'
+    for overlays in ((), ('media',), ('downloads',), ('https',), ('compute.macos',), ('media', 'downloads', 'https')):
+        config = render([legacy] + [COMPOSE / f'compose.java-rollback.{name}.yaml' for name in overlays],
+                        SINGVERSE_MEDIA_PATH=str(ROOT), SINGVERSE_DOWNLOAD_PATH=str(ROOT),
+                        SINGVERSE_PUBLIC_ORIGIN='https://singverse.example', SINGVERSE_TRUSTED_PROXIES='172.31.250.0/24')
+        require(config['name'] == 'singverse-app', 'Rollback must retain the legacy project and volumes')
+        require('singverse-java-backend' in config['services'] and 'singverse-go-backend' not in config['services'], 'Rollback application identity changed')
+        require(all('build' not in service for service in config['services'].values()), 'Rollback must not build source')
+        for name in ('singverse-java-backend', 'singverse-frontend'):
+            require(config['services'][name]['pull_policy'] == 'never', 'Rollback must use explicitly saved images')
+        require(config['volumes']['singverse-data']['name'] == 'singverse-app_singverse-data', 'Rollback data volume changed')
+        count += 1
+
+    go_ignore=ROOT/'infra/docker/build/go.Dockerfile.dockerignore'
+    require(go_ignore.is_file(), 'Go Docker ignore source missing')
     shared = ROOT / 'infra/docker/build/.dockerignore'
+    root_ignore = ROOT / '.dockerignore'
+    require(root_ignore.is_file() and not root_ignore.is_symlink() and root_ignore.read_bytes() == shared.read_bytes(), 'Root Docker ignore fallback must match maintained infra rules')
     require(shared.is_file(), 'Shared Docker ignore source is missing')
-    for service in ('singverse-java-backend', 'singverse-compute'):
+    for service in ('singverse-compute',):
         link = ROOT / 'services' / service / 'Dockerfile.dockerignore'
         require(link.is_symlink() and link.resolve(strict=True) == shared, f'Broken Docker ignore link: {service}')
     for file in (shared, ROOT / 'infra/docker/build/docker-bake.hcl'):

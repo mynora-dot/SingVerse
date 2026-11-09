@@ -1,0 +1,1 @@
+INSERT INTO webdav_share_receipt(source_id,binding,hash) SELECT @{sourceId},@{binding},@{hash} WHERE NOT EXISTS(SELECT 1 FROM webdav_share_receipt WHERE source_id=@{sourceId} AND binding=@{binding} AND hash=@{hash})

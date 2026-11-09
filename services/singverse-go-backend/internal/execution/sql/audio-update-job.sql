@@ -1,0 +1,1 @@
+UPDATE media_audio_job SET state=@{state},result_json=@{result},error=@{error},updated_at=@{now} WHERE id=@{id} AND state NOT IN ('CANCELLED','SUCCEEDED') AND (state <> @{state} OR result_json <> @{result} OR error <> @{error})

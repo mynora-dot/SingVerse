@@ -1,0 +1,1 @@
+INSERT INTO lx_download_item(id,batch_id,track_key,track_json,requested_quality,active_key,status,message,updated_at,song_id) VALUES(@{id},@{batchId},@{trackKey},@{trackJson},@{quality},@{activeKey},@{status},@{message},@{now},@{songId})

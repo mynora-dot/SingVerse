@@ -1,0 +1,1 @@
+SELECT a.id,a.name,a.artist_type,a.revision,a.active,a.name_key,a.fetch_state,p.version,b.version FROM artist a LEFT JOIN artist_image p ON p.artist_id=a.id AND p.image_kind='PORTRAIT' LEFT JOIN artist_image b ON b.artist_id=a.id AND b.image_kind='BACKGROUND';

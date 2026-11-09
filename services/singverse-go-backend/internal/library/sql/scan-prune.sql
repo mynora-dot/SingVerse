@@ -1,0 +1,1 @@
+DELETE FROM media_scan_task WHERE id IN (SELECT id FROM(SELECT old.id FROM media_scan_task old WHERE old.active_source IS NULL AND old.finished_at<? AND EXISTS(SELECT 1 FROM media_scan_task newer WHERE newer.source_id=old.source_id AND (newer.created_at>old.created_at OR(newer.created_at=old.created_at AND newer.id>old.id)))) expired)

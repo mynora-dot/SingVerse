@@ -1,0 +1,1 @@
+SELECT * FROM lx_download_item WHERE batch_id=@{id} ORDER BY CASE WHEN status IN ('RESOLVING','DOWNLOADING','PUBLISHING') THEN 0 WHEN status='QUEUED' THEN 1 ELSE 2 END,id LIMIT @{size} OFFSET @{offset}

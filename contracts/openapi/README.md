@@ -1,31 +1,31 @@
 # API 契约约定
 
-首批业务 API 为单管理员账号、会话和 MFA，见 [singverse.openapi.json](singverse.openapi.json)（OpenAPI 3.1）。客户端与未来 Go 服务端遵循同一接口；后续仅为真实功能扩充契约。
+首批业务 API 为单管理员账号、会话和 MFA，见 [singverse.openapi.json](singverse.openapi.json)（OpenAPI 3.1）。客户端与Go 服务端遵循同一接口；后续仅为真实功能扩充契约。
 
 - 路径版本：未来业务接口以 `/api/v1` 开始。破坏性变化使用新主版本；增加可选字段一般保持当前版本。
-- JSON 字段统一 lower camelCase；不暴露 Java 类名、Entity、堆栈或语言专属对象。
+- JSON 字段统一 lower camelCase；不暴露 Go 类名、Entity、堆栈或语言专属对象。
 - 错误采用 RFC 9457 Problem Details，媒体类型 `application/problem+json`，使用标准 `type`、`title`、`status`、`detail`、`instance` 字段。具体业务错误标识在真实接口出现时定义，不向客户端泄露凭据和内部实现。
 - HTTP 状态码表达实际结果：200 查询/更新，201 创建，204 无响应体成功；400 参数错误，401 未认证，403 无权限，404 不存在，409 状态冲突，500 服务异常，503 服务暂不可用。不以 HTTP 200 包裹错误。
 - 列表采用 `page`（从 0 开始）与 `size`，响应包含 `items`、`page`、`size`、`totalElements`。每个真实列表接口须明确默认/最大页大小与稳定排序字段，避免当前虚构业务规则。
 - 时间采用 ISO 8601 UTC 字符串，以 `Z` 结尾；数据库时间与客户端展示时区分离。
 - 向后兼容：不随意删除字段、改变类型/含义或新增必填参数；客户端允许忽略未知字段。变更需契约评审与兼容性测试。
-- Java/Go 使用同一契约样例和测试，覆盖状态码、错误结构、分页、时间与空值规则；重构前先建立这些真实接口的兼容性基线。
+- Go/Go 使用同一契约样例和测试，覆盖状态码、错误结构、分页、时间与空值规则；重构前先建立这些真实接口的兼容性基线。
 
 ## 计算节点内部契约
 
-`compute-internal.openapi.json`是已实现的Python节点探测接口契约（OpenAPI 3.1），由FastAPI的`app.openapi()`生成；`make compute-check`验证它与实际HTTP返回的`/openapi.json`逐项一致。内部调用由Java发起，不提供给四端直接调用：
+`compute-internal.openapi.json`是已实现的Python节点探测接口契约（OpenAPI 3.1），由FastAPI的`app.openapi()`生成；`make compute-check`验证它与实际HTTP返回的`/openapi.json`逐项一致。内部调用由Go发起，不提供给四端直接调用：
 
 - `GET /health`：仅进程健康，`{"status":"UP"}`。
-- `GET /internal/v1/capabilities`：`service=singverse-compute`、`apiVersion=1`、`capabilities=[]`；空列表是当前真实状态，不能推出支持转码或AI。Java同时核对服务身份与协议版本。
+- `GET /internal/v1/capabilities`：`service=singverse-compute`、`apiVersion=1`、`capabilities=[]`；空列表是当前真实状态，不能推出支持转码或AI。Go同时核对服务身份与协议版本。
 - 错误路由和不支持的方法返回真实404/405及`application/problem+json`。没有占位任务提交/进度/取消接口。
 
-`make backend-check`另行验证真实Python进程与Java客户端的协议兼容和上下线隔离；singverse-backend CI随任一后端或内部契约变更执行。内部服务地址来自部署配置，不向四端提供节点管理或直连能力。
+`make backend-check`另行验证真实Python进程与Go客户端的协议兼容和上下线隔离；singverse-backend CI随任一后端或内部契约变更执行。内部服务地址来自部署配置，不向四端提供节点管理或直连能力。
 
-这不是首批业务API。未来首个真实计算任务实现时再补充受认证的任务契约、稳定任务ID、幂等键、输入输出引用、状态/取消/重试及资源限制，并与Java共用契约验证；不将“接收请求”描述成任务执行完成。
+这不是首批业务API。未来首个真实计算任务实现时再补充受认证的任务契约、稳定任务ID、幂等键、输入输出引用、状态/取消/重试及资源限制，并与Go共用契约验证；不将“接收请求”描述成任务执行完成。
 
-`/api/health` 是当前运维健康端点，保留 Spring Boot Actuator 原生响应，不属于未来业务 API 的错误或分页约定。
+`/api/health` 是当前运维健康端点，保留兼容的整体健康 JSON 响应，不属于未来业务 API 的错误或分页约定。
 
-统一网页前端独立于服务端语言，当前管理功能通过上述账号与 MFA 业务 API 登录，运维健康仍独立。Java/未来Go的静态资源路径、hash路由和健康兼容行为见[前端托管契约](../frontend-hosting.md)；前端不得直连Python内部端点或数据库。
+统一网页前端独立于服务端语言，当前管理功能通过上述账号与 MFA 业务 API 登录，运维健康仍独立。Go/Go的静态资源路径、hash路由和健康兼容行为见[前端托管契约](../frontend-hosting.md)；前端不得直连Python内部端点或数据库。
 
 ## 媒体来源管理
 
@@ -75,9 +75,9 @@
 
 歌曲列表行内操作统一为按钮，新增“在线播放”，在带原生控件的视频弹窗中播放当前歌曲。关闭弹窗或离开页面移除 video 元素以停止读取；错误时可重新加载。
 
-`GET /api/v1/media-songs/{id}/video` 与 HEAD 复用管理员 Cookie 会话，未登录返回 401，不提供公开媒体 URL。支持单段 Range（起止、开放结束、后缀范围），本地响应 200/206/416 和 Content-Length/Content-Range；非法范围或多范围返回 400。流响应发送 HTTP `private, no-store`，避免浏览器与公共代理缓存；Java 内部受控的持久原片缓存独立管理。本地解析真实路径并限制在来源目录内，失效文件或越界符号链接返回 404。
+`GET /api/v1/media-songs/{id}/video` 与 HEAD 复用管理员 Cookie 会话，未登录返回 401，不提供公开媒体 URL。支持单段 Range（起止、开放结束、后缀范围），本地响应 200/206/416 和 Content-Length/Content-Range；非法范围或多范围返回 400。流响应发送 HTTP `private, no-store`，避免浏览器与公共代理缓存；Go 内部受控的持久原片缓存独立管理。本地解析真实路径并限制在来源目录内，失效文件或越界符号链接返回 404。
 
-WebDAV 使用保存的地址和加密凭据在服务端发起 GET/HEAD，转发 Range，不把凭据或远端地址返回浏览器。采用 10 秒连接、30 秒读取空闲超时，流式传输、不在内存完整缓冲；可将完整原片块持久写入 Java 独立缓存，缓存不可用时继续回源；连接随响应结束/客户端断开清理。上游忽略从零开始的 Range 时仍可返回 200；GET 忽略非零或后缀 Range 时立即返回 502，避免播放器反复下载并跳过整段前缀。206 响应须与请求的起止、总长及 Content-Length 一致，非 identity 编码响应拒绝交给播放器；不跟随 3xx（返回 502），需要支持直接读取的 WebDAV 服务，OpenList 等返回下载跳转的配置需调整，否则暂不能播放。认证/读取错误返回不含远端细节的 502。
+WebDAV 使用保存的地址和加密凭据在服务端发起 GET/HEAD，转发 Range，不把凭据或远端地址返回浏览器。采用 10 秒连接、30 秒读取空闲超时，流式传输、不在内存完整缓冲；可将完整原片块持久写入 Go 独立缓存，缓存不可用时继续回源；连接随响应结束/客户端断开清理。上游忽略从零开始的 Range 时仍可返回 200；GET 忽略非零或后缀 Range 时立即返回 502，避免播放器反复下载并跳过整段前缀。206 响应须与请求的起止、总长及 Content-Length 一致，非 identity 编码响应拒绝交给播放器；不跟随 3xx（返回 502），需要支持直接读取的 WebDAV 服务，OpenList 等返回下载跳转的配置需调整，否则暂不能播放。认证/读取错误返回不含远端细节的 502。
 
 只播放原始音视频，不调用 Python、不转码、不创建队列或电视会话。浏览器能否解码取决于容器与视频/音频编码，MP4/WebM 也不保证所有编码都能播放，MKV/AVI 等可能不可播放。Nginx 对视频接口关闭 proxy_buffering/proxy_cache，避免视频临时文件与额外等待；代理读取空闲超时为 60 秒。真实 NAS、WebDAV 提供者、浏览器编码兼容性仍须单独验收。
 
@@ -95,11 +95,11 @@ WebDAV 使用保存的地址和加密凭据在服务端发起 GET/HEAD，转发 
 
 本地和 WebDAV 标签沿用歌曲 API 元数据结构，字段来源 kind=FILE 表示音视频内嵌标签优先值；读取通过以下短期授权回源协议执行。
 
-计算服务使用 POST /internal/v1/media/remote-tags，所有本地／WebDAV 标签请求均携带 reference、callbackOrigin、filename、size；Java 提供短期授权 Range 回源。转码、音轨任务同样使用引用和回调地址，禁止传本地路径；原 /internal/v1/media/tags 已移除。连接测试增加 /internal/v1/callback/check 及 Java 的短期 /api/v1/internal/compute-callback/{id}。详见 compute-internal.openapi.json；前端不访问计算节点。
+计算服务使用 POST /internal/v1/media/remote-tags，所有本地／WebDAV 标签请求均携带 reference、callbackOrigin、filename、size；Go 提供短期授权 Range 回源。转码、音轨任务同样使用引用和回调地址，禁止传本地路径；原 /internal/v1/media/tags 已移除。连接测试增加 /internal/v1/callback/check 及 Go 的短期 /api/v1/internal/compute-callback/{id}。详见 compute-internal.openapi.json；前端不访问计算节点。
 
 - 管理员性能节点：`GET/PUT /api/v1/compute-node` 和 `POST /api/v1/compute-node/test`；写入和测试要求 CSRF，凭据仅写，AUTO 解析部署变量、MANUAL 使用加密配置、DISABLED 停用。测试失败使用 Check.status 表达，不返回上游原始错误或触发管理员登出。
-- 管理员局域网发现：`POST /api/v1/compute-node/discovery` 可省略请求体，或提交 `{network,port}`。使用 HTTP 单播，默认优先业务回源地址的私网 `/24`、已保存/部署节点地址及 Java 私网网卡，最多 3 个网段、768 个主机、32 个并发、单次请求 500 毫秒、总计 10 秒及 32 个结果；默认端口 18090、8090。显式 `network` 只接受 RFC1918 IPv4 `/24`～`/32`，本机回环仅允许 `/32`；显式 `port` 为单个 1～65535 端口。公网、链路本地及 IPv6 全网扫描均拒绝。返回短期 `id`、名称、固定 IP 端点、`nodeId`、`pairingAvailable` 和提示，发现记录仅在服务端保留 2 分钟。
-- `POST /api/v1/compute-node/pair` 提交 `{discoveryId,revision}`，不接受客户端指定节点地址或凭据。Java 使用业务库持久 RSA3072 身份完成 PSS-SHA256 挑战签名及 OAEP-SHA256 凭据解密，再检查内部 Bearer 认证与节点到业务服务的回源；只有 `AVAILABLE` 才以 MANUAL 保存，失败保留原设置，修订号冲突返回 409。内部连接密钥、公钥、私钥、签名、挑战和 owner 身份均不进入浏览器。发现及配对均要求管理员 Cookie 和 CSRF；节点内网首次配对采用 TOFU，已绑定节点只允许相同身份恢复，且节点必须开启局域网配对。固定私网 IP、回环或 ULA 端点可配对，不跟随 HTTP 重定向。
+- 管理员局域网发现：`POST /api/v1/compute-node/discovery` 可省略请求体，或提交 `{network,port}`。使用 HTTP 单播，默认优先业务回源地址的私网 `/24`、已保存/部署节点地址及 Go 私网网卡，最多 3 个网段、768 个主机、32 个并发、单次请求 500 毫秒、总计 10 秒及 32 个结果；默认端口 18090、8090。显式 `network` 只接受 RFC1918 IPv4 `/24`～`/32`，本机回环仅允许 `/32`；显式 `port` 为单个 1～65535 端口。公网、链路本地及 IPv6 全网扫描均拒绝。返回短期 `id`、名称、固定 IP 端点、`nodeId`、`pairingAvailable` 和提示，发现记录仅在服务端保留 2 分钟。
+- `POST /api/v1/compute-node/pair` 提交 `{discoveryId,revision}`，不接受客户端指定节点地址或凭据。Go 使用业务库持久 RSA3072 身份完成 PSS-SHA256 挑战签名及 OAEP-SHA256 凭据解密，再检查内部 Bearer 认证与节点到业务服务的回源；只有 `AVAILABLE` 才以 MANUAL 保存，失败保留原设置，修订号冲突返回 409。内部连接密钥、公钥、私钥、签名、挑战和 owner 身份均不进入浏览器。发现及配对均要求管理员 Cookie 和 CSRF；节点内网首次配对采用 TOFU，已绑定节点只允许相同身份恢复，且节点必须开启局域网配对。固定私网 IP、回环或 ULA 端点可配对，不跟随 HTTP 重定向。
 - 计算内部 `GET /internal/v1/status` 验证 Bearer 凭据后返回身份和实际能力；与公开进程健康及兼容能力探测分离。
 
 ## TV 与亲友聚会
@@ -114,7 +114,7 @@ WebDAV 使用保存的地址和加密凭据在服务端发起 GET/HEAD，转发 
 
 原片缓存继续通过现有歌曲缓存管理接口查看，`target.mode=ORIGINAL`、`target.sourceBytes` 表示原文件与完整大小；可选 `cachedBytes/sourceBytes/complete` 区分已缓存字节和整曲完成，`complete=false` 仍需授权回源读取缺失范围，不能当作完整离线成品。
 
-播放资源由 Java 按终端能力协商原片、离线兼容版本或实时 HLS。资源 READY 表示已取得授权引用，不保证目标电视能解码；原始媒体直接使用设备 Bearer 请求，并在每次 Range/HEAD 时重新检查撤销。歌曲与分类只读投影不暴露内部路径、来源凭据或模型配置。歌手入口按原始署名精确分组，不建立身份或别名归并。家庭规模保护上限：单场 500 个队列项、1000 项幂等操作、100 条待确认命令；超限明确拒绝。TV 需结束后开新场，不静默删除历史去重记录。
+播放资源由 Go 按终端能力协商原片、离线兼容版本或实时 HLS。资源 READY 表示已取得授权引用，不保证目标电视能解码；原始媒体直接使用设备 Bearer 请求，并在每次 Range/HEAD 时重新检查撤销。歌曲与分类只读投影不暴露内部路径、来源凭据或模型配置。歌手入口按原始署名精确分组，不建立身份或别名归并。家庭规模保护上限：单场 500 个队列项、1000 项幂等操作、100 条待确认命令；超限明确拒绝。TV 需结束后开新场，不静默删除历史去重记录。
 
 ### TV 首页与当前歌曲详情
 
@@ -134,13 +134,13 @@ TV 非转码增强新增设备专用 text-tracks 与 releases/current、releases
 
 ## 转码与播放协商
 
-新增 `/api/v1/transcoding` 管理端接口、`/api/v1/tv/transcoding` 设备会话资源和 `/api/v1/internal/transcode-input/{id}` 计算节点专用 Range 读取。客户端能力为运行时报告，实时返回 DIRECT/VERSION/HLS 与原媒体秒偏移；HLS 准备中需轮询会话并续租。所有播放资源仍经过 Java 授权，内部执行接口只对 Java 开放。离线任务持久化在业务库，成功文件由 Java 校验长度/SHA-256 后原子保存。详细行为、错误和部署配置见[转码说明](../../docs/transcoding.md)。
+新增 `/api/v1/transcoding` 管理端接口、`/api/v1/tv/transcoding` 设备会话资源和 `/api/v1/internal/transcode-input/{id}` 计算节点专用 Range 读取。客户端能力为运行时报告，实时返回 DIRECT/VERSION/HLS 与原媒体秒偏移；HLS 准备中需轮询会话并续租。所有播放资源仍经过 Go 授权，内部执行接口只对 Go 开放。离线任务持久化在业务库，成功文件由 Go 校验长度/SHA-256 后原子保存。详细行为、错误和部署配置见[转码说明](../../docs/transcoding.md)。
 
 硬件加速配置：GET/POST `/api/v1/transcoding/hardware-settings`，POST `/hardware-settings/test`。保存携带 revision；冲突返回 409，指定硬件短样本失败返回 422。`backend=deployment` 恢复节点部署环境变量，草稿测试不切换当前后端。内部接口路径对应 `/internal/v1/transcoding/hardware-settings`，继续使用 Bearer 和请求体边界。
 
 流水线 v2：播放执行携带 `pipeline`（实际硬解/零拷贝/GPU 色调映射、DV 和回退原因）及 `sampledPeakRssBytes`（0 表示未知）。客户端能力增加 `hdr_formats`、`dovi_profiles`、`dovi_compatibility`，默认不支持 DV；HDR 与 DV 能力分别协商。
 
-`PlaybackClient.profiles.h264`／`levels.h264` 必须来自同一实际解码器能力组合，level 使用 ffprobe 整数单位（31=3.1、9=1b），不可只因 MIME 存在就固定报告 High/41。`quality=auto` 尊重已报告尺寸、帧率和码率；显式画质仍施加所选上限。`force=true` 在新执行中强制兼容视频编码及 AAC，不复用旧离线版本；已生成的匹配兼容缓存仍可直接使用。明确上报 H.264 profile/level 时服务端会限制编码参数；未报告时保持原默认值。公开请求字段不变，Java 到 compute 的内部 `target.profile/level` 与 `/negotiate.fingerprint` 见 compute README。HLS 只有主列表声明的所有 rendition 的首片和初始化文件均可读时才 READY，完成后的整曲缓存复制在后台执行。
+`PlaybackClient.profiles.h264`／`levels.h264` 必须来自同一实际解码器能力组合，level 使用 ffprobe 整数单位（31=3.1、9=1b），不可只因 MIME 存在就固定报告 High/41。`quality=auto` 尊重已报告尺寸、帧率和码率；显式画质仍施加所选上限。`force=true` 在新执行中强制兼容视频编码及 AAC，不复用旧离线版本；已生成的匹配兼容缓存仍可直接使用。明确上报 H.264 profile/level 时服务端会限制编码参数；未报告时保持原默认值。公开请求字段不变，Go 到 compute 的内部 `target.profile/level` 与 `/negotiate.fingerprint` 见 compute README。HLS 只有主列表声明的所有 rendition 的首片和初始化文件均可读时才 READY，完成后的整曲缓存复制在后台执行。
 
 手机原生只读曲库：GET `/api/v1/mobile/library/songs`、`/{id}` 和 `/{id}/text-tracks`，使用管理员 Cookie，不接受 TV/party Bearer 替代登录。列表复用既有搜索及分类，返回 MobileSongPage；条目保留独立媒体 ID，补充格式/媒体类型，封面指向管理员资源。播放继续使用 `/api/v1/transcoding`；手机本机收藏和历史不属于服务端业务表。
 
@@ -148,9 +148,9 @@ TV 非转码增强新增设备专用 text-tracks 与 releases/current、releases
 
 新增管理员 `/media-songs/{song}/audio-roles` GET/PUT、`/audio-jobs` POST、`/audio-jobs/{id}/cancel` POST 和独立伴奏 GET/HEAD。角色包含 state、origin、revision、originalId、backingId；纠正只接受两条本地探测存在的源音轨，旧 revision 返回 409，素材指纹变化使旧角色/伴奏失效。亲友及 TV 的 `/api/v1/{party|tv}/audio-roles/songs/{song}` GET/PUT 使用活跃聚会 Bearer，全员可纠正，分离仍限管理员。管理员 POST/PUT 沿用 CSRF。
 
-播放 `PlaybackOptions.audioRole` 按共享角色选用；`PlaybackResource.audioRoles` 为首次协商快照，`backingUrl` 为 Java 授权的独立伴奏，客户端合并时保留视频原时间轴并处理 offset。`/api/v1/internal/audio-input/{id}` 只允许关联计算节点凭据读取 RUNNING 任务的当前素材。
+播放 `PlaybackOptions.audioRole` 按共享角色选用；`PlaybackResource.audioRoles` 为首次协商快照，`backingUrl` 为 Go 授权的独立伴奏，客户端合并时保留视频原时间轴并处理 offset。`/api/v1/internal/audio-input/{id}` 只允许关联计算节点凭据读取 RUNNING 任务的当前素材。
 
-compute 内部 `/internal/v1/audio-roles/tasks` 接收固定 UUID、mode=PROBE|ANALYZE|SEPARATE 和已授权输入，支持查询、cancel、artifact、release。PROBE 无需模型，ANALYZE/SEPARATE 仅在依赖与本地模型摘要均符合固定版本时声明能力。Java 持久化队列，compute 只执行、保存有限生命周期的执行记录和临时文件；节点重启的未完成执行标为 FAILED，不冒充完成。详见 compute README 的资源预算、模型安装及验证边界。
+compute 内部 `/internal/v1/audio-roles/tasks` 接收固定 UUID、mode=PROBE|ANALYZE|SEPARATE 和已授权输入，支持查询、cancel、artifact、release。PROBE 无需模型，ANALYZE/SEPARATE 仅在依赖与本地模型摘要均符合固定版本时声明能力。Go 持久化队列，compute 只执行、保存有限生命周期的执行记录和临时文件；节点重启的未完成执行标为 FAILED，不冒充完成。详见 compute README 的资源预算、模型安装及验证边界。
 
 `/api/v1/audio-processing` 为管理员伴奏中心：歌曲分页筛选、持久批次预览/提交/详情/取消/重试、单项取消、当前节点及模型下载/导入/试跑/选择。变更请求继续使用管理员会话和CSRF；上传按固定 `model` 参数接受有界原始权重或多文件模型 ZIP，省略参数兼容 htdemucs。基准上限 100MiB，htdemucs-openvino 上限 128MiB，未知模型及超限拒绝。compute内部 `/internal/v1/audio-roles/models` 使用Bearer鉴权，模型下载仅使用固定清单；原有单曲音轨接口保留。
 
@@ -165,7 +165,7 @@ compute 内部 `/internal/v1/audio-roles/tasks` 接收固定 UUID、mode=PROBE|A
 
 ## 歌曲缓存（HLS 与原片）
 
-管理员 `GET /api/v1/transcoding/cache` 按 `page`（默认0，上限1000000）、`size`（默认20，上限100）分页查看 Java 服务节点完整成功的实时 HLS 与已发布完整块的 WebDAV 原片缓存，按 `lastAccessAt` 倒序和 ID 升序。返回设置、Java 缓存目录实际用量、缓存条目总数，以及包含缓存 ID、可用歌曲名称/歌手、音频/视频类型（`mediaType=VIDEO|AUDIO`）、已缓存大小、生成/访问时间、复用次数、租约状态和输出参数的条目；不暴露来源路径与节点凭据。`target.mode=ORIGINAL` 的条目还含 `cachedBytes/sourceBytes/complete`；部分原片不会标为整曲完成，缺失范围仍受权回源。可选 `residueBytes` 表示损坏或待清理文件的实际磁盘占用，计入总 `usageBytes`，但不计入有效 `bytes/cachedBytes` 或完整度。实际用量可包含接收中的临时文件；列表不包含独立保存的离线兼容成品。
+管理员 `GET /api/v1/transcoding/cache` 按 `page`（默认0，上限1000000）、`size`（默认20，上限100）分页查看 Go 服务节点完整成功的实时 HLS 与已发布完整块的 WebDAV 原片缓存，按 `lastAccessAt` 倒序和 ID 升序。返回设置、Go 缓存目录实际用量、缓存条目总数，以及包含缓存 ID、可用歌曲名称/歌手、音频/视频类型（`mediaType=VIDEO|AUDIO`）、已缓存大小、生成/访问时间、复用次数、租约状态和输出参数的条目；不暴露来源路径与节点凭据。`target.mode=ORIGINAL` 的条目还含 `cachedBytes/sourceBytes/complete`；部分原片不会标为整曲完成，缺失范围仍受权回源。可选 `residueBytes` 表示损坏或待清理文件的实际磁盘占用，计入总 `usageBytes`，但不计入有效 `bytes/cachedBytes` 或完整度。实际用量可包含接收中的临时文件；列表不包含独立保存的离线兼容成品。
 
 `PUT /api/v1/transcoding/cache/settings` 保存共用容量（整数 bytes，64MiB–1PiB）、`HYBRID|MANUAL`、兼容字段 `ttlHours` 和 `revision`；可选整数百分比 `highWatermarkPercent/lowWatermarkPercent` 默认 90/75，要求 `1≤low<high≤100`。旧四字段请求仍有效，省略水位保留已存值，未知字段返回400、旧修订返回409。已有 LRU/LFU/TTL 自动迁移为 HYBRID 并增加修订，旧策略写入作为 HYBRID 别名兼容；MANUAL 保留，`ttlHours` 仅保留往返兼容，不再控制到期删除。部署容量只负责首次初始化，后续以数据库设置为准；磁盘最低保留空间仍独立生效。
 
@@ -175,7 +175,7 @@ compute 内部 `/internal/v1/audio-roles/tasks` 接收固定 UUID、mode=PROBE|A
 
 新管理页使用异步 `POST /cache/cleanup-jobs`（202，`{mode:POLICY|CLEAR|DELETE,entryId?,confirmRecent?}`），POLICY 回收到低水位，CLEAR 清理全部未保护缓存，DELETE 指定单份。`GET /cache/cleanup-jobs/{id}` 查询，`POST /cache/cleanup-jobs/{id}/cancel` 请求取消；QUEUED/RUNNING/CANCELLING 为非终态，SUCCEEDED/PARTIAL/BLOCKED/FAILED/CANCELLED/INTERRUPTED 为终态。结果保留 `removed/skipped/failed/freedBytes/usageBeforeBytes/usageAfterBytes/targetBytes/targetReached/spaceInsufficient/shortfallBytes/skippedByReason/errors`，删除失败保留索引，已完成删除不会因取消而回滚。未达75%目标与实际空间不足分开表达；保护条目使目标未达时不一定阻止继续缓存。错误不包含路径或凭据。旧 `POST /cache/clear` 同步返回 removed/skipped，旧 `DELETE /cache/{id}` 仍返回204，近期覆盖需 `?confirmRecent=true`。全部写入要求管理员 Cookie 与 `X-CSRF-Token`，设备/亲友 Bearer 不能管理缓存。
 
-实时 HLS 按歌曲、素材指纹及完整播放参数查找缓存，命中时沿用同源受权播放接口，创建独立播放会话，执行结果包含 `cacheHit=true` 和不透明 `cacheId`。缓存读取、管理及清理不依赖 compute 在线。未命中时 compute 执行解码，Java 下载已完成产物并验证长度、SHA-256 和整包 HLS 引用，原子发布后才进入索引；确认落盘后释放 compute 临时产物。任一策略和批量清理都跳过活动租约，满额且无法腾出空间时返回507，删除失败保留索引。重启保留完整缓存，会话租约按续租到期释放。
+实时 HLS 按歌曲、素材指纹及完整播放参数查找缓存，命中时沿用同源受权播放接口，创建独立播放会话，执行结果包含 `cacheHit=true` 和不透明 `cacheId`。缓存读取、管理及清理不依赖 compute 在线。未命中时 compute 执行解码，Go 下载已完成产物并验证长度、SHA-256 和整包 HLS 引用，原子发布后才进入索引；确认落盘后释放 compute 临时产物。任一策略和批量清理都跳过活动租约，满额且无法腾出空间时返回507，删除失败保留索引。重启保留完整缓存，会话租约按续租到期释放。
 
 `PlaybackOptions.start` 是原媒体时间轴上的请求起点。非零起点优先匹配仅将 `start` 设为 0 的同参数整曲缓存；命中后 `PlaybackResource.offset` 仍为缓存的真实偏移 0，客户端对 HLS、DIRECT、VERSION 均按 `max(0, start - offset)` 定位本地媒体时间，播放回报使用 `currentTime + offset`。无完整缓存时仍精确匹配局部起点或按请求起点转码，画质、编码、音轨、字幕、终端能力及兼容处理意图保持隔离；不会因起点不同主动删除旧缓存。
 
@@ -201,7 +201,7 @@ compute 内部 `/internal/v1/audio-roles/tasks` 接收固定 UUID、mode=PROBE|A
 
 ## 后台任务中心
 
-管理员只读 `GET /api/v1/background-tasks`、`/{id}`、`/{id}/children`、`/{id}/items` 查询 Java 持久化快照，复用 Cookie 会话；不触发计算节点或媒体源请求。列表默认 `view=ACTIVE`，支持 `HISTORY/ALL`、类型、状态、名称/编号搜索和 0 起始分页（默认 20、最大 100）。首页只列操作批次，按运行、取消、排队、暂停、等待开始、终态在分页前排序；关键词匹配关联歌曲和子任务，按批次去重。详情分开返回批次状态与 operation 原业务阶段；children 支持类型/状态筛选并运行优先，detailMode 指示使用 children 或已有 items，避免重复。扫描后探测到快速识别的范围全部结束才结算整批；单曲是含一项的批次。明细按原状态筛选，counts 返回未筛选的统计。整批终态保留 30 天，未完成及有效批次引用的共享任务持续保留。未知分母的百分比为 null，缺失的历史时间为 null，帧计数只代表当前阶段。详情包含业务页入口与关联有效性；所有返回字段均为展示白名单。schema 为 `BackgroundTask*`，完整行为见[后台任务中心](../../contracts/background-tasks.md)。
+管理员只读 `GET /api/v1/background-tasks`、`/{id}`、`/{id}/children`、`/{id}/items` 查询 Go 持久化快照，复用 Cookie 会话；不触发计算节点或媒体源请求。列表默认 `view=ACTIVE`，支持 `HISTORY/ALL`、类型、状态、名称/编号搜索和 0 起始分页（默认 20、最大 100）。首页只列操作批次，按运行、取消、排队、暂停、等待开始、终态在分页前排序；关键词匹配关联歌曲和子任务，按批次去重。详情分开返回批次状态与 operation 原业务阶段；children 支持类型/状态筛选并运行优先，detailMode 指示使用 children 或已有 items，避免重复。扫描后探测到快速识别的范围全部结束才结算整批；单曲是含一项的批次。明细按原状态筛选，counts 返回未筛选的统计。整批终态保留 30 天，未完成及有效批次引用的共享任务持续保留。未知分母的百分比为 null，缺失的历史时间为 null，帧计数只代表当前阶段。详情包含业务页入口与关联有效性；所有返回字段均为展示白名单。schema 为 `BackgroundTask*`，完整行为见[后台任务中心](../../contracts/background-tasks.md)。
 
 ## 快速伴奏配方与版本接口
 

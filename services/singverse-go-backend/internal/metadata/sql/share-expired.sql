@@ -1,0 +1,1 @@
+SELECT id FROM webdav_share_job old WHERE old.created_at<@{before} AND old.state IN ('SUCCEEDED','FAILED') AND NOT EXISTS(SELECT 1 FROM webdav_share_job active WHERE active.base_id=old.id AND active.state IN ('WAITING','QUEUED','RUNNING')) LIMIT 20

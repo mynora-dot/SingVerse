@@ -1,0 +1,1 @@
+INSERT INTO webdav_metadata_source(source_id,binding,access_group,private_origins) SELECT @{sourceId},@{binding},@{group},'[]' WHERE NOT EXISTS(SELECT 1 FROM webdav_metadata_source WHERE source_id=@{sourceId})

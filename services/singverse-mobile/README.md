@@ -35,7 +35,7 @@ Android 原生 `NasTransport` 统一执行 API 与图片请求，以 Android Key
 - NAS 播放统计使用单调时钟，只累计播放器实际播放；准备、缓冲、暂停和跳转进度不计时。播放及状态变化约每 5 秒上报，暂停/缓冲每 15 秒续租；重试、切音轨和兼容回退沿用同一实例，主动重唱和完整单曲循环开始新实例，A–B 循环不另计。上报使用独立后台有界队列合并累计快照，不阻塞播放或资源准备；连接切换按 NAS 代际隔离。旧服务不支持新接口时继续正常播放；记录不跨进程补传，异常退出由 NAS 的 120 秒租约过期收束。服务端返回 410 后停止该实例上报，保持本地播放；下一次明确开唱才注册新实例。
 - 每次实例携带原始开始时间、快照发生时间和最后实际播放时间，UTC 以开始时的设备时钟加单调经过时间生成；排队和重试保留原快照时间，注册前已经播放的时长不会扣除。暂停/缓冲心跳不刷新最近真实播放。设备与 NAS 需保持正常时间同步，明显偏差会被服务端拒绝统计，但不影响本机播放。
 - 首版单曲播放，默认播放结束停止，可单曲循环；HLS 拖动在当前可定位时间轴内直接定位，越过已生成范围或回到当前 offset 之前才按原媒体位置重新协商，保留兼容模式、暂停及演唱设置。实际解码、音轨和字幕以设备/来源为准，兼容播放仍需 NAS 的 compute 可用。
-- WebDAV 原片直放通过 NAS 的同一授权媒体接口，复用 Java 按需保存的原片块；手机不必等待整曲下载，缺少范围继续回源。缓存保存在 NAS，可在管理端「歌曲缓存」统一清理。扫码点歌复用电视聚会队列的末尾 30 秒下一首预取；本机单曲播放器没有新增队列或手机离线歌曲下载。
+- WebDAV 原片直放通过 NAS 的同一授权媒体接口，复用 Go 按需保存的原片块；手机不必等待整曲下载，缺少范围继续回源。缓存保存在 NAS，可在管理端「歌曲缓存」统一清理。扫码点歌复用电视聚会队列的末尾 30 秒下一首预取；本机单曲播放器没有新增队列或手机离线歌曲下载。
 - 收藏及播放历史保存应用本地 SQLite（列表显示最近 100 项，旧记录不自动删除），按 NAS instanceId + songId 隔离；只有实际开始播放才创建历史。不保存离线歌曲；删除/清空本机最近记录不影响 NAS 媒体或服务端播放历史。NAS 歌曲实际播放时，由原生服务独立上报一次播放的累计实际播放时长；本机作品回听不上传。
 - `mobile_scanner` 仅扫码时申请相机权限；`webview_flutter` 加载确认后的同源 `/party/`，拒绝网页麦克风/相机请求，未提供 JS 文件/播放器桥。退出页面保留本次进程内的 H5 会话，显式断开清理；进程被系统终止后需重新扫码。扫码不依赖本机 NAS 登录，也不替换本机配置。
 - 电视工具页支持扫码点歌和扫码授权电视登录两种用途。授权要求手机已登录对应 NAS 管理账号，扫描电视登录二维码后显示设备名称供管理员确认；二维码中的授权码自动提交，无需手动输入。该功能只批准电视设备访问，不向电视授予管理员权限。
@@ -57,7 +57,7 @@ Android 原生 `NasTransport` 统一执行 API 与图片请求，以 Android Key
 
 `lib/app` 为主题、两种模式共用的主导航、长辈简化布局及统一迷你播放器；`lib/core` 为 API、状态、数据模型和本机索引；`features/library`、`features/player`、`features/singing`、`features/tv_control` 分别负责曲库、演唱舞台、录音操作/回听/作品及电视工具。Android `NasTransport` 管理网络和凭据，`PlaybackService` 管理播放器和 HLS 生命周期，`KaraokeEngine` 管理采集、状态、文件和混音，`MainActivity` 桥接界面、权限、视频及系统导出。
 
-手机曲库三个只读接口由 Java `/api/v1/mobile/library/songs` 提供，继续使用管理员认证，契约见 `contracts/openapi/singverse.openapi.json`。歌手、分类、共享歌单及播放协商复用现有业务接口，不直接连接 Python 或数据库。
+手机曲库三个只读接口由 Go `/api/v1/mobile/library/songs` 提供，继续使用管理员认证，契约见 `contracts/openapi/singverse.openapi.json`。歌手、分类、共享歌单及播放协商复用现有业务接口，不直接连接 Python 或数据库。
 
 未来增加 iOS：在有 Xcode/iOS SDK/CocoaPods 的 macOS 上生成 iOS 工程，并单独实现原生网络/凭据与播放桥接；当前没有 iOS 工程或验证结果。
 
@@ -75,7 +75,7 @@ Android 原生 `NasTransport` 统一执行 API 与图片请求，以 Android Key
 
 使用既有 `Pixel_9_Pro`，保留 minSdk、版本和既有设备数据。`make mobile-audio-test` 以独立 `.e2e` application ID 执行原生仪器测试，检查实际 Sonic PCM 顺序、变速时间映射、两路混音/限幅、100ms 人声偏移、AAC 解码、状态保护、重复保存及中断文件恢复。测试结束后通过 `adb logcat -d -s SingVerseAudioTest` 可找到公开样本 `Music/SingVerse-tests/controlled-mix-*.m4a` 的路径并取得合成测试混音；其中仅包含测试生成的两路正弦波。测试输入仅通过 androidTest 构造注入，产品没有切换到假麦克风的命令。CI 只编译该测试，未宣称已运行模拟器。
 
-真实 UI 验收必须使用独立 Java/compute、独立数据库/密钥/缓存及自制素材，不能指向日常 NAS：
+真实 UI 验收必须使用独立 Go/compute、独立数据库/密钥/缓存及自制素材，不能指向日常 NAS：
 
 ```sh
 # FFmpeg 使用仓库 .tools 中的工具；目录必须新建且为空。
@@ -88,13 +88,13 @@ python3 scripts/check-mobile-karaoke.py --suite visual --voice-sample /tmp/singv
 
 可用 `--output /tmp/singverse-mobile-acceptance/本次目录` 为每轮验收指定独立输出目录，保留旧截图、日志和报告；省略时沿用手机工程 `build/reports/karaoke-emulator/` 默认目录。
 
-以上命令从仓库根目录运行。隔离 Java 监听 `127.0.0.1:18181`，指定单独 `--singverse.sqlite.path`、`--singverse.auth.key-file`、`--singverse.transcoding.directory`，compute 监听 `127.0.0.1:18191`，compute 不设置媒体根目录；Java 随任务发送样本的授权回源引用，两个服务共用本次临时 token 文件。Java 使用 `--singverse.compute.base-url=http://127.0.0.1:18191`、`--singverse.compute.token-file` 指向它，并指定 `--singverse.compute.callback-origin=http://127.0.0.1:18181`：模拟器中的 `10.0.2.2` 是手机访问宿主的地址，宿主 compute 的回源需使用自己的 loopback 地址。样本生成器的 `--seed` 仅允许 loopback 18181、隔离数据库的工厂管理员，不保存密码；每次使用新的临时目录与数据库。
+以上命令从仓库根目录运行。隔离 Go 监听 `127.0.0.1:18181`，指定单独 `--singverse.sqlite.path`、`--singverse.auth.key-file`、`--singverse.transcoding.directory`，compute 监听 `127.0.0.1:18191`，compute 不设置媒体根目录；Go 随任务发送样本的授权回源引用，两个服务共用本次临时 token 文件。Go 使用 `--singverse.compute.base-url=http://127.0.0.1:18191`、`--singverse.compute.token-file` 指向它，并指定 `--singverse.compute.callback-origin=http://127.0.0.1:18181`：模拟器中的 `10.0.2.2` 是手机访问宿主的地址，宿主 compute 的回源需使用自己的 loopback 地址。样本生成器的 `--seed` 仅允许 loopback 18181、隔离数据库的工厂管理员，不保存密码；每次使用新的临时目录与数据库。
 
 UI 脚本安装独立测试包，通过真实界面直接选歌练唱、试音、录音、锁屏、回听、保存、系统导出、离线回放及作品管理。完整屏幕截图、操作视频及实际混音位于 `build/reports/karaoke-emulator/`，均为本机忽略产物。宿主需要实际可用麦克风；脚本打开 hostmicon 并播放自制声源供麦克风拾取，不把它直接注入产品。宿主电平为零时，末尾断言仍失败，不能以原生控制输入测试代替通过。麦克风音质、声学对齐、蓝牙延迟仍需要真实手机验收。
 
 ### 共享音轨与独立伴奏
 
-原唱/伴奏标记经 Java 全曲库保存，以已探测的源 stream ID 和 revision 校验；自动结果或其他设备纠正会在下次选用时读取。伴奏生成仍由 NAS 管理员启动。本机播放器选择生成伴奏时保留原视频和字幕，以 Media3 MergingMediaSource 合并独立音频，并用 HLS offset 裁切和换算拖动位置。现有音高、声道、监听和录音链继续在设备端工作；真实手机音画同步与蓝牙输出需单独验收。
+原唱/伴奏标记经 Go 全曲库保存，以已探测的源 stream ID 和 revision 校验；自动结果或其他设备纠正会在下次选用时读取。伴奏生成仍由 NAS 管理员启动。本机播放器选择生成伴奏时保留原视频和字幕，以 Media3 MergingMediaSource 合并独立音频，并用 HLS offset 裁切和换算拖动位置。现有音高、声道、监听和录音链继续在设备端工作；真实手机音画同步与蓝牙输出需单独验收。
 
 开始录唱在原有 MediaSource 上停止、定位并重新准备，保留已合并的独立伴奏；音轨快照在停止前保存，不把合并源降成单个原始 MediaItem。
 

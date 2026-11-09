@@ -1,0 +1,1 @@
+UPDATE metadata_settings SET enabled = @{enabled}, providers_json = @{providers}, auto_apply = @{autoApply}, threshold = @{threshold}, min_interval_seconds = @{minInterval}, max_interval_seconds = @{maxInterval}, updated_at = @{now} WHERE id = 1

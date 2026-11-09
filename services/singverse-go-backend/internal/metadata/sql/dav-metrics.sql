@@ -1,0 +1,1 @@
+UPDATE webdav_resource SET bytes_read=bytes_read+@{bytes},request_count=request_count+@{requests},elapsed_ms=elapsed_ms+@{elapsed} WHERE song_id=@{songId} AND binding=@{binding} AND generation=@{generation}

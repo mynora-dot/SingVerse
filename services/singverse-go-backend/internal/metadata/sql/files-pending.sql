@@ -1,0 +1,1 @@
+SELECT f.song_id,f.revision,s.source_id FROM media_metadata_file f JOIN media_song s ON s.id=f.song_id JOIN media_source source ON source.id=s.source_id WHERE (f.synced_revision<f.revision OR COALESCE(f.source_location,'')<>source.location OR f.error IS NOT NULL) AND (f.error IS NULL OR f.updated_at<@{retryBefore}) ORDER BY f.revision DESC,COALESCE(f.updated_at,'') LIMIT 250

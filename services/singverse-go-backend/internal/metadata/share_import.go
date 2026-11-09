@@ -1,0 +1,372 @@
+package metadata
+
+import (
+	"archive/zip"
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"github.com/gin-gonic/gin"
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/library"
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/store"
+	"io"
+	"os"
+)
+
+func shareSize(v any) (*int64, error) {
+	if v == nil {
+		return nil, nil
+	}
+	n, ok := v.(json.Number)
+	if !ok {
+		return nil, bad("文件大小无效")
+	}
+	size, e := n.Int64()
+	if e != nil || size < 0 {
+		return nil, bad("文件大小无效")
+	}
+	return &size, nil
+}
+func mediaPath(v string) bool { return library.SupportsMedia(v) }
+
+// ImportPart commits bounded chunks with a durable receipt, so retries preserve prior work.
+func (s *Service) ImportPart(ctx context.Context, sourceID string, data []byte) (map[string]int64, error) {
+	source, e := s.row(ctx, s.db, "source", map[string]any{"id": sourceID})
+	if e != nil {
+		return nil, absent(e, "媒体来源不存在")
+	}
+	if text(source["source_type"]) != "WEBDAV" {
+		return nil, bad("请选择 WebDAV 媒体库导入")
+	}
+	binding := hash(text(source["location"]))
+	document, e := readManifest(data)
+	if e != nil {
+		return nil, e
+	}
+	entries := array(document["entries"])
+	seen := map[string]bool{}
+	if raw, ok := document["assets"]; ok && raw != nil {
+		assets, ok := raw.(map[string]any)
+		if !ok || len(assets) > 5000 {
+			return nil, bad("共享资源清单无效")
+		}
+		for key, v := range assets {
+			encoded, ok := v.(string)
+			if !ok || !assetHash.MatchString(key) || key != hash(encoded) {
+				return nil, bad("共享资源校验失败")
+			}
+			actual, e := s.InstallSharedCover(encoded)
+			if e != nil || actual != key {
+				return nil, bad("共享封面校验失败")
+			}
+		}
+	}
+	// Validate the whole part before writing its first receipt or song.
+	for _, raw := range entries {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			return nil, bad("索引包条目无效")
+		}
+		relative, ok := item["path"].(string)
+		if !ok || !validPortablePath(relative) || !mediaPath(relative) || seen[relative] {
+			return nil, bad("歌曲路径重复或格式不支持")
+		}
+		seen[relative] = true
+		if _, e = shareSize(item["size"]); e != nil {
+			return nil, e
+		}
+		snapshot, ok := item["metadata"].(map[string]any)
+		if !ok {
+			return nil, bad("共享元数据无效")
+		}
+		if e = validateSnapshot(snapshot); e != nil {
+			return nil, e
+		}
+		if ref := text(snapshot["coverRef"]); ref != "" {
+			if !assetHash.MatchString(ref) {
+				return nil, bad("共享封面标识无效")
+			}
+			cover, e := s.SharedCover(ref)
+			if e != nil {
+				return nil, bad("缺少共享封面资源，请按顺序导入分片")
+			}
+			snapshot["coverData"] = base64.StdEncoding.EncodeToString(cover)
+		}
+		if encoded := text(snapshot["coverData"]); encoded != "" {
+			if _, e = s.InstallSharedCover(encoded); e != nil {
+				return nil, e
+			}
+		}
+	}
+	key := map[string]any{"sourceId": sourceID, "binding": binding, "hash": hash(base64.StdEncoding.EncodeToString(data))}
+	e = s.transaction(ctx, func(tx store.DBTX) error {
+		if _, e := s.exec(ctx, tx, "share-lock", nil); e != nil {
+			return e
+		}
+		if _, e := s.exec(ctx, tx, "share-receiptInsert", key); e != nil {
+			return e
+		}
+		receipt, e := s.row(ctx, tx, "share-receipt", key)
+		if e != nil {
+			return e
+		}
+		if number(receipt["processed"]) < int64(len(entries)) {
+			source, e := s.row(ctx, tx, "source", map[string]any{"id": sourceID})
+			if e != nil {
+				return e
+			}
+			if hash(text(source["location"])) != binding {
+				return conflict("导入期间来源根目录已变化")
+			}
+			return s.prepare(ctx, tx, sourceID, true)
+		}
+		return nil
+	})
+	if e != nil {
+		return nil, e
+	}
+	for {
+		receipt, e := s.row(ctx, s.db, "share-receipt", key)
+		if e != nil {
+			return nil, e
+		}
+		cursor := int(number(receipt["processed"]))
+		if cursor < 0 || cursor > len(entries) {
+			return nil, conflict("分享导入进度无效")
+		}
+		if cursor == len(entries) {
+			return map[string]int64{"imported": number(receipt["imported"]), "skipped": number(receipt["skipped"]), "processed": int64(cursor)}, nil
+		}
+		next := cursor
+		used := 0
+		for next < len(entries) && next-cursor < 100 {
+			size := len(encode(entries[next]))
+			if used+size > 4*1024*1024 && next > cursor {
+				break
+			}
+			used += size
+			next++
+		}
+		e = s.transaction(ctx, func(tx store.DBTX) error {
+			if _, e := s.exec(ctx, tx, "share-receiptLock", key); e != nil {
+				return e
+			}
+			current, e := s.row(ctx, tx, "share-receipt", key)
+			if e != nil {
+				return e
+			}
+			if number(current["processed"]) != int64(cursor) {
+				return nil
+			}
+			source, e := s.row(ctx, tx, "source", map[string]any{"id": sourceID})
+			if e != nil {
+				return e
+			}
+			if text(source["source_type"]) != "WEBDAV" || hash(text(source["location"])) != binding {
+				return conflict("导入期间来源根目录已变化")
+			}
+			imported, skipped := number(current["imported"]), number(current["skipped"])
+			for _, raw := range entries[cursor:next] {
+				item := raw.(map[string]any)
+				size, e := shareSize(item["size"])
+				if e != nil {
+					return e
+				}
+				id, added, e := s.library.ImportSong(ctx, tx, sourceID, text(item["path"]), size)
+				if e != nil {
+					return e
+				}
+				if !added {
+					skipped++
+					continue
+				}
+				snapshot := item["metadata"].(map[string]any)
+				if e = s.Install(ctx, tx, id, snapshot); e != nil {
+					return e
+				}
+				if claim, ok := snapshot["audioRoles"].(map[string]any); ok {
+					s.hookMu.RLock()
+					fn := s.audioClaim
+					s.hookMu.RUnlock()
+					if fn != nil {
+						if e = fn(ctx, tx, id, claim); e != nil {
+							return e
+						}
+					}
+				}
+				imported++
+			}
+			a := map[string]any{}
+			for k, v := range key {
+				a[k] = v
+			}
+			a["processed"], a["imported"], a["skipped"] = next, imported, skipped
+			_, e = s.exec(ctx, tx, "share-receiptUpdate", a)
+			return e
+		})
+		if e != nil {
+			return nil, e
+		}
+	}
+}
+
+func readZipFile(file *zip.File, limit int64) ([]byte, error) {
+	if file.UncompressedSize64 > uint64(limit) || file.FileInfo().Mode()&os.ModeSymlink != 0 {
+		return nil, &problem{413, "分享包条目超过限制"}
+	}
+	r, e := file.Open()
+	if e != nil {
+		return nil, bad("分享包格式无效")
+	}
+	defer r.Close()
+	b, e := io.ReadAll(io.LimitReader(r, limit+1))
+	if e != nil {
+		return nil, bad("分享包格式无效")
+	}
+	if int64(len(b)) > limit {
+		return nil, &problem{413, "分享包条目超过限制"}
+	}
+	return b, nil
+}
+
+// ImportStream spools the upload to a managed temporary file and reads one bounded part at a time.
+func (s *Service) ImportStream(ctx context.Context, sourceID string, input io.Reader) (map[string]int64, error) {
+	source, e := s.row(ctx, s.db, "source", map[string]any{"id": sourceID})
+	if e != nil {
+		return nil, absent(e, "媒体来源不存在")
+	}
+	if text(source["source_type"]) != "WEBDAV" {
+		return nil, bad("请选择 WebDAV 媒体库导入")
+	}
+	if e = os.MkdirAll(s.cfg.MetadataPath, 0700); e != nil {
+		return nil, e
+	}
+	temp, e := os.CreateTemp(s.cfg.MetadataPath, "metadata-import-*.tmp")
+	if e != nil {
+		return nil, e
+	}
+	defer func() { temp.Close(); os.Remove(temp.Name()) }()
+	size, e := io.Copy(temp, io.LimitReader(input, uploadLimit+1))
+	if e != nil {
+		return nil, e
+	}
+	if size > uploadLimit {
+		return nil, &problem{413, "分享包超过 8 GiB"}
+	}
+	if e = ctx.Err(); e != nil {
+		return nil, e
+	}
+	z, e := checkedZip(temp, size, 30001)
+	if e != nil {
+		return nil, e
+	}
+	if len(z.File) == 0 {
+		return nil, bad("分享包为空")
+	}
+	if z.File[0].Name != "index.json" {
+		if size > shareLimit {
+			return nil, &problem{413, "索引包最多 32 MiB"}
+		}
+		b := make([]byte, int(size))
+		if _, e = temp.ReadAt(b, 0); e != nil {
+			return nil, e
+		}
+		return s.ImportPart(ctx, sourceID, b)
+	}
+	indexBytes, e := readZipFile(z.File[0], 1024*1024)
+	if e != nil {
+		return nil, e
+	}
+	var index map[string]any
+	d := json.NewDecoder(bytes.NewReader(indexBytes))
+	d.UseNumber()
+	if d.Decode(&index) != nil || index["format"] != "singverse-share-set" || number(index["version"]) != 2 {
+		return nil, bad("分享清单无效")
+	}
+	rawParts, ok := index["parts"].([]any)
+	if !ok || len(rawParts) > 4096 {
+		return nil, bad("分享分包清单无效")
+	}
+	expected := []string{}
+	known := map[string]bool{"index.json": true}
+	for _, raw := range rawParts {
+		name, ok := raw.(string)
+		if !ok || !partName.MatchString(name) || known[name] {
+			return nil, bad("分享分包清单无效")
+		}
+		known[name] = true
+		expected = append(expected, name)
+	}
+	advisories := map[string]bool{}
+	if raw, ok := index["deletions"]; ok {
+		a, ok := raw.([]any)
+		if !ok || len(a) > 4096 {
+			return nil, bad("删除提示无效")
+		}
+		for _, raw := range a {
+			name, ok := raw.(string)
+			if !ok || !deletionName.MatchString(name) || known[name] {
+				return nil, bad("删除提示无效")
+			}
+			known[name], advisories[name] = true, true
+		}
+	}
+	// Check all names and declared bounds before any part can commit.
+	cursor := 0
+	seen := map[string]bool{"index.json": true}
+	expanded := uint64(len(indexBytes))
+	for _, file := range z.File[1:] {
+		name := file.Name
+		if seen[name] || !known[name] || file.FileInfo().Mode()&os.ModeSymlink != 0 {
+			return nil, bad("分享包包含重复或未知文件")
+		}
+		seen[name] = true
+		if !advisories[name] {
+			if cursor >= len(expected) || expected[cursor] != name {
+				return nil, bad("分享分包顺序错误")
+			}
+			cursor++
+		}
+		if file.UncompressedSize64 > shareLimit || expanded+file.UncompressedSize64 > uint64(uploadLimit) {
+			return nil, &problem{413, "分享包过大"}
+		}
+		expanded += file.UncompressedSize64
+	}
+	if cursor != len(expected) {
+		return nil, bad("分享包不完整，请选择完整文件")
+	}
+	for name := range advisories {
+		if !seen[name] {
+			return nil, bad("分享包缺少删除提示文件")
+		}
+	}
+	result := map[string]int64{"imported": 0, "skipped": 0, "processed": 0}
+	for _, file := range z.File[1:] {
+		if e = ctx.Err(); e != nil {
+			return nil, e
+		}
+		b, e := readZipFile(file, shareLimit)
+		if e != nil {
+			return nil, e
+		}
+		if advisories[file.Name] {
+			continue
+		}
+		part, e := s.ImportPart(ctx, sourceID, b)
+		if e != nil {
+			return nil, e
+		}
+		for k, v := range part {
+			result[k] += v
+		}
+	}
+	return result, nil
+}
+func (s *Service) importShare(c *gin.Context) {
+	result, e := s.ImportStream(c.Request.Context(), c.Param("id"), c.Request.Body)
+	if e != nil {
+		s.fail(c, e)
+		return
+	}
+	c.JSON(200, result)
+}

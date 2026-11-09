@@ -1,0 +1,1 @@
+SELECT COUNT(*) AS count FROM metadata_item item WHERE item.batch_id=@{batchId} AND (@{status} IS NULL OR item.status=@{status} OR (@{status}='APPLIED' AND item.status IN ('AUTO_APPLIED','MANUAL_APPLIED'))) AND (@{keyword} IS NULL OR LOWER(item.title) LIKE LOWER(@{keyword}) ESCAPE '!' OR LOWER(item.artists_json) LIKE LOWER(@{keyword}) ESCAPE '!')

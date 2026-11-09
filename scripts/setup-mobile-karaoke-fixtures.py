@@ -45,7 +45,7 @@ if not args.seed:
     generate('-f', 'lavfi', '-i', 'sine=frequency=880:duration=8:sample_rate=48000',
              str(root / 'voice-test.wav'))
     marker.write_text('Original generated tones and lyrics for disposable emulator tests.\n')
-    print('Fixtures generated. Start isolated Java/compute with this directory authorized, then use --seed.')
+    print('Fixtures generated. Start isolated Go/compute with this directory authorized, then use --seed.')
 else:
     if not marker.is_file():
         raise SystemExit('Refusing to seed without this tool’s fixture marker.')

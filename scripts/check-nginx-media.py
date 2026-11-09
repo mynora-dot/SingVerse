@@ -45,7 +45,7 @@ def docker(*args):
 def main():
   root = Path(__file__).resolve().parents[1]
   parser = argparse.ArgumentParser(description=__doc__)
-  parser.add_argument('--config', type=Path, default=root / 'services/singverse-java-backend/nginx/nginx.conf')
+  parser.add_argument('--config', type=Path, default=root / 'infra/docker/build/nginx/nginx.conf')
   parser.add_argument('--nginx-image', default='nginx:stable-alpine')
   parser.add_argument('--backend-image', default='node:22-bookworm-slim')
   args = parser.parse_args()
@@ -60,10 +60,10 @@ def main():
       fixture = Path(directory) / 'fixture.cjs'
       fixture.write_text(FIXTURE)
       containers.append(docker('run', '-d', '--pull=never', '--network', network,
-        '--network-alias', 'singverse-java-backend', '--read-only',
+        '--network-alias', 'singverse-go-backend', '--read-only',
         '--mount', f'type=bind,src={fixture},dst=/fixture.cjs,readonly',
         args.backend_image, 'node', '/fixture.cjs'))
-      scheme = root / 'services/singverse-java-backend/nginx/proxy-scheme.conf'
+      scheme = root / 'infra/docker/build/nginx/proxy-scheme.conf'
       containers.append(docker('run', '-d', '--pull=never', '--network', network,
         '-p', '127.0.0.1::80', '--read-only', '--tmpfs', '/var/cache/nginx', '--tmpfs', '/var/run',
         '--mount', f'type=bind,src={args.config.resolve()},dst=/etc/nginx/nginx.conf,readonly',

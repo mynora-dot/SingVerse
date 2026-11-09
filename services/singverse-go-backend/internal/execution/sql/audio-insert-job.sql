@@ -1,0 +1,1 @@
+INSERT INTO media_audio_job(id,song_id,kind,state,fingerprint,node_origin,result_json,error,created_at,updated_at,backend,recipe_json) VALUES(@{id},@{song_id},@{kind},@{state},@{fingerprint},@{node_origin},'{}','',@{created_at},@{updated_at},COALESCE(@{backend},''),COALESCE(@{recipe_json},'{}'))

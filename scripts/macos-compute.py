@@ -104,7 +104,7 @@ def main():
     RUNTIME.mkdir(parents=True, exist_ok=True)
     for folder in ('media', 'cache'):
         (RUNTIME / folder).mkdir(exist_ok=True)
-    # Only the shared media directory is mounted into Java, read-only.
+    # Only the shared media directory is mounted into Go, read-only.
     (RUNTIME / 'media').chmod(0o755)
     python = ROOT / 'services/singverse-compute/.venv/bin/python'
     ffmpeg = ROOT / '.tools/jellyfin-ffmpeg/ffmpeg'
@@ -115,7 +115,10 @@ def main():
     # Copy the existing shared credential locally without printing it or changing it.
     with tempfile.TemporaryDirectory(dir=RUNTIME) as directory:
         token = Path(directory) / 'token'
-        subprocess.run(['docker', 'cp', 'singverse-app-singverse-java-backend-1:/run/singverse-compute/token', str(token)], check=True, stdout=subprocess.DEVNULL)
+        container = subprocess.check_output(['docker', 'compose', '--project-directory', str(ROOT), '-f', str(ROOT/'infra/docker/compose/compose.app.yaml'), 'ps', '-q', 'singverse-go-backend'], text=True).strip()
+        if not container:
+            raise SystemExit('Start the Go app before copying its compute credential')
+        subprocess.run(['docker', 'cp', container+':/run/singverse-compute/token', str(token)], check=True, stdout=subprocess.DEVNULL)
         destination = RUNTIME / 'token'
         if destination.exists() and destination.read_bytes() != token.read_bytes():
             raise SystemExit('Existing native token differs; preserve it and reconcile credentials before starting')

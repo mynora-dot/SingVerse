@@ -1,6 +1,6 @@
 # 手机本机唱录平台桥
 
-Flutter 仅发送控制命令与接收摘要。人声、伴奏 PCM 和编码数据不经过 Dart，不新增 Java/compute 作品接口。Android 最低 API 24；Media3 与 Kotlin 引擎归 `PlaybackService`，不随页面销毁。
+Flutter 仅发送控制命令与接收摘要。人声、伴奏 PCM 和编码数据不经过 Dart，不新增 Go/compute 作品接口。Android 最低 API 24；Media3 与 Kotlin 引擎归 `PlaybackService`，不随页面销毁。
 
 ## 通道与操作
 

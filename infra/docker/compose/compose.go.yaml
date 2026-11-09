@@ -1,0 +1,90 @@
+name: singverse-go-app
+
+services:
+  singverse-go-backend:
+    image: singverse-go-backend:local
+    build:
+      context: .
+      dockerfile: infra/docker/build/go.Dockerfile
+      target: singverse-go-backend
+    environment:
+      SINGVERSE_DB_DRIVER: sqlite
+      SINGVERSE_BIND_ADDRESS: 0.0.0.0
+      SQLITE_PATH: /data/singverse.db
+      SERVER_PORT: '8080'
+      COMPUTE_NODE_URL: http://singverse-compute:8090
+      SINGVERSE_COMPUTE_AUTO_CALLBACK_ORIGIN: http://singverse-go-backend:8080
+      SINGVERSE_CALLBACK_ORIGIN: '${SINGVERSE_CALLBACK_ORIGIN:-}'
+      COMPUTE_AUTH_TOKEN_FILE: /run/singverse-compute/token
+      WEBDAV_METADATA_PATH: /data/metadata/webdav
+      METADATA_CACHE_PATH: /data/metadata/covers
+      TRANSCODE_VERSION_PATH: /data/transcoding
+      SINGVERSE_SONG_CACHE_PATH: /data/transcoding/cache
+      SINGVERSE_SONG_CACHE_BYTES: '${SINGVERSE_SONG_CACHE_BYTES:-10737418240}'
+      SINGVERSE_SONG_CACHE_MINIMUM_FREE_BYTES: '${SINGVERSE_SONG_CACHE_MINIMUM_FREE_BYTES:-2147483648}'
+      AUDIO_DERIVED_PATH: /data/audio-roles
+      SINGVERSE_AUTH_KEY_FILE: /secrets/master.key
+      SINGVERSE_PUBLIC_ORIGIN: '${SINGVERSE_PUBLIC_ORIGIN:-}'
+      SINGVERSE_TV_RELEASE_DIRECTORY: '${SINGVERSE_TV_RELEASE_DIRECTORY:-}'
+      SINGVERSE_TRUSTED_PROXIES: '${SINGVERSE_TRUSTED_PROXIES:-}'
+    volumes:
+      - singverse-data:/data
+      - singverse-secrets:/secrets
+      - singverse-compute-auth:/run/singverse-compute:ro
+      - singverse-media:/media:ro
+      - singverse-downloads:/downloads
+    restart: unless-stopped
+    stop_grace_period: 20s
+
+  singverse-compute:
+    image: '${COMPUTE_IMAGE:-singverse-compute:local}'
+    build:
+      context: .
+      dockerfile: services/singverse-compute/Dockerfile
+      target: '${COMPUTE_AUDIO_RUNTIME:-base}'
+      args:
+        SINGVERSE_VERSION: '${SINGVERSE_VERSION:-}'
+        SOURCE_REVISION: '${SINGVERSE_SOURCE_REVISION:-local}'
+    environment:
+      COMPUTE_AUTH_TOKEN_FILE: /run/singverse-compute/token
+      COMPUTE_PROCESS_MEMORY_BYTES: '${COMPUTE_PROCESS_MEMORY_BYTES:-1073741824}'
+      COMPUTE_LAN_PAIRING_ENABLED: '${COMPUTE_LAN_PAIRING_ENABLED:-true}'
+      COMPUTE_TRANSCODE_CONCURRENCY: '${COMPUTE_TRANSCODE_CONCURRENCY:-1}'
+      COMPUTE_AUDIO_MODEL_REPO: '${COMPUTE_AUDIO_MODEL_REPO:-/var/lib/singverse-models/htdemucs}'
+      COMPUTE_AUDIO_MEMORY_BYTES: '${COMPUTE_AUDIO_MEMORY_BYTES:-4294967296}'
+      COMPUTE_AUDIO_THREADS: '${COMPUTE_AUDIO_THREADS:-2}'
+      COMPUTE_AUDIO_WORKER_IDLE_SECONDS: '${COMPUTE_AUDIO_WORKER_IDLE_SECONDS:-60}'
+    volumes:
+      - singverse-compute-auth:/run/singverse-compute
+      - singverse-transcode-cache:/var/cache/singverse-transcode
+      - singverse-audio-models:/var/lib/singverse-models
+    restart: unless-stopped
+    mem_limit: '${COMPUTE_CONTAINER_MEMORY_LIMIT:-2g}'
+    cpus: '${COMPUTE_CPU_LIMIT:-2.0}'
+    stop_grace_period: 10s
+
+  singverse-frontend:
+    image: singverse-frontend:local
+    build:
+      context: .
+      dockerfile: infra/docker/build/go.Dockerfile
+      target: singverse-frontend
+    ports:
+      - '${SINGVERSE_HTTP_BIND:-127.0.0.1}:${SINGVERSE_HTTP_PORT:-18080}:80'
+    depends_on:
+      singverse-go-backend:
+        condition: service_healthy
+        restart: true
+    restart: unless-stopped
+
+volumes:
+  singverse-data:
+  singverse-secrets:
+  singverse-compute-auth:
+  singverse-media:
+  singverse-downloads:
+  # Also holds hardware settings, audio model selection and qualification records.
+  # Preserve this volume during upgrades; it is not exclusively disposable cache.
+  singverse-transcode-cache:
+  # Model weights only; selection/qualification records live in transcode-cache.
+  singverse-audio-models:

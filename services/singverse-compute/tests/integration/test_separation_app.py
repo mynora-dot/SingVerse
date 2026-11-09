@@ -1,4 +1,4 @@
-"""Opt-in isolated Java/compute roundtrip; DSP requires no model or GPU."""
+"""Opt-in isolated Go/compute roundtrip; DSP requires no model or GPU."""
 import hashlib
 from http.cookiejar import CookieJar
 import json
@@ -9,36 +9,40 @@ import sys
 import tempfile
 import time
 import unittest
-from urllib.request import Request, build_opener, HTTPCookieProcessor
+from urllib.request import Request, build_opener, HTTPCookieProcessor, urlopen
 from urllib.error import HTTPError
 from integration.test_macos_app import free_port
 
 
-@unittest.skipUnless(os.environ.get('SINGVERSE_TEST_SEPARATION_APP_JAR'), 'Explicit built Java JAR required for separation roundtrip')
+@unittest.skipUnless(os.environ.get('SINGVERSE_TEST_SEPARATION_APP_BINARY'), 'Explicit native Go binary required for separation roundtrip')
 class SeparationApplicationTest(unittest.TestCase):
     def test_preview_batch_flac_activation_and_optional_clean_cpu(self):
         root=Path(__file__).resolve().parents[4]
-        jar=Path(os.environ['SINGVERSE_TEST_SEPARATION_APP_JAR']).resolve(strict=True)
-        java=str(Path(os.environ['JAVA_HOME'])/'bin/java') if os.environ.get('JAVA_HOME') else 'java'
+        binary=Path(os.environ['SINGVERSE_TEST_SEPARATION_APP_BINARY']).resolve(strict=True)
+        self.assertTrue(binary.is_file() and os.access(binary,os.X_OK),'Build a native Go backend binary first')
         with tempfile.TemporaryDirectory() as temporary:
             work=Path(temporary);media=work/'media';media.mkdir()
             source=media/'Synthetic song.flac'
             subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','aevalsrc=.2*sin(440*2*PI*t)+.1*sin(880*2*PI*t)|.2*sin(440*2*PI*t)-.1*sin(880*2*PI*t):s=44100:d=16',str(source)],check=True)
             original=hashlib.sha256(source.read_bytes()).hexdigest()
-            token=work/'token';token.write_text('b'*64)
-            compute_port,java_port=free_port(),free_port();origin=f'http://127.0.0.1:{java_port}'
+            token=work/'token';token.write_text('b'*64);token.chmod(0o600)
+            compute_port,backend_port=free_port(),free_port();origin=f'http://127.0.0.1:{backend_port}'
             environment={**os.environ,'COMPUTE_AUTH_TOKEN_FILE':str(token),'COMPUTE_LAN_PAIRING_ENABLED':'false',
                 'COMPUTE_AUDIO_MODEL_REPO':os.environ.get('SINGVERSE_TEST_SEPARATION_MODEL_REPO',''),
                 'COMPUTE_TRANSCODE_ROOT':str(work/'cache'),'COMPUTE_MINIMUM_FREE_BYTES':'0',
-                'COMPUTE_NODE_URL':f'http://127.0.0.1:{compute_port}','SERVER_PORT':str(java_port),
-                'SPRING_PROFILES_ACTIVE':'sqlite','SQLITE_PATH':str(work/'app.db'),'SINGVERSE_AUTH_KEY_FILE':str(work/'master.key'),
+                'COMPUTE_NODE_URL':f'http://127.0.0.1:{compute_port}','SERVER_PORT':str(backend_port),
+                'SINGVERSE_DB_DRIVER':'sqlite','SINGVERSE_BIND_ADDRESS':'127.0.0.1','SQLITE_PATH':str(work/'app.db'),
+                'SINGVERSE_CALLBACK_ORIGIN':origin,'SINGVERSE_COMPUTE_AUTO_CALLBACK_ORIGIN':'','SINGVERSE_PUBLIC_ORIGIN':'',
+                'SINGVERSE_TRUSTED_PROXIES':'','SINGVERSE_DIAGNOSTICS_ADDRESS':'','SINGVERSE_TV_DISCOVERY_ADDRESS':'','SINGVERSE_TV_RELEASE_DIRECTORY':'',
+                'SINGVERSE_MIGRATIONS_DIR':str(root/'database/migrations'),'SINGVERSE_AUTH_KEY_FILE':str(work/'master.key'),
                 'AUDIO_DERIVED_PATH':str(work/'derived'),'TRANSCODE_VERSION_PATH':str(work/'versions'),
+                'SINGVERSE_SONG_CACHE_PATH':str(work/'song-cache'),'SINGVERSE_SONG_CACHE_MINIMUM_FREE_BYTES':'0',
                 'METADATA_CACHE_PATH':str(work/'covers'),'WEBDAV_METADATA_PATH':str(work/'metadata'),'DBMATE_BIN':str(root/'.tools/dbmate')}
             processes=[]
-            with (work/'compute.log').open('wb') as compute_log,(work/'java.log').open('wb') as java_log:
+            with (work/'compute.log').open('wb') as compute_log,(work/'go.log').open('wb') as backend_log:
                 try:
                     processes.append(subprocess.Popen([sys.executable,'-m','singverse_compute','--port',str(compute_port)],cwd=root/'services/singverse-compute',env=environment,stdout=compute_log,stderr=subprocess.STDOUT))
-                    processes.append(subprocess.Popen([java,'-jar',str(jar),'--singverse.classification.worker-enabled=false'],cwd=root/'services/singverse-java-backend',env=environment,stdout=java_log,stderr=subprocess.STDOUT))
+                    processes.append(subprocess.Popen([str(binary)],cwd=root,env=environment,stdout=backend_log,stderr=subprocess.STDOUT))
                     opener=build_opener(HTTPCookieProcessor(CookieJar()))
                     def request(path,method='GET',body=None,binary=False):
                         headers={}
@@ -56,7 +60,9 @@ class SeparationApplicationTest(unittest.TestCase):
                     for _ in range(240):
                         self.assertTrue(all(p.poll() is None for p in processes),'Isolated service exited')
                         try:
-                            if request('/api/health')['status']=='UP':break
+                            if request('/api/health')['status']=='UP':
+                                with urlopen(f'http://127.0.0.1:{compute_port}/health',timeout=3) as ready:
+                                    if json.load(ready)['status']=='UP':break
                         except OSError:time.sleep(.25)
                     else:self.fail('Services did not become ready')
                     request('/api/v1/auth/login','POST',{'username':'admin','password':'admin'})
@@ -70,7 +76,7 @@ class SeparationApplicationTest(unittest.TestCase):
                         started=time.monotonic();queued=request(song_path+'/audio-jobs','POST',{'kind':'SEPARATE',**body})
                         status=until(lambda:request(song_path+'/audio-roles'),lambda s:any(j['id']==queued['id'] and j['state'] in ('SUCCEEDED','FAILED','CANCELLED') for j in s['jobs']))
                         actual=next(j for j in status['jobs'] if j['id']==queued['id']);self.assertEqual(actual['state'],'SUCCEEDED',actual)
-                        print(json.dumps({'measurement':'measured-synthetic-java-roundtrip','profile':body,'elapsedMs':round((time.monotonic()-started)*1000,3),'job':actual}),flush=True)
+                        print(json.dumps({'measurement':'measured-synthetic-go-roundtrip','profile':body,'elapsedMs':round((time.monotonic()-started)*1000,3),'job':actual}),flush=True)
                         return queued['id'],status
                     preview,status=job({'separationProfile':'DSP_FAST','preview':True})
                     self.assertNotIn('backingResource',status)
@@ -107,7 +113,7 @@ class SeparationApplicationTest(unittest.TestCase):
                     self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(),original)
                 except Exception:
                     print((work/'compute.log').read_text(errors='replace')[-8000:],file=sys.stderr)
-                    print((work/'java.log').read_text(errors='replace')[-8000:],file=sys.stderr)
+                    print((work/'go.log').read_text(errors='replace')[-8000:],file=sys.stderr)
                     raise
                 finally:
                     for process in reversed(processes):process.terminate()

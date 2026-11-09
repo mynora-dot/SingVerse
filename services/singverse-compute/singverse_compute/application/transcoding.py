@@ -1,4 +1,4 @@
-"""Instance-owned execution registry; Java owns business queues and durable task intent."""
+"""Instance-owned execution registry; Go owns business queues and durable task intent."""
 from contextlib import contextmanager
 from collections import OrderedDict
 from dataclasses import asdict, dataclass, field, replace

@@ -1,0 +1,1 @@
+INSERT INTO missing_song_feedback(id,title,artist,version_label,description,submitted_by,source,status,handling_note,resolved_song_artists_json,search_text,creation_hash,revision,created_at,updated_at) VALUES(?,?,?,?,?,?,'ADMIN','PENDING','','[]',?,?,1,?,?)

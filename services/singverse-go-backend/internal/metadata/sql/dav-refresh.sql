@@ -1,0 +1,1 @@
+UPDATE webdav_resource SET generation=generation+1,task_id=@{taskId},identity_size=file_size,identity_modified=modified_at,state='PENDING' WHERE song_id=@{songId} AND archived_at IS NULL AND state<>'RUNNING' AND state<>'PENDING'

@@ -1,0 +1,1 @@
+SELECT artist_id,image_kind,attempts,generation FROM artist_image_fetch WHERE state IN ('PENDING','RETRY') AND fetch_after <= ? ORDER BY fetch_after,artist_id,CASE image_kind WHEN 'PORTRAIT' THEN 0 ELSE 1 END LIMIT 1;

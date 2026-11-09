@@ -612,7 +612,7 @@ class AudioRoles:
             self.separation.worker.interrupt()
 
     def collect(self):
-        # Java acknowledges successful transfers; orphaned output expires after one day.
+        # Go acknowledges successful transfers; orphaned output expires after one day.
         if not self.collection_lock.acquire(blocking=False):
             return
         try:

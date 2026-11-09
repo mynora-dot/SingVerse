@@ -1,0 +1,1 @@
+INSERT INTO song_cache_entry(id,cache_key,song_id,execution_json,target_json,artifacts_json,media_type,bytes,created_at,last_access_at,hits) VALUES(@{id},@{cache_key},@{song_id},@{execution_json},@{target_json},@{artifacts_json},@{media_type},@{bytes},@{created_at},@{created_at},0)

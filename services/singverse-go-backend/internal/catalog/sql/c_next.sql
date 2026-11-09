@@ -1,0 +1,1 @@
+SELECT i.* FROM classification_item i JOIN classification_task t ON t.id=i.task_id WHERE (SELECT next_request_at FROM classification_settings WHERE id=1) <= ? AND t.status='RUNNING' AND t.next_at <= ? AND i.status='PENDING' ORDER BY t.created_at,i.id LIMIT 1;

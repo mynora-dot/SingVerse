@@ -13,8 +13,18 @@ def build_info():
         value['variant'] = os.environ.get('SINGVERSE_COMPUTE_VARIANT', value['variant'])
         return value
     except (OSError, ValueError):
-        return {'version': '0.1.0-SNAPSHOT', 'revision': 'native', 'variant': 'native',
+        return {'version': native_version(), 'revision': 'native', 'variant': 'native',
                 'runtimeLock': native_identity()[0], 'sourceDigest': native_identity()[1]}
+
+
+def native_version():
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "VERSION"
+        if candidate.is_file():
+            value = candidate.read_text().strip()
+            if value:
+                return value
+    return "development"
 
 
 @lru_cache(maxsize=1)

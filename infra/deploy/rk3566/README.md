@@ -1,11 +1,11 @@
 # SingVerse RK3566 / fnOS 计算节点部署包
 
-这是独立计算节点，连接已有 SingVerse Java/管理端；不含 Java、管理端、数据库或离线 Docker 镜像。当前默认可测试 UVR ONNX CPU 分离；**部署包不含转换好的 RKNN 权重，NPU 需离线转换并完成板端试跑**。CPU 基准为手动命令，不接入管理端批量伴奏任务；管理端的 RKNN 生成仍需转换模型和板端试跑。
+这是独立计算节点，连接已有 SingVerse Go/管理端；不含 Go、管理端、数据库或离线 Docker 镜像。当前默认可测试 UVR ONNX CPU 分离；**部署包不含转换好的 RKNN 权重，NPU 需离线转换并完成板端试跑**。CPU 基准为手动命令，不接入管理端批量伴奏任务；管理端的 RKNN 生成仍需转换模型和板端试跑。
 
 ## 启动
 
 1. 将整个 ZIP 解压到 NAS 一个新目录；需要 Docker、Buildx 和 Compose 插件 2.24.4+，在飞牛 Docker Compose 项目中使用该目录下的 `docker-compose.yaml`。首次构建需要网络访问 Python/Debian 镜像、GitHub 和 Python 包源，不是离线安装包。
-2. 仅首次复制 `.env.example` 为 `.env`，已有配置请保留。默认只监听 `127.0.0.1:18090`；跨主机连接时将 `NAS_BIND_IP` 改为 NAS 实际的受限局域网地址，并限制端口访问仅 Java 主机可用。
+2. 仅首次复制 `.env.example` 为 `.env`，已有配置请保留。默认只监听 `127.0.0.1:18090`；跨主机连接时将 `NAS_BIND_IP` 改为 NAS 实际的受限局域网地址，并限制端口访问仅 Go 主机可用。
 3. `mkdir -p test-output`；给 `test-output` 目录授予容器 UID 10001 写入权限（例如仅对此目录执行 `sudo chown 10001:10001 test-output`）。原始媒体仅由业务节点管理，不修改歌曲文件权限或所有者。
 4. 在解压目录执行：
 
@@ -35,7 +35,7 @@ docker compose exec -T singverse-compute python -m singverse_compute.infrastruct
 docker compose exec -T singverse-compute cat /run/singverse-compute/token
 ```
 
-原始媒体只由 Java 管理；所有任务通过 Java 随请求提供的回源地址及任务授权读取，不需要节点媒体挂载或在 compute 中配置 Java 地址。业务侧的 `SINGVERSE_CALLBACK_ORIGIN` 应填写从此节点可达的业务 URL（无尾部 `/`），验证 Java → compute 和 compute → Java 两个方向。健康状态不代表音频模型已通过资格试跑。
+原始媒体只由 Go 管理；所有任务通过 Go 随请求提供的回源地址及任务授权读取，不需要节点媒体挂载或在 compute 中配置 Go 地址。业务侧的 `SINGVERSE_CALLBACK_ORIGIN` 应填写从此节点可达的业务 URL（无尾部 `/`），验证 Go → compute 和 compute → Go 两个方向。健康状态不代表音频模型已通过资格试跑。
 
 ## 后续 RKNN 实验
 

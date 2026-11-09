@@ -1,0 +1,1 @@
+UPDATE ai_service SET name=?,provider=?,protocol=?,endpoint=?,model=?,output_mode=?,secret_encrypted=?,credential_purpose=?,enabled=?,timeout_seconds=?,max_results=?,revision=revision+1 WHERE id=? AND revision=?;

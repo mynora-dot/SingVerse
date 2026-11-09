@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Repeatable local pipeline benchmark, not Java end-to-end or a song quality claim."""
+"""Repeatable local pipeline benchmark, not Go end-to-end or a song quality claim."""
 import argparse
 import csv
 import json

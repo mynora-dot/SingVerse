@@ -1,0 +1,1 @@
+UPDATE audio_batch_item SET state=@{state},job_id=@{job},error=@{error},updated_at=@{now} WHERE batch_id=@{batch} AND song_id=@{song} AND state IN ('PENDING','PROBING','PROCESSING') AND (state <> @{state} OR COALESCE(job_id,'') <> COALESCE(@{job},'') OR error <> @{error})

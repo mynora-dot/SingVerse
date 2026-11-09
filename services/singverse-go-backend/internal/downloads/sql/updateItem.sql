@@ -1,0 +1,1 @@
+UPDATE lx_download_item SET status=@{status},resolved_quality=@{resolvedQuality},relative_path=@{relativePath},song_id=@{songId},content_hash=@{hash},message=@{message},updated_at=@{now},active_key=@{activeKey},resolved_active_key=@{resolvedActiveKey} WHERE id=@{id}

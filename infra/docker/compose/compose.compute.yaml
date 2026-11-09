@@ -1,4 +1,4 @@
-# Standalone execution node; Java supplies task-scoped media callbacks.
+# Standalone execution node; Go supplies task-scoped media callbacks.
 # For another host to connect, explicitly select a private interface or place behind TLS.
 name: singverse-compute-node
 services:
@@ -9,7 +9,7 @@ services:
       dockerfile: services/singverse-compute/Dockerfile
       target: '${COMPUTE_AUDIO_RUNTIME:-base}'
       args:
-        SINGVERSE_VERSION: '${SINGVERSE_VERSION:-0.1.0-SNAPSHOT}'
+        SINGVERSE_VERSION: '${SINGVERSE_VERSION:-}'
         SOURCE_REVISION: '${SINGVERSE_SOURCE_REVISION:-local}'
     environment:
       COMPUTE_AUTH_TOKEN_FILE: /run/singverse-compute/token

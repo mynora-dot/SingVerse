@@ -1,4 +1,4 @@
-"""Validate and describe temporary FFmpeg outputs for transfer to Java."""
+"""Validate and describe temporary FFmpeg outputs for transfer to Go."""
 import hashlib
 import os
 import re

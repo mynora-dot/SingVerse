@@ -1,0 +1,1 @@
+SELECT COUNT(*) FROM media_metadata_file f JOIN media_song s ON s.id=f.song_id JOIN media_source source ON source.id=s.source_id WHERE s.source_id=@{sourceId} AND (f.synced_revision<f.revision OR COALESCE(f.source_location,'')<>source.location) AND f.error IS NOT NULL

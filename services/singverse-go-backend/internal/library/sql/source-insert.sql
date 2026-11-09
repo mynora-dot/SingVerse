@@ -1,0 +1,1 @@
+INSERT INTO media_source(id,name,source_type,location,location_hash,username,password_encrypted,parser_profile_id,created_at,updated_at,scan_enabled,scan_cron,next_scan_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)

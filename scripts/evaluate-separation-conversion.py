@@ -126,7 +126,7 @@ def main():
         wav.unlink()
     report = {'measurement': 'measured-local-CPU-conversion-comparison', 'productionApproved': False,
               'candidatePrecision': precision, 'threads': count, 'modelLoadMs': load, 'conversion': evidence,
-              'note': 'Decode measured once. Timed stages include shared spectral DSP, inference and float WAV write; excludes encoding, Java and transport. Real-song blind listening and deployment qualification remain required.',
+              'note': 'Decode measured once. Timed stages include shared spectral DSP, inference and float WAV write; excludes encoding, Go and transport. Real-song blind listening and deployment qualification remain required.',
               'samples': len(records), 'records': records}
     (args.output/'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2)+'\n')
     print(json.dumps({'samples': len(records), 'report': str(args.output/'report.json'), 'productionApproved': False}))

@@ -9,7 +9,7 @@
 | 热门排行、播放明细与单曲历史 | 曲库 → 播放记录 | `#/library/playback-history` |
 | 登记和处理缺歌 | 曲库 → 缺歌反馈 | `#/library/missing-feedback` |
 
-Nginx 根路径与 Java `/admin/` 托管均沿用现有约定，API 请求仅访问同源 Java `/api/v1`。管理查询、缺歌反馈和后台试听使用管理员 Cookie，写入另需当前 CSRF token；TV 活动沿用设备 Bearer，设备或亲友 Bearer 不授予管理权限。
+Nginx 根路径与 Go `/admin/` 托管均沿用现有约定，API 请求仅访问同源 Go `/api/v1`。管理查询、缺歌反馈和后台试听使用管理员 Cookie，写入另需当前 CSRF token；TV 活动沿用设备 Bearer，设备或亲友 Bearer 不授予管理权限。
 
 ## 播放记录
 
@@ -74,10 +74,10 @@ TV 沿用当前设备的 `playback-events` 接口，新增可选成对时钟 `ac
 
 列表默认 `page=0,size=20`，最大页大小 100。过滤和排序在数据库分页前执行，明细与汇总保持同一统计口径。完整字段、长度、默认值、空值和错误状态见 [OpenAPI](openapi/singverse.openapi.json) 与 [API 说明](openapi/README.md)。
 
-Java 是唯一业务写入方，SQL 位于 MyBatis XML。播放记录、缺歌反馈和播放活动统计随业务数据库一并备份，迁移以 `database/migrations/` 为准；不增加 Python 任务、Redis 或消息队列，也没有新增环境变量。
+Go 是唯一业务写入方，SQL 位于 模块内嵌 SQL。播放记录、缺歌反馈和播放活动统计随业务数据库一并备份，迁移以 `database/migrations/` 为准；不增加 Python 任务、Redis 或消息队列，也没有新增环境变量。
 
 ## 检查入口与当前限制
 
-前端使用 `make frontend-check` 和该工程的 `npm test`，Java 使用 `make java-backend-test`，SQLite 迁移与连接使用 `make db-sqlite-check`；MySQL 检查需要实际配置的 MySQL 实例。命令说明以 [根目录运行说明](../README.md#环境与命令) 与 `make help` 为准，这些入口不表示已经在本次环境全部通过。
+前端使用 `make frontend-check` 和该工程的 `npm test`，Go 使用 `make go-backend-test`，SQLite 迁移与连接使用 `make db-sqlite-check`；MySQL 检查需要实际配置的 MySQL 实例。命令说明以 [根目录运行说明](../README.md#环境与命令) 与 `make help` 为准，这些入口不表示已经在本次环境全部通过。
 
 没有实际客户端上报时，新增播放不会出现在统计中。自动化页面、受控 HTTP 和隔离数据库测试不能代替手机、TV、微信与 NAS 真机的一致性验收；实际验证范围以本次验证记录为准。

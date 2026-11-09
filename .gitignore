@@ -32,6 +32,11 @@ build/
 /infra/docker/build/*
 !/infra/docker/build/.dockerignore
 !/infra/docker/build/docker-bake.hcl
+!/infra/docker/build/go.Dockerfile
+!/infra/docker/build/go.Dockerfile.dockerignore
+!/infra/docker/build/nginx/
+!/infra/docker/build/nginx/**
+/services/singverse-go-backend/bin/
 target/
 dist/
 node_modules/
@@ -64,7 +69,6 @@ project.private.config.json
 *.sqlite3-*
 # Preserve required wrapper binaries and lock files
 !**/gradle/wrapper/gradle-wrapper.jar
-!**/.mvn/wrapper/maven-wrapper.jar
 !**/pubspec.lock
 !**/pnpm-lock.yaml
 /data
@@ -93,9 +97,30 @@ singverse-compute*.tar.gz
 # Generated container identity; source is core/build_info.py
 /services/singverse-compute/singverse_compute/core/build.json
 
-# Derived cover cache (default Java working directory)
-/services/singverse-java-backend/data/metadata/
-/docs
+/docs/*
+# Reviewable documentation for the Go replacement; historical studies stay local.
+!/docs/architecture.md
+!/docs/authentication.md
+!/docs/development.md
+!/docs/docker.md
+!/docs/go-migration.md
+!/docs/go-migration-verification.md
+!/docs/repository-layout.md
+!/docs/database-strategy.md
+!/docs/lx-downloads.md
+!/docs/ai-settings.md
+!/docs/artist-library.md
+!/docs/batch-metadata-workbench.md
+!/docs/compute-architecture.md
+!/docs/filename-rules.md
+!/docs/library-search.md
+!/docs/media-library.md
+!/docs/media-scan-schedule.md
+!/docs/metadata-scraping.md
+!/docs/playlists.md
+!/docs/single-song-review.md
+!/docs/song-classification.md
+!/docs/transcoding.md
 
 # Local credentials and task/runtime state (keep placeholder .env.example files)
 *.p12

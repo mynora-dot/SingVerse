@@ -1,0 +1,1 @@
+SELECT (SELECT COUNT(*) FROM webdav_resource WHERE result_json LIKE @{pattern})+(SELECT COUNT(*) FROM webdav_share_entry WHERE result_json LIKE @{pattern})+(SELECT COUNT(*) FROM media_metadata_file WHERE result_json LIKE @{pattern})

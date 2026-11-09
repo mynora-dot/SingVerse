@@ -39,9 +39,9 @@
 
 ## 记录、恢复与清理
 
-Java 的 background 模块复用 `background_task` 保存批次概览，并分别保留原业务状态、阶段和时间以及批次聚合状态、子项统计和结束时间；`background_task_item` 保存已有逐项结果的精简快照。`background_task_relation` 保存可共享任务的批次关系，`background_scan_scope` 保存歌曲与素材指纹的处理准入及跨阶段状态，不保存逐文件扫描日志。记录以任务类型与业务编号唯一；同一业务任务续跑更新原记录，新建业务任务使用新的记录。本地扫描生成独立业务编号，维持同步调用。
+Go 的 background 模块复用 `background_task` 保存批次概览，并分别保留原业务状态、阶段和时间以及批次聚合状态、子项统计和结束时间；`background_task_item` 保存已有逐项结果的精简快照。`background_task_relation` 保存可共享任务的批次关系，`background_scan_scope` 保存歌曲与素材指纹的处理准入及跨阶段状态，不保存逐文件扫描日志。记录以任务类型与业务编号唯一；同一业务任务续跑更新原记录，新建业务任务使用新的记录。本地扫描生成独立业务编号，维持同步调用。
 
-已有业务的 Mapper 写入由 MyBatis 拦截器在同一个 Executor 和事务中同步快照，回滚时一并回滚，不开启额外数据库连接。频繁进度在一秒窗口合并，最后一次更新由独立的展示记录工作线程补写；生命周期和最终结果及时保存。该线程不执行业务任务，原执行器、并发、重试和取消规则保持原业务定义。所有业务查询和写入 SQL 位于 `mappers/background/` 的 XML。
+业务模块在状态写入的同一 `store.DBTX` 内调用 `Project`、扫描范围登记等显式钩子，同步更新任务快照；失败时一并回滚，不另取数据库连接。本地扫描通过开始、进度、结束与范围钩子记录真实生命周期，客户端断开后仍记入终态。后台模块只维护展示记录，各业务保留自己的执行、并发、重试和取消规则。业务查询和写入 SQL 位于 `internal/background/sql/` 的嵌入文件。
 
 未完成关系回填的旧记录不会先以散任务列入首页；旧批次按每页导入合并汇总，避免逐子项重复统计大批次。启动后按每批 100 条导入仍可读取的未完成任务及近期历史，每分钟核对未完成记录；逐项快照按最多 200 条分页读取。恢复遵循各业务自己的规则。优先回填音频业务中可确认的真实关系；旧散任务无法确认原操作时，按来源及类型收进明确标注「未记录原始批次」的历史归档批次，不猜测扫描归属，保留原编号与详情。本地扫描遇重启标记中断；原预览被业务清理后标记过期。旧记录没有保存的时间、明细和已被清理的历史无法补回，本地扫描历史从启用本功能开始积累。
 
@@ -58,15 +58,15 @@ SQLite 与 MySQL 在原有 `202611080001_background_tasks.sql` 之后新增 `202
 | `GET /api/v1/background-tasks/{id}/children` | `type`、`status`、`page`、`size`；运行优先的关联任务分页，counts 为未筛选的子任务状态；单独操作返回自身一项 |
 | `GET /api/v1/background-tasks/{id}/items` | `status`（原明细状态）、`page`、`size`；返回分页精简快照与未筛选的各状态 counts |
 
-`detailMode=ITEMS` 使用已有 `/items`；`CHILDREN` 使用 `/children`，页面只展示其中一种。`childrenCounts.total` 是实际任务/原生条目数，`queued` 另外包括等待阶段判断或创建的 `pendingDiscovery` 歌曲数，因此扫描不能据这些计数计算整体百分比。`id` 是任务中心编号，`businessId` 是原业务编号。页码从 0 开始，最大 1000000，页大小 1～100，关键词最多 200 字符，按字面搜索并转义 SQL 通配符。未登录返回 401，无效筛选返回 400，记录不存在或超过保留期返回 404。接口只读 Java 已保存的数据，不连接计算节点或媒体来源。
+`detailMode=ITEMS` 使用已有 `/items`；`CHILDREN` 使用 `/children`，页面只展示其中一种。`childrenCounts.total` 是实际任务/原生条目数，`queued` 另外包括等待阶段判断或创建的 `pendingDiscovery` 歌曲数，因此扫描不能据这些计数计算整体百分比。`id` 是任务中心编号，`businessId` 是原业务编号。页码从 0 开始，最大 1000000，页大小 1～100，关键词最多 200 字符，按字面搜索并转义 SQL 通配符。未登录返回 401，无效筛选返回 400，记录不存在或超过保留期返回 404。接口只读 Go 已保存的数据，不连接计算节点或媒体来源。
 
 接口复用管理员 Cookie 会话鉴权，不接受 TV/亲友凭据。仅返回展示白名单字段，不返回业务原始配置、计算节点地址、媒体绝对路径或凭据；执行错误中的地址、路径及凭据形式会被隐藏。字段定义见 [OpenAPI](openapi/singverse.openapi.json)。
 
 ## 验证入口
 
-从根目录执行 `make frontend-check`、`make web-check`、`make java-backend-test`、`make db-fresh-check`、`make db-sqlite-check`；前端行为测试另执行 `npm test --prefix services/singverse-frontend`。MySQL 仅在真实隔离环境配置后执行 `make db-mysql-check`。本次实际结果及未验收范围见[验证记录](../docs/verification.md)。
+从根目录执行 `make frontend-check`、`make web-check`、`make go-backend-test`、`make db-fresh-check`、`make db-sqlite-check`；前端行为测试另执行 `npm test --prefix services/singverse-frontend`。`make db-mysql-check` 创建独占的随机本机 MySQL 容器和数据，验证后仅清理该实例。当前 Go 实际结果及未验收范围见 [Go 验证](../docs/go-migration-verification.md)，调度流程映射见 [迁移表](go-scheduled-migration.md)。下文保留原 Java 历史记录，不作为 Go 验证结果。
 
-## 2026-11-09 批次视图实际验证
+## 原 Java 实现：2026-11-09 批次视图实际验证
 
 - `make frontend-check` 和前端行为测试通过：47 个文件、398 项测试。覆盖批次首页、直接打开详情、子任务分页筛选、返回批次与列表时恢复位置、原生结果只展示一套明细，以及隐藏、恢复、离页、失败重试和迟到响应。
 - `make java-backend-test` 通过：625 项测试；`make web-check` 通过：4 项；`make db-sqlite-check` 通过：6 项。实际使用 JDK 25.0.3，仍以 release 21 编译，未改变项目 Java 版本要求或全局环境。
@@ -76,7 +76,7 @@ SQLite 与 MySQL 在原有 `202611080001_background_tasks.sql` 之后新增 `202
 - 新增后端回归覆盖跨页运行优先、批次去重搜索、扫描范围与实际后续任务、探测结束后等待快速识别创建、节点暂不可用与未配置、重复扫描复用任务且保留原归属、事务回滚、独立单曲批次、共享子任务保留和整批到期清理。历史归档缺失结束时间时保持空值，并继承原保留期限；本地与 WebDAV 发布失败时不遗留范围记录。
 - 管理员鉴权覆盖列表、详情、children 和 items 四个接口；沿用字段白名单和脱敏测试。未在浏览器或 NAS 真机进行人工验收，也未重建、重新部署当前 Docker 服务。
 
-## 2026-11-08 实际验证
+## 原 Java 实现：2026-11-08 实际验证
 
 - `make frontend-check`、`make web-check`、`make java-backend-test`、`make db-fresh-check`、`make db-sqlite-check` 均通过；最终前端 47 个文件、395 项测试，Java 全量 621 项，托管 4 项及 SQLite 专项 6 项通过。
 - SQLite 使用真实 dbmate 验证空库、重复迁移、基线已有数据上的增量迁移与逐级回退；最终 73 张业务表、56 个显式索引。原初始化基线未修改。

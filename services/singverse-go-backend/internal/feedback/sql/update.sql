@@ -1,0 +1,1 @@
+UPDATE missing_song_feedback SET status=?,handling_note=?,resolved_song_id=?,resolved_song_title=?,resolved_song_artists_json=?,resolved_at=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?

@@ -1,0 +1,1 @@
+SELECT e.song_id,e.relative_path FROM webdav_share_entry e WHERE e.job_id=@{baseId} AND NOT EXISTS(SELECT 1 FROM webdav_share_entry n WHERE n.job_id=@{id} AND n.song_id=e.song_id) AND e.song_id>@{cursor} ORDER BY e.song_id LIMIT 1000

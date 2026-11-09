@@ -11,7 +11,6 @@ services:
       dockerfile: services/singverse-compute/Dockerfile
       target: cuda
       args:
-        SINGVERSE_VERSION: 0.1.0-SNAPSHOT
         SOURCE_REVISION: local
     environment:
       COMPUTE_AUTH_TOKEN_FILE: /run/singverse-compute/token
@@ -24,8 +23,8 @@ services:
       COMPUTE_AUDIO_MEMORY_BYTES: "4294967296"
       COMPUTE_AUDIO_THREADS: "2"
     ports:
-      # For remote Java, replace 127.0.0.1 with this host's private LAN IP.
-      # Restrict inbound access to the Java host; keep authentication enabled.
+      # For remote Go, replace 127.0.0.1 with this host's private LAN IP.
+      # Restrict inbound access to the Go host; keep authentication enabled.
       - "127.0.0.1:18090:8090"
     volumes:
       - singverse-compute-auth:/run/singverse-compute

@@ -1,0 +1,1 @@
+SELECT SUM(CASE WHEN archived_at IS NULL AND missing_scans>0 THEN 1 ELSE 0 END) AS missing,SUM(CASE WHEN archived_at IS NOT NULL THEN 1 ELSE 0 END) AS archived,SUM(changed) AS changed FROM webdav_resource WHERE source_id=@{sourceId}
