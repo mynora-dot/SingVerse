@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -137,6 +138,16 @@ func exerciseBusiness(t *testing.T, a *Application, db *sqlx.DB, cfg config.Conf
 	applied := c.call("POST", "/api/v1/metadata/songs/"+songID+"/review/apply", change, "", 200)
 	if object(applied["after"])["title"] != "晴天·人工" {
 		t.Fatal(applied)
+	}
+	// Identity search uses the same effective manual metadata on both databases;
+	// the legacy q parameter still searches only the stored relative path.
+	identity := c.call("GET", "/api/v1/media-songs?search="+url.QueryEscape("人工")+"&sourceId="+sourceID+"&size=1", nil, "", 200)
+	if identity["totalElements"] != float64(1) || stringField(object(identity["items"].([]any)[0]), "id") != songID {
+		t.Fatal(identity)
+	}
+	legacyPath := c.call("GET", "/api/v1/media-songs?q="+url.QueryEscape("人工"), nil, "", 200)
+	if legacyPath["totalElements"] != float64(0) {
+		t.Fatal("q changed its path-only semantics", legacyPath)
 	}
 	again := c.call("POST", "/api/v1/metadata/songs/"+songID+"/review/apply", change, "", 200)
 	if fmt.Sprint(applied) != fmt.Sprint(again) {

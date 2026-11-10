@@ -35,11 +35,11 @@ beforeEach(() => {
 afterEach(() => { wrapper?.unmount(); document.body.innerHTML = ''; vi.restoreAllMocks(); vi.resetAllMocks() })
 async function open(profile = 'reverse-profile') {
   router = createRouter({ history: createMemoryHistory(), routes: [
-    { path: '/library/filename-parser-profiles', component: FilenameProfilesView },
-    { path: '/library/filename-parser', component: { template: '<div>解析规则</div>' } },
+    { path: '/library/media/recognition', component: FilenameProfilesView },
+    { path: '/library/media/recognition/rules', component: { template: '<div>解析规则</div>' } },
     { path: '/other', component: { template: '<div>其他页面</div>' } },
   ] })
-  await router.push(`/library/filename-parser-profiles?profile=${profile}`)
+  await router.push(`/library/media/recognition?profile=${profile}`)
   wrapper = mount({ template: '<RouterView />' }, { global: { plugins: [router], stubs: { teleport: true } } })
   await flushPromises()
 }
@@ -96,7 +96,7 @@ it('切换和离开页面保护未保存草稿，刷新前也触发保护', asyn
   expect(event.defaultPrevented).toBe(true)
   vi.mocked(ElMessageBox.confirm).mockRejectedValueOnce('cancel')
   await router.push('/other'); await flushPromises()
-  expect(router.currentRoute.value.path).toBe('/library/filename-parser-profiles')
+  expect(router.currentRoute.value.path).toBe('/library/media/recognition')
   await profileButton('默认解析方案').trigger('click'); await flushPromises()
   expect((wrapper.get('input[aria-label="方案名称"]').element as HTMLInputElement).value).toBe('默认解析方案')
   expect(ElMessageBox.confirm).toHaveBeenCalledTimes(3)

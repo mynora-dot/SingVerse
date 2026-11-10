@@ -104,6 +104,7 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
     expect(wrapper.find('.page-range').text()).toContain('21–21')
     expect(wrapper.find('.count-badge').text()).toBe('47')
     const before = vi.mocked(songs.list).mock.calls.length
+    await wrapper.get('[aria-label="列表整理"]').trigger('click')
     await wrapper.find('.column-settings-button').trigger('click'); await flushPromises()
     const label = [...document.querySelectorAll('.column-settings label')].find(el => el.textContent?.includes('扫描与修改时间'))
     expect(label).toBeDefined()
@@ -113,6 +114,7 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
   })
 
   it('每页数量决定完整渲染行数，顶部和底部分页数量同步', async () => {
+    await wrapper.get('[aria-label="列表整理"]').trigger('click')
     vi.mocked(songs.list).mockImplementation(async input => result(Array.from({ length: input.size ?? 20 }, (_, i) => song(`row-${i}`)), 0, 137))
     for (const size of [50, 100, 20]) {
       await wrapper.find('.top-page-size select').setValue(size); await flushPromises()
@@ -128,7 +130,7 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
     await wrapper.find('.filter-reset').trigger('click'); await flushPromises()
     expect(router.currentRoute.value.query).toEqual({ size: '50' })
     expect(songs.list).toHaveBeenLastCalledWith({ sourceId: '', q: '', status: 'ALL', page: 0, size: 50 })
-    expect((wrapper.find('input[aria-label="搜索歌曲文件"]').element as HTMLInputElement).value).toBe('')
+    expect((wrapper.find('input[aria-label="搜索歌曲"]').element as HTMLInputElement).value).toBe('')
     expect(wrapper.find('.filter-reset').exists()).toBe(false)
   })
 
@@ -137,6 +139,21 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
     expect(wrapper.text()).not.toContain('快捷筛选')
     await router.replace('/library/songs?status=REVIEW'); await flushPromises()
     expect(songs.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'REVIEW' }))
+  })
+
+  it('手机筛选展开保留查询状态，切换面板不会请求或改变选择范围', async () => {
+    await router.replace('/library/songs?sourceId=source-1&status=REVIEW&tagIds=tag-1'); await flushPromises()
+    const before = vi.mocked(songs.list).mock.calls.length
+    const toggle = wrapper.get('.mobile-filter-toggle')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(toggle.text()).toContain('已选 3 项')
+    expect(toggle.attributes('aria-controls')).toBe(wrapper.get('.songs-filter-selects').attributes('id'))
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    expect(wrapper.get('.songs-filter-selects').classes()).toContain('expanded')
+    await toggle.trigger('click')
+    expect(vi.mocked(songs.list).mock.calls.length).toBe(before)
+    expect(router.currentRoute.value.query.status).toBe('REVIEW')
   })
 
   it('错误可重试，真实空列表引导到媒体库扫描', async () => {
@@ -160,7 +177,7 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
     wrapper?.unmount()
     wrapper = mount(SongsView, { global: { plugins: [router, ElementPlus] } })
     const promise1 = resolver
-    const searchInput = wrapper.find('input[aria-label="搜索歌曲文件"]')
+    const searchInput = wrapper.find('input[aria-label="搜索歌曲"]')
     await searchInput.setValue('晴天')
     await wrapper.find('.filters-row button').trigger('click')
     await flushPromises()
@@ -181,7 +198,7 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
     wrapper?.unmount()
     wrapper = mount(SongsView, { global: { plugins: [router, ElementPlus] } })
     await flushPromises()
-    const card = wrapper.find('.song-card')
+    const card = wrapper.find('.song-card-title')
     await card.trigger('click')
     await flushPromises()
     const drawer = wrapper.find('.el-drawer__body')
@@ -227,7 +244,7 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
     wrapper?.unmount()
     wrapper = mount(SongsView, { global: { plugins: [router, ElementPlus] } })
     await flushPromises()
-    const editBtn = wrapper.find('.song-card-actions button:nth-child(2)')
+    const editBtn = wrapper.find('.song-card-actions button')
     await editBtn.trigger('click')
     await flushPromises()
     const dialog = wrapper.findComponent({ name: 'SingleSongScrapeDialog' })
@@ -245,7 +262,7 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
     wrapper?.unmount()
     wrapper = mount(SongsView, { global: { plugins: [router, ElementPlus] } })
     await flushPromises()
-    await wrapper.find('.song-card').trigger('click')
+    await wrapper.find('.song-card-title').trigger('click')
     await flushPromises()
     const editBtn = wrapper.find('.song-primary-actions').findAll('button').find(button => button.text() === '核对信息')!
     await editBtn.trigger('click')
@@ -270,9 +287,9 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
   })
 
   it('行内操作全部使用按钮，在线播放打开当前歌曲并在关闭时移除视频', async () => {
-    const actions = wrapper.find('.song-card-actions')
+    const actions = wrapper.find('.card-artwork')
     expect(actions.findAll('button').length).toBeGreaterThan(0)
-    const playBtn = actions.find('button:nth-child(1)')
+    const playBtn = actions.find('.cover-play')
     await playBtn.trigger('click')
     await flushPromises()
     const videoDialog = wrapper.findComponent({ name: 'SongVideoDialog' })
@@ -294,6 +311,34 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
     expect(wrapper.find('.batch-toolbar').exists()).toBe(false)
     expect(wrapper.find('.selection-checkbox').exists()).toBe(false)
   })
+
+  it('封面浏览使用有效身份，切换列表不请求数据，搜索由服务端分页完成', async () => {
+    expect(wrapper.get('[aria-label="封面浏览"]').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.find('.song-card-title').text()).toContain('晴天')
+    expect(wrapper.find('.song-card').text()).not.toContain('周杰伦-晴天.mp4')
+    const before = vi.mocked(songs.list).mock.calls.length
+    await wrapper.get('[aria-label="列表整理"]').trigger('click')
+    expect(wrapper.find('.library-table').exists()).toBe(true)
+    expect(songs.list).toHaveBeenCalledTimes(before)
+    await wrapper.get('input[aria-label="搜索歌曲"]').setValue('订正后的歌名')
+    await wrapper.get('.filters-row button').trigger('click'); await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({ search: '订正后的歌名' })
+    expect(songs.list).toHaveBeenLastCalledWith(expect.objectContaining({ search: '订正后的歌名', q: '', page: 0 }))
+    await wrapper.get('select[aria-label="歌曲搜索范围"]').setValue('path')
+    await wrapper.get('.filters-row button').trigger('click'); await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({ q: '订正后的歌名' })
+    expect(songs.list).toHaveBeenLastCalledWith(expect.objectContaining({ q: '订正后的歌名', page: 0 }))
+  })
+  it('封面和列表共享本页选择，翻页后不会误操作上一页', async () => {
+    await wrapper.findAll('button').find(b => b.text() === '批量操作')!.trigger('click')
+    await wrapper.get('.selection-checkbox input').setValue(true)
+    await wrapper.get('[aria-label="列表整理"]').trigger('click')
+    expect((wrapper.findAll('.library-table input')[1]!.element as HTMLInputElement).checked).toBe(true)
+    expect(wrapper.get('.batch-count').text()).toContain('本页')
+    await router.replace('/library/songs?page=2'); await flushPromises()
+    expect(wrapper.get('.batch-count').text()).toContain('已选 0 首')
+  })
+
   it('来源筛选保留服务端分页与查询参数', async () => {
     const sourceSelect = wrapper.findAllComponents({ name: 'ElSelect' })[0]!
     sourceSelect.vm.$emit('update:modelValue', 'source-1')
@@ -334,7 +379,7 @@ describe('歌曲明细表信息与交互', () => {
     expect(w.find('[aria-label="暂无歌曲封面"]').exists()).toBe(true)
   })
 
-  const props = () => ({ items: [song()], tags: [] as Tag[], columns: [...defaultSongColumns], compact: true, selectionMode: false, selectedIds: [] as string[] })
+  const props = () => ({ items: [song()], tags: [] as Tag[], columns: [...defaultSongColumns, 'file', 'location'] as import('../src/admin/modules/song-management/presentation').SongColumn[], compact: true, selectionMode: false, selectedIds: [] as string[] })
   it('只展示已确认且未过期的元数据，时长有独立标识', async () => {
     const row = song()
     row.metadata = { track: { provider: null, externalId: null, title: null, artists: [], album: '叶惠美', releaseDate: '2003-07-31', durationMs: 269000, aliases: [], coverUrl: null, availability: 'UNKNOWN', fetchedAt: '' }, fields: ['album', 'releaseDate', 'durationMs'], appliedAt: '', stale: false, origins: {} }

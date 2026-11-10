@@ -1,13 +1,18 @@
 <script setup lang="ts">
 import PageHeader from '../../../shared/ui/PageHeader.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ElAlert, ElButton, ElCard, ElDialog, ElForm, ElFormItem, ElInput, ElMessage, ElTable, ElTableColumn, ElTag } from 'element-plus'
+import { ElAlert, ElButton, ElCard, ElDialog, ElForm, ElFormItem, ElInput, ElMessage, ElMessageBox, ElTable, ElTableColumn, ElTag } from 'element-plus'
+import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { Plus } from '@element-plus/icons-vue'
 import { ApiError } from '../../../core/auth/api'
 import { ruleLibrary } from '../api/rules'
 import type { ParserWorkspace, RuleDefinition, RuleInput } from '../types'
 import { copyValue, errorMessage, expressionFor } from '../utils'
+import SourceWorkspaceNav from '../../media-library/components/SourceWorkspaceNav.vue'
 
+const props = defineProps<{ embedded?: boolean }>()
+const emit = defineEmits<{ profile: [id: string] }>()
+const route = useRoute()
 const workspace = ref<ParserWorkspace | null>(null)
 const loading = ref(false)
 const busy = ref(false)
@@ -17,12 +22,32 @@ const referencedBy = ref<{ id: string; name: string }[]>([])
 const editing = ref(false)
 const editorId = ref<string | null>(null)
 const editor = ref<RuleInput>({ name: '', type: 'TEMPLATE', expression: '{artist}-{title}', builtinId: null })
+const baseline = ref('')
+const dirty = computed(() => editing.value && JSON.stringify(editor.value) !== baseline.value)
 const editorError = ref('')
 const expressionInput = ref<HTMLTextAreaElement>()
 const fields = ['artist', 'title', 'code', 'language', 'version', 'quality', 'extra']
 const affected = computed(() => workspace.value?.definitions.find(d => d.id === editorId.value)?.referencedBy ?? [])
 let active = true
-onBeforeUnmount(() => { active = false })
+function beforeUnload(event: BeforeUnloadEvent) {
+  if (dirty.value) { event.preventDefault(); event.returnValue = '' }
+}
+async function canLeave() {
+  if (busy.value) return false
+  if (!dirty.value) return true
+  try {
+    await ElMessageBox.confirm('这条规则有未保存修改，是否放弃？', '未保存草稿', { confirmButtonText: '放弃修改', cancelButtonText: '继续编辑', type: 'warning' })
+    return true
+  } catch { return false }
+}
+async function closeEditor(done?: () => void) {
+  if (!await canLeave()) return
+  if (done) done()
+  else editing.value = false
+}
+defineExpose({ canLeave })
+onBeforeRouteLeave(() => props.embedded || canLeave())
+onBeforeUnmount(() => { active = false; window.removeEventListener('beforeunload', beforeUnload) })
 
 async function load() {
   loading.value = true
@@ -46,6 +71,7 @@ function edit(rule?: RuleDefinition, copy = false) {
     expression: rule ? expressionFor(rule, workspace.value) : '{artist}-{title}', builtinId: null,
   }
   editorError.value = ''
+  baseline.value = JSON.stringify(editor.value)
   editing.value = true
 }
 async function insertField(field: string) {
@@ -85,13 +111,13 @@ async function remove(rule: RuleDefinition) {
   catch (errorValue) { if (active) error.value = failure(errorValue) }
   finally { if (active) busy.value = false }
 }
-onMounted(() => { void load() })
+onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void load() })
 </script>
 
 <template>
   <section class="rules-page management-page">
-    <PageHeader title="自定义规则"><template #description>高级功能：仅在需要自己编写模板或正则时使用。日常在<RouterLink class="library-link" to="/library/filename-parser-profiles">解析方案</RouterLink>中点选格式即可。</template></PageHeader>
-    <ElAlert v-if="error" :title="error" type="error" :closable="false" role="alert"><RouterLink v-for="profile in referencedBy" :key="profile.id" :to="{ path: '/library/filename-parser-profiles', query: { profile: profile.id } }">{{ profile.name }} </RouterLink></ElAlert>
+    <template v-if="!embedded"><PageHeader title="歌曲来源的自定义规则"><template #description>仅在常见格式无法识别时编写模板或正则。<RouterLink class="library-link" :to="{ path: '/library/media/recognition', query: route.query }">返回文件名识别 →</RouterLink></template></PageHeader><SourceWorkspaceNav /></template>
+    <ElAlert v-if="error" :title="error" type="error" :closable="false" role="alert"><template v-for="profile in referencedBy" :key="profile.id"><ElButton v-if="embedded" text @click="emit('profile', profile.id)">{{ profile.name }}</ElButton><RouterLink v-else :to="{ path: '/library/media/recognition', query: { profile: profile.id } }">{{ profile.name }} </RouterLink></template></ElAlert>
     <ElButton v-if="error || conflict" :disabled="loading" @click="load">加载最新规则库，保留编辑内容</ElButton>
     <p v-if="loading" role="status">正在读取规则库…</p>
     <ElCard v-if="workspace" shadow="never" class="rules-card">
@@ -99,12 +125,12 @@ onMounted(() => { void load() })
       <ElTable :data="workspace.definitions" row-key="id" empty-text="暂无规则，可新增模板或正则。">
         <ElTableColumn label="规则名称" min-width="210"><template #default="{ row }"><strong class="rule-name">{{ row.name }}</strong><ElTag size="small" :type="row.type === 'BUILTIN' ? 'info' : 'success'" effect="plain">{{ row.type === 'BUILTIN' ? '内置规则' : row.type === 'REGEX' ? '高级正则' : '字段模板' }}</ElTag></template></ElTableColumn>
         <ElTableColumn label="匹配表达式" min-width="260"><template #default="{ row }"><div class="expression-cell"><code>{{ expressionFor(row as RuleDefinition, workspace) }}</code></div></template></ElTableColumn>
-        <ElTableColumn label="引用方案" min-width="170"><template #default="{ row }"><span class="reference-count">{{ row.referencedBy.length }} 个方案</span><div v-for="profile in row.referencedBy" :key="profile.id"><RouterLink class="profile-reference" :to="{ path: '/library/filename-parser-profiles', query: { profile: profile.id } }">{{ profile.name }} ↗</RouterLink></div></template></ElTableColumn>
+        <ElTableColumn label="引用方案" min-width="170"><template #default="{ row }"><span class="reference-count">{{ row.referencedBy.length }} 个方案</span><div v-for="profile in row.referencedBy" :key="profile.id"><ElButton v-if="embedded" text @click="emit('profile', profile.id)">{{ profile.name }}</ElButton><RouterLink v-else class="profile-reference" :to="{ path: '/library/media/recognition', query: { profile: profile.id } }">{{ profile.name }} ↗</RouterLink></div></template></ElTableColumn>
         <ElTableColumn label="操作" width="180" fixed="right"><template #default="{ row }"><ElButton link type="primary" size="small" :disabled="busy || loading" :aria-label="`复制 ${row.name}`" @click="edit(row as RuleDefinition, true)">复制</ElButton><ElButton v-if="row.type !== 'BUILTIN'" link type="primary" size="small" :disabled="busy || loading" :aria-label="`编辑 ${row.name}`" @click="edit(row as RuleDefinition)">编辑</ElButton><ElButton v-if="row.type !== 'BUILTIN'" link type="danger" size="small" :disabled="busy || loading" :aria-label="`删除 ${row.name}`" @click="remove(row as RuleDefinition)">删除</ElButton></template></ElTableColumn>
       </ElTable>
       <p class="feature-note">匹配对象为标准化后去掉扩展名的完整名称，仍保留标签。规则仅指定字段含义，不核实歌手身份。</p>
     </ElCard>
-    <ElDialog v-model="editing" title="编辑解析规则" width="min(720px, 94vw)" :close-on-click-modal="false" :close-on-press-escape="!busy" :show-close="!busy">
+    <ElDialog v-model="editing" title="编辑解析规则" width="min(720px, 94vw)" :append-to-body="embedded" :close-on-click-modal="false" :close-on-press-escape="!busy" :show-close="!busy" :before-close="closeEditor">
       <ElForm label-position="top" @submit.prevent="save"><fieldset :disabled="busy || loading" class="editor-fields">
         <ElFormItem label="规则名称"><ElInput v-model="editor.name" maxlength="100" aria-label="规则名称" :disabled="busy || loading" /></ElFormItem>
         <ElFormItem label="规则类型"><select v-model="editor.type" class="native-field" aria-label="规则类型"><option value="TEMPLATE">字段模板</option><option value="REGEX">高级正则（RE2）</option></select></ElFormItem>
@@ -116,7 +142,7 @@ onMounted(() => { void load() })
         <p v-if="editorError" class="inline-error" role="alert">{{ editorError }}</p>
         <div class="dialog-actions">
           <ElButton v-if="conflict" :disabled="busy || loading" @click="load">加载最新规则库，保留编辑内容</ElButton>
-          <ElButton :disabled="busy || loading" @click="editing = false">取消</ElButton><ElButton type="primary" native-type="submit" :loading="busy" :disabled="conflict || loading">保存规则</ElButton>
+          <ElButton :disabled="busy || loading" @click="closeEditor()">取消</ElButton><ElButton type="primary" native-type="submit" :loading="busy" :disabled="conflict || loading">保存规则</ElButton>
         </div>
       </fieldset></ElForm>
     </ElDialog>
@@ -124,6 +150,9 @@ onMounted(() => { void load() })
 </template>
 
 <style scoped>
+.editor-fields { min-width: 0; margin: 0; padding: 0; border: 0; }
+.field-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.field-buttons :deep(.el-button) { margin-left: 0; }
 .rules-page > .el-alert,
 .rules-page > .el-button,
 .rules-page > p[role='status'] {

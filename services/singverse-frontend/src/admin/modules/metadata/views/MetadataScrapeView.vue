@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import TaskGuide from '../../../shared/ui/TaskGuide.vue'
 import PageHeader from '../../../shared/ui/PageHeader.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -134,7 +135,8 @@ onBeforeUnmount(() => { active = false; generation++; loadGeneration++; clearTim
 
 <template>
   <section class="metadata-page management-page">
-    <PageHeader title="元数据整理" description="从音乐平台匹配专辑、封面、发行日期等信息，审核候选后再写入曲库。只发送歌名与歌手，不上传媒体文件。"><template #actions><ElButton :icon="ArrowLeft" @click="router.push('/library/songs')">返回全部歌曲</ElButton></template></PageHeader>
+    <PageHeader title="把每一首歌，整理清楚" description="完善歌名、歌手与封面。可以手工编辑，也可以从音乐平台匹配信息，核对后保存。"><template #actions><ElButton :icon="ArrowLeft" @click="router.push('/library/songs')">返回全部歌曲</ElButton></template></PageHeader>
+    <TaskGuide v-if="!batch" label="歌曲信息整理流程" :steps="[{ title: '选择歌曲', description: '整理整个来源，或从曲库勾选本页歌曲。' }, { title: '获取匹配候选', description: '进度保存在后台，可离开后再回来。' }, { title: '核对后确认', description: '对比字段与封面，再决定应用哪些信息。' }]" />
     <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon />
     <ElAlert v-if="progressError" :title="progressError" type="error" :closable="false" show-icon><ElButton text :disabled="busy" @click="batch ? refreshBatch() : load()">重新读取进度</ElButton></ElAlert>
     <div class="batch-overview" :class="{ 'has-batch': !!batch }">
@@ -144,11 +146,14 @@ onBeforeUnmount(() => { active = false; generation++; loadGeneration++; clearTim
       <ElForm @submit.prevent="save">
         <div class="setting-line"><strong>启用元数据刮削</strong><ElCheckbox v-model="config.enabled" :disabled="busy || !saved">将查询发送至所选平台，不上传原始媒体</ElCheckbox></div>
         <div class="setting-line"><strong>刮削平台</strong><div class="settings-checks"><ElCheckbox v-for="(name, platform) in providerNames" :key="platform" :model-value="config.providers.includes(platform)" :disabled="busy || !saved" @change="value => config.providers = value ? [...config.providers, platform as MusicProvider] : config.providers.filter(item => item !== platform)">{{ name }}</ElCheckbox></div></div>
+        <details class="matching-options">
+          <summary>自动应用与请求节奏 <span>{{ config.autoApply ? '已开启自动应用，请核对' : '默认逐曲审核，按需调整' }}</span></summary>
         <div class="setting-line"><strong>自动写入</strong><ElCheckbox v-model="config.autoApply" :disabled="busy || !saved">排序第一的候选达到阈值时自动应用</ElCheckbox></div>
         <div class="setting-line"><strong>自动写入阈值</strong><label class="threshold"><input v-model.number="config.threshold" aria-label="自动写入阈值" type="number" min="0.8" max="1" step="0.01" :disabled="busy || !saved" /><span>{{ Math.round(config.threshold * 100) }}%</span></label></div>
         <div class="setting-line"><strong>批量请求间隔</strong><label class="threshold"><input v-model.number="config.minIntervalSeconds" aria-label="批量最小间隔秒" type="number" min="0" max="300" :disabled="busy || !saved" /><span>至</span><input v-model.number="config.maxIntervalSeconds" aria-label="批量最大间隔秒" type="number" min="0" max="300" :disabled="busy || !saved" /><span>秒</span></label></div>
         <p class="panel-description">每首处理结束后，在范围内随机等待再处理下一首；默认 3～8 秒。平台返回 HTTP 429 后冷却至少 60 秒，失败项可稍后重试。随机间隔不能保证避免平台限流。</p>
         <p class="panel-description">自动写入默认关闭。相似度是匹配参考，不是正确率；仅控制自动写入，不过滤搜索候选。排序第一的候选须达到本批次阈值；当前全局阈值和开关仍会约束旧批次。相似度相同时使用服务端返回的第一条。保存设置会暂停运行中的批次，确认平台后手动继续。</p>
+        </details>
         <div class="settings-footer"><ElButton type="primary" native-type="submit" :loading="busy" :disabled="!saved || !dirty">保存刮削设置</ElButton><span v-if="dirty" class="panel-description">有未保存修改，请先保存再启动批次。</span></div>
       </ElForm>
       </div>
@@ -183,20 +188,345 @@ onBeforeUnmount(() => { active = false; generation++; loadGeneration++; clearTim
 </template>
 
 <style scoped>
-.metadata-page { min-width: 0; }.metadata-page .page-heading { margin-bottom: 16px; }
-.batch-overview { display: flex; flex-direction: column; gap: 16px; margin-bottom: 16px; }.has-batch .batch-control { order: -1; }
-.metadata-page :deep(.el-card__body) { padding: 20px; }.metadata-page .section-heading { gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }.metadata-page h2 { font-size: 16px; }
-.config-summary { margin: 6px 0 0; font-size: 12px; color: var(--sv-text-secondary); line-height: 1.6; overflow-wrap: anywhere; }.metadata-settings .section-heading { margin-bottom: 0; }#batch-settings-form { padding-top: 12px; }
-.setting-line { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin: 8px 0; }.setting-line > strong { width: 110px; font-size: 13px; font-weight: 500; }.settings-checks { display: flex; gap: 16px; flex-wrap: wrap; }.settings-checks .el-checkbox { margin-right: 0; }.threshold { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--sv-text-secondary); flex-wrap: wrap; }
-.threshold input,.batch-filter input { padding: 7px 10px; color: var(--sv-text-primary); background: var(--sv-surface-2); border: 1px solid var(--sv-border-default); border-radius: var(--sv-radius-sm); font: inherit; }.threshold input { width: 85px; }
-.settings-footer,.batch-start { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }.metadata-settings .panel-description { margin: 8px 0; font-size: 12px; }
-.source-scope { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 500; }.source-scope select { min-width: 180px; max-width: min(320px, 60vw); padding: 7px 10px; color: var(--sv-text-primary); background: var(--sv-surface-2); border: 1px solid var(--sv-border-default); border-radius: var(--sv-radius-sm); font: inherit; }
-.batch-start { padding-top: 12px; border-top: 1px solid var(--sv-border-subtle); }.batch-start .panel-description { margin: 3px 0; font-size: 12px; }
-.progress-caption { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 13px; margin: 12px 0; }.progress-caption > span { color: var(--sv-text-secondary); font-size: 12px; }
-.batch-stats { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 8px; margin: 12px 0; }.batch-stats button { text-align: left; padding: 10px; background: var(--sv-surface-3); border: 1px solid transparent; border-radius: 7px; color: var(--sv-text-primary); cursor: pointer; }.batch-stats button.selected { border-color: var(--el-color-primary); background: var(--sv-accent-soft); }.batch-stats strong { display: block; font-size: 20px; }.batch-stats span { display: block; font-size: 12px; color: var(--sv-text-secondary); margin-top: 4px; }
-.count-explanation,.list-help,.refresh-note { font-size: 12px; color: var(--sv-text-secondary); line-height: 1.7; margin: 8px 0; }.refresh-note { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }.status-notice { background: var(--sv-semantic-warn-soft); color: var(--sv-semantic-warn); border-radius: 6px; padding: 8px 10px; font-size: 12px; margin: 10px 0; line-height: 1.6; }
-.batch-filter { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; font-size: 13px; }.batch-filter label { display: flex; gap: 8px; align-items: center; }.keyword-filter { flex: 1; min-width: 180px; }.keyword-filter input { flex: 1; width: auto; min-width: 100px; }
-.batch-actions { display: flex; gap: 8px; flex-wrap: wrap; }.batch-actions .el-button + .el-button { margin-left: 0; }.batch-list-card { min-width: 0; }.metadata-page :deep(.el-pagination) { margin-top: 16px; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
-@media(max-width: 850px) { .batch-stats { grid-template-columns: repeat(4,minmax(0,1fr)); } }
-@media(max-width: 600px) { .metadata-page :deep(.el-card__body) { padding: 14px; }.setting-line { gap: 4px; }.setting-line > strong { width: 100%; }.batch-start > div { width: 100%; }.batch-filter label { width: 100%; }.batch-filter select,.batch-filter input { min-width: 0; flex: 1; }.batch-stats { grid-template-columns: repeat(3,minmax(0,1fr)); }.batch-stats strong { font-size: 18px; } }
+.metadata-page {
+  min-width: 0;
+}
+
+.metadata-page .page-heading {
+  margin-bottom: 16px;
+}
+
+.batch-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.has-batch .batch-control {
+  order: -1;
+}
+
+.metadata-page :deep(.el-card__body) {
+  padding: 20px;
+}
+
+.metadata-page .section-heading {
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.metadata-page h2 {
+  font-size: 16px;
+}
+
+.config-summary {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--sv-text-secondary);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.metadata-settings .section-heading {
+  margin-bottom: 0;
+}
+
+#batch-settings-form {
+  padding-top: 12px;
+}
+
+.matching-options {
+  border-top: 1px solid var(--sv-border-subtle);
+  margin-top: 16px;
+  padding-top: 12px;
+}
+
+.matching-options summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.matching-options summary span {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--sv-text-secondary);
+}
+
+.matching-options[open] summary {
+  margin-bottom: 16px;
+}
+
+.setting-line {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+
+.setting-line>strong {
+  width: 110px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.settings-checks {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.settings-checks .el-checkbox {
+  margin-right: 0;
+}
+
+.threshold {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--sv-text-secondary);
+  flex-wrap: wrap;
+}
+
+.threshold input,
+.batch-filter input {
+  padding: 7px 10px;
+  color: var(--sv-text-primary);
+  background: var(--sv-surface-2);
+  border: 1px solid var(--sv-border-default);
+  border-radius: var(--sv-radius-sm);
+  font: inherit;
+}
+
+.threshold input {
+  width: 85px;
+}
+
+.settings-footer,
+.batch-start {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.metadata-settings .panel-description {
+  margin: 8px 0;
+  font-size: 12px;
+}
+
+.source-scope {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.source-scope select {
+  min-width: 180px;
+  max-width: min(320px, 60vw);
+  padding: 7px 10px;
+  color: var(--sv-text-primary);
+  background: var(--sv-surface-2);
+  border: 1px solid var(--sv-border-default);
+  border-radius: var(--sv-radius-sm);
+  font: inherit;
+}
+
+.batch-start {
+  padding-top: 12px;
+  border-top: 1px solid var(--sv-border-subtle);
+}
+
+.batch-start .panel-description {
+  margin: 3px 0;
+  font-size: 12px;
+}
+
+.progress-caption {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 13px;
+  margin: 12px 0;
+}
+
+.progress-caption>span {
+  color: var(--sv-text-secondary);
+  font-size: 12px;
+}
+
+.batch-stats {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.batch-stats button {
+  text-align: left;
+  padding: 10px;
+  background: var(--sv-surface-3);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--sv-text-primary);
+  cursor: pointer;
+}
+
+.batch-stats button.selected {
+  border-color: var(--el-color-primary);
+  background: var(--sv-accent-soft);
+}
+
+.batch-stats strong {
+  display: block;
+  font-size: 20px;
+}
+
+.batch-stats span {
+  display: block;
+  font-size: 12px;
+  color: var(--sv-text-secondary);
+  margin-top: 4px;
+}
+
+.count-explanation,
+.list-help,
+.refresh-note {
+  font-size: 12px;
+  color: var(--sv-text-secondary);
+  line-height: 1.7;
+  margin: 8px 0;
+}
+
+.refresh-note {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.status-notice {
+  background: var(--sv-semantic-warn-soft);
+  color: var(--sv-semantic-warn);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  margin: 10px 0;
+  line-height: 1.6;
+}
+
+.batch-filter {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.batch-filter label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.keyword-filter {
+  flex: 1;
+  min-width: 180px;
+}
+
+.keyword-filter input {
+  flex: 1;
+  width: auto;
+  min-width: 100px;
+}
+
+.batch-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.batch-actions .el-button+.el-button {
+  margin-left: 0;
+}
+
+.batch-list-card {
+  min-width: 0;
+}
+
+.metadata-page :deep(.el-pagination) {
+  margin-top: 16px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media(min-width: 1100px) {
+  .batch-overview:not(.has-batch) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .batch-overview:not(.has-batch) .setting-line {
+    align-items: flex-start;
+  }
+
+  .batch-overview:not(.has-batch) .setting-line>strong {
+    width: 100%;
+  }
+}
+
+@media(max-width: 850px) {
+  .batch-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media(max-width: 600px) {
+  .metadata-page :deep(.el-card__body) {
+    padding: 14px;
+  }
+
+  .setting-line {
+    gap: 4px;
+  }
+
+  .setting-line>strong {
+    width: 100%;
+  }
+
+  .batch-start>div {
+    width: 100%;
+  }
+
+  .batch-filter label {
+    width: 100%;
+  }
+
+  .batch-filter select,
+  .batch-filter input {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .batch-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .batch-stats strong {
+    font-size: 18px;
+  }
+}
 </style>

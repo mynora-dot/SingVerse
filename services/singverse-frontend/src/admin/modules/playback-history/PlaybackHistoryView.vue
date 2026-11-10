@@ -56,7 +56,7 @@ onBeforeUnmount(() => { active = false; epoch++; detailEpoch++ })
 
 <template>
   <section class="playback-history-page">
-    <PageHeader title="播放记录" description="查看热门歌曲和每次播放，点击歌曲可追溯它的全部历史。"><template #actions><ElButton :loading="loading" @click="load">刷新</ElButton></template></PageHeader>
+    <PageHeader title="那些唱过的好歌" description="查看热门歌曲和每次播放，点击歌曲可追溯它的全部历史。"><template #actions><ElButton :loading="loading" @click="load">刷新</ElButton></template></PageHeader>
     <form class="history-filters" @submit.prevent="search"><ElInput v-model="query" placeholder="搜索歌曲或歌手" aria-label="搜索播放记录" maxlength="200" clearable @clear="search"/><label>统计时间<select v-model="period" aria-label="播放统计时间" @change="changePeriod"><option value="30d">近 30 天</option><option value="7d">近 7 天</option><option value="all">全部时间</option></select></label><ElButton native-type="submit" :loading="loading">搜索</ElButton></form>
     <div v-if="error" class="history-error" role="alert">{{ error }}<ElButton text type="primary" @click="load">重试</ElButton></div>
     <div class="history-stats" aria-label="当前筛选下的播放统计" :aria-busy="loading">

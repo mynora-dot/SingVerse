@@ -73,20 +73,23 @@ func (s *Service) songsHTTP(c *gin.Context, sourceOnly bool) {
 		s.fail(c, e)
 		return
 	}
+	search := c.Query("search")
 	sourceID, q, status := c.Query("sourceId"), c.Query("q"), c.DefaultQuery("status", "ALL")
 	tagIDs := c.QueryArray("tagIds")
 	unclassified := c.DefaultQuery("unclassified", "false")
 	if sourceOnly {
 		sourceID = c.Param("id")
 		q = ""
+		search = ""
 		status = "ALL"
 		tagIDs = nil
 		unclassified = "false"
 	}
-	if (sourceID != "" && (!validID.MatchString(sourceID) || len(sourceID) > 36)) || len([]rune(q)) > 200 || controls(q) || len(tagIDs) > 40 || (unclassified != "true" && unclassified != "false") {
+	if (sourceID != "" && (!validID.MatchString(sourceID) || len(sourceID) > 36)) || len([]rune(q)) > 200 || controls(q) || len([]rune(search)) > 200 || controls(search) || len(tagIDs) > 40 || (unclassified != "true" && unclassified != "false") {
 		s.fail(c, bad("歌曲筛选参数无效"))
 		return
 	}
+	search = strings.TrimSpace(search)
 	review := -1
 	switch status {
 	case "REVIEW":
@@ -130,6 +133,9 @@ func (s *Service) songsHTTP(c *gin.Context, sourceOnly bool) {
 			for _, id := range groups[dim] {
 				args = append(args, id)
 			}
+		}
+		if search != "" {
+			return s.searchSongs(ctx, tx, filter, args, search, &out)
 		}
 		if e := tx.QueryRowContext(ctx, s.q["song-count"]+filter, args...).Scan(&out.TotalElements); e != nil {
 			return e

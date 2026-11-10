@@ -8,7 +8,7 @@ export const songColumns = [
   { id: 'timestamps', label: '扫描与修改时间' },
 ] as const
 export type SongColumn = typeof songColumns[number]['id']
-export const defaultSongColumns: SongColumn[] = ['album', 'classification', 'file', 'location', 'status']
+export const defaultSongColumns: SongColumn[] = ['album', 'classification', 'status']
 export function confirmedField(song: MediaSong, field: 'album' | 'releaseDate' | 'durationMs') {
   return song.metadata && !song.metadata.stale && song.metadata.fields.includes(field) ? song.metadata.track[field] : null
 }

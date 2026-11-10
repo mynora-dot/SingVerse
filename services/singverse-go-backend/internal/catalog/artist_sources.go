@@ -270,11 +270,10 @@ func downloadArtwork(ctx context.Context, address string) ([]byte, error) {
 	if e != nil {
 		return nil, e
 	}
-	kind := strings.ToLower(strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"), ";")[0]))
-	if kind == "image/jpg" {
-		kind = "image/jpeg"
-	}
-	return normalizeImage(b, kind)
+	// Some upstream CDNs label valid PNG content as image/jpg. Treat the
+	// remote header as untrusted; sniff bytes, then fully decode and validate.
+	// Uploads retain their separate, strict declared-type validation.
+	return normalizeImage(b, http.DetectContentType(b))
 }
 func (s *Service) candidates(ctx context.Context, tx store.DBTX, id, kind string) ([]ArtworkChoice, error) {
 	k, e := imageKind(kind)

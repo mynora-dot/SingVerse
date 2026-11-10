@@ -25,6 +25,8 @@ afterEach(() => { wrapper?.unmount(); wrapper = undefined; document.body.innerHT
 it('没有平台也能编辑并真实提交，成功使用服务端反馈', async () => {
   wrapper = mount(SingleSongScrapeDialog, { props: { song: context().song }, global: { stubs: { teleport: true } } })
   await flushPromises()
+  expect(wrapper.get('.review-workspace').classes()).toContain('review-mode')
+  expect(wrapper.get('[aria-label="审核工作区"] button[aria-pressed="true"]').text()).toContain('核对与编辑字段')
   expect(metadata.search).not.toHaveBeenCalled()
   const edit = wrapper.findAll('button').find(b => b.text() === '编辑元数据')!
   await edit.trigger('click'); await flushPromises()
@@ -143,6 +145,11 @@ it('字段取消应用同步预览和状态，提交只含实际勾选变更', a
   vi.mocked(metadata.settings).mockResolvedValue({ enabled: true, providers: ['QQ'], autoApply: false, threshold: .95 })
   wrapper = mount(SingleSongScrapeDialog, { props: { song: context().song }, global: { stubs: { teleport: true } } }); await flushPromises()
   await wrapper.get('.review-candidate').trigger('click'); await flushPromises()
+  expect(wrapper.get('.review-workspace').classes()).toContain('review-mode')
+  await wrapper.get('[aria-label="审核工作区"] button:first-child').trigger('click')
+  expect(wrapper.get('.review-workspace').classes()).not.toContain('review-mode')
+  expect(singleReview.apply).not.toHaveBeenCalled()
+  await wrapper.get('[aria-label="审核工作区"] button:last-child').trigger('click')
   expect(wrapper.get('.selected-preview').text()).toContain('新专辑')
   await wrapper.get('[aria-label="应用专辑"] input').setValue(false); await flushPromises()
   expect(wrapper.get('.selected-preview').text()).not.toContain('新专辑')

@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, reactive, ref, computed, watch } from 'vue'
+import { onMounted, onBeforeUnmount, reactive, ref, computed, watch, defineAsyncComponent, nextTick } from 'vue'
 import { ElIcon, ElLoading, ElAlert, ElButton, ElCard, ElDialog, ElEmpty, ElForm, ElFormItem, ElInput, ElMessage, ElMessageBox, ElTag, ElCheckbox } from 'element-plus'
 import { FolderOpened, Plus, RefreshRight } from '@element-plus/icons-vue'
 import { parserProfiles } from '../../filename-parser/api/rules'
 import type { ParserWorkspace } from '../../filename-parser/types'
-import { useRoute, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import PageHeader from '../../../shared/ui/PageHeader.vue'
 import { media, type MediaSource, type SourceType, type ScanTask } from '../api/media'
 
 import WebDavMetadataDialog from '../components/WebDavMetadataDialog.vue'
 import LocalFolderPicker from '../components/LocalFolderPicker.vue'
+import SourceWorkspaceNav from '../components/SourceWorkspaceNav.vue'
 import { lx } from '../../lx-downloads/api'
+const FilenameProfilesView = defineAsyncComponent(() => import('../../filename-parser/views/FilenameProfilesView.vue'))
+const FilenameParserView = defineAsyncComponent(() => import('../../filename-parser/views/FilenameParserView.vue'))
 const metadataSource = ref<MediaSource | null>(null)
 const router = useRouter()
 const route = useRoute()
@@ -31,6 +34,13 @@ function changeType(type: SourceType) {
 const loading = ref(false), saving = ref(false), loaded = ref(false), dialog = ref(false)
 const error = ref(''), formError = ref(''), editing = ref<MediaSource | null>(null), clearPassword = ref(false)
 const draft = reactive({ useForLxDownloads: false, scanEnabled: false, scanCron: '0 3 * * *', parserProfileId: 'default', name: '', type: 'LOCAL' as SourceType, location: '', username: '', password: '' })
+const editorPanel = ref<'source' | 'profiles' | 'rules'>('source')
+const workbenchProfileId = ref('default')
+const workbench = ref<{ canLeave: () => Promise<boolean> }>()
+const editorBack = ref<InstanceType<typeof ElButton>>()
+const formBaseline = ref('')
+const formSignature = computed(() => JSON.stringify({ ...draft, clearPassword: clearPassword.value }))
+const formDirty = computed(() => dialog.value && formSignature.value !== formBaseline.value)
 const profileWorkspace = ref<ParserWorkspace | null>(null), profilesLoading = ref(false), profilesError = ref('')
 const selectedProfile = computed(() => profileWorkspace.value?.profiles.find(p => p.id === draft.parserProfileId))
 const enabledEntries = computed(() => selectedProfile.value?.entries.filter(e => e.enabled) ?? [])
@@ -140,9 +150,48 @@ function open(type: SourceType, item?: MediaSource) {
   editing.value = item ?? null
   Object.assign(draft, { scanEnabled: item?.scanEnabled ?? false, scanCron: item?.scanCron ?? '0 3 * * *', name: item?.name ?? '', type, location: item?.location ?? '', username: item?.username ?? '', password: '', parserProfileId: item?.parserProfileId ?? 'default' })
   draft.useForLxDownloads = item?.useForLxDownloads ?? route.query.download === '1'
-  advanced.value = false; clearPassword.value = false; formError.value = ''; dialog.value = true; void loadProfiles()
+  advanced.value = false; clearPassword.value = false; formError.value = ''; editorPanel.value = 'source'
+  formBaseline.value = formSignature.value; dialog.value = true; void loadProfiles()
 }
-function closed() { picker.value = false; draft.password = ''; formError.value = ''; editing.value = null }
+function closed() { if (dialog.value) return; picker.value = false; draft.password = ''; formError.value = ''; editing.value = null; editorPanel.value = 'source' }
+async function canLeaveWorkbench() { return editorPanel.value === 'source' || !workbench.value || await workbench.value.canLeave() }
+async function canLeaveSource() {
+  if (!dialog.value) return true
+  if (saving.value || !await canLeaveWorkbench()) return false
+  if (!formDirty.value) return true
+  try {
+    await ElMessageBox.confirm('来源还有未保存修改，是否放弃？已保存的识别方案和规则会保留。', '未保存来源', { confirmButtonText: '放弃修改', cancelButtonText: '继续编辑', type: 'warning' })
+    return true
+  } catch { return false }
+}
+async function closeSource(done?: () => void) {
+  if (!await canLeaveSource()) return
+  if (done) done()
+  else dialog.value = false
+}
+function beforeUnload(event: BeforeUnloadEvent) {
+  if (formDirty.value) { event.preventDefault(); event.returnValue = '' }
+}
+onBeforeRouteLeave(canLeaveSource)
+async function showRecognition(item?: MediaSource) {
+  if (saving.value) return
+  if (item) open(item.type, item)
+  workbenchProfileId.value = draft.parserProfileId
+  editorPanel.value = 'profiles'
+  await nextTick(); (editorBack.value?.$el as HTMLElement | undefined)?.focus()
+}
+async function returnToSource(profileId?: string) {
+  if (!await canLeaveWorkbench()) return
+  if (profileId) draft.parserProfileId = profileId
+  editorPanel.value = 'source'; void loadProfiles()
+  await nextTick(); document.getElementById('source-parser-profile')?.focus()
+}
+function showRules(profileId: string) { workbenchProfileId.value = profileId; editorPanel.value = 'rules' }
+async function returnToProfiles(profileId = workbenchProfileId.value) {
+  if (!await canLeaveWorkbench()) return
+  workbenchProfileId.value = profileId; editorPanel.value = 'profiles'
+  await nextTick(); (editorBack.value?.$el as HTMLElement | undefined)?.focus()
+}
 async function save() {
   if (saving.value) return
   if (!draft.location.trim()) { formError.value = draft.type === 'LOCAL' ? '请选择歌曲文件夹' : '请填写 WebDAV 目录地址'; return }
@@ -176,19 +225,21 @@ async function remove(item: MediaSource) {
 }
 watch(() => route.query.source, id => { if (typeof id === 'string') void load() })
 onMounted(() => {
+  window.addEventListener('beforeunload', beforeUnload)
   void load(); void loadProfiles()
   // 概览等入口通过 ?add=LOCAL|WEBDAV 直接打开添加弹窗，打开后移除参数避免刷新重复弹出。
   const add = route.query.add
   if (add === 'LOCAL' || add === 'WEBDAV') { open(add); const query = { ...route.query }; delete query.add; delete query.download; void router.replace({ query }) }
 })
-onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; loadGeneration++; clearTimeout(taskTimer); draft.password = '' })
+onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; loadGeneration++; clearTimeout(taskTimer); draft.password = ''; window.removeEventListener('beforeunload', beforeUnload) })
 </script>
 
 <template>
   <div class="media-library-page management-page">
-    <PageHeader class="media-heading" title="媒体库" description="添加歌曲所在的本地目录或 WebDAV，扫描后歌曲会出现在曲库中。扫描只读取文件，不会修改原文件。">
+    <PageHeader class="media-heading" title="好歌，从这里入库" description="添加歌曲所在的本地目录或 WebDAV，扫描后歌曲会出现在曲库中。扫描只读取文件，不会修改原文件。">
       <template #actions><div class="media-actions"><ElButton :icon="RefreshRight" :loading="loading" @click="load()">刷新</ElButton><ElButton type="primary" :icon="Plus" @click="open('LOCAL')">添加媒体库</ElButton></div></template>
     </PageHeader>
+    <SourceWorkspaceNav />
     <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon class="media-error"><ElButton text @click="load()">重试</ElButton></ElAlert>
     <section v-loading="loading" class="source-cards" aria-label="媒体库">
       <ElEmpty v-if="loaded && !items.length && !error" description="添加本地目录或 WebDAV，开始整理你的歌曲。"><ElButton type="primary" @click="open('LOCAL')">添加第一个目录</ElButton></ElEmpty>
@@ -198,6 +249,7 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
           <div class="source-info">
             <div class="source-title"><h2>{{ row.name }}</h2><ElTag v-if="row.useForLxDownloads" type="success" effect="plain">下载保存位置</ElTag><ElTag type="info" effect="plain">{{ row.type === 'LOCAL' ? '本地目录' : 'WebDAV' }}</ElTag></div>
             <p class="source-location">{{ displayLocation(row) }}</p>
+            <ElButton class="source-profile-link" text :disabled="profilesLoading" @click="showRecognition(row)">文件名识别：{{ profilesLoading ? '读取中…' : profileName(row.parserProfileId) }} →</ElButton>
             <div v-if="tasks[row.id]" class="scan-progress" aria-live="polite">
               <strong>{{ taskLabel(tasks[row.id]!) }}</strong>
               <span>已处理 {{ tasks[row.id]!.directories }} 个目录、{{ tasks[row.id]!.entries }} 个条目；{{ tasks[row.id]!.totalSongs }} 首，{{ tasks[row.id]!.needsReviewSongs }} 首需复核</span>
@@ -223,8 +275,13 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
     </section>
     <p class="feature-note">本地目录优先读取音频与视频内嵌标签，缺失信息用文件名补充；WebDAV 可启用后台内嵌元数据提取，同路径复用缓存。扫描不会修改原文件，不代表已验证可播放。</p>
     <WebDavMetadataDialog v-if="metadataSource" :source="metadataSource" @songs="showSongs(metadataSource!); metadataSource = null" @close="metadataSource = null" />
-    <ElDialog v-model="dialog" :title="editing ? '编辑媒体库' : '添加媒体库'" width="min(560px, calc(100vw - 32px))" class="media-dialog" :close-on-click-modal="false" :close-on-press-escape="!saving" :show-close="!saving" :before-close="done => { if (!saving) done() }" @closed="closed">
-      <ElForm label-position="top" @submit.prevent="save">
+    <ElDialog v-model="dialog" :title="editorPanel === 'source' ? (editing ? '编辑媒体库' : '添加媒体库') : `${editing?.name || draft.name || '新来源'} · ${editorPanel === 'profiles' ? '文件名识别' : '自定义规则'}`" :width="editorPanel === 'source' ? 'min(560px, calc(100vw - 32px))' : 'min(1120px, calc(100vw - 32px))'" class="media-dialog" :class="{ 'source-workbench': editorPanel !== 'source' }" :close-on-click-modal="false" :close-on-press-escape="!saving" :show-close="!saving" :before-close="closeSource" @closed="closed">
+      <template v-if="editorPanel !== 'source'">
+        <div class="source-workbench-context"><ElButton ref="editorBack" @click="editorPanel === 'rules' ? returnToProfiles() : returnToSource()">{{ editorPanel === 'rules' ? '← 返回识别方案' : '← 返回来源设置' }}</ElButton><p>来源草稿已保留，选好方案后再保存来源。</p></div>
+        <FilenameProfilesView v-if="editorPanel === 'profiles'" ref="workbench" embedded :profile-id="workbenchProfileId" @use-profile="returnToSource" @rules="showRules" />
+        <FilenameParserView v-else ref="workbench" embedded @profile="returnToProfiles" />
+      </template>
+      <ElForm v-else label-position="top" @submit.prevent="save">
         <div v-if="!editing" class="source-types" aria-label="位置类型"><ElButton :type="draft.type === 'LOCAL' ? 'primary' : 'default'" :disabled="saving" @click="changeType('LOCAL')">本地目录</ElButton><ElButton :type="draft.type === 'WEBDAV' ? 'primary' : 'default'" :disabled="saving" @click="changeType('WEBDAV')">WebDAV</ElButton></div>
         <template v-if="draft.type === 'LOCAL'">
           <ElFormItem label="歌曲文件夹" required><div class="folder-selection"><span>{{ draft.location || '尚未选择文件夹' }}</span><ElButton :disabled="saving" @click="chooseFolder">选择文件夹</ElButton></div></ElFormItem>
@@ -239,23 +296,22 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
           <p class="muted">凭据仅加密保存在服务端，不会回显。修改地址或账号时需重新填写密码或明确清除。保存不会访问远端，建议使用 HTTPS。OpenList 地址填写 /dav/ 加挂载目录，账号需开启 WebDAV 读取权限；扫描仅列目录、索引文件名，不下载视频。</p>
         </template>
         <ElFormItem label="名称（可选）"><ElInput v-model="draft.name" placeholder="留空使用文件夹名称" maxlength="100" :disabled="saving" /></ElFormItem>
-        <details :open="advanced" class="source-advanced" @toggle="advanced = ($event.target as HTMLDetailsElement).open"><summary>更多设置 <span>自动扫描、文件名识别</span></summary>
-        <ElFormItem label="定时扫描"><ElCheckbox v-model="draft.scanEnabled" :disabled="saving">启用定时扫描</ElCheckbox></ElFormItem>
-        <ElFormItem v-if="draft.scanEnabled" label="Cron 表达式" required><ElInput v-model="draft.scanCron" aria-label="扫描 Cron 表达式" placeholder="0 3 * * *" maxlength="120" :disabled="saving" /><p class="profile-help">标准五段：分 时 日 月 周。例：0 3 * * * 每天 03:00；*/30 * * * * 每半小时。时区：Asia/Shanghai。同一来源扫描中跳过，停机期间不逐次补跑。</p></ElFormItem>
-        <ElFormItem label="解析方案" required class="profile-field">
-          <select v-model="draft.parserProfileId" aria-label="解析方案" :disabled="saving || profilesLoading || !!profilesError" class="profile-select">
+        <ElFormItem label="文件名识别" for="source-parser-profile" required class="profile-field">
+          <div class="source-profile-selection"><select id="source-parser-profile" v-model="draft.parserProfileId" aria-label="解析方案" :disabled="saving || profilesLoading || !!profilesError" class="profile-select">
             <option v-for="profile in profileWorkspace?.profiles ?? []" :key="profile.id" :value="profile.id">{{ profile.name }}</option>
-          </select>
+          </select><ElButton :disabled="saving || profilesLoading || !!profilesError || !selectedProfile" @click="showRecognition()">试验与调整</ElButton></div>
           <p v-if="selectedProfile" class="profile-help">{{ enabledEntries.length }} 条启用规则，按方案中的顺序匹配，第一条完整命中生效。</p>
           <p v-if="selectedProfile && !enabledEntries.length" class="profile-help">此方案没有启用规则，扫描结果会标记为需复核，不会使用其他方案兜底。</p>
           <p v-if="!profilesLoading && !profilesError && !selectedProfile" class="profile-help">所选方案已不可用，请重新选择。</p>
-          <p class="profile-help">{{ draft.type === 'LOCAL' ? '保存后扫描，优先使用文件内的歌名、歌手、专辑与发行日期，缺失时用文件名补充。' : '保存后手动发起后台扫描，按文件名提取歌曲信息。' }} <a href="#/library/filename-parser-profiles">管理解析方案 ↗</a></p>
+          <p class="profile-help">{{ draft.type === 'LOCAL' ? '优先读取文件内的歌曲信息，缺失时按此方案从文件名补充。' : '扫描时按此方案从文件名提取歌名和歌手。' }}可在此试验命名格式，或进入高级配置编写自定义规则。</p>
         </ElFormItem>
+        <details :open="advanced" class="source-advanced" @toggle="advanced = ($event.target as HTMLDetailsElement).open"><summary>更多设置 <span>定时扫描</span></summary>
+        <ElFormItem label="定时扫描"><ElCheckbox v-model="draft.scanEnabled" :disabled="saving">启用定时扫描</ElCheckbox></ElFormItem>
+        <ElFormItem v-if="draft.scanEnabled" label="Cron 表达式" required><ElInput v-model="draft.scanCron" aria-label="扫描 Cron 表达式" placeholder="0 3 * * *" maxlength="120" :disabled="saving" /><p class="profile-help">标准五段：分 时 日 月 周。例：0 3 * * * 每天 03:00；*/30 * * * * 每半小时。时区：Asia/Shanghai。同一来源扫描中跳过，停机期间不逐次补跑。</p></ElFormItem>
         </details>
-        <p class="profile-help">使用{{ profileName(draft.parserProfileId) }}，可在更多设置中修改。</p>
         <ElAlert v-if="profilesError" :title="profilesError" type="error" :closable="false"><ElButton text @click="loadProfiles">重新加载解析方案</ElButton></ElAlert>
         <ElAlert v-if="formError" :title="formError" type="error" :closable="false" show-icon />
-        <div class="dialog-actions"><ElButton :disabled="saving" @click="dialog = false">取消</ElButton><ElButton type="primary" native-type="submit" :loading="saving" :disabled="profilesLoading || !!profilesError || !selectedProfile">{{ editing ? '保存修改' : '添加位置' }}</ElButton></div>
+        <div class="dialog-actions"><ElButton :disabled="saving" @click="closeSource()">取消</ElButton><ElButton type="primary" native-type="submit" :loading="saving" :disabled="profilesLoading || !!profilesError || !selectedProfile">{{ editing ? '保存修改' : '添加位置' }}</ElButton></div>
       </ElForm>
     </ElDialog>
 
@@ -264,46 +320,259 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
 </template>
 
 <style scoped>
-.scan-progress { display: flex; flex-direction: column; gap: 6px; font-size: 12px; overflow-wrap: anywhere; }
-.scan-progress .el-button { align-self: flex-start; margin-left: 0; }
-.scan-error { display: block; color: var(--el-color-danger); overflow-wrap: anywhere; }
-.profile-select { width: 100%; }
-.profile-field { margin-top: 22px; }
-.profile-help { width: 100%; margin: 8px 0 0; font-size: 12px; line-height: 1.8; color: var(--el-text-color-secondary); }
-.profile-help a { color: var(--el-color-primary); }
+.scan-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.scan-progress .el-button {
+  align-self: flex-start;
+  margin-left: 0;
+}
+
+.scan-error {
+  display: block;
+  color: var(--el-color-danger);
+  overflow-wrap: anywhere;
+}
+
+.profile-select {
+  width: 100%;
+}
+
+.profile-field {
+  margin-top: 22px;
+}
+.source-profile-selection { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; width: 100%; }
+.source-profile-selection .profile-select { flex: 1; min-width: 180px; width: auto; }
+.source-profile-selection .el-button { margin-left: 0; }
+.source-profile-link { max-width: 100%; height: auto; margin: 0 0 8px; padding: 6px 0; color: var(--el-color-primary); font-size: 12px; text-align: left; white-space: normal; }
+.source-profile-link :deep(span) { white-space: normal; overflow-wrap: anywhere; line-height: 1.8; }
+.media-library-page :deep(.source-workbench) { display: flex; flex-direction: column; max-height: 92dvh; margin-top: 4vh; }
+.media-library-page :deep(.source-workbench .el-dialog__header) { flex-shrink: 0; }
+.media-library-page :deep(.media-dialog .el-dialog__title) { display: block; padding-right: 28px; overflow-wrap: anywhere; line-height: 1.5; }
+.media-library-page :deep(.source-workbench .el-dialog__body) { overflow-y: auto; overscroll-behavior: contain; }
+.media-library-page :deep(.source-workbench .profiles-rail) { position: static; }
+.source-workbench-context { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 20px; margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--sv-border-subtle); }
+.source-workbench-context p { flex: 1; min-width: 180px; color: var(--sv-text-secondary); font-size: 12px; line-height: 1.9; }
+
+.profile-help {
+  width: 100%;
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--el-text-color-secondary);
+}
+
 .media-list-header h2 {
   display: flex;
   align-items: center;
 }
-.media-actions .el-button + .el-button {
+
+.media-actions .el-button+.el-button {
   margin-left: 0;
 }
-</style>
 
-<style scoped>
-.source-card { overflow: visible; }
-.folder-selection + .profile-help { margin-bottom: 16px; }
-.source-menu summary:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 2px; }
-.source-cards { display: grid; gap: 20px; min-height: 120px; }
-.source-content { display: flex; align-items: center; gap: 24px; }
-.source-icon { background: var(--el-color-primary-light-9); color: var(--el-color-primary); padding: 20px; border-radius: var(--sv-radius-sm); font-size: 32px; }
-.source-info { flex: 1; min-width: 0; }
-.source-title { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
-.source-title h2 { margin: 0; font-size: 20px; }
-.source-location { overflow-wrap: anywhere; color: var(--el-text-color-regular); }
-.source-menu { position: relative; }
-.source-menu summary { cursor: pointer; padding: 5px 12px; border: 1px solid var(--el-border-color); border-radius: var(--sv-radius-sm); list-style: none; }
-.source-menu summary::-webkit-details-marker { display: none; }
-.source-menu > div { position: absolute; right: 0; top: 100%; z-index: 2; display: flex; padding: 8px; background: var(--el-bg-color); border: 1px solid var(--el-border-color); border-radius: var(--sv-radius-sm); }
-.source-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.source-actions .el-button { margin-left: 0; }
-.source-types { display: flex; gap: 12px; margin-bottom: 24px; }
-.source-types .el-button { flex: 1; margin-left: 0; }
-.folder-selection { display: flex; gap: 12px; align-items: center; width: 100%; padding: 12px; border: 1px solid var(--el-border-color); border-radius: var(--sv-radius-sm); }
-.folder-selection span { flex: 1; overflow-wrap: anywhere; min-width: 0; }
-.source-advanced { margin-top: 24px; padding: 16px; border: 1px solid var(--el-border-color); border-radius: var(--sv-radius-sm); }
-.source-advanced summary { cursor: pointer; font-weight: 600; }
-.source-advanced summary span { font-weight: normal; color: var(--el-text-color-secondary); margin-left: 8px; }
-.source-advanced[open] summary { margin-bottom: 20px; }
-@media (max-width: 900px) { .source-content { flex-wrap: wrap; gap: 12px; } .source-actions { width: 100%; } .source-icon { padding: 12px; } }
+.source-card {
+  overflow: visible;
+}
+
+.folder-selection+.profile-help {
+  margin-bottom: 16px;
+}
+
+.source-menu summary:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 2px;
+}
+
+.source-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  min-height: 120px;
+}
+
+.source-cards>.el-empty {
+  grid-column: 1/-1;
+}
+
+.source-card :deep(.el-card__body) {
+  height: 100%;
+}
+
+.source-content {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 20px;
+  height: 100%;
+  align-items: start;
+}
+
+.source-icon {
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  font-size: 26px;
+}
+
+.source-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.source-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.source-title h2 {
+  margin: 0;
+  font-size: 19px;
+}
+
+.source-location {
+  overflow-wrap: anywhere;
+  color: var(--sv-text-secondary);
+  font-size: 12px;
+  line-height: 1.8;
+  margin: 8px 0;
+}
+
+.source-menu {
+  position: relative;
+}
+
+.source-menu summary {
+  cursor: pointer;
+  padding: 5px 12px;
+  border: 1px solid var(--el-border-color);
+  border-radius: var(--sv-radius-sm);
+  list-style: none;
+}
+
+.source-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.source-menu>div {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 2;
+  display: flex;
+  padding: 8px;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color);
+  border-radius: var(--sv-radius-sm);
+}
+
+.source-actions {
+  grid-column: 1/-1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 18px;
+  border-top: 1px solid var(--sv-border-subtle);
+  align-self: end;
+}
+
+.source-actions :deep(.el-button) {
+  font-size: 12px;
+}
+
+.source-actions .el-button {
+  margin-left: 0;
+}
+
+.source-types {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.source-types .el-button {
+  flex: 1;
+  margin-left: 0;
+}
+
+.folder-selection {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--el-border-color);
+  border-radius: var(--sv-radius-sm);
+}
+
+.folder-selection span {
+  flex: 1;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.source-advanced {
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px solid var(--el-border-color);
+  border-radius: var(--sv-radius-sm);
+}
+
+.source-advanced summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.source-advanced summary span {
+  font-weight: normal;
+  color: var(--el-text-color-secondary);
+  margin-left: 8px;
+}
+
+.source-advanced[open] summary {
+  margin-bottom: 20px;
+}
+
+@media(max-width:1000px) {
+  .source-cards {
+    grid-template-columns: minmax(0, 1fr)
+  }
+}
+
+@media(max-width:480px) {
+  .source-workbench-context { margin-bottom: 18px; padding-bottom: 14px; }
+  .source-workbench-context p { display: none; }
+  .source-content {
+    gap: 14px;
+    grid-template-columns: 42px minmax(0, 1fr)
+  }
+
+  .source-icon {
+    width: 42px;
+    height: 42px;
+    font-size: 22px
+  }
+
+  .source-title h2 {
+    font-size: 17px
+  }
+
+  .source-actions>.el-button {
+    margin: 0
+  }
+
+  .source-actions>.el-button:first-child {
+    flex-basis: 100%
+  }
+}
 </style>

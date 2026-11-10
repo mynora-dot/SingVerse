@@ -37,7 +37,7 @@ it('封面加载失败有占位图，缺失专辑和歌词不堆叠空字段', a
   vi.mocked(embeddedMetadata.detail).mockResolvedValue({ state: 'PENDING' }); const row = song(); row.metadata!.track.album = '未知专辑'
   wrapper = mount(SongDetailDrawer, { props: { song: row, visible: true }, global: { stubs: { teleport: true, transition: false } } }); await flushPromises()
   await wrapper.get('.song-artwork img').trigger('error')
-  expect(wrapper.find('.artwork-placeholder').exists()).toBe(true); expect(wrapper.find('.song-artwork img').exists()).toBe(false)
+  expect(wrapper.find('.song-cover-placeholder').exists()).toBe(true); expect(wrapper.find('.song-artwork img').exists()).toBe(false)
   expect(wrapper.find('.song-album').exists()).toBe(false); expect(wrapper.get('.lyrics-empty').text()).toBe('暂无可显示的歌词')
 })
 it('切歌后旧歌词不覆盖新歌，封面失败状态重置', async () => {

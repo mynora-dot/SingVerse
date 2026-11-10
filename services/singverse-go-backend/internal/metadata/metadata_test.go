@@ -566,7 +566,7 @@ func TestProviderProtocolsAndArtworkIdentity(t *testing.T) {
 	}
 	f := setup(t)
 	f.settings(t, false)
-	_, e = f.s.ArtistArtwork(context.Background(), "A", nil, []ArtistRef{{"QQ", "artist-mid", "A"}})
+	_, e = f.s.artistArtwork(context.Background(), "QQ", "artist-mid", "A")
 	if code(e) != 409 {
 		t.Fatal("disabled artwork platform bypassed", e)
 	}

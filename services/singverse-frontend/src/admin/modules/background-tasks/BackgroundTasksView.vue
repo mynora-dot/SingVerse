@@ -109,10 +109,10 @@ onBeforeUnmount(() => { active = false; generation++; clearTimeout(timer); docum
       </div>
       <form class="task-filters" @submit.prevent="search">
         <ElInput v-model="keyword" aria-label="搜索任务名称或编号" placeholder="搜索任务名称、歌曲或编号" clearable :prefix-icon="Search" maxlength="200" @clear="search" />
-        <ElSelect :model-value="filter.type" aria-label="任务类型" @change="change({ type: $event || undefined, page: undefined })">
+        <ElSelect :model-value="filter.type" aria-label="任务类型" placeholder="全部类型" @change="change({ type: $event || undefined, page: undefined })">
           <ElOption label="全部类型" value="" /><ElOption v-for="(name, type) in typeNames" :key="type" :label="name" :value="type" />
         </ElSelect>
-        <ElSelect :model-value="filter.status" aria-label="任务状态" @change="change({ status: $event || undefined, page: undefined })">
+        <ElSelect :model-value="filter.status" aria-label="任务状态" placeholder="全部状态" @change="change({ status: $event || undefined, page: undefined })">
           <ElOption label="全部状态" value="" /><ElOption v-for="(name, status) in statusNames" :key="status" :label="name" :value="status" />
         </ElSelect>
         <ElButton native-type="submit">搜索</ElButton>

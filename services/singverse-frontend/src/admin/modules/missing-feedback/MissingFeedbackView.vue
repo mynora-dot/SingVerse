@@ -105,7 +105,7 @@ onBeforeUnmount(() => { active = false; generation++; detailGeneration++; songGe
 
 <template>
   <section class="missing-feedback-page">
-    <PageHeader title="缺歌反馈" description="集中登记想唱但曲库缺少的歌曲，跟进补齐结果。">
+    <PageHeader title="把想唱的歌记下来" description="集中登记想唱但曲库缺少的歌曲，跟进补齐结果。">
       <template #actions><ElButton type="primary" :disabled="busy || opening" @click="create">登记缺歌</ElButton></template>
     </PageHeader>
     <form class="feedback-filters" @submit.prevent="search">

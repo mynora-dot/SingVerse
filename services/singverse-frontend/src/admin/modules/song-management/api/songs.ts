@@ -2,11 +2,12 @@ import { authRequest } from '../../../core/auth/api'
 import { media } from '../../media-library/api/media'
 import type { MediaSource, SongPage } from '../../media-library/types'
 
-export interface SongFilters { sourceId: string; q: string; status: string; page: number; size?: number; tagIds?: string[]; unclassified?: boolean }
+export interface SongFilters { sourceId: string; q: string; search?: string; status: string; page: number; size?: number; tagIds?: string[]; unclassified?: boolean }
 export const songs = {
   list: (filters: SongFilters) => {
     const query = new URLSearchParams({ page: String(filters.page), size: String(filters.size ?? 20), status: filters.status })
     if (filters.sourceId) query.set('sourceId', filters.sourceId)
+    if (filters.search?.trim()) query.set('search', filters.search.trim())
     if (filters.q.trim()) query.set('q', filters.q.trim())
     filters.tagIds?.forEach(id => query.append('tagIds', id))
     if (filters.unclassified) query.set('unclassified', 'true')

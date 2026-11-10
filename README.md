@@ -8,11 +8,11 @@ WebDAV 原片按需分块缓存，完整成功的音视频解码结果也由 Go 
 
 管理端「曲库 → 播放记录」将热门排行、逐次播放明细和单曲历史合并在一个入口；「曲库 → 缺歌反馈」支持管理员登记缺歌、跟进处理并关联已补齐的曲库歌曲。本阶段完成后台页面、管理接口和存储，尚未接入手机或 TV 上报，播放记录初始为空，旧播放历史不回填；缺歌登记不会自动下载歌曲。详见[播放记录与缺歌反馈](contracts/song-activity.md)。
 
-管理端「设备与服务 → 后台任务」按每次操作的批次查看扫描、元数据整理、AI 分类、音频处理、离线转码、缓存清理和分享包导出，运行优先，进入批次后直接查看明细。扫描与后续探测、快速识别同批，整批结束后保留 30 天。任务操作在关联业务页进行，详见[后台任务中心](contracts/background-tasks.md)。
+管理端「顶栏 → 任务」按每次操作的批次查看扫描、元数据整理、AI 分类、音频处理、离线转码、缓存清理和分享包导出，运行优先，进入批次后直接查看明细。扫描与后续探测、快速识别同批，整批结束后保留 30 天。任务操作在关联业务页进行，详见[后台任务中心](contracts/background-tasks.md)。
 
 ## 技术栈与目录
 
-管理端「来源与导入 → 歌曲下载」支持自备洛雪音源、五平台歌曲搜索及公开歌单/专辑读取。先将一个可写本地媒体库指定为下载保存位置，再导入并启用音源；后台下载完成自动入库，支持取消、重试与重启恢复，基础下载无需 compute。使用方法、Docker `/downloads` 挂载及边界见[歌曲下载](docs/lx-downloads.md)。
+管理端「添加与整理 → 下载歌曲」支持自备洛雪音源、五平台歌曲搜索及公开歌单/专辑读取。先将一个可写本地媒体库指定为下载保存位置，再导入并启用音源；后台下载完成自动入库，支持取消、重试与重启恢复，基础下载无需 compute。使用方法、Docker `/downloads` 挂载及边界见[歌曲下载](docs/lx-downloads.md)。
 
 | 部分 | 技术 | 位置 |
 |---|---|---|
@@ -156,9 +156,9 @@ Go 后端业务 SQL 显式位于所属 `internal/<domain>/sql/*.sql`，通过 `d
 
 本地与 WebDAV 歌曲支持只读提取常见音视频文件内嵌歌名、歌手、专辑和发行日期，文件标签优先，缺失回退文件名；Go 提供短期授权 Range 回源，compute 不持有曲库路径或 WebDAV 凭据。独立 singverse-compute 镜像包含 Python/FFmpeg，Go 镜像不包含。详见[后端说明](services/singverse-go-backend/README.md)。
 
-歌手库入口为管理端「曲库管理 → 歌手库」：随歌曲自动汇总，首次自动抓图，支持上传头像/背景图；在歌手详情订正歌曲后自动同步，无需维护人物档案。使用与数据设计见 [歌手库说明](docs/artist-library.md)。
+歌手库入口为管理端「曲库 → 歌手」：随歌曲自动汇总，首次自动抓图，支持上传头像/背景图；在歌手详情订正歌曲后自动同步，无需维护人物档案。使用与数据设计见 [歌手库说明](docs/artist-library.md)。
 
-共享歌单可在「曲库管理 → 歌单管理」手动或通过 AI 建议创建，并同步显示到 TV「歌单」入口。详见 [歌单说明](docs/playlists.md)。
+共享歌单可在「曲库 → 共享歌单」手动或通过 AI 建议创建，并同步显示到 TV「歌单」入口。详见 [歌单说明](docs/playlists.md)。
 
 视频兼容播放、离线版本、工具安装及硬件边界见 [转码说明](docs/transcoding.md)。
 
@@ -166,7 +166,7 @@ TV／手机播放按可用解码器的实际 AVC profile、level 和尺寸能力
 
 WebDAV 原片直放也会按需缓存在 NAS，无需等待整首下载；原片与 HLS 结果共用「曲库 → 歌曲缓存」的容量及清理策略，管理页区分部分缓存和完整缓存。TV 聚会队列在当前歌剩余约 30 秒时预取下一首，优先文件头和尾部索引，再补齐其余内容；排序、撤歌、停止和散场会更新或撤销预取。手机扫码点歌复用同一队列，本机播放器仍为单曲模式。原片预取不依赖 compute，已有未缓存内容继续按需回源。
 
-「设备与服务 → 性能节点配置 → 连接设置」支持扫描局域网计算节点，选择“连接此节点”后由服务端配对、检查双向连接并保存，无需手填连接密钥。同套 Compose 继续使用部署自动连接。独立设备须升级 compute，并将其 HTTP 入口绑定到主服务可达的受限内网地址；默认扫描常用端口，也可指定网段与端口。首次配对信任所在局域网，已配对节点仅允许同一主服务身份恢复连接，密钥不返回浏览器；完整边界见[计算节点说明](services/singverse-compute/README.md)。
+「设置 → 计算与模型 → 连接设置」支持扫描局域网计算节点，选择“连接此节点”后由服务端配对、检查双向连接并保存，无需手填连接密钥。同套 Compose 继续使用部署自动连接。独立设备须升级 compute，并将其 HTTP 入口绑定到主服务可达的受限内网地址；默认扫描常用端口，也可指定网段与端口。首次配对信任所在局域网，已配对节点仅允许同一主服务身份恢复连接，密钥不返回浏览器；完整边界见[计算节点说明](services/singverse-compute/README.md)。
 
 ## 转码硬件加速设置
 
@@ -217,7 +217,7 @@ SINGVERSE_MACOS_COMPUTE=1 make docker-check
 
 Mac 启动器会把当前 shell 的 `COMPUTE_LAN_PAIRING_ENABLED=true|false` 写入 launchd 配置；未设置时保留上次配置，首次默认 `true`。例如 `COMPUTE_LAN_PAIRING_ENABLED=false services/singverse-compute/.venv/bin/python scripts/macos-compute.py restart` 关闭自动配对，后续普通重启继续保留；原有 Bearer 连接不受影响。仅接受 `true` / `false`，非法值会在停止现有节点前报错。
 
-Mac 原唱／伴奏使用原生 CPU 或 MPS：显式执行 `make compute-audio-setup` 安装固定依赖及权重后，用 `scripts/macos-compute.py restart` 加载音频配置，再到“设备与服务 → 性能节点配置”对 CPU／MPS 试跑。启动器默认 4GiB 音频预算，可显式指定 `--audio-memory-mib 2048`，后续重启保留该预算。本机 M2 已通过 MPS 分块卷积、CPU 数值对照及 8／60 秒批量分离验证；不启用隐式 CPU 算子回退。复验可执行 `make macos-audio-check`，完整说明见 compute README。
+Mac 原唱／伴奏使用原生 CPU 或 MPS：显式执行 `make compute-audio-setup` 安装固定依赖及权重后，用 `scripts/macos-compute.py restart` 加载音频配置，再到“设置 → 计算与模型”对 CPU／MPS 试跑。启动器默认 4GiB 音频预算，可显式指定 `--audio-memory-mib 2048`，后续重启保留该预算。本机 M2 已通过 MPS 分块卷积、CPU 数值对照及 8／60 秒批量分离验证；不启用隐式 CPU 算子回退。复验可执行 `make macos-audio-check`，完整说明见 compute README。
 
 可选真机验证：`make transcode-fixtures` 下载校验固定的 Jellyfin 官方 Dolby Vision 测试素材（不进入生产镜像）；设置仓库媒体工具 PATH 后，可在目标设备运行 `services/singverse-compute/.venv/bin/python services/singverse-compute/tests/smoke/verify_hardware.py --backend videotoolbox --fixtures .tools/transcode-fixtures`。其他设备替换 backend；输出会区分实际硬解、CPU 回传、零拷贝和 GPU 色调映射。
 
@@ -227,7 +227,7 @@ Mac 原唱／伴奏使用原生 CPU 或 MPS：显式执行 `make compute-audio-s
 
 模型需显式安装；扫描快速分类使用 `make compute-setup compute-fast-audio-setup`，深度识别/伴奏生成另用 `make compute-audio-setup`，设置本地模型路径并重启 compute。Mac 使用原生启动器的 `restart` 加载新代码。固定版本、Compose 可选部署、资源预算和真实模型冒烟命令见 [计算节点 README](services/singverse-compute/README.md#原唱识别与伴奏分离)。真实歌曲效果与手机/TV/NAS 同步尚需验收，不能以合成音冒烟替代。
 
-伴奏管理入口：**曲库 → 原唱与伴奏**，分“歌曲 / 生成任务”。可按状态快速找出待标记原唱、可生成伴奏等歌曲，跨页/全部筛选结果批量生成；选择快照在后台每 200 首准备，显示准备进度，完成后确认开始，支持准备取消及失败重试。歌曲列表使用可失效的后台轻量索引，首次准备会提示并自动重试；持久任务支持进度查看、停止及重试；“设备与服务 → 性能节点配置”统一管理连接、实际硬件、CPU 自动降级及模型下载/导入和试跑。部署CPU、NVIDIA CUDA、AMD ROCm及Mac MPS的方式和当前Intel GPU/RKNN限制见计算节点README；实际只有一个计算节点，不做多节点分配。
+伴奏管理入口：**添加与整理 → 原唱与伴奏**，分“歌曲 / 生成任务”。可按状态快速找出待标记原唱、可生成伴奏等歌曲，跨页/全部筛选结果批量生成；选择快照在后台每 200 首准备，显示准备进度，完成后确认开始，支持准备取消及失败重试。歌曲列表使用可失效的后台轻量索引，首次准备会提示并自动重试；持久任务支持进度查看、停止及重试；“设置 → 计算与模型”统一管理连接、实际硬件、CPU 自动降级及模型下载/导入和试跑。部署CPU、NVIDIA CUDA、AMD ROCm及Mac MPS的方式和当前Intel GPU/RKNN限制见计算节点README；实际只有一个计算节点，不做多节点分配。
 
 计算节点现提供 CPU（amd64/arm64）、CUDA、ROCm、OpenVINO 镜像构建目标及正式 release 发布工作流；模型独立下载／离线导入。部署选择见 [compute 说明](services/singverse-compute/README.md)。GPU 和设备效果必须单独验收，RKNN 尚无合格模型。
 

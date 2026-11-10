@@ -209,7 +209,7 @@ onBeforeUnmount(() => { active = false; currentGeneration++; draftGeneration++; 
 
 <template>
   <section class="compute-settings">
-    <PageHeader class="compute-heading" title="性能节点配置" />
+    <PageHeader class="compute-heading" title="计算与模型" description="让 NAS 处理音轨识别、伴奏和兼容播放。先连接计算服务，再按需要准备硬件与模型。" />
     <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon><ElButton text @click="load">重新读取</ElButton></ElAlert>
     <ElSkeleton v-if="loading && !settings" :rows="5" animated />
     <template v-if="settings">

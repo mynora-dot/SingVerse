@@ -38,6 +38,7 @@ function restart() { stage.value = false; code.value = ''; password.value = ''; 
         </div>
         <div class="waveform"><i v-for="(height, index) in bars" :key="index" :style="{ height: `${height}px`, animationDelay: `${index * 0.11}s` }" /></div>
       </div>
+      <div class="login-record" />
       <p class="login-foot">家庭自托管 KTV · 数据留在你的 NAS</p>
     </aside>
     <main class="login-main">

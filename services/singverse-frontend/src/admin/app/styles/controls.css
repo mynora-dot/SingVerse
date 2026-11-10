@@ -1,0 +1,83 @@
+/* ========== 7. 原生表单控件 ========== */
+/* 原生 select 统一样式 */
+select {
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+  height: 36px;
+  padding: 0 34px 0 13px;
+  color: var(--sv-text-primary);
+  background-color: var(--sv-surface-3);
+  border: 1px solid var(--sv-border-default);
+  border-radius: var(--sv-radius-md);
+  font: inherit;
+  font-size: var(--sv-font-meta);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: border-color 0.16s var(--sv-ease-smooth), box-shadow 0.16s var(--sv-ease-smooth);
+  --sv-chev: var(--sv-text-tertiary);
+  background-image: linear-gradient(45deg, transparent 50%, var(--sv-chev) 50%),
+    linear-gradient(135deg, var(--sv-chev) 50%, transparent 50%);
+  background-position: calc(100% - 16px) calc(50% - 1px), calc(100% - 11px) calc(50% - 1px);
+  background-repeat: no-repeat;
+  background-size: 5px 5px, 5px 5px;
+}
+
+select:hover:not(:disabled) {
+  border-color: var(--sv-accent-primary);
+  --sv-chev: var(--sv-accent-primary);
+}
+
+select:focus-visible {
+  outline: none;
+  border-color: var(--sv-accent-primary);
+  box-shadow: 0 0 0 3px var(--sv-accent-soft);
+  --sv-chev: var(--sv-accent-primary);
+}
+
+select:disabled {
+  color: var(--sv-text-tertiary);
+  background-color: var(--sv-surface-2);
+  border-color: var(--sv-border-subtle);
+  cursor: not-allowed;
+  --sv-chev: var(--sv-border-default);
+}
+
+.native-field {
+  width: 100%;
+  padding: 11px 14px;
+  color: var(--sv-text-primary);
+  background-color: var(--sv-surface-3);
+  border: 1px solid var(--sv-border-default);
+  border-radius: var(--sv-radius-md);
+  font: inherit;
+  font-size: var(--sv-font-meta);
+  transition: border-color 0.16s var(--sv-ease-smooth), box-shadow 0.16s var(--sv-ease-smooth);
+}
+
+.native-field:hover {
+  border-color: var(--sv-accent-primary);
+}
+
+.native-field:focus-visible {
+  outline: none;
+  border-color: var(--sv-accent-primary);
+  box-shadow: 0 0 0 3px var(--sv-accent-soft);
+}
+
+textarea.native-field {
+  height: auto;
+  min-height: 140px;
+  line-height: 1.7;
+  font-family: var(--sv-font-mono);
+  font-size: var(--sv-font-meta);
+  resize: vertical;
+}
+
+select.native-field {
+  height: 36px;
+  padding: 0 34px 0 13px;
+  line-height: normal;
+}

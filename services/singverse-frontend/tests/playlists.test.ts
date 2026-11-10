@@ -2,6 +2,7 @@
 import { flushPromises,mount,type VueWrapper } from '@vue/test-utils'
 import { beforeEach,afterEach,it,expect,vi } from 'vitest'
 import { ElMessageBox } from 'element-plus'
+import { createMemoryHistory, createRouter } from 'vue-router'
 import PlaylistsView from '../src/admin/modules/playlists/PlaylistsView.vue'
 import { playlists } from '../src/admin/modules/playlists/api'
 import { ai } from '../src/admin/modules/ai-settings/api/ai'
@@ -21,3 +22,20 @@ it('AI 只生成预览，放弃保持原值，采用后仍需保存',async()=>{a
 it('生成中阻止重复请求，失败保留编辑内容',async()=>{await page();await button('编辑歌单').trigger('click');await flushPromises();await prompt().setValue('聚会');let reject!:(e:Error)=>void;vi.mocked(playlists.generate).mockReturnValueOnce(new Promise((_,r)=>{reject=r}));await button('生成歌单建议').trigger('click');await button('生成歌单建议').trigger('click');expect(playlists.generate).toHaveBeenCalledTimes(1);reject(new Error('模型限流'));await flushPromises();expect(wrapper!.text()).toContain('模型限流');expect(wrapper!.get('input[aria-label="歌单名称"]').element).toHaveProperty('value','聚会歌单')})
 it('删除先确认且携带当前版本',async()=>{await page();const confirm=vi.spyOn(ElMessageBox,'confirm').mockRejectedValueOnce('cancel');await button('删除').trigger('click');await flushPromises();expect(playlists.remove).not.toHaveBeenCalled();confirm.mockResolvedValueOnce('confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>);await button('删除').trigger('click');await flushPromises();expect(playlists.remove).toHaveBeenCalledWith('p1',2)})
 it('排序与搜索通过服务端分页查询，列表使用紧凑条目',async()=>{await page();expect(wrapper!.get('.card-open .cover')).toBeDefined();await wrapper!.get('select[aria-label="歌单排序"]').setValue('SONGS_DESC');await flushPromises();expect(playlists.list).toHaveBeenLastCalledWith('',0,'SONGS_DESC');await wrapper!.get('input[aria-label="搜索歌单"]').setValue('聚会');await wrapper!.get('form.playlist-filters').trigger('submit');await flushPromises();expect(playlists.list).toHaveBeenLastCalledWith('聚会',0,'SONGS_DESC')})
+
+it('未保存歌单保护浏览器关闭与路由离开，继续编辑保留草稿', async () => {
+  const router=createRouter({history:createMemoryHistory(),routes:[{path:'/playlists',component:PlaylistsView},{path:'/away',component:{template:'<p>其他页面</p>'}}]})
+  await router.push('/playlists')
+  wrapper=mount({template:'<RouterView />'},{global:{plugins:[router],stubs:{teleport:true,SongPicker:true}}})
+  await flushPromises();await button('编辑歌单').trigger('click');await flushPromises()
+  await wrapper.get('input[aria-label="歌单名称"]').setValue('尚未保存的歌单')
+  const event=new Event('beforeunload',{cancelable:true});window.dispatchEvent(event)
+  expect(event.defaultPrevented).toBe(true)
+  const confirm=vi.spyOn(ElMessageBox,'confirm').mockRejectedValueOnce('cancel')
+  await router.push('/away');await flushPromises()
+  expect(router.currentRoute.value.path).toBe('/playlists')
+  expect(wrapper.get('input[aria-label="歌单名称"]').element).toHaveProperty('value','尚未保存的歌单')
+  confirm.mockResolvedValueOnce('confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>)
+  await router.push('/away');await flushPromises()
+  expect(router.currentRoute.value.path).toBe('/away');expect(playlists.save).not.toHaveBeenCalled()
+})

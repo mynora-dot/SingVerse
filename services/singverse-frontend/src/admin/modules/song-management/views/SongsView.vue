@@ -3,7 +3,7 @@ import PageHeader from '../../../shared/ui/PageHeader.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElAlert, ElButton, ElCard, ElEmpty, ElInput, ElPagination, ElSelect, ElOption, ElSkeleton, ElPopover } from 'element-plus'
-import { RefreshRight, Search, FolderOpened, EditPen } from '@element-plus/icons-vue'
+import { RefreshRight, Search, EditPen, Grid, List, Plus, Filter } from '@element-plus/icons-vue'
 import { playback as transcoding } from '../../transcoding/playback'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { classification } from '../../classification/api/classification'
@@ -31,7 +31,12 @@ async function refreshEmbedded(deep = false) {
   finally { refreshingEmbedded.value = false }
 }
 const route = useRoute(), router = useRouter()
-const columns = ref<SongColumn[]>([...defaultSongColumns]), compact = ref(true)
+const columns = ref<SongColumn[]>([...defaultSongColumns]), compact = ref(false)
+const view = ref<'covers' | 'list'>('covers'), searchMode = ref<'identity' | 'path'>('identity')
+const mobileFiltersOpen = ref(false)
+const appliedFilterCount = computed(() => Number(!!route.query.sourceId)
+  + (typeof route.query.tagIds === 'string' ? route.query.tagIds.split(',').filter(Boolean).length : 0)
+  + Number(!!route.query.status && route.query.status !== 'ALL') + Number(route.query.unclassified === 'true'))
 const tagsLoaded = ref(false)
 const visibleRange = computed(() => items.value.length ? `${(page.value - 1) * pageSize.value + 1}–${(page.value - 1) * pageSize.value + items.value.length}` : '0')
 const items = ref<MediaSong[]>([]), sources = ref<MediaSource[]>([]), total = ref(0), page = ref(1)
@@ -62,7 +67,7 @@ function openScrape() { router.push({ path: '/library/songs/metadata', query: se
 function openDetail(song: MediaSong) { detailSong.value = song }
 function openReview(song: MediaSong) { detailSong.value = null; scraping.value = song }
 
-const filtered = computed(() => !!route.query.sourceId || !!route.query.q || (typeof route.query.status === 'string' && route.query.status !== 'ALL') || !!route.query.tagIds || route.query.unclassified === 'true')
+const filtered = computed(() => !!route.query.sourceId || !!route.query.q || !!route.query.search || (typeof route.query.status === 'string' && route.query.status !== 'ALL') || !!route.query.tagIds || route.query.unclassified === 'true')
 
 // 统计
 const reviewCount = computed(() => items.value.filter(needsSongReview).length)
@@ -88,7 +93,7 @@ async function load() {
   const token = ++generation
   loading.value = true; error.value = ''; items.value = []; selectedIds.value = []
   try {
-    const result = await songs.list({ sourceId: typeof route.query.sourceId === 'string' ? route.query.sourceId : '', q: typeof route.query.q === 'string' ? route.query.q : '', status: typeof route.query.status === 'string' ? route.query.status : 'ALL', page: page.value - 1, ...(typeof route.query.tagIds === 'string' && route.query.tagIds ? { tagIds: route.query.tagIds.split(',') } : {}), ...(route.query.unclassified === 'true' ? { unclassified: true } : {}), ...(pageSize.value === 20 ? {} : { size: pageSize.value }) })
+    const result = await songs.list({ sourceId: typeof route.query.sourceId === 'string' ? route.query.sourceId : '', q: typeof route.query.q === 'string' ? route.query.q : '', ...(typeof route.query.search === 'string' && route.query.search ? { search: route.query.search } : {}), status: typeof route.query.status === 'string' ? route.query.status : 'ALL', page: page.value - 1, ...(typeof route.query.tagIds === 'string' && route.query.tagIds ? { tagIds: route.query.tagIds.split(',') } : {}), ...(route.query.unclassified === 'true' ? { unclassified: true } : {}), ...(pageSize.value === 20 ? {} : { size: pageSize.value }) })
     if (!active || token !== generation) return
     items.value = result.items; total.value = result.totalElements; loaded.value = true
   } catch (failure) { if (active && token === generation) error.value = failure instanceof Error ? failure.message : '读取歌曲失败' }
@@ -102,7 +107,7 @@ async function loadSources() {
 async function apply(nextPage = 1) {
   const query: Record<string, string> = {}
   if (sourceId.value) query.sourceId = sourceId.value
-  if (keyword.value.trim()) query.q = keyword.value.trim()
+  if (keyword.value.trim()) query[searchMode.value === 'path' ? 'q' : 'search'] = keyword.value.trim()
   if (status.value !== 'ALL' || tagIds.value.length > 0 || unclassified.value) query.status = status.value
   if (tagIds.value.length) query.tagIds = tagIds.value.join(',')
   if (unclassified.value) query.unclassified = 'true'
@@ -119,7 +124,8 @@ watch(() => route.query, query => {
   tagIds.value = typeof query.tagIds === 'string' ? query.tagIds.split(',').filter(Boolean) : []
   unclassified.value = query.unclassified === 'true'
   sourceId.value = typeof query.sourceId === 'string' ? query.sourceId : ''
-  keyword.value = typeof query.q === 'string' ? query.q : ''
+  searchMode.value = typeof query.q === 'string' && !query.search ? 'path' : 'identity'
+  keyword.value = typeof query.search === 'string' ? query.search : typeof query.q === 'string' ? query.q : ''
   status.value = typeof query.status === 'string' ? query.status : 'ALL'
   pageSize.value = [20, 50, 100].includes(Number(query.size)) ? Number(query.size) : 20
   const requested = Number(query.page ?? 1)
@@ -132,12 +138,11 @@ onBeforeUnmount(() => { active = false; generation++ })
 
 <template>
   <section class="songs-page" :class="{ 'is-selecting': selectionMode }">
-    <PageHeader title="全部歌曲" description="媒体库扫描得到的全部歌曲。可筛选、播放、复核文件名识别结果或编辑歌曲信息。">
+    <PageHeader title="你的每一首好歌" description="收藏、整理，为下一次开唱做好准备。试听用来检查歌曲与播放效果。">
       <template #actions>
         <div class="page-actions">
-          <ElButton text @click="router.push('/library/playlists')">歌单管理</ElButton>
           <ElButton text :icon="EditPen" @click="router.push('/library/songs/metadata')">整理元数据</ElButton>
-          <ElButton text :icon="FolderOpened" @click="router.push('/library/media')">管理来源</ElButton>
+          <ElButton type="primary" :icon="Plus" @click="router.push('/library/media')">添加歌曲</ElButton>
         </div>
       </template>
     </PageHeader>
@@ -145,10 +150,11 @@ onBeforeUnmount(() => { active = false; generation++ })
     <!-- 筛选与搜索 -->
     <ElCard shadow="never" class="filters-card" aria-label="歌曲搜索与筛选">
       <div class="filters-row">
+        <select v-model="searchMode" aria-label="歌曲搜索范围" class="search-mode"><option value="identity">歌曲与歌手</option><option value="path">文件路径</option></select>
         <ElInput
           v-model="keyword"
-          placeholder="搜索文件名（歌名 / 歌手）"
-          aria-label="搜索歌曲文件"
+          :placeholder="searchMode === 'path' ? '搜索文件名或路径' : '搜索歌名、歌手，也可以输入文件名'"
+          aria-label="搜索歌曲"
           :prefix-icon="Search"
           maxlength="200"
           clearable
@@ -158,9 +164,11 @@ onBeforeUnmount(() => { active = false; generation++ })
         <ElButton type="primary" @click="apply()" :loading="loading">搜索</ElButton>
       </div>
 
-      <div class="songs-filter-selects">
+      <ElButton class="mobile-filter-toggle" text :icon="Filter" :aria-expanded="mobileFiltersOpen" aria-controls="song-extra-filters" @click="mobileFiltersOpen = !mobileFiltersOpen">{{ mobileFiltersOpen ? '收起筛选' : '来源与分类筛选' }}<span v-if="appliedFilterCount"> · 已选 {{ appliedFilterCount }} 项</span></ElButton>
+      <div id="song-extra-filters" class="songs-filter-selects" :class="{ expanded: mobileFiltersOpen }">
         <ElSelect v-model="sourceId" aria-label="歌曲来源" placeholder="全部来源" filterable clearable @change="apply()"><ElOption label="全部来源" value="" /><ElOption v-for="source in sources" :key="source.id" :label="source.name" :value="source.id" /></ElSelect>
         <ElSelect v-model="tagIds" aria-label="分类标签" placeholder="按分类筛选" filterable multiple collapse-tags clearable @change="apply()"><ElOption v-for="tag in tags.filter(t => t.active)" :key="tag.id" :label="tag.name" :value="tag.id" /></ElSelect>
+        <ElSelect v-model="status" aria-label="文件名识别状态" @change="apply()"><ElOption label="全部识别状态" value="ALL" /><ElOption label="文件名待复核" value="REVIEW" /><ElOption label="文件名完整" value="MATCHED" /></ElSelect>
       </div>
       <p v-if="sourcesError" class="filter-load-error">{{ sourcesError }} <ElButton link @click="loadSources">重试来源</ElButton></p>
       <p v-if="classificationError" class="filter-load-error">{{ classificationError }} <ElButton link @click="loadTags">重试分类</ElButton></p>
@@ -171,12 +179,13 @@ onBeforeUnmount(() => { active = false; generation++ })
     <div class="songs-toolbar">
       <div class="toolbar-left">
         <h2>{{ filtered ? '筛选结果' : '歌曲列表' }} <span class="count-badge">{{ total }}</span></h2>
-        <span v-if="loaded && items.length" class="page-range">第 {{ visibleRange }} 首</span><span class="table-scroll-hint">更多列可横向滚动</span>
+        <span v-if="loaded && items.length" class="page-range">第 {{ visibleRange }} 首</span><span v-if="view === 'list'" class="table-scroll-hint">更多列可横向滚动</span>
       </div>
       <div class="toolbar-right">
         <label class="page-size-selector top-page-size">每页<select v-model.number="pageSize" aria-label="每页歌曲数" :disabled="loading" @change="changeSize"><option :value="20">20</option><option :value="50">50</option><option :value="100">100</option></select>首</label>
-        <label class="density-control"><input v-model="compact" type="checkbox">紧凑显示</label>
-        <ElPopover placement="bottom-end" :width="245" trigger="click">
+        <div class="view-switch" role="group" aria-label="歌曲显示方式"><button type="button" :aria-pressed="view === 'covers'" aria-label="封面浏览" @click="view = 'covers'"><Grid /></button><button type="button" :aria-pressed="view === 'list'" aria-label="列表整理" @click="view = 'list'"><List /></button></div>
+        <label v-if="view === 'list'" class="density-control"><input v-model="compact" type="checkbox">紧凑显示</label>
+        <ElPopover v-if="view === 'list'" placement="bottom-end" :width="245" trigger="click">
           <template #reference><ElButton class="column-settings-button">显示列</ElButton></template>
           <div class="column-settings"><strong>自定义表格信息</strong><p>歌曲、歌手和操作始终显示</p><label v-for="column in songColumns" :key="column.id"><input v-model="columns" type="checkbox" :value="column.id">{{ column.label }}</label><ElButton text type="primary" @click="columns = [...defaultSongColumns]">恢复默认列</ElButton></div>
         </ElPopover>
@@ -224,8 +233,8 @@ onBeforeUnmount(() => { active = false; generation++ })
 
     <ElSkeleton v-if="loading && !items.length" :rows="5" animated aria-label="正在加载歌曲" />
     <div v-if="items.length" :aria-busy="loading" class="songs-results">
-      <SongLibraryTable class="desktop-song-table" :items="items" :tags="tags" :columns="columns" :compact="compact" :selection-mode="selectionMode" :selected-ids="selectedIds" @play="playing = $event" @review="openReview" @detail="openDetail" @select="toggleSelection" @select-page="selectedIds = $event ? items.map(song => song.id) : []" />
-      <div class="songs-grid mobile-song-list"><SongCard v-for="song in items" :key="song.id" :song="song" :tags="tags" :selection-mode="selectionMode" :selected="selectedIds.includes(song.id)" @play="playing = song" @edit="openReview(song)" @click="openDetail(song)" @select="toggleSelection" /></div>
+      <SongLibraryTable v-if="view === 'list'" class="desktop-song-table" :items="items" :tags="tags" :columns="columns" :compact="compact" :selection-mode="selectionMode" :selected-ids="selectedIds" @play="playing = $event" @review="openReview" @detail="openDetail" @select="toggleSelection" @select-page="selectedIds = $event ? items.map(song => song.id) : []" />
+      <div v-if="view === 'covers'" class="songs-grid"><SongCard v-for="song in items" :key="song.id" :song="song" :tags="tags" :selection-mode="selectionMode" :selected="selectedIds.includes(song.id)" @play="playing = song" @edit="openReview(song)" @click="openDetail(song)" @select="toggleSelection" /></div>
     </div>
     <ElEmpty v-if="loaded && total > 0 && !items.length && !loading && !error" description="这一页已经没有歌曲"><ElButton @click="apply(1)">返回第一页</ElButton></ElEmpty>
 
@@ -285,10 +294,447 @@ onBeforeUnmount(() => { active = false; generation++ })
 
 
 <style scoped>
-.songs-page{min-width:0}.songs-page .page-heading{margin-bottom:14px;gap:12px;align-items:center}.songs-page .page-heading h1{font-size:21px;margin:0;line-height:1.4}.songs-page .page-description{font-size:13px;margin:0}.page-actions{display:flex;gap:4px;flex-wrap:wrap}.page-actions :deep(.el-button){font-size:12px;padding:8px 10px;color:var(--sv-text-secondary)}.page-actions :deep(.el-button){margin:0}.filters-card{margin-bottom:16px;border-radius:12px;box-shadow:none}.filters-card :deep(.el-card__body){padding:12px;display:grid;grid-template-columns:minmax(0,380px) minmax(0,420px) auto;gap:12px 16px;align-items:center;justify-content:start}.filters-row{display:flex;gap:8px;min-width:0}.songs-filter-selects{display:flex;gap:10px;min-width:0}.songs-filter-selects>*{min-width:0;flex:1}.filter-reset{margin:0;justify-self:start;font-size:12px}.filter-load-error{grid-column:1/-1;color:var(--sv-semantic-danger);font-size:12px;margin:0}.songs-toolbar,.toolbar-left,.toolbar-right{display:flex;align-items:center;flex-wrap:wrap;gap:10px}.songs-toolbar{justify-content:space-between;margin-bottom:10px}.toolbar-left h2{font-size:15px;margin:0;display:flex;gap:8px;align-items:center}.table-scroll-hint{display:none;font-size:11px;color:var(--sv-text-tertiary)}.page-range{font-size:12px;color:var(--sv-text-secondary)}.toolbar-right :deep(.el-button){margin:0}.density-control{font-size:12px;color:var(--sv-text-secondary);display:flex;gap:5px;align-items:center;margin-right:4px}.density-control input{accent-color:var(--sv-accent-primary)}.page-summary{display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--sv-text-secondary);margin-bottom:12px}.page-summary b{font-weight:600;color:var(--sv-text-primary)}.page-summary>span:first-child{padding:2px 6px;border-radius:4px;background:var(--sv-surface-3)}.songs-results{margin-bottom:16px}.mobile-song-list{display:none}.error-alert{margin-bottom:16px}.songs-pagination{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.page-size-selector{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--sv-text-secondary)}.page-size-selector select{min-width:66px}.top-page-size select{min-width:58px;padding:5px 8px}.feature-note{font-size:11px}.batch-toolbar{position:relative;display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:var(--sv-accent-soft);border:1px solid var(--sv-border-default);border-radius:var(--sv-radius-md);margin:0 0 14px;gap:16px}.batch-info,.batch-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.batch-count{color:var(--sv-accent-primary);font-weight:600;font-size:13px}.batch-actions :deep(.el-button){margin:0}
-@media(max-width:1050px){.table-scroll-hint{display:inline}.filters-card :deep(.el-card__body){grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto}.toolbar-right{gap:6px}}
-@media(max-width:700px){.songs-page .page-heading h1{font-size:20px;white-space:nowrap}.songs-page .page-heading{align-items:center;flex-wrap:nowrap;gap:8px}.page-actions{gap:0;flex-wrap:nowrap}.page-actions :deep(.el-button){padding:8px 6px;font-size:11px}.filters-card :deep(.el-card__body){grid-template-columns:minmax(0,1fr);padding:12px;gap:12px}.songs-filter-selects{flex-wrap:wrap}.songs-filter-selects>*{flex-basis:120px}.toolbar-left,.toolbar-right{width:100%}.toolbar-right{justify-content:flex-end}.toolbar-right .density-control,.column-settings-button{display:none}.songs-toolbar{gap:12px}.desktop-song-table,.table-scroll-hint{display:none}.mobile-song-list{display:grid;gap:12px}.page-summary{gap:10px}.songs-pagination :deep(.el-pagination__jump){display:none}.songs-pagination :deep(.el-pagination){flex-wrap:wrap;gap:4px}.batch-toolbar{flex-direction:column;align-items:stretch;padding:12px;gap:8px}.batch-actions{justify-content:flex-end}}
-</style>
-<style>
-.column-settings{display:grid;gap:12px;font-size:12px}.column-settings p{margin:0;color:var(--sv-text-secondary);font-size:11px}.column-settings label{display:flex;gap:8px;align-items:center;cursor:pointer}.column-settings input{accent-color:var(--sv-accent-primary);width:15px;height:15px}.column-settings .el-button{justify-self:start;margin:0}
+.songs-page {
+  min-width: 0
+}
+
+.page-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap
+}
+
+.page-actions :deep(.el-button) {
+  margin: 0
+}
+
+.filters-card {
+  margin-bottom: 26px;
+  border-radius: 12px;
+  background: var(--sv-surface-1)
+}
+
+.filters-card :deep(.el-card__body) {
+  padding: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px
+}
+
+.filters-row {
+  display: flex;
+  gap: 8px;
+  flex: 1 1 540px;
+  min-width: 0
+}
+
+.search-mode {
+  width: 135px;
+  flex: none;
+  font-size: 12px;
+  padding-left: 10px
+}
+
+.search-input {
+  min-width: 0;
+  flex: 1
+}
+
+.songs-filter-selects {
+  display: flex;
+  gap: 10px;
+  flex: 1 1 400px;
+  min-width: 0
+}
+
+.songs-filter-selects>* {
+  min-width: 0;
+  flex: 1
+}
+
+.mobile-filter-toggle.el-button {
+  display: none
+}
+
+.filter-reset {
+  margin: 0;
+  font-size: 12px
+}
+
+.filter-load-error {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--sv-semantic-danger)
+}
+
+.songs-toolbar,
+.toolbar-left,
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px
+}
+
+.songs-toolbar {
+  justify-content: space-between;
+  margin-bottom: 14px
+}
+
+.toolbar-left h2 {
+  font-size: 17px
+}
+
+.page-range,
+.table-scroll-hint {
+  font-size: 11px;
+  color: var(--sv-text-tertiary)
+}
+
+.table-scroll-hint {
+  display: none
+}
+
+.toolbar-right {
+  gap: 8px
+}
+
+.toolbar-right :deep(.el-button) {
+  margin: 0;
+  font-size: 12px
+}
+
+.page-size-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--sv-text-secondary)
+}
+
+.page-size-selector select {
+  height: 34px;
+  padding: 0 25px 0 9px;
+  font-size: 11px
+}
+
+.density-control {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--sv-text-secondary)
+}
+
+.density-control input {
+  accent-color: var(--sv-accent-primary)
+}
+
+.view-switch {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  background: var(--sv-surface-3);
+  border-radius: 7px
+}
+
+.view-switch button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 30px;
+  padding: 7px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--sv-text-tertiary);
+  cursor: pointer
+}
+
+.view-switch button[aria-pressed=true] {
+  background: white;
+  color: var(--sv-accent-primary);
+  box-shadow: var(--sv-shadow-sm)
+}
+
+.view-switch svg {
+  width: 18px;
+  height: 18px
+}
+
+.column-settings {
+  display: grid;
+  gap: 10px;
+  padding: 6px;
+  font-size: 12px
+}
+
+.column-settings>p {
+  font-size: 11px;
+  color: var(--sv-text-secondary)
+}
+
+.column-settings label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 30px
+}
+
+.column-settings input {
+  accent-color: var(--sv-accent-primary)
+}
+
+.page-summary {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  font-size: 11px;
+  color: var(--sv-text-secondary)
+}
+
+.page-summary>span:first-child {
+  font-size: 10px;
+  color: var(--sv-text-tertiary);
+  padding: 2px 6px;
+  background: var(--sv-surface-3);
+  border-radius: 4px
+}
+
+.page-summary b {
+  font-weight: 600;
+  color: var(--sv-text-primary)
+}
+
+.songs-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 18px
+}
+
+.batch-toolbar {
+  position: sticky;
+  top: 80px;
+  z-index: 10;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  background: var(--sv-accent-soft);
+  border: 1px solid var(--sv-border-default);
+  border-radius: 10px;
+  box-shadow: var(--sv-shadow-md)
+}
+
+.batch-info,
+.batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap
+}
+
+.batch-count {
+  font-size: 12px;
+  font-weight: 600
+}
+
+.batch-actions :deep(.el-button),
+.batch-info :deep(.el-button) {
+  margin: 0;
+  font-size: 11px
+}
+
+.error-alert {
+  margin-bottom: 18px
+}
+
+.songs-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 28px
+}
+
+.feature-note {
+  font-size: 11px
+}
+
+.songs-empty {
+  background: var(--sv-surface-2);
+  border: 1px dashed var(--sv-border-default);
+  border-radius: 12px
+}
+
+.songs-results {
+  min-width: 0
+}
+
+@media(min-width:1700px) {
+  .songs-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr))
+  }
+}
+
+@media(max-width:1200px) {
+  .songs-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px
+  }
+
+  .toolbar-right {
+    gap: 6px
+  }
+
+  .table-scroll-hint {
+    display: inline
+  }
+}
+
+@media(max-width:900px) {
+  .songs-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr))
+  }
+
+  .filters-row {
+    flex-basis: 100%
+  }
+
+  .songs-filter-selects {
+    flex-basis: 100%
+  }
+
+  .batch-toolbar {
+    top: 68px
+  }
+
+  .songs-toolbar {
+    align-items: flex-start
+  }
+
+  .toolbar-right {
+    justify-content: flex-start
+  }
+
+  .top-page-size {
+    display: none
+  }
+}
+
+@media(max-width:550px) {
+  .songs-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px
+  }
+
+  .filters-card :deep(.el-card__body) {
+    padding: 12px;
+    gap: 10px
+  }
+
+  .filters-row {
+    flex-wrap: wrap
+  }
+
+  .search-mode {
+    width: 124px;
+    height: 36px
+  }
+
+  .search-input {
+    flex-basis: calc(100% - 138px)
+  }
+
+  .filters-row>.el-button {
+    width: 100%;
+    margin: 0
+  }
+
+  .songs-filter-selects {
+    display: none;
+    flex-wrap: wrap;
+    gap: 8px
+  }
+
+  .songs-filter-selects.expanded {
+    display: flex
+  }
+
+  .mobile-filter-toggle.el-button {
+    display: inline-flex;
+    width: 100%;
+    justify-content: flex-start;
+    padding: 6px 0;
+    margin: 0;
+    min-height: 36px;
+    font-size: 12px
+  }
+
+  .songs-filter-selects>:last-child {
+    flex-basis: 100%
+  }
+
+  .songs-toolbar {
+    gap: 12px
+  }
+
+  .toolbar-left {
+    justify-content: space-between;
+    width: 100%
+  }
+
+  .toolbar-right {
+    width: 100%;
+    gap: 6px
+  }
+
+  .toolbar-right>.el-button {
+    flex: 1
+  }
+
+  .density-control {
+    display: none
+  }
+
+  .page-summary {
+    font-size: 10px;
+    gap: 8px;
+    margin-bottom: 16px
+  }
+
+  .batch-toolbar {
+    padding: 12px;
+    position: relative;
+    top: 0
+  }
+
+  .batch-actions {
+    gap: 6px;
+    width: 100%
+  }
+
+  .batch-actions>.el-button {
+    flex: 1
+  }
+
+  .songs-pagination {
+    gap: 18px
+  }
+
+  .songs-pagination :deep(.el-pagination) {
+    font-size: 11px
+  }
+
+  .songs-pagination :deep(.el-pagination__jump) {
+    display: none
+  }
+}
 </style>

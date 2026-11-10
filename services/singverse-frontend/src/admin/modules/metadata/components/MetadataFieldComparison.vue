@@ -17,19 +17,118 @@ function displayValue(value: unknown, field: string): string {
 }
 </script>
 <template>
-  <div class="field-comparison"><table><thead><tr><th>应用字段</th><th>当前值</th><th>候选 / 编辑值</th><th>状态</th></tr></thead><tbody>
+  <div class="field-comparison"><table><caption class="sr-only">核对当前值和候选值，勾选需要应用的字段</caption><thead><tr><th>应用字段</th><th>当前值</th><th>候选 / 编辑值</th><th>状态</th></tr></thead><tbody>
     <tr v-for="field in reviewFields" :key="field"><th><ElCheckbox :aria-label="`应用${fieldNames[field]}`" :model-value="fields.includes(field)" :disabled="disabled || !present(draft[field]) || equal(before[field], draft[field])" @change="value => toggle(field, value)">{{ fieldNames[field] }}</ElCheckbox></th>
-      <td>{{ displayValue(before[field], field) }}</td><td><span>{{ displayValue(draft[field], field) }}</span><small v-if="Object.hasOwn(edits, field)" class="edited">手工编辑</small></td>
+      <td data-label="当前值">{{ displayValue(before[field], field) }}</td><td data-label="候选 / 编辑值"><span>{{ displayValue(draft[field], field) }}</span><small v-if="Object.hasOwn(edits, field)" class="edited">手工编辑</small></td>
       <td><ElTag :type="state(field) === '将修改' ? 'warning' : state(field) === '待补全' ? 'success' : 'info'" size="small">{{ state(field) }}</ElTag></td></tr>
   </tbody></table></div>
 </template>
 <style scoped>
-.field-comparison { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
-th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--sv-border-subtle); vertical-align: middle; overflow-wrap: anywhere; }
-thead th { color: var(--sv-text-secondary); font-weight: 500; background: var(--sv-surface-3); }
-th:first-child { width: 98px; } th:last-child { width: 74px; }
-:deep(.el-checkbox) { margin-right: 0; white-space: normal; height: auto; }
-:deep(.el-checkbox__label) { font-size: 12px; padding-left: 6px; }
-td { color: var(--sv-text-secondary); }.edited { display: block; color: var(--el-color-primary); margin-top: 4px; }
+.field-comparison {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  table-layout: fixed;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--sv-border-subtle);
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+
+thead th {
+  color: var(--sv-text-secondary);
+  font-weight: 500;
+  background: var(--sv-surface-3);
+}
+
+th:first-child {
+  width: 98px;
+}
+
+th:last-child {
+  width: 74px;
+}
+
+:deep(.el-checkbox) {
+  margin-right: 0;
+  white-space: normal;
+  height: auto;
+}
+
+:deep(.el-checkbox__label) {
+  font-size: 12px;
+  padding-left: 6px;
+}
+
+td {
+  color: var(--sv-text-secondary);
+}
+
+.edited {
+  display: block;
+  color: var(--el-color-primary);
+  margin-top: 4px;
+}
+
+@media (max-width: 560px) {
+  .field-comparison {
+    overflow: visible;
+  }
+
+  table,
+  tbody {
+    display: block;
+  }
+
+  thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 10px 16px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--sv-border-subtle);
+  }
+
+  tbody th,
+  tbody td {
+    width: auto;
+    padding: 0;
+    border: 0;
+  }
+
+  tbody th {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  td:last-child {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 5px;
+    color: var(--sv-text-tertiary);
+    font-size: 10px;
+  }
+}
 </style>

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import OverviewView from '../src/admin/modules/overview/views/OverviewView.vue'
 import { auth } from '../src/admin/core/auth/api'
+import { preview } from './fixtures/filename-workspace'
 
 let router: Router
 type Reply = unknown | (() => Response)
@@ -24,7 +25,7 @@ beforeEach(async () => {
   await router.push('/overview')
   auth.account = { username: 'admin', defaultPassword: false, mfaEnabled: true, recoveryCodesRemaining: 8 } as typeof auth.account
 })
-afterEach(() => { vi.unstubAllGlobals(); auth.account = null })
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); auth.account = null })
 
 it('使用真实接口统计歌曲、待复核、来源与电视，并把待办链接到对应页面', async () => {
   const fetchMock = serve({
@@ -78,4 +79,54 @@ it('单项读取失败只影响该项，不显示“无待办”，可重新读�
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
     expect(wrapper.findAll('.stat-tile')[0]!.text()).toContain('0')
   } finally { wrapper.unmount() }
+})
+
+it('首页展示真实收藏与后台任务，未知整体进度不会冒充百分比', async () => {
+  const song = { id: 'recent-song', result: { ...preview().result, title: '收藏里的歌', artists: ['家庭歌手'] } }
+  serve({
+    '/api/v1/media-songs?page=0&size=6': { items: [song] },
+    '/api/v1/media-songs': { items: [], totalElements: 1 },
+    '/api/v1/playlists': { items: [{ id: 'playlist', name: '周末相聚', count: 3 }] },
+    '/api/v1/background-tasks': { items: [{ id: 'task-1', name: '准备全家合唱', type: 'AUDIO_BATCH', status: 'RUNNING', stage: 'PROCESSING', progress: { completed: null, total: null, percent: null, unit: 'SONGS' }, statistics: {} }] },
+    '/api/v1/media-sources': { items: [source('a')], totalElements: 1 },
+    '/api/v1/admin/tv-devices': { devices: [], pending: [] },
+    '/api/health': { status: 'UP' },
+  })
+  const wrapper = mount(OverviewView, { global: { plugins: [router] } })
+  try {
+    await flushPromises()
+    expect(wrapper.get('.shelf-song').text()).toContain('收藏里的歌')
+    expect(wrapper.get('.shelf-song').text()).toContain('家庭歌手')
+    expect(wrapper.get('.shelf-song').attributes('href')).toContain('detailSongId=recent-song')
+    expect(wrapper.get('.home-playlists').text()).toContain('周末相聚3 首歌曲')
+    expect(wrapper.get('.home-task').text()).toContain('整体进度暂不可用')
+    expect(wrapper.get('.home-task').text()).not.toContain('%')
+    await wrapper.get('.home-task').trigger('click'); await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/system/tasks/task-1')
+  } finally { wrapper.unmount() }
+})
+
+it('首页离开或后台隐藏后停止任务轮询，恢复可见时读取真实状态', async () => {
+  vi.useFakeTimers()
+  const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+  const fetchMock = serve({
+    '/api/v1/media-songs': { items: [], totalElements: 0 },
+    '/api/v1/playlists': { items: [] },
+    '/api/v1/background-tasks': { items: [] },
+    '/api/v1/media-sources': { items: [], totalElements: 0 },
+    '/api/v1/admin/tv-devices': { devices: [], pending: [] },
+    '/api/health': { status: 'UP' },
+  })
+  const taskCalls = () => fetchMock.mock.calls.filter(([path]) => path.startsWith('/api/v1/background-tasks')).length
+  const wrapper = mount(OverviewView, { global: { plugins: [router] } })
+  try {
+    await flushPromises(); expect(taskCalls()).toBe(1)
+    await vi.advanceTimersByTimeAsync(10000); expect(taskCalls()).toBe(2)
+    visibility.mockReturnValue('hidden'); document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(30000); expect(taskCalls()).toBe(2)
+    visibility.mockReturnValue('visible'); document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises(); expect(taskCalls()).toBe(3)
+    wrapper.unmount()
+    await vi.advanceTimersByTimeAsync(30000); expect(taskCalls()).toBe(3)
+  } finally { if (wrapper.exists()) wrapper.unmount(); visibility.mockRestore() }
 })

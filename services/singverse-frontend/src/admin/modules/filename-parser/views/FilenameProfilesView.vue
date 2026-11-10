@@ -9,9 +9,12 @@ import type { ParserProfile, ParserWorkspace, ProfileInput, RulePreview } from '
 import type { FormatItem } from '../utils'
 import { attemptFor, candidateEntries, copyValue, errorMessage, expressionFor, formatItems } from '../utils'
 import RulePreviewPanel from '../components/RulePreviewPanel.vue'
+import SourceWorkspaceNav from '../../media-library/components/SourceWorkspaceNav.vue'
 
 type GalleryItem = FormatItem & { attempt?: RulePreview['attempts'][number] }
 
+const props = defineProps<{ embedded?: boolean; profileId?: string }>()
+const emit = defineEmits<{ useProfile: [id: string]; rules: [profileId: string] }>()
 const route = useRoute()
 const router = useRouter()
 const workspace = ref<ParserWorkspace | null>(null)
@@ -102,12 +105,16 @@ async function discard(): Promise<boolean> {
 function beforeUnload(event: BeforeUnloadEvent) {
   if (dirty.value) { event.preventDefault(); event.returnValue = '' }
 }
-onBeforeRouteLeave(() => !busy.value && discard())
+async function canLeave() { return !busy.value && await discard() }
+defineExpose({ canLeave })
+onBeforeRouteLeave(() => props.embedded || canLeave())
 onBeforeRouteUpdate(async (to, from) => {
+  if (props.embedded) return true
   if (to.query.profile !== from.query.profile) return !dirty.value || (!busy.value && await discard())
   return true
 })
 watch(() => route.query.profile, (id) => {
+  if (props.embedded) return
   if (!workspace.value || typeof id !== 'string') return
   const profile = workspace.value.profiles.find(p => p.id === id)
   if (profile) select(profile)
@@ -128,7 +135,7 @@ async function load(preserve = false) {
       else { selectedId.value = null; baseline.value = ''; }
       ElMessage.info('已加载最新规则库和修订号，当前草稿已保留，请核对后预览或保存。')
     } else {
-      const requested = typeof route.query.profile === 'string' ? route.query.profile : selectedId.value
+      const requested = props.embedded ? props.profileId : typeof route.query.profile === 'string' ? route.query.profile : selectedId.value
       const found = response.profiles.find(p => p.id === requested)
       const fallback = response.profiles.find(p => p.id === 'default') ?? response.profiles[0]
       if (found || fallback) select((found ?? fallback)!)
@@ -139,7 +146,7 @@ async function load(preserve = false) {
 }
 async function choose(id: string) {
   if (!editable.value || id === selectedId.value) return
-  if (route.query.profile === id) {
+  if (props.embedded || route.query.profile === id) {
     if (await discard()) {
       const saved = workspace.value?.profiles.find(p => p.id === id)
       if (saved) select(saved)
@@ -183,7 +190,7 @@ async function save() {
     workspace.value = response
     const saved = response.profiles.find(p => p.id === response.changedId)!
     select(saved)
-    await router.replace({ query: { ...route.query, profile: saved.id } })
+    if (!props.embedded) await router.replace({ query: { ...route.query, profile: saved.id } })
     ElMessage.success('解析方案已保存。')
   } catch (failure) { if (active) error.value = handleFailure(failure) }
   finally { if (active) busy.value = false }
@@ -196,7 +203,7 @@ async function remove() {
     if (!active) return
     workspace.value = response
     select(response.profiles.find(p => p.id === 'default')!)
-    await router.replace({ query: { ...route.query, profile: 'default' } })
+    if (!props.embedded) await router.replace({ query: { ...route.query, profile: 'default' } })
   } catch (failure) { if (active) error.value = handleFailure(failure) }
   finally { if (active) busy.value = false }
 }
@@ -226,12 +233,21 @@ async function parse() {
 function rowError(id: string, index: number) {
   return memberError.value && (memberError.value.ruleId === id || memberError.value.ruleIndex === index) ? memberError.value.message : ''
 }
+async function openRules() {
+  if (props.embedded && await canLeave()) emit('rules', selectedId.value ?? props.profileId ?? 'default')
+}
 onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void load() })
 </script>
 
 <template>
-  <section class="profiles-page management-page">
-    <PageHeader title="解析方案" description="填一个真实的文件名，挑出能识别的格式并保存，扫描时会按方案从文件名中提取歌名和歌手。" />
+  <section class="profiles-page management-page" :class="{ 'profiles-embedded': embedded }">
+    <template v-if="!embedded">
+      <PageHeader title="歌曲来源的文件名识别" description="填一个真实的文件名，挑出能识别的格式并保存，再为歌曲来源选择方案。扫描时用它提取歌名和歌手。" />
+      <SourceWorkspaceNav />
+    </template>
+    <p v-else class="embedded-profile-intro">先试一个文件名，再选择适合的格式；也可以复制方案单独使用。</p>
+    <details v-if="embedded" class="profile-sharing-note"><summary>共享方案的修改会影响其他来源</summary><p>同一方案可供多个来源使用，保存修改会影响它们之后的扫描。只想调整一个来源时，请先复制方案。已有歌曲不会在这里被重新扫描。</p></details>
+    <p v-else class="profile-sharing-note">同一方案可供多个来源使用，保存修改会影响它们之后的扫描。只想调整一个来源时，请先复制方案。已有歌曲不会在这里被重新扫描。</p>
     <div v-if="error || conflict || parseError" class="page-feedback"><ElAlert v-if="error" :title="error" type="error" :closable="false" role="alert" /><ElButton :disabled="loading || busy" @click="load(!!workspace)">{{ workspace ? '加载最新配置，保留草稿' : '重试加载' }}</ElButton></div>
     <p v-if="loading" class="page-status" role="status">正在读取解析方案…</p>
     <template v-if="workspace">
@@ -267,7 +283,7 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
           <ElCard shadow="never" class="profile-editor">
             <details class="rules-help profiles-advanced">
               <summary>4．高级配置：顺序、启停与自定义格式</summary>
-              <div class="members-head"><h3>执行顺序 <span class="count-badge">{{ draft.entries.length }}</span></h3><RouterLink class="library-link" to="/library/filename-parser">自定义格式库 ↗</RouterLink></div>
+              <div class="members-head"><h3>执行顺序 <span class="count-badge">{{ draft.entries.length }}</span></h3><ElButton v-if="embedded" text :disabled="!editable" @click="openRules">自定义规则</ElButton><RouterLink v-else class="library-link" :to="{ path: '/library/media/recognition/rules', query: { ...route.query, profile: selectedId ?? undefined } }">自定义规则 →</RouterLink></div>
               <p class="muted preview-hint">按顺序执行，第一条完整命中的格式生效。</p>
               <ol class="entries"><li v-for="(entry, index) in draft.entries" :key="entry.ruleId" class="entry" :class="{ 'entry-disabled': !entry.enabled }"><span class="rule-order">{{ String(index + 1).padStart(2, '0') }}</span><div class="entry-body"><div class="entry-title"><strong>{{ ruleName(entry.ruleId) }}</strong><span v-if="!entry.enabled" class="entry-flag">已停用</span></div><code>{{ expressionFor(definition(entry.ruleId), workspace) }}</code><p v-if="!definition(entry.ruleId)" class="inline-error entry-note">引用已失效，请加载最新配置后明确移除此项或选择其他格式。</p><p v-if="rowError(entry.ruleId, index)" class="inline-error entry-note" role="alert">{{ rowError(entry.ruleId, index) }}</p></div><div class="entry-controls"><ElSwitch v-model="entry.enabled" :aria-label="`启用 ${ruleName(entry.ruleId)}`" :disabled="!editable" size="small" /><ElButton size="small" :disabled="!editable || index === 0" :aria-label="`上移 ${ruleName(entry.ruleId)}`" @click="move(index, -1)">上移</ElButton><ElButton size="small" :disabled="!editable || index === draft.entries.length - 1" :aria-label="`下移 ${ruleName(entry.ruleId)}`" @click="move(index, 1)">下移</ElButton><ElButton size="small" class="remove-btn" :disabled="!editable" :aria-label="`移除 ${ruleName(entry.ruleId)}`" @click="draft.entries.splice(index, 1)">移除</ElButton></div></li></ol>
               <p v-if="!draft.entries.length" class="muted entries-empty">方案里还没有成员；空方案不会调用其他解析器兜底。</p>
@@ -284,10 +300,17 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
         </div>
       </div>
     </template>
+    <div v-if="embedded && workspace" class="embedded-profile-confirm"><p>{{ dirty ? '方案还有未保存修改，请先保存。' : `待使用：${draft.name}` }}</p><ElButton type="primary" :disabled="!editable || dirty || conflict || !selectedId" @click="selectedId && emit('useProfile', selectedId)">使用此方案并返回</ElButton></div>
   </section>
 </template>
 
 <style scoped>
+.embedded-profile-intro { margin-bottom: 16px; color: var(--sv-text-secondary); font-size: 13px; line-height: 1.8; }
+.profile-sharing-note { margin: 0 0 24px; padding: 14px 18px; background: var(--sv-surface-3); border-radius: var(--sv-radius-sm); color: var(--sv-text-secondary); font-size: 12px; line-height: 1.9; }
+.profile-sharing-note summary { cursor: pointer; font-weight: 600; }
+.profile-sharing-note[open] summary { margin-bottom: 10px; }
+.embedded-profile-confirm { position: sticky; bottom: -1px; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; padding: 16px 0; background: var(--sv-surface-1); border-top: 1px solid var(--sv-border-subtle); }
+.embedded-profile-confirm p { flex: 1; min-width: 140px; font-size: 12px; color: var(--sv-text-secondary); overflow-wrap: anywhere; }
 .profiles-page > .page-feedback,
 .profiles-page > .page-status {
   margin-bottom: var(--sv-space-5);
@@ -343,6 +366,11 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
   .entry-controls { grid-column: 1 / -1; justify-content: flex-end; margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--sv-border-subtle); }
 }
 @media (max-width: 600px) {
+  .profiles-embedded .embedded-profile-intro,
+  .profiles-embedded .rail-head { display: none; }
+  .profiles-embedded .rail-actions { margin-top: 0; margin-bottom: 12px; }
+  .profiles-embedded .profile-choice { padding: 10px 12px; }
+  .profiles-embedded .profile-sharing-note { margin-bottom: 18px; }
   .editor-head { gap: 16px; }
   .editor-actions { gap: 10px; }
   .editor-actions > .el-tag { width: fit-content; }

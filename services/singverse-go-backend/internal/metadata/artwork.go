@@ -36,8 +36,18 @@ func (s *Service) ArtistArtwork(ctx context.Context, name string, titles []strin
 	if _, e := clean(name, 200); e != nil {
 		return nil, e
 	}
+	cfg, e := s.settings(ctx, s.db, false)
+	if e != nil {
+		return nil, e
+	}
+	if !cfg.Enabled {
+		return nil, nil
+	}
 	var failure error
 	for _, provider := range []string{"NETEASE", "QQ"} {
+		if !contains(cfg.Providers, provider) {
+			continue
+		}
 		ids := []string{}
 		for _, r := range refs {
 			if r.Provider == provider && artistCanonical(r.Name) == artistCanonical(name) && !contains(ids, r.ID) {
@@ -174,7 +184,17 @@ func (s *Service) artistArtwork(ctx context.Context, provider, id, name string) 
 	if portrait == "" || strings.Contains(portrait, "5639395138885805") {
 		return nil, nil
 	}
-	return &Artwork{Provider: "NETEASE", ExternalID: id, Portrait: portrait}, nil
+	checked := checkedCover("NETEASE", &portrait)
+	if checked == nil {
+		return nil, nil
+	}
+	u, _ := url.Parse(*checked)
+	query := u.Query()
+	// Fetch a portrait-sized image rather than a multi-megabyte original.
+	// Keep the same download/decode limits as other external artwork.
+	query.Set("param", "640y640")
+	u.RawQuery = query.Encode()
+	return &Artwork{Provider: "NETEASE", ExternalID: id, Portrait: u.String()}, nil
 }
 func weapi(body string) (string, string, error) {
 	const publicKey = "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDgtQn2JZ34ZC28NWYpAUd98iZ37BUrX/aKzmFbt7clFSs6sXqHauqKWqdtLkF2KexO40H1YTX8z2lSgBBOAxLsvaklV8k4cBFK9snQXE9/DDaFt6Rr7iVZMldczhC0JNgTz+SHXT6CBHuX3e9SdB1Ua44oncaTWz7OBGLbCiK45wIDAQAB"

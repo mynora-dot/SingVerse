@@ -6,22 +6,24 @@ import MediaLibraryView from '../src/admin/modules/media-library/views/MediaLibr
 import { media } from '../src/admin/modules/media-library/api/media'
 import { lx } from '../src/admin/modules/lx-downloads/api'
 
-import { parserProfiles } from '../src/admin/modules/filename-parser/api/rules'
+import { parserProfiles, ruleLibrary } from '../src/admin/modules/filename-parser/api/rules'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import { workspace } from './fixtures/filename-workspace'
 
-vi.mock('../src/admin/modules/filename-parser/api/rules', () => ({ parserProfiles: { load: vi.fn() } }))
+vi.mock('../src/admin/modules/filename-parser/api/rules', () => ({ parserProfiles: { load: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), preview: vi.fn() }, ruleLibrary: { load: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() } }))
 vi.mock('../src/admin/modules/lx-downloads/api', () => ({ lx: { status: vi.fn() } }))
 vi.mock('../src/admin/modules/media-library/api/media', () => ({ media: { get: vi.fn(), directories: vi.fn(), list: vi.fn(), save: vi.fn(), remove: vi.fn(), scan: vi.fn(), songs: vi.fn(), createTask: vi.fn(), latestTask: vi.fn(), task: vi.fn(), cancelTask: vi.fn() } }))
 let wrapper: VueWrapper
 let router: Router
 beforeEach(async () => {
   router = createRouter({ history: createMemoryHistory(), routes: [
-    { path: '/library/media', component: { template: '<div />' } },
+    { path: '/library/media', component: MediaLibraryView },
+    { path: '/library/media/recognition', component: { template: '<div />' } },
     { path: '/library/songs', component: { template: '<div />' } },
   ] })
   await router.push('/library/media')
   vi.mocked(parserProfiles.load).mockResolvedValue(workspace())
+  vi.mocked(ruleLibrary.load).mockResolvedValue(workspace())
   vi.mocked(media.list).mockResolvedValue({ items: [], page: 0, size: 20, totalElements: 0 })
   vi.mocked(media.directories).mockImplementation(async (path = '') => ({ path: path || '/media', parent: '/',
     items: path === '/media/songs' ? [] : [{ name: 'songs', path: '/media/songs' }], hasMore: false }))
@@ -238,6 +240,79 @@ async function selectFolder() {
   await wrapper.get('button[aria-label="进入 songs"]').trigger('click'); await flushPromises()
   await button('使用当前文件夹').trigger('click'); await flushPromises()
 }
+it('在来源内试验和选择方案，明确使用后再保存来源，WebDAV 输入全程保留', async () => {
+  wrapper = mount({ template: '<RouterView />' }, { global: { plugins: [router], stubs: { teleport: true } } }); await flushPromises()
+  await button('添加媒体库').trigger('click'); await flushPromises(); await button('WebDAV').trigger('click'); await flushPromises()
+  const form = wrapper.findComponent(ElDialog)
+  await form.get('input[placeholder="https://nas.example/dav/歌曲目录/"]').setValue('https://nas.example.invalid/dav/')
+  await form.get('input[autocomplete="off"]').setValue('reader')
+  await form.get('input[type="password"]').setValue('draft-secret')
+  await form.get('input[placeholder="留空使用文件夹名称"]').setValue('收藏歌曲')
+  await button('试验与调整').trigger('click'); await flushPromises()
+  await vi.waitFor(() => expect(wrapper.find('input[aria-label="方案名称"]').exists()).toBe(true))
+  expect(router.currentRoute.value.fullPath).toBe('/library/media')
+  expect(wrapper.text()).toContain('保存修改会影响它们之后的扫描')
+  await wrapper.findAll('button.profile-choice').find(b => b.text().includes('反向方案'))!.trigger('click'); await flushPromises()
+  expect(media.save).not.toHaveBeenCalled()
+  expect(parserProfiles.update).not.toHaveBeenCalled()
+  await button('使用此方案并返回').trigger('click'); await flushPromises()
+  expect(form.get('input[type="password"]').element).toHaveProperty('value', 'draft-secret')
+  expect(form.get('input[autocomplete="off"]').element).toHaveProperty('value', 'reader')
+  expect(form.get('input[placeholder="留空使用文件夹名称"]').element).toHaveProperty('value', '收藏歌曲')
+  expect(form.get('select[aria-label="解析方案"]').element).toHaveProperty('value', 'reverse-profile')
+  expect(media.save).not.toHaveBeenCalled()
+  await form.get('form').trigger('submit'); await flushPromises()
+  expect(media.save).toHaveBeenCalledWith(expect.objectContaining({ name: '收藏歌曲', parserProfileId: 'reverse-profile', password: 'draft-secret' }), undefined)
+})
+it('识别方案草稿在返回来源或关闭时受保护，拒绝放弃会留在原编辑位置', async () => {
+  vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel')
+  wrapper = mount({ template: '<RouterView />' }, { global: { plugins: [router], stubs: { teleport: true } } }); await flushPromises()
+  await button('添加媒体库').trigger('click'); await flushPromises()
+  await button('试验与调整').trigger('click'); await flushPromises()
+  await vi.waitFor(() => expect(wrapper.find('input[aria-label="方案名称"]').exists()).toBe(true))
+  await wrapper.get('input[aria-label="方案名称"]').setValue('未保存的识别方案')
+  expect(button('使用此方案并返回').attributes('disabled')).toBeDefined()
+  await button('← 返回来源设置').trigger('click'); await flushPromises()
+  expect(wrapper.get('input[aria-label="方案名称"]').element).toHaveProperty('value', '未保存的识别方案')
+  const close = wrapper.findComponent(ElDialog).props('beforeClose') as (done: () => void) => Promise<void>
+  const done = vi.fn(); await close(done); await flushPromises()
+  expect(done).not.toHaveBeenCalled()
+  expect(wrapper.text()).toContain('未保存草稿')
+  await router.push('/library/songs'); await flushPromises()
+  expect(router.currentRoute.value.path).toBe('/library/media')
+  expect(media.save).not.toHaveBeenCalled()
+})
+it('自定义规则在来源工作区内打开，返回时刷新方案且保留来源草稿', async () => {
+  wrapper = mount({ template: '<RouterView />' }, { global: { plugins: [router], stubs: { teleport: true } } }); await flushPromises()
+  await button('添加媒体库').trigger('click'); await flushPromises()
+  await wrapper.get('input[placeholder="留空使用文件夹名称"]').setValue('还在编辑的来源')
+  await button('试验与调整').trigger('click'); await flushPromises()
+  await vi.waitFor(() => expect(wrapper.find('.profiles-advanced > summary').exists()).toBe(true))
+  await wrapper.get('.profiles-advanced > summary').trigger('click')
+  await button('自定义规则').trigger('click'); await flushPromises()
+  await vi.waitFor(() => expect(ruleLibrary.load).toHaveBeenCalledTimes(1))
+  expect(ruleLibrary.load).toHaveBeenCalledTimes(1)
+  expect(wrapper.text()).toContain('新增规则')
+  const loads = vi.mocked(parserProfiles.load).mock.calls.length
+  await button('← 返回识别方案').trigger('click'); await flushPromises()
+  expect(parserProfiles.load).toHaveBeenCalledTimes(loads + 1)
+  await button('← 返回来源设置').trigger('click'); await flushPromises()
+  expect(wrapper.get('input[placeholder="留空使用文件夹名称"]').element).toHaveProperty('value', '还在编辑的来源')
+  expect(router.currentRoute.value.fullPath).toBe('/library/media')
+})
+it('来源自身的未保存修改在取消、离开和刷新时受到保护', async () => {
+  vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel')
+  wrapper = mount({ template: '<RouterView />' }, { global: { plugins: [router], stubs: { teleport: true } } }); await flushPromises()
+  await button('添加媒体库').trigger('click'); await flushPromises()
+  await wrapper.get('input[placeholder="留空使用文件夹名称"]').setValue('未保存的来源')
+  await button('取消').trigger('click'); await flushPromises()
+  expect(wrapper.findComponent(ElDialog).props('modelValue')).toBe(true)
+  await router.push('/library/songs'); await flushPromises()
+  expect(router.currentRoute.value.path).toBe('/library/media')
+  const event = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(event)
+  expect(event.defaultPrevented).toBe(true)
+  expect(wrapper.get('input[placeholder="留空使用文件夹名称"]').element).toHaveProperty('value', '未保存的来源')
+})
 it('下载位置标记可见，更换绑定明确确认原目录和新目录', async () => {
   vi.mocked(lx.status).mockResolvedValue({ target: { id: 'old', path: '/old-downloads' } } as never)
   vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never)

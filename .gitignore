@@ -100,6 +100,7 @@ singverse-compute*.tar.gz
 /docs/*
 # Reviewable documentation for the Go replacement; historical studies stay local.
 !/docs/architecture.md
+!/docs/admin-experience.md
 !/docs/authentication.md
 !/docs/development.md
 !/docs/docker.md

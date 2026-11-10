@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElAlert } from 'element-plus'
+import TaskGuide from '../../shared/ui/TaskGuide.vue'
 import PageHeader from '../../shared/ui/PageHeader.vue'
 import { authRequest } from '../../core/auth/api'
 import { base, type Batch, type Node } from './api'
@@ -98,12 +99,13 @@ onBeforeUnmount(() => { active = false; clearTimeout(timer) })
 </script>
 
 <template>
-  <main class="audio-processing">
+  <section class="audio-processing">
     <PageHeader title="原唱与伴奏" description="自带伴奏的歌曲先试听标记；普通立体声可选极速中心抵消或轻量 AI 分离，试听后生成整曲。原始文件保持只读。">
       <template #actions>
         <button type="button" class="ready-pill" :class="anyReady ? 'is-ready' : 'is-pending'" @click="setup()"><span class="sv-status-dot" :class="anyReady ? 'ok' : 'warn'" aria-hidden="true" />{{ readiness.ready ? readiness.title : anyReady ? '极速档已就绪' : '伴奏生成未就绪' }}</button>
       </template>
     </PageHeader>
+    <TaskGuide v-if="tab === 'songs'" label="原唱与伴奏准备流程" :steps="[{ title: '先检查音轨', description: '识别已有原唱与伴奏，试听后标记。' }, { title: '按需要生成', description: '没有伴奏时，先试片段再生成整曲。' }, { title: '核对成果版本', description: '试听处理结果，保留原始媒体。' }]" />
     <div class="tabs" role="tablist" aria-label="原唱与伴奏功能">
       <button v-for="(item, index) in tabs" :id="'audio-tab-' + item.id" :key="item.id" ref="tabButtons" type="button" role="tab" class="tab" :class="{ 'is-active': tab === item.id }" :aria-selected="tab === item.id" :aria-controls="'audio-panel-' + item.id" :tabindex="tab === item.id ? 0 : -1" @click="navigate(item.id)" @keydown="keyNav($event, index)">
         {{ item.name }}<span v-if="item.id === 'tasks' && activeBatches" class="sv-count-pill" :aria-label="`${activeBatches} 个进行中`">{{ activeBatches }}</span>
@@ -117,7 +119,7 @@ onBeforeUnmount(() => { active = false; clearTimeout(timer) })
       </KeepAlive>
     </section>
     <BatchConfirmDialog :batch="preview" :ready="previewReady" :busy="starting" @start="start" @close="closePreview" @cancel="cancelPreparation" />
-  </main>
+  </section>
 </template>
 
 <style scoped>

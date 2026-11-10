@@ -2906,6 +2906,16 @@
           },
           {
             "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Literal case-insensitive substring of the effective confirmed title/artists, parsed identity fallback, or relative path. Ignores stale/unconfirmed metadata. Combined with q and other filters using AND; filtering and counting occur on the server before pagination in scannedAt DESC, id ASC order. Blank is ignored. Percent/underscore are literal; control characters rejected."
+          },
+          {
+            "in": "query",
             "name": "status",
             "required": false,
             "schema": {

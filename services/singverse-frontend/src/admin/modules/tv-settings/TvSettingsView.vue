@@ -75,7 +75,7 @@ onMounted(load)
 
 <template>
   <section class="tv-settings">
-    <PageHeader title="电视设置" description="为客厅里的 SingVerse 配置专属首页。所有已授权电视共用此设置。">
+    <PageHeader title="客厅，也有你的风格" description="为客厅里的 SingVerse 配置专属首页。所有已授权电视共用此设置。">
       <template #actions><ElButton :disabled="busy" @click="load">重新加载</ElButton><ElButton type="primary" :loading="busy" :disabled="!settings || !dirty" @click="save">保存设置</ElButton></template>
     </PageHeader>
     <div v-if="error" role="alert" class="tv-error">{{ error }}</div>
@@ -112,5 +112,318 @@ onMounted(load)
 </template>
 
 <style scoped>
-.tv-settings{display:grid;gap:20px}.tv-error{background:var(--el-color-danger-light-9);color:var(--el-color-danger);border-radius:10px;padding:14px 18px}.tv-preview-panel,.tv-form,.tv-banners{padding:24px}.tv-section-title{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:20px}.tv-section-title h2{font-size:18px;margin:0}.tv-section-title p,.tv-section-title>span{font-size:13px;color:var(--el-text-color-secondary);margin:8px 0 0}.tv-section-title h2 span{font-size:13px;color:var(--el-text-color-secondary);margin-left:8px}.tv-hero-preview{height:300px;position:relative;border-radius:18px;padding:28px 40px;background:radial-gradient(ellipse at 80% 20%,#354054,#0b1321 65%);background-size:cover;background-position:center;color:#f3eee6;overflow:hidden}.tv-wordmark{font-size:21px;font-weight:600;display:block;margin-bottom:28px}.tv-hero-preview>small{font-size:12px;letter-spacing:3px;color:#d2c3aa}.tv-hero-preview h3{font-size:32px;margin:12px 0;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tv-hero-preview p{font-size:15px;color:#c2c8d3;margin:12px 0;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tv-fake-button{display:inline-block;color:#11151e;background:#f3eee6;border-radius:8px;padding:10px 20px;font-size:13px}.tv-preview-pages{position:absolute;right:28px;bottom:28px;display:flex;gap:8px}.tv-preview-pages button{border:1px solid #ffffff35;background:#131d2d;color:#fff;border-radius:50%;width:28px;height:28px;cursor:pointer}.tv-preview-pages button.active{background:#f3eee6;color:#111}.tv-preview-note{position:absolute;right:28px;bottom:28px;font-size:12px;color:#9ea4b3}.tv-form>label{display:grid;grid-template-columns:140px 1fr;align-items:center;gap:20px;margin:18px 0;max-width:850px}.tv-option{display:flex;justify-content:space-between;align-items:center;max-width:850px;border-top:1px solid var(--el-border-color-lighter);padding:18px 0}.tv-option small{display:block;color:var(--el-text-color-secondary);margin-top:6px;font-size:12px}.tv-banner-row{display:flex;align-items:center;gap:14px;border-top:1px solid var(--el-border-color-lighter);padding:18px 0}.tv-banner-row img{width:160px;aspect-ratio:16/9;object-fit:cover;border-radius:9px;background:#171b24}.tv-banner-label{flex:1;min-width:100px;max-width:440px;margin-right:auto}.tv-banner-label>span{display:block;font-size:12px;color:var(--el-text-color-secondary);margin-top:8px}.tv-empty{padding:32px;text-align:center;color:var(--el-text-color-secondary)}@media(max-width:900px){.tv-banner-row{flex-wrap:wrap}.tv-banner-row img{width:120px}.tv-section-title{align-items:flex-start}.tv-form>label{grid-template-columns:90px 1fr}.tv-hero-preview{padding:24px}.tv-hero-preview h3{font-size:24px}}
+.tv-settings {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start
+}
+
+.tv-settings>.page-heading,
+.tv-settings>.tv-error,
+.tv-banners {
+  grid-column: 1/-1
+}
+
+.tv-error {
+  background: var(--el-color-danger-light-9);
+  color: var(--el-color-danger);
+  border-radius: 10px;
+  padding: 14px 18px
+}
+
+.tv-preview-panel,
+.tv-form,
+.tv-banners {
+  padding: 24px
+}
+
+.tv-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 20px
+}
+
+.tv-section-title h2 {
+  font-size: 18px;
+  margin: 0
+}
+
+.tv-section-title p,
+.tv-section-title>span {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  margin: 8px 0 0
+}
+
+.tv-section-title h2 span {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  margin-left: 8px
+}
+
+.tv-hero-preview {
+  aspect-ratio: 16/9;
+  position: relative;
+  border-radius: 18px;
+  padding: 28px 40px;
+  background: radial-gradient(ellipse at 80% 20%, #354054, #0b1321 65%);
+  background-size: cover;
+  background-position: center;
+  color: #f3eee6;
+  overflow: hidden
+}
+
+.tv-wordmark {
+  font-size: 21px;
+  font-weight: 600;
+  display: block;
+  margin-bottom: 28px
+}
+
+.tv-hero-preview>small {
+  font-size: 12px;
+  letter-spacing: 3px;
+  color: #d2c3aa
+}
+
+.tv-hero-preview h3 {
+  font-size: 32px;
+  margin: 12px 0;
+  max-width: 70%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap
+}
+
+.tv-hero-preview p {
+  font-size: 15px;
+  color: #c2c8d3;
+  margin: 12px 0;
+  max-width: 70%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap
+}
+
+.tv-fake-button {
+  display: inline-block;
+  color: #11151e;
+  background: #f3eee6;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 13px
+}
+
+.tv-preview-pages {
+  position: absolute;
+  right: 28px;
+  bottom: 28px;
+  display: flex;
+  gap: 8px
+}
+
+.tv-preview-pages button {
+  border: 1px solid #ffffff35;
+  background: #131d2d;
+  color: #fff;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  cursor: pointer
+}
+
+.tv-preview-pages button.active {
+  background: #f3eee6;
+  color: #111
+}
+
+.tv-preview-note {
+  position: absolute;
+  right: 28px;
+  bottom: 28px;
+  font-size: 12px;
+  color: #9ea4b3
+}
+
+.tv-form>label {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  align-items: center;
+  gap: 20px;
+  margin: 18px 0;
+  max-width: 850px
+}
+
+.tv-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 850px;
+  border-top: 1px solid var(--el-border-color-lighter);
+  padding: 18px 0
+}
+
+.tv-option small {
+  display: block;
+  color: var(--el-text-color-secondary);
+  margin-top: 6px;
+  font-size: 12px
+}
+
+.tv-banner-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-top: 1px solid var(--el-border-color-lighter);
+  padding: 18px 0
+}
+
+.tv-banner-row img {
+  width: 160px;
+  aspect-ratio: 16/9;
+  object-fit: cover;
+  border-radius: 9px;
+  background: #171b24
+}
+
+.tv-banner-label {
+  flex: 1;
+  min-width: 100px;
+  max-width: 440px;
+  margin-right: auto
+}
+
+.tv-banner-label>span {
+  display: block;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-top: 8px
+}
+
+.tv-empty {
+  padding: 32px;
+  text-align: center;
+  color: var(--el-text-color-secondary)
+}
+
+@media(max-width:1100px) {
+  .tv-settings {
+    grid-template-columns: 1fr
+  }
+}
+
+@media(max-width:900px) {
+  .tv-banner-row {
+    flex-wrap: wrap
+  }
+
+  .tv-banner-row img {
+    width: 120px
+  }
+
+  .tv-section-title {
+    align-items: flex-start
+  }
+
+  .tv-form>label {
+    grid-template-columns: 90px 1fr
+  }
+
+  .tv-hero-preview {
+    padding: 24px
+  }
+
+  .tv-hero-preview h3 {
+    font-size: 24px
+  }
+}
+
+@media(max-width:500px) {
+
+  .tv-preview-panel,
+  .tv-form,
+  .tv-banners {
+    padding: 18px
+  }
+
+  .tv-section-title {
+    flex-wrap: wrap;
+    gap: 8px
+  }
+
+  .tv-section-title>span {
+    display: none
+  }
+
+  .tv-hero-preview {
+    padding: 16px;
+    border-radius: 10px
+  }
+
+  .tv-wordmark {
+    font-size: 14px;
+    margin-bottom: 12px
+  }
+
+  .tv-hero-preview>small {
+    font-size: 8px;
+    letter-spacing: 1px
+  }
+
+  .tv-hero-preview h3 {
+    font-size: 17px;
+    margin: 8px 0;
+    max-width: 90%
+  }
+
+  .tv-hero-preview p {
+    font-size: 10px;
+    margin: 6px 0;
+    max-width: 90%
+  }
+
+  .tv-fake-button {
+    font-size: 9px;
+    padding: 5px 10px;
+    border-radius: 4px
+  }
+
+  .tv-preview-note {
+    font-size: 8px;
+    bottom: 8px;
+    right: 12px;
+    left: 16px
+  }
+
+  .tv-preview-pages {
+    right: 12px;
+    bottom: 12px;
+    gap: 5px
+  }
+
+  .tv-preview-pages button {
+    width: 32px;
+    height: 32px
+  }
+
+  .tv-form>label {
+    grid-template-columns: 1fr;
+    gap: 8px
+  }
+
+  .tv-option {
+    gap: 12px
+  }
+
+  .tv-option>span {
+    font-size: 13px
+  }
+
+  .tv-option .el-input-number {
+    width: 120px
+  }
+}
 </style>

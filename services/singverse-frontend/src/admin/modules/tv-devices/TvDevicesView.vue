@@ -77,7 +77,7 @@ onUnmounted(() => { active = false; generation++; clearTimeout(timer) })
 </script>
 <template>
   <section class="tv-devices">
-    <PageHeader title="电视设备" description="电视首次连接时会显示设备名称和六位授权码，核对一致后批准。电视只能访问曲库与聚会，不会获得管理员权限。">
+    <PageHeader title="让客厅的电视连进来" description="电视首次连接时会显示设备名称和六位授权码，核对一致后批准。电视只能访问曲库与聚会，不会获得管理员权限。">
       <template #actions><ElButton :icon="RefreshRight" :loading="refreshing" @click="load(true)">刷新</ElButton></template>
     </PageHeader>
     <ElAlert v-if="scannedPending" :title="`正在授权「${scannedPending.name}」`" description="请核对下方设备名称与六位授权码是否和电视一致，再点击批准连接。" type="info" show-icon :closable="false" />
@@ -97,6 +97,7 @@ onUnmounted(() => { active = false; generation++; clearTimeout(timer) })
       </section>
       <section class="sv-panel" aria-labelledby="tv-devices-title">
         <div class="sv-panel-head"><h2 id="tv-devices-title">已授权电视 <span class="sv-count-pill">{{ activeCount }}</span></h2></div>
+        <p class="device-status-note">这里显示设备的访问授权；实时在线状态暂未提供。</p>
         <p v-if="!data.devices.length" class="device-empty">还没有授权的电视。批准第一台电视后会显示在这里。</p>
         <article v-for="d in devices" :key="d.id" class="device-row" :class="{ 'is-revoked': d.revoked }">
           <div class="device-info"><h3>{{ d.name }}</h3><p>{{ d.revoked ? '访问已撤销，需要重新授权' : '可访问曲库与本机聚会' }}</p></div>
@@ -108,12 +109,13 @@ onUnmounted(() => { active = false; generation++; clearTimeout(timer) })
   </section>
 </template>
 <style scoped>
+.device-status-note { padding: 16px 24px 0; font-size: 12px; color: var(--sv-text-secondary); }
 .tv-devices { display: grid; gap: 16px; }
 .tv-devices > .page-heading { margin-bottom: 4px; }
 .sv-panel-head h2 { display: flex; gap: 8px; align-items: center; }
 .device-empty { padding: 24px 20px; color: var(--sv-text-tertiary); font-size: var(--sv-font-meta); }
 .device-row { display: flex; gap: 16px; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--sv-border-subtle); }
-.scanned-authorization { background: var(--sv-bg-subtle, #f0f6ff); }
+.scanned-authorization { background: var(--sv-accent-soft); }
 .device-row:last-child { border-bottom: 0; }
 .device-info { flex: 1; min-width: 0; }
 .device-info h3 { margin: 0; font-size: var(--sv-font-body); font-weight: 600; overflow-wrap: anywhere; }

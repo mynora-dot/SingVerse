@@ -175,7 +175,7 @@ onBeforeUnmount(() => { active = false; epoch++; pinEpoch++; jobEpoch++; clearTi
 
 <template>
   <section class="song-cache-page">
-    <PageHeader title="歌曲缓存" description="NAS 保存 WebDAV 原片缓存与音视频兼容结果，原片按需缓存，队列临近结束时提前读取下一首。">
+    <PageHeader title="为好歌，留好空间" description="NAS 保存 WebDAV 原片缓存与音视频兼容结果，原片按需缓存，队列临近结束时提前读取下一首。">
       <template #actions><ElButton :loading="loading" :disabled="busy" @click="load()">刷新列表</ElButton></template>
     </PageHeader>
     <div v-if="error" role="alert" class="cache-feedback cache-error">{{ error }}<ElButton v-if="conflict" text :disabled="busy || loading" @click="reloadSettings">重新读取设置</ElButton></div>

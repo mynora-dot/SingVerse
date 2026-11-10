@@ -1,30 +1,274 @@
 <script setup lang="ts">
-import { ElButton } from 'element-plus'
+import { ElButton, ElIcon } from 'element-plus'
 import { VideoPlay, EditPen } from '@element-plus/icons-vue'
 import SongCover from './SongCover.vue'
-import { needsSongReview, songReviewLabel } from '../presentation'
+import { needsSongReview, songReviewLabel, platformDuration, songTags } from '../presentation'
 import { songTitle, songArtists } from '../../metadata/utils'
 import type { Tag } from '../../classification/types'
-import { fileSize, fileFormat, songTags, confirmedField } from '../presentation'
 import type { MediaSong } from '../../media-library/types'
-withDefaults(defineProps<{ song: MediaSong; tags?: Tag[]; selectionMode: boolean; selected: boolean }>(), { tags: () => [] })
+withDefaults(defineProps<{ song: MediaSong; tags?: Tag[]; selectionMode?: boolean; selected?: boolean }>(), { tags: () => [], selectionMode: false, selected: false })
 const emit = defineEmits<{ click: []; play: []; edit: []; select: [song: MediaSong, selected: boolean] }>()
 </script>
 <template>
-  <article class="song-card" :class="{ selected }" @click="emit('click')">
-    <div class="song-identity">
-      <label v-if="selectionMode" class="selection-checkbox" @click.stop><input type="checkbox" :checked="selected" :aria-label="`选择 ${songTitle(song)}`" @change="emit('select', song, ($event.target as HTMLInputElement).checked)"></label>
-      <SongCover :song="song" />
-      <button class="song-card-title" @click.stop="emit('click')"><strong>{{ songTitle(song) }}</strong><span>{{ songArtists(song).join('、') || '未知歌手' }}</span></button>
+  <article class="song-card" :class="{ selected }">
+    <div class="card-artwork">
+      <button class="artwork-open" :aria-label="`查看 ${songTitle(song)} 的详情`" @click="emit('click')"><SongCover :song="song" /></button>
+      <label v-if="selectionMode" class="selection-checkbox"><input type="checkbox" :checked="selected" :aria-label="`选择 ${songTitle(song)}`" @change="emit('select', song, ($event.target as HTMLInputElement).checked)"></label>
+      <span v-if="platformDuration(song)" class="cover-duration">{{ platformDuration(song) }}</span>
+      <button class="cover-play" :aria-label="`播放 ${songTitle(song)}`" @click="emit('play')"><ElIcon><VideoPlay /></ElIcon></button>
     </div>
-    <div class="mobile-song-details"><span>{{ fileFormat(song) }} · {{ fileSize(song.fileSize) }}</span><span v-if="confirmedField(song, 'album')">{{ confirmedField(song, 'album') }}</span><div v-if="songTags(song, tags).length" class="mobile-tags"><span v-for="tag in songTags(song, tags)" :key="tag.id">{{ tag.name }}</span></div><span v-else>尚未分类</span></div>
-    <div class="song-source"><strong>{{ song.sourceName }}</strong><span :title="song.relativePath">{{ song.relativePath }}</span></div>
-    <div class="song-status-group"><span class="song-status" :class="{ review: needsSongReview(song) }">{{ songReviewLabel(song) }}</span><span class="mobile-metadata-status">{{ song.metadata?.stale ? '元数据需重审' : Object.values(song.metadata?.origins ?? {}).some(origin => origin.kind === 'SHARED') ? '来自共享索引' : song.metadata?.fields.length ? `已确认 ${song.metadata.fields.length} 项信息` : '元数据未确认' }}</span></div>
-    <div class="song-card-actions" @click.stop><ElButton :icon="VideoPlay" :aria-label="`播放 ${songTitle(song)}`" @click="emit('play')">播放</ElButton><ElButton text :icon="EditPen" @click="emit('edit')">{{ needsSongReview(song) ? '复核' : '编辑' }}</ElButton></div>
+    <button class="song-card-title" @click="emit('click')"><strong :title="songTitle(song)">{{ songTitle(song) }}</strong><span :title="songArtists(song).join('、')">{{ songArtists(song).join('、') || '歌手待补充' }}</span></button>
+    <div class="song-card-context"><span v-if="song.metadata?.stale" class="song-status review">信息已过期 · 需重审</span><span v-else class="song-status" :class="{ review: needsSongReview(song) }">{{ songReviewLabel(song) }}</span><span v-if="songTags(song, tags)[0]" class="card-tag">{{ songTags(song, tags)[0]?.name }}</span></div>
+    <div class="song-card-actions"><span :title="song.sourceName">{{ song.sourceName }}</span><ElButton text :icon="EditPen" :aria-label="`${needsSongReview(song) ? '复核' : '编辑'} ${songTitle(song)}`" @click="emit('edit')">{{ needsSongReview(song) ? '复核' : '编辑' }}</ElButton></div>
   </article>
 </template>
 <style scoped>
-.song-status-group{display:grid;gap:5px;text-align:right}.mobile-metadata-status{font-size:10px;color:var(--sv-text-secondary)}.mobile-song-details{grid-column:1/-1;display:grid;gap:6px;font-size:12px;color:var(--sv-text-secondary)}.mobile-tags{display:flex;flex-wrap:wrap;gap:5px}.mobile-tags span{padding:2px 6px;border-radius:4px;background:var(--sv-accent-soft);color:var(--sv-accent-primary)}
-.song-card { display: grid; grid-template-columns: minmax(0, 1fr) 20% 90px 180px; gap: 16px; align-items: center; padding: 18px 20px; border-bottom: 1px solid var(--sv-border-subtle); background: var(--sv-surface-2); transition: background 160ms; cursor: pointer; }.song-card:last-child { border-bottom: 0; }.song-card:hover,.song-card.selected { background: var(--sv-accent-soft); }.song-identity { display: flex; align-items: center; gap: 14px; min-width: 0; }.song-art { display: grid; place-items: center; flex-shrink: 0; width: 42px; height: 42px; border-radius: 10px; background: var(--sv-surface-3); color: var(--sv-accent-primary); font-size: 21px; }.song-card-title { display: grid; gap: 4px; min-width: 0; padding: 0; text-align: left; font: inherit; color: inherit; background: transparent; border: 0; cursor: pointer; }.song-card-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }.song-card-title span,.song-source span { color: var(--sv-text-secondary); font-size: 12px; }.song-source { display: grid; gap: 4px; min-width: 0; }.song-source strong { font-size: 12px; font-weight: 500; }.song-source span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.song-status { font-size: 11px; color: var(--sv-semantic-ok); }.song-status.review { color: var(--sv-semantic-warn); }.song-card-actions { display: flex; align-items: center; justify-content: flex-end; }.selection-checkbox input { accent-color: var(--sv-accent-primary); width: 16px; height: 16px; }
-@media(max-width:768px) { .song-card { grid-template-columns: minmax(0,1fr) auto; gap: 14px; padding: 16px; border: 1px solid var(--sv-border-subtle); border-radius: var(--sv-radius-md); }.song-identity { grid-column: 1 / -1; }.song-source { grid-column: 1; grid-row: auto; }.song-status { grid-row: auto; }.song-card-actions { grid-column: 1 / -1; padding-top: 12px; border-top: 1px solid var(--sv-border-subtle); }.song-card-title strong { white-space: normal; overflow-wrap: anywhere; }.song-art { width: 44px; height: 44px; } }
+.song-card {
+  min-width: 0;
+  position: relative;
+  padding: 12px;
+  background: var(--sv-surface-2);
+  border: 1px solid var(--sv-border-subtle);
+  border-radius: 13px;
+  transition: border-color .18s, box-shadow .18s
+}
+
+.song-card:hover {
+  border-color: var(--sv-border-default);
+  box-shadow: var(--sv-shadow-md)
+}
+
+.song-card.selected {
+  border-color: var(--sv-accent-primary);
+  background: var(--sv-accent-soft)
+}
+
+.card-artwork {
+  position: relative;
+  aspect-ratio: 1;
+  isolation: isolate
+}
+
+.artwork-open {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  display: block;
+  border-radius: 8px;
+  cursor: pointer;
+  overflow: hidden
+}
+
+.artwork-open :deep(.song-cover) {
+  width: 100%;
+  height: 100%;
+  border-radius: 0
+}
+
+.artwork-open :deep(.song-cover-placeholder) {
+  font-size: 40px
+}
+
+.cover-play {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid #ffffff75;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--sv-accent-primary);
+  box-shadow: 0 3px 12px #18281f25;
+  cursor: pointer;
+  font-size: 22px
+}
+
+.cover-play:hover {
+  background: var(--sv-accent-primary);
+  color: white
+}
+
+.selection-checkbox {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  background: white;
+  box-shadow: var(--sv-shadow-sm)
+}
+
+.selection-checkbox input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--sv-accent-primary);
+  cursor: pointer
+}
+
+.cover-duration {
+  position: absolute;
+  left: 10px;
+  bottom: 12px;
+  padding: 1px 5px;
+  background: #1f3329b8;
+  color: white;
+  border-radius: 4px;
+  font-size: 10px
+}
+
+.song-card-title {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: inherit;
+  border: 0;
+  padding: 15px 0 10px;
+  cursor: pointer
+}
+
+.song-card-title strong {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.6;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis
+}
+
+.song-card-title span {
+  font-size: 12px;
+  color: var(--sv-text-secondary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis
+}
+
+.song-card-context {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  min-height: 23px
+}
+
+.song-status {
+  color: var(--sv-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis
+}
+
+.song-status.review {
+  color: var(--sv-semantic-warn)
+}
+
+.card-tag {
+  max-width: 75px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--sv-surface-3);
+  color: var(--sv-text-secondary)
+}
+
+.song-card-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid var(--sv-border-subtle)
+}
+
+.song-card-actions>span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--sv-text-tertiary)
+}
+
+.song-card-actions :deep(.el-button) {
+  margin: 0;
+  padding: 4px 0;
+  min-height: 28px;
+  height: auto;
+  font-size: 11px
+}
+
+@media(max-width:480px) {
+  .song-card {
+    padding: 8px;
+    border-radius: 10px
+  }
+
+  .song-card-title {
+    padding: 10px 0 6px
+  }
+
+  .song-card-title strong {
+    font-size: 14px
+  }
+
+  .song-card-title span {
+    font-size: 11px
+  }
+
+  .song-card-context {
+    display: block
+  }
+
+  .card-tag {
+    display: none
+  }
+
+  .song-status {
+    display: block;
+    font-size: 11px
+  }
+
+  .cover-play {
+    width: 44px;
+    height: 44px;
+    right: 7px;
+    bottom: 7px
+  }
+
+  .selection-checkbox {
+    width: 40px;
+    height: 40px
+  }
+
+  .song-card-actions>span {
+    font-size: 10px
+  }
+
+  .song-card-actions {
+    margin-top: 5px;
+    padding-top: 5px
+  }
+
+  .song-card-actions :deep(.el-button) {
+    font-size: 11px;
+    min-height: 40px;
+    min-width: 44px
+  }
+}
 </style>

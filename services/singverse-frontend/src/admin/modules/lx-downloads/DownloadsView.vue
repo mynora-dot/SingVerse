@@ -76,7 +76,7 @@ onBeforeUnmount(() => { alive = false; statusGeneration++; searchGeneration++; p
 </script>
 <template>
   <div class="management-page downloads-page">
-    <PageHeader title="歌曲下载" description="从你自己的洛雪音源获取歌曲，保存到 NAS，完成后自动加入曲库。"><template #actions><ElButton :icon="RefreshRight" :loading="statusLoading" @click="refreshStatus">刷新状态</ElButton></template></PageHeader>
+    <PageHeader title="找到想唱的下一首" description="从你自己的洛雪音源获取歌曲，保存到 NAS，完成后自动加入曲库。"><template #actions><ElButton :icon="RefreshRight" :loading="statusLoading" @click="refreshStatus">刷新状态</ElButton></template></PageHeader>
     <ElAlert v-if="statusError" :title="statusError" type="error" :closable="false" show-icon role="alert" />
     <section class="setup" aria-label="下载配置">
       <ElCard shadow="never"><div class="setup-title"><FolderOpened /><strong>保存位置</strong><ElTag v-if="status?.target.ready" type="success" size="small">已就绪</ElTag></div><p class="setup-value">{{ status?.target.name || '尚未设置下载目录' }}</p><p class="help path">{{ status?.target.path || '选择一个可写的本地媒体库，所有下载统一保存在这里。' }}</p><ElAlert v-if="status?.target.id && !status.target.ready" :title="status.target.reason" type="warning" :closable="false" show-icon /><ElButton :icon="FolderOpened" @click="openTarget">{{ status?.target.id ? '更改保存位置' : '设置下载目录' }}</ElButton></ElCard>

@@ -12,16 +12,16 @@ const first = Array.from({ length: 20 }, (_, i) => song(i + 1))
 function result(items = first, page = 0, totalElements = 21): SongPage { return { items, page, size: 20, totalElements } }
 const button = (name: string) => wrapper.findAll('button').find(b => b.text() === name)!
 async function open(ids: string[] = []) { wrapper = mount(ClassificationSongPicker, { props: { selectedIds: ids }, attachTo: document.body }); await flushPromises() }
-async function query(q: string) { await wrapper.get('input[aria-label="搜索要分类的歌曲"]').setValue(q); await wrapper.get('form').trigger('submit'); await flushPromises() }
+async function query(q: string) { await wrapper.get('input[aria-label="搜索歌名或歌手"]').setValue(q); await wrapper.get('form').trigger('submit'); await flushPromises() }
 async function page(n: number) { wrapper.findComponent({ name: 'ElPagination' }).vm.$emit('current-change', n); await flushPromises() }
-beforeEach(() => { vi.mocked(songs.list).mockImplementation(async filters => filters.q ? result([song(21)], 0, 1) : filters.page ? result([song(21)], 1) : result()) })
+beforeEach(() => { vi.mocked(songs.list).mockImplementation(async filters => filters.search ? result([song(21)], 0, 1) : filters.page ? result([song(21)], 1) : result()) })
 afterEach(() => { wrapper?.unmount(); document.body.innerHTML = ''; vi.clearAllMocks() })
 it('搜索和跨页保留勾选，确认只返回已选歌曲 ID', async () => {
   await open(['song-1'])
   await wrapper.get('input[aria-label="选择歌曲：歌曲2"]').setValue(true)
   await page(2); await wrapper.get('input[aria-label="选择歌曲：歌曲21"]').setValue(true)
   await query('测试歌手')
-  expect(songs.list).toHaveBeenLastCalledWith(expect.objectContaining({ q: '测试歌手', page: 0, size: 20 }))
+  expect(songs.list).toHaveBeenLastCalledWith(expect.objectContaining({ q: '', search: '测试歌手', status: 'ALL', page: 0, size: 20 }))
   expect((wrapper.get('input[aria-label="选择歌曲：歌曲21"]').element as HTMLInputElement).checked).toBe(true)
   await button('确认选择（3 首）').trigger('click')
   expect(wrapper.emitted('confirm')).toEqual([[['song-1', 'song-2', 'song-21']]])
