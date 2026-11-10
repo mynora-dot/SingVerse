@@ -23,7 +23,7 @@ func (s *Service) settings(ctx context.Context, db store.DBTX, required bool) (S
 		return v, e
 	}
 	if required && (!v.Enabled || len(v.Providers) == 0) {
-		return v, conflict("请先在元数据刮削设置中启用并选择平台")
+		return v, conflict("请先在设置 → 音乐平台中启用并选择平台")
 	}
 	return v, nil
 }
@@ -40,7 +40,7 @@ func (s *Service) putSettings(c *gin.Context) {
 	if !s.decode(c, &in) {
 		return
 	}
-	if in.Providers == nil || len(in.Providers) > 3 || math.IsNaN(in.Threshold) || math.IsInf(in.Threshold, 0) || in.Threshold < .8 || in.Threshold > 1 {
+	if in.Providers == nil || len(in.Providers) > len(providers) || math.IsNaN(in.Threshold) || math.IsInf(in.Threshold, 0) || in.Threshold < .8 || in.Threshold > 1 {
 		s.fail(c, bad("平台选择无效，自动写入阈值需要在 0.8～1 之间"))
 		return
 	}

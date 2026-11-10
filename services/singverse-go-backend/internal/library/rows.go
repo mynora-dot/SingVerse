@@ -52,6 +52,8 @@ type songRecord struct {
 	Fingerprint            *string `db:"metadata_fingerprint"`
 	Classification         *string `db:"classification_state"`
 	ClassificationRevision *int64  `db:"classification_revision"`
+	Shared                 *string `db:"shared_snapshot"`
+	Verification           *string `db:"media_verification"`
 	Remote                 *string `db:"remote_result"`
 	RemoteID               *string `db:"remote_song_id"`
 	IdentitySize           *int64  `db:"identity_size"`
@@ -68,7 +70,7 @@ func (r songRecord) model() (Song, error) {
 		ID: r.ID, SourceID: r.SourceID, SourceName: r.SourceName, RelativePath: r.RelativePath,
 		FileSize: r.FileSize, ModifiedAt: r.ModifiedAt, ScannedAt: r.ScannedAt,
 		ParserProfileID: r.ParserProfileID, ParserRevision: r.ParserRevision, SelectedRuleID: r.SelectedRuleID,
-		pathHash: r.PathHash, embedded: r.Embedded, etag: r.ETag,
+		pathHash: r.PathHash, embedded: r.Embedded, etag: r.ETag, MediaVerification: r.Verification,
 	}
 	if err := json.Unmarshal([]byte(r.Result), &song.Result); err != nil {
 		return song, err
@@ -90,6 +92,7 @@ func (r songRecord) model() (Song, error) {
 	}
 	var err error
 	song.Metadata, err = effectiveMetadata(song, r.Track, r.Fields, r.Applied, r.Origins, r.Fingerprint, r.Remote, r.OverrideSource, r.OverrideArtists, r.Download, r.DownloadAt)
+	if err == nil { song.Metadata, err = sharedMetadata(song, song.Metadata, r.Shared) }
 	return song, err
 }
 

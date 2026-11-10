@@ -43,6 +43,9 @@ func (s *Service) ImportPart(ctx context.Context, sourceID string, data []byte) 
 	if e != nil {
 		return nil, e
 	}
+	collection, revision, e := sharedIdentity(document)
+	if e != nil { return nil,e }
+	if e=s.checkSharedBaseline(ctx,s.db,sourceID,document); e!=nil{return nil,e}
 	entries := array(document["entries"])
 	seen := map[string]bool{}
 	if raw, ok := document["assets"]; ok && raw != nil {
@@ -135,6 +138,7 @@ func (s *Service) ImportPart(ctx context.Context, sourceID string, data []byte) 
 			return nil, conflict("分享导入进度无效")
 		}
 		if cursor == len(entries) {
+			if text(document["baseId"])!="" || number(document["part"])<=1 { if e=s.saveSharedBaseline(ctx,s.db,sourceID,document);e!=nil{return nil,e} }
 			return map[string]int64{"imported": number(receipt["imported"]), "skipped": number(receipt["skipped"]), "processed": int64(cursor)}, nil
 		}
 		next := cursor
@@ -176,12 +180,11 @@ func (s *Service) ImportPart(ctx context.Context, sourceID string, data []byte) 
 				if e != nil {
 					return e
 				}
-				if !added {
-					skipped++
-					continue
-				}
+
 				snapshot := item["metadata"].(map[string]any)
-				if e = s.Install(ctx, tx, id, snapshot); e != nil {
+				outcome,_,mergeErr := s.mergeShared(ctx,tx,id,snapshot,collection,revision,size)
+				if mergeErr != nil { e=mergeErr
+
 					return e
 				}
 				if claim, ok := snapshot["audioRoles"].(map[string]any); ok {
@@ -194,7 +197,7 @@ func (s *Service) ImportPart(ctx context.Context, sourceID string, data []byte) 
 						}
 					}
 				}
-				imported++
+				if added || outcome=="UPDATED" { imported++ } else { skipped++ }
 			}
 			a := map[string]any{}
 			for k, v := range key {
@@ -280,7 +283,7 @@ func (s *Service) ImportStream(ctx context.Context, sourceID string, input io.Re
 	var index map[string]any
 	d := json.NewDecoder(bytes.NewReader(indexBytes))
 	d.UseNumber()
-	if d.Decode(&index) != nil || index["format"] != "singverse-share-set" || number(index["version"]) != 2 {
+	if d.Decode(&index) != nil || index["format"] != "singverse-share-set" || (number(index["version"]) != 2 && number(index["version"]) != 3) {
 		return nil, bad("分享清单无效")
 	}
 	rawParts, ok := index["parts"].([]any)

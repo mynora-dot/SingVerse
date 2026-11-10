@@ -43,7 +43,7 @@ func TestIdentityBoundariesAndFrontend(t *testing.T) {
 	for _, tc := range []struct {
 		method, path string
 		status       int
-	}{{"GET", "/api/health", 200}, {"GET", "/", 200}, {"GET", "/admin/", 200}, {"GET", "/party/", 200}, {"GET", "/api/v1/server-info", 200}, {"GET", "/api/v1/media-sources", 401}, {"GET", "/api/v1/mobile/library/songs", 401}, {"GET", "/api/v1/tv/library/songs", 401}, {"GET", "/api/v1/party/library/songs", 401}, {"GET", "/api/v1/internal/compute-callback/unknown", 401}, {"POST", "/api/v1/auth/login", 403}} {
+	}{{"GET", "/api/health", 200}, {"GET", "/", 200}, {"GET", "/admin/", 200}, {"GET", "/party/", 200}, {"GET", "/api/v1/server-info", 200}, {"GET", "/api/v1/artists/artwork-platforms", 401}, {"GET", "/api/v1/artists/artwork-batches/latest", 401}, {"POST", "/api/v1/artists/artwork-batches", 403}, {"POST", "/api/v1/artists/categories", 403}, {"GET", "/api/v1/media-sources", 401}, {"GET", "/api/v1/mobile/library/songs", 401}, {"GET", "/api/v1/tv/library/songs", 401}, {"GET", "/api/v1/party/library/songs", 401}, {"GET", "/api/v1/internal/compute-callback/unknown", 401}, {"POST", "/api/v1/auth/login", 403}} {
 		t.Run(tc.method+tc.path, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(tc.method, "http://localhost"+tc.path, strings.NewReader(`{}`))

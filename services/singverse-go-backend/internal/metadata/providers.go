@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/jsondata"
 )
 
 type providerGuard struct {
@@ -92,7 +94,7 @@ func eapi(path, body string) string {
 }
 func (p *musicProvider) request(ctx context.Context, method, target string, form url.Values, headers map[string]string) (map[string]any, error) {
 	u, e := url.Parse(target)
-	allowed := map[string][]string{"NETEASE": {"interfacepc.music.163.com", "music.163.com"}, "QQ": {"c.y.qq.com"}, "KUGOU": {"gateway.kugou.com", "songsearch.kugou.com"}}
+	allowed := map[string][]string{"NETEASE": {"interfacepc.music.163.com", "music.163.com"}, "QQ": {"c.y.qq.com"}, "KUGOU": {"gateway.kugou.com", "songsearch.kugou.com"}, "KUWO": {"search.kuwo.cn"}, "QISHUI": {"api.qishui.com"}}
 	if e != nil || u.Scheme != "https" || u.User != nil || u.Port() != "" || !contains(allowed[p.name], u.Hostname()) {
 		return nil, bad("平台请求地址无效")
 	}
@@ -128,9 +130,20 @@ func (p *musicProvider) request(ctx context.Context, method, target string, form
 		return nil, &problem{503, "平台响应无效"}
 	}
 	var root map[string]any
-	d := json.NewDecoder(strings.NewReader(string(data)))
+	text := string(data)
+	if p.name == "KUWO" {
+		text, e = jsondata.NormalizeSingleQuoted(text)
+		if e != nil {
+			return nil, &problem{503, "酷我响应无效"}
+		}
+	}
+	d := json.NewDecoder(strings.NewReader(text))
 	d.UseNumber()
-	if d.Decode(&root) != nil {
+	if d.Decode(&root) != nil || root == nil {
+		return nil, &problem{503, "平台响应无效"}
+	}
+	var extra any
+	if d.Decode(&extra) != io.EOF {
 		return nil, &problem{503, "平台响应无效"}
 	}
 	return root, nil
@@ -159,20 +172,9 @@ func (p *musicProvider) Search(ctx context.Context, keyword string, limit int) (
 		}
 		return parseQQ(array(path(root, "data", "song", "list")), limit), nil
 	case "KUGOU":
-		mid := p.service.deviceID
-		at := strconv.FormatInt(time.Now().Unix(), 10)
-		q := url.Values{"dfid": {"-"}, "mid": {mid}, "uuid": {"-"}, "appid": {"1005"}, "clientver": {"20489"}, "clienttime": {at}, "albumhide": {"0"}, "iscorrection": {"1"}, "keyword": {keyword}, "nocollect": {"0"}, "page": {"1"}, "pagesize": {strconv.Itoa(limit)}, "platform": {"AndroidFilter"}}
-		q.Set("signature", kugouSignature(q))
-		root, e := p.request(ctx, "GET", "https://gateway.kugou.com/v3/search/song?"+q.Encode(), nil, map[string]string{"x-router": "complexsearch.kugou.com", "dfid": "-", "mid": mid, "clienttime": at, "User-Agent": "Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi"})
+		root, e := p.kugouSearch(ctx, "song", keyword, limit)
 		if e != nil {
 			return nil, e
-		}
-		if number(root["error_code"]) == 152 {
-			q = url.Values{"keyword": {keyword}, "page": {"1"}, "pagesize": {strconv.Itoa(limit)}, "userid": {"-1"}, "clientver": {""}, "platform": {"WebFilter"}, "filter": {"2"}, "iscorrection": {"1"}, "privilege_filter": {"0"}}
-			root, e = p.request(ctx, "GET", "https://songsearch.kugou.com/song_search_v2?"+q.Encode(), nil, nil)
-			if e != nil {
-				return nil, e
-			}
 		}
 		if number(root["status"]) != 1 || number(root["error_code"]) != 0 {
 			return nil, &problem{503, "酷狗搜索暂时不可用"}
@@ -182,6 +184,10 @@ func (p *musicProvider) Search(ctx context.Context, keyword string, limit int) (
 			songs = path(root, "data", "lists")
 		}
 		return parseKugou(array(songs), limit), nil
+	case "KUWO":
+		return p.searchKuwo(ctx, keyword, limit)
+	case "QISHUI":
+		return p.searchQishui(ctx, keyword, limit)
 	}
 	return nil, bad("平台无效")
 }
@@ -293,7 +299,7 @@ func track(provider string, id, title *string, artists []string, album *string, 
 	if aliases == nil {
 		aliases = []string{}
 	}
-	return &Track{Provider: ptr(provider), ExternalID: id, Title: title, Artists: artists, Album: album, DurationMs: duration, ReleaseDate: release, Aliases: aliases, CoverURL: checkedCover(provider, cover), Availability: availability, FetchedAt: now(), ArtistRefs: []ArtistRef{}}
+	return &Track{Provider: ptr(provider), ExternalID: id, Title: title, Artists: artists, Album: album, DurationMs: duration, ReleaseDate: release, Aliases: aliases, CoverURL: canonicalCover(ptr(provider), cover), Availability: availability, FetchedAt: now(), ArtistRefs: []ArtistRef{}}
 }
 func refs(v any, provider, idfield string) []ArtistRef {
 	out := []ArtistRef{}
@@ -421,7 +427,7 @@ func parseKugou(songs []any, limit int) []Track {
 		}
 		cover := first(m, "sizable_cover", "album_sizable_cover", "img", "Image", "AlbumImage")
 		if cover != nil {
-			cover = ptr(strings.ReplaceAll(*cover, "{size}", "400"))
+			cover = ptr(strings.ReplaceAll(*cover, "{size}", "0"))
 		}
 		var d *int
 		for _, f := range []string{"duration", "Duration", "timelength"} {
@@ -434,8 +440,16 @@ func parseKugou(songs []any, limit int) []Track {
 				break
 			}
 		}
-		t := track("KUGOU", first(m, "hash", "audio_id", "audioid", "FileHash"), first(m, "songname", "song_name", "name", "SongName"), artists, first(m, "album_name", "albumname", "AlbumName"), d, first(m, "publish_date", "publish_time", "PublishDate"), []string{}, cover, "AVAILABLE")
+		t := track("KUGOU", first(m, "hash", "audio_id", "audioid", "FileHash"), first(m, "songname", "song_name", "name", "SongName", "OriSongName"), artists, first(m, "album_name", "albumname", "AlbumName"), d, first(m, "publish_date", "publish_time", "PublishDate"), []string{}, cover, "AVAILABLE")
 		if t != nil {
+			t.ArtistRefs = refs(m["Singers"], "KUGOU", "id")
+			for _, raw := range array(m["authors"]) {
+				a, _ := raw.(map[string]any)
+				id, name := text(a["author_id"]), text(a["author_name"])
+				if neteaseID.MatchString(id) && name != "" {
+					t.ArtistRefs = append(t.ArtistRefs, ArtistRef{"KUGOU", id, name})
+				}
+			}
 			out = append(out, *t)
 		}
 		if len(out) >= limit {
@@ -443,4 +457,28 @@ func parseKugou(songs []any, limit int) []Track {
 		}
 	}
 	return out
+}
+
+func (p *musicProvider) kugouSearch(ctx context.Context, kind, keyword string, limit int) (map[string]any, error) {
+	route := "v3/search/song"
+	if kind == "author" {
+		route = "v1/search/author"
+	}
+	mid := p.service.deviceID
+	at := strconv.FormatInt(time.Now().Unix(), 10)
+	q := url.Values{"dfid": {"-"}, "mid": {mid}, "uuid": {"-"}, "appid": {"1005"}, "clientver": {"20489"}, "clienttime": {at}, "albumhide": {"0"}, "iscorrection": {"1"}, "keyword": {keyword}, "nocollect": {"0"}, "page": {"1"}, "pagesize": {strconv.Itoa(limit)}, "platform": {"AndroidFilter"}}
+	q.Set("signature", kugouSignature(q))
+	root, e := p.request(ctx, "GET", "https://gateway.kugou.com/"+route+"?"+q.Encode(), nil, map[string]string{"x-router": "complexsearch.kugou.com", "dfid": "-", "mid": mid, "clienttime": at, "User-Agent": "Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi"})
+	if e != nil {
+		return nil, e
+	}
+	if kind == "song" && number(root["error_code"]) == 152 {
+		q = url.Values{"keyword": {keyword}, "page": {"1"}, "pagesize": {strconv.Itoa(limit)}, "userid": {"-1"}, "clientver": {""}, "platform": {"WebFilter"}, "filter": {"2"}, "iscorrection": {"1"}, "privilege_filter": {"0"}}
+		root, e = p.request(ctx, "GET", "https://songsearch.kugou.com/song_search_v2?"+q.Encode(), nil, nil)
+		if e != nil {
+			return nil, e
+		}
+	}
+
+	return root, nil
 }

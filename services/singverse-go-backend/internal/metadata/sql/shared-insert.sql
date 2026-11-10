@@ -1,0 +1,1 @@
+INSERT INTO media_shared_song(song_id,source_id,collection_id,revision,snapshot_json,expected_size,updated_at) SELECT @{songId},@{sourceId},@{collectionId},@{revision},@{snapshot},@{size},@{now} WHERE NOT EXISTS(SELECT 1 FROM media_shared_song WHERE song_id=@{songId})

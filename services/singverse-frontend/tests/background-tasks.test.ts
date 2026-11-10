@@ -117,6 +117,24 @@ it('页面切换后忽略迟到响应，结束的详情停止轮询', async () =
   await tick(10000); expect(backgroundTasks.detail).toHaveBeenCalledTimes(1)
 })
 
+it('歌手封面任务展示真实位数和中文阶段，未找到匹配与待确认分别呈现', async () => {
+  vi.mocked(backgroundTasks.detail).mockResolvedValue(sample({
+    type: 'ARTIST_ARTWORK', name: '歌手封面获取', stage: 'FETCHING_ARTWORK',
+    progress: { completed: 2, total: 3, percent: 66.66, unit: 'ARTISTS' },
+    statistics: { noMatch: 1, review: 1, applied: 0 }, detailMode: 'ITEMS', itemsAvailable: true,
+    relatedPath: '/library/artists?batch=artwork-batch',
+  }))
+  vi.mocked(backgroundTasks.items).mockResolvedValue({ ...emptyItems, totalElements: 1,
+    items: [{ id: 'artist-result', songId: null, title: '歌手甲', status: 'NO_MATCH', message: '没有可靠匹配', execution: {} }],
+  })
+  await open('/system/tasks/task-one')
+  expect(wrapper!.text()).toContain('获取歌手封面')
+  expect(wrapper!.text()).toContain('已处理 2 / 3 位')
+  expect(wrapper!.text()).toContain('未找到匹配')
+  expect(wrapper!.text()).toContain('待审核')
+  expect(wrapper!.text()).not.toContain('FETCHING_ARTWORK')
+})
+
 it('切换到另一个详情与页面隐藏后，旧请求均不能覆盖新结果', async () => {
   let resolve!: (result: BackgroundTask) => void
   vi.mocked(backgroundTasks.detail).mockImplementationOnce(() => new Promise(done => { resolve = done }))

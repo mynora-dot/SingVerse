@@ -167,6 +167,7 @@ func exerciseSettingsAndReviewReceipt(t *testing.T, f *fixture) {
 	t.Helper()
 	_, ids := f.local(t, "A-Song.mkv")
 	id := ids[0]
+	request(t, f.router, "PUT", "/api/v1/metadata/settings", Settings{Enabled: false, Providers: []string{"NETEASE"}, Threshold: .95}, 200)
 	request(t, f.router, "POST", "/api/v1/metadata/songs/"+id+"/search", nil, 409)
 	request(t, f.router, "PUT", "/api/v1/metadata/settings", Settings{Enabled: true, Providers: []string{"QQ", "QQ"}, Threshold: .9}, 400)
 	f.settings(t, false)

@@ -1,0 +1,1 @@
+INSERT INTO media_shared_baseline(source_id,collection_id,revision,snapshot_id) SELECT @{sourceId},@{collectionId},@{revision},@{snapshotId} WHERE NOT EXISTS(SELECT 1 FROM media_shared_baseline WHERE source_id=@{sourceId} AND collection_id=@{collectionId})

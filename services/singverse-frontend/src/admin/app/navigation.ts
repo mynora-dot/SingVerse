@@ -24,6 +24,7 @@ export const navigationGroups = [
   ] },
   { id: 'settings', label: '设置', path: '/system/parameters', icon: Setting, children: [
     { path: '/system/parameters', label: '账号与安全', icon: Key },
+    { path: '/system/music-platforms', label: '音乐平台', icon: Headset },
     { path: '/library/cache', label: '存储与缓存', icon: Files },
     { path: '/system/compute', label: '计算与模型', icon: Connection },
     { path: '/system/ai', label: 'AI 与助手', icon: MagicStick },

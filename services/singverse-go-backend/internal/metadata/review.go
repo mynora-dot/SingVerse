@@ -144,6 +144,9 @@ func (s *Service) ownedCandidate(ctx context.Context, tx store.DBTX, songID, id,
 }
 func (s *Service) reviewApply(ctx context.Context, tx store.DBTX, id string, in ReviewApply) (ReviewResult, error) {
 	out := ReviewResult{}
+	if !validCoverQuality(in.CoverQuality) {
+		return out, bad("请选择原图或高清封面")
+	}
 	fields, e := selectedFields(in.Fields, false)
 	if e != nil || !uuidPattern.MatchString(in.RequestID) {
 		return out, bad("请选择有效的应用字段并提供提交标识")
@@ -232,9 +235,11 @@ func (s *Service) reviewApply(ctx context.Context, tx store.DBTX, id string, in 
 			if e != nil {
 				return out, e
 			}
-			values["cover"] = t.CoverURL
+			values["cover"] = coverVariant(t.Provider, t.CoverURL, in.CoverQuality)
 			supplied["cover"] = true
 			origins["cover"] = Origin{t.Provider, t.ExternalID, at, "PLATFORM"}
+		} else if candidate != nil {
+			values["cover"] = coverVariant(candidate.Provider, candidate.CoverURL, in.CoverQuality)
 		}
 	}
 	prior := metaOf(song)

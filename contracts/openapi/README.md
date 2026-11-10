@@ -49,7 +49,7 @@
 
 ## 歌曲元数据刮削
 
-新增 `/api/v1/metadata` 下的设置、单曲搜索/应用、批次创建/查询/暂停/续跑/终止、明细重试/审核，以及候选/已确认封面代理。批次创建可在 `all=true` 时提供 `sourceId`，仅处理该媒体来源。功能与自动写入默认关闭，单曲搜索只产生候选；所有操作需要管理员会话，非 GET 操作需要 CSRF。`MediaSong.metadata` 为可空的独立确认覆盖层，失效时不可使用其值覆盖原始 `result`。批次完成与审核完成分开，最新批次不存在返回 204。字段、枚举、分页及路径以 JSON 契约为准，详细限制见[元数据刮削](../../docs/metadata-scraping.md)。
+新增 `/api/v1/metadata` 下的设置、单曲搜索/应用、批次创建/查询/暂停/续跑/终止、明细重试/审核，以及候选/已确认封面代理。批次创建可在 `all=true` 时提供 `sourceId`，仅处理该媒体来源。新安装默认启用网易云、QQ、酷狗、酷我和汽水五个平台，自动写入默认关闭；升级保留已保存的配置。管理端入口为“设置 → 音乐平台”，单曲搜索只产生候选；所有操作需要管理员会话，非 GET 操作需要 CSRF。`MediaSong.metadata` 为可空的独立确认覆盖层，失效时不可使用其值覆盖原始 `result`。批次完成与审核完成分开，最新批次不存在返回 204。字段、枚举、分页及路径以 JSON 契约为准，详细限制见[元数据刮削](../../docs/metadata-scraping.md)。
 
 歌曲位置页面改用卡片；来源列表 API 保留名称/地址、类型、方案筛选和分页，歌曲列表继续使用搜索与分页表格。查询使用 ID 分页后延迟关联和筛选排序联合索引。深分页成本与包含搜索边界见[列表查询说明](../../docs/library-search.md)。
 
@@ -206,3 +206,15 @@ compute 内部 `/internal/v1/audio-roles/tasks` 接收固定 UUID、mode=PROBE|A
 ## 快速伴奏配方与版本接口
 
 SEPARATE 与批量请求新增可选 separationProfile（DSP_FAST/AI_CLEAN/LEGACY_DEMUCS）、modelId、outputFormat、preview、backend；FAST 仍表示音轨识别。sourceAudioId 指定当前已探测音轨或 LEFT/RIGHT 声道时必须 sourceConfirmed=true。GET audio-roles 增加 versions，POST /api/v1/media-songs/{song}/accompaniment/{id}/activate 仅接受当前指纹下完整 AAC；下载支持 audio/flac。新字段只向 separation.version>=1 的节点发送，默认旧任务保持旧协议。真实行为、依赖和验收边界见 [伴奏说明](../../services/singverse-compute/AUDIO-SEPARATION.md)。
+
+## 歌手封面批次与类型整理
+
+`GET /api/v1/artists` 新增可选 `artwork=MISSING|REVIEW`，与名称、类型、歌曲数筛选一起在分页前应用，旧参数继续兼容。`GET /artists/artwork-platforms` 只返回已启用的平台标识；网易云/QQ/酷狗沿用元数据平台设置，酷我（`KUWO`）、汽水（`QISHUI`）、TheAudioDB 是无需账号 Cookie 的公开歌手图片源。汽水的长数字 ID 不经浮点转换；同名搜索结果必须继续核对歌曲或进入候选确认。
+
+`POST /artists/artwork-batches` 保存 1～1000 位显式选择或全部筛选结果快照、图片平台和幂等 requestId；相同输入重放返回原批次，不同输入同标识返回 409。`GET /artists/artwork-batches/latest` 无批次时返回 null，`GET /artists/artwork-batches/{batch}` 按提交时稳定顺序分页读取真实结果，默认 20、最多 100；批次处理头像封面，已有图片/手动移除均保留。显式平台不回退到其他图片源，候选继续明确确认后才使用；确认后同步批次状态。离页和断线不取消后台执行。任务中心新增 `ARTIST_ARTWORK`，进度单位 `ARTISTS`，深链接回到该歌手批次。
+
+`POST /artists/categories` 按每位歌手 id/revision 原子确认 MALE、FEMALE、GROUP 或 UNKNOWN，任一版本冲突整批回滚；不自动猜测性别。所有新增接口均位于 `/api/v1` 下，仅管理员 Cookie 可访问，写入继续受同源与 CSRF 保护；不改变 TV/亲友 Bearer 边界。
+
+Nginx 为上述两个批量写入接口单独允许 128 KiB 请求，以容纳 1000 位歌手；其他 JSON 请求默认上限不变，Go 仍逐项校验范围、标识与修订号。
+
+歌曲元数据平台现为 `NETEASE|QQ|KUGOU|KUWO|QISHUI`，设置与搜索最多 5 个，默认配置不变。候选封面 GET 可传 `quality=ORIGINAL|HIGH`，单曲确认可传 `coverQuality`，均默认原图；服务端只从已有候选推导 CDN 版本，确认结果保存所选版本，不接收外部 URL。平台原图不再经过 2 MB / 4096 像素门槛，保留源字节，网络与缓存读取上限 32 MiB、20 秒；上传限制保持独立。图片加载失败与平台未提供封面分别处理。

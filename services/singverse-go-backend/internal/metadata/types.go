@@ -97,6 +97,7 @@ type ReviewApply struct {
 	Edits            map[string]any `json:"edits"`
 	CoverCandidateID *string        `json:"coverCandidateId"`
 	CoverAssetID     *string        `json:"coverAssetId"`
+	CoverQuality     string         `json:"coverQuality,omitempty"`
 }
 type ReviewResult struct {
 	Metadata *Applied       `json:"metadata"`
@@ -118,7 +119,7 @@ type Provider interface {
 type projectFunc func(context.Context, store.DBTX, string, string) error
 
 var allFields = []string{"title", "artists", "album", "releaseDate", "aliases", "cover", "durationMs"}
-var providers = []string{"NETEASE", "QQ", "KUGOU"}
+var providers = []string{"NETEASE", "QQ", "KUGOU", "KUWO", "QISHUI"}
 
 type problem struct {
 	status int

@@ -1,5 +1,6 @@
 import { authRequest } from '../../../core/auth/api'
 import type { MetadataBatch, MetadataSettings, MusicProvider, SearchResult } from '../types'
+import type { CoverQuality } from '../single-types'
 const base = '/api/v1/metadata'
 const segment = encodeURIComponent
 export const metadata = {
@@ -13,6 +14,6 @@ export const metadata = {
   resume: (id: string) => authRequest<MetadataBatch>(`${base}/batches/${segment(id)}/resume`, 'POST'),
   cancel: (id: string) => authRequest<MetadataBatch>(`${base}/batches/${segment(id)}/cancel`, 'POST'),
   retry: (id: string, itemId: string) => authRequest<MetadataBatch>(`${base}/batches/${segment(id)}/items/${segment(itemId)}/retry`, 'POST'),
-  candidateCover: (id: string) => `${base}/candidates/${segment(id)}/cover`,
+  candidateCover: (id: string, quality?: CoverQuality) => `${base}/candidates/${segment(id)}/cover${quality ? `?quality=${quality}` : ''}`,
   songCover: (id: string) => `${base}/songs/${segment(id)}/cover`,
 }

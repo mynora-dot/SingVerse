@@ -38,7 +38,7 @@ func projectSong(song Song) (map[string]any, error) {
 		}
 		classification = m
 	}
-	return map[string]any{"id": song.ID, "sourceId": song.SourceID, "sourceName": song.SourceName, "relativePath": song.RelativePath, "fileSize": size, "modifiedAt": optional(song.ModifiedAt), "scannedAt": song.ScannedAt, "parserProfileId": song.ParserProfileID, "parserRevision": json.Number(strconv.FormatInt(song.ParserRevision, 10)), "selectedRuleId": optional(song.SelectedRuleID), "result": result, "metadata": nil, "classification": classification}, nil
+	return map[string]any{"mediaVerification": optional(song.MediaVerification), "id": song.ID, "sourceId": song.SourceID, "sourceName": song.SourceName, "relativePath": song.RelativePath, "fileSize": size, "modifiedAt": optional(song.ModifiedAt), "scannedAt": song.ScannedAt, "parserProfileId": song.ParserProfileID, "parserRevision": json.Number(strconv.FormatInt(song.ParserRevision, 10)), "selectedRuleId": optional(song.SelectedRuleID), "result": result, "metadata": nil, "classification": classification}, nil
 }
 func optional(v *string) any {
 	if v == nil {

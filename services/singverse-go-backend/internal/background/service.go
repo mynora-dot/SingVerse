@@ -27,7 +27,7 @@ var files embed.FS
 
 const retention int64 = 30 * 86400000
 
-var types = []string{"WEBDAV_SCAN", "METADATA", "CLASSIFICATION", "AUDIO_BATCH", "AUDIO_JOB", "TRANSCODE", "CACHE_CLEANUP", "SHARE_EXPORT", "LX_DOWNLOAD"}
+var types = []string{"WEBDAV_SCAN", "METADATA", "CLASSIFICATION", "AUDIO_BATCH", "AUDIO_JOB", "TRANSCODE", "CACHE_CLEANUP", "SHARE_EXPORT", "LX_DOWNLOAD", "ARTIST_ARTWORK"}
 
 type doc = map[string]any
 type Service struct {

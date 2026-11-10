@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/store"
 	"golang.org/x/text/unicode/norm"
 	"math/big"
 	"net/url"
@@ -22,6 +23,7 @@ type Artwork struct {
 	ExternalID string
 	Portrait   string
 	Background string
+	Candidates []Artwork
 }
 
 func artistCanonical(v string) string {
@@ -33,19 +35,58 @@ var qqID = regexp.MustCompile(`^[A-Za-z0-9]{1,120}$`)
 var neteaseID = regexp.MustCompile(`^[0-9]{1,20}$`)
 
 func (s *Service) ArtistArtwork(ctx context.Context, name string, titles []string, refs []ArtistRef) (*Artwork, error) {
+	return s.ArtistArtworkFrom(ctx, name, titles, refs, "AUTO")
+}
+
+// ArtistArtworkProviders reads only public availability and reuses the caller's transaction.
+func (s *Service) ArtistArtworkProviders(ctx context.Context, tx store.DBTX) ([]string, error) {
+	cfg, e := s.settings(ctx, tx, false)
+	if e != nil {
+		return nil, e
+	}
+	out := []string{}
+	if cfg.Enabled {
+		for _, provider := range []string{"NETEASE", "QQ", "KUGOU"} {
+			if contains(cfg.Providers, provider) {
+				out = append(out, provider)
+			}
+		}
+	}
+	return out, nil
+}
+
+// ArtistArtworkFrom never falls back to a different platform after an explicit choice.
+func (s *Service) ArtistArtworkFrom(ctx context.Context, name string, titles []string, refs []ArtistRef, selected string) (*Artwork, error) {
 	if _, e := clean(name, 200); e != nil {
 		return nil, e
+	}
+	if !contains([]string{"AUTO", "NETEASE", "QQ", "KUGOU"}, selected) {
+		return nil, bad("歌手图片平台无效")
 	}
 	cfg, e := s.settings(ctx, s.db, false)
 	if e != nil {
 		return nil, e
 	}
+	if selected != "AUTO" && (!cfg.Enabled || !contains(cfg.Providers, selected)) {
+		return nil, conflict("所选图片平台尚未启用")
+	}
 	if !cfg.Enabled {
 		return nil, nil
 	}
 	var failure error
-	for _, provider := range []string{"NETEASE", "QQ"} {
-		if !contains(cfg.Providers, provider) {
+	for _, provider := range []string{"NETEASE", "QQ", "KUGOU"} {
+		if !contains(cfg.Providers, provider) || selected != "AUTO" && provider != selected {
+			continue
+		}
+		if provider == "KUGOU" {
+			art, err := s.kugouArtistArtwork(ctx, name, titles, refs)
+			if err != nil {
+				failure = err
+				continue
+			}
+			if art != nil {
+				return art, nil
+			}
 			continue
 		}
 		ids := []string{}

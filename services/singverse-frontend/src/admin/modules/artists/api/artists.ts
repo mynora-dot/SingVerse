@@ -1,9 +1,14 @@
 import { authRequest, ApiError } from '../../../core/auth/api'
-import type { Artist, ImageKind, Page } from '../types'
+import type { Artist, ImageKind, Page, ArtworkBatch, ArtworkBatchInput, ArtworkPlatform } from '../types'
 import type { MediaSong } from '../../media-library/types'
 const base='/api/v1/artists'
 const segment=encodeURIComponent
 export const artists = {
+  artworkPlatforms:()=>authRequest<{enabled:ArtworkPlatform[]}>(`${base}/artwork-platforms`),
+  startArtworkBatch:(input:ArtworkBatchInput)=>authRequest<ArtworkBatch>(`${base}/artwork-batches`,'POST',input,30000),
+  latestArtworkBatch:()=>authRequest<ArtworkBatch|null>(`${base}/artwork-batches/latest`),
+  artworkBatch:(id:string,page=0)=>authRequest<ArtworkBatch>(`${base}/artwork-batches/${segment(id)}?page=${page}&size=20`),
+  categories:(selected:Array<{id:string;revision:number}>,type:Artist['type'])=>authRequest<{updated:number}>(`${base}/categories`,'POST',{artists:selected,type},30000),
   artworkSettings:()=>authRequest<{fanartConfigured:boolean}>(`${base}/artwork-settings`),
   saveArtworkSettings:(fanartKey:string|null,clearFanartKey=false)=>authRequest<{fanartConfigured:boolean}>(`${base}/artwork-settings`,'PUT',{fanartKey,clearFanartKey}),
   candidates:(id:string,kind:ImageKind)=>authRequest<Array<{provider:string;externalId:string;attribution:string;portrait:string;background:string}>>(`${base}/${segment(id)}/images/${kind}/candidates`),
@@ -13,7 +18,7 @@ export const artists = {
   retry:(id:string)=>authRequest(`${base}/${segment(id)}/images/retry`,'POST',{}),
   override:(id:string)=>authRequest<{revision:number;overridden:boolean}>(`${base}/song-overrides/${segment(id)}`),
   reset:(id:string,revision:number)=>authRequest(`${base}/song-overrides/${segment(id)}?revision=${revision}`,'DELETE'),
-  list: (q='',page=0,size=12,type='',countLessThan:number|null=null) => authRequest<Page<Artist>>(`${base}?q=${segment(q)}&page=${page}&size=${size}&type=${segment(type)}${countLessThan === null ? '' : `&countLessThan=${countLessThan}`}`),
+  list: (q='',page=0,size=20,type='',countLessThan:number|null=null,artwork='') => authRequest<Page<Artist>>(`${base}?q=${segment(q)}&page=${page}&size=${size}&type=${segment(type)}${countLessThan === null ? '' : `&countLessThan=${countLessThan}`}${artwork ? `&artwork=${segment(artwork)}` : ''}`),
   category: (id:string,type:Artist['type'],revision:number) => authRequest<Artist>(`${base}/${segment(id)}/category`,'PUT',{type,revision}),
   get: (id:string) => authRequest<Artist>(`${base}/${segment(id)}`),
   upload: async(id:string,kind:ImageKind,version:string,file:File,signal:AbortSignal):Promise<Artist> => {

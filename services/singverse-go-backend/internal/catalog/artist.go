@@ -54,7 +54,7 @@ func artistProfile(r map[string]any) (map[string]any, error) {
 		}
 	}
 	overall := "READY"
-	for _, state := range []string{"FAILED", "NEEDS_REVIEW", "RETRY", "PENDING"} {
+	for _, state := range []string{"NO_MATCH", "BLOCKED", "FAILED", "NEEDS_REVIEW", "RETRY", "PENDING", "PROCESSING"} {
 		if has(state, states...) {
 			overall = state
 		}
@@ -153,39 +153,66 @@ func (s *Service) artistGet(ctx context.Context, id string) (any, error) {
 	})
 	return out, e
 }
-func (s *Service) artistList(ctx context.Context, q, kind string, less *int, p, size int) (any, error) {
+
+type ArtistFilter struct {
+	Q             string `json:"q"`
+	Type          string `json:"type"`
+	CountLessThan *int   `json:"countLessThan"`
+	Artwork       string `json:"artwork"`
+}
+
+func (f ArtistFilter) validate() error {
+	if !textValid(f.Q, 200, true) || !has(f.Type, "", "MALE", "FEMALE", "GROUP", "UNKNOWN") || f.CountLessThan != nil && (*f.CountLessThan < 1 || *f.CountLessThan > 1000000) || !has(f.Artwork, "", "MISSING", "REVIEW") {
+		return fail(400, "歌手筛选条件无效")
+	}
+	return nil
+}
+func (s *Service) filteredArtists(ctx context.Context, tx store.DBTX, f ArtistFilter) ([]map[string]any, error) {
+	if e := f.validate(); e != nil {
+		return nil, e
+	}
+	groups, e := s.ensureArtists(ctx, tx)
+	if e != nil {
+		return nil, e
+	}
+	rows, e := query(ctx, tx, s.q["a_list"])
+	if e != nil {
+		return nil, e
+	}
+	items := []map[string]any{}
+	for _, r := range rows {
+		id := str(r["id"])
+		if len(groups[id]) == 0 {
+			continue
+		}
+		kind := str(r["artist_type"])
+		if kind == "PERSON" {
+			kind = "UNKNOWN"
+		}
+		if !strings.Contains(search.Searchable(str(r["name"])+" "+str(r["aliases_json"])), search.Normalize(f.Q)) || f.Type != "" && kind != f.Type || f.CountLessThan != nil && len(groups[id]) >= *f.CountLessThan {
+			continue
+		}
+		if f.Artwork == "MISSING" && r["portrait_version"] != nil || f.Artwork == "REVIEW" && str(r["portrait_fetch_state"]) != "NEEDS_REVIEW" {
+			continue
+		}
+		v, e := artistProfile(r)
+		if e != nil {
+			return nil, e
+		}
+		v["count"] = len(groups[id])
+		items = append(items, v)
+	}
+	return items, nil
+}
+func (s *Service) artistList(ctx context.Context, f ArtistFilter, p, size int) (any, error) {
 	if e := pages(p, size); e != nil {
 		return nil, e
 	}
-	if !textValid(q, 200, true) || !has(kind, "", "MALE", "FEMALE", "GROUP", "UNKNOWN") || less != nil && (*less < 1 || *less > 1000000) {
-		return nil, fail(400, "歌手筛选条件无效")
-	}
-	items := []map[string]any{}
+	var items []map[string]any
 	e := store.WithinTx(ctx, s.db, func(tx store.DBTX) error {
-		groups, e := s.ensureArtists(ctx, tx)
-		if e != nil {
-			return e
-		}
-		rows, e := query(ctx, tx, s.q["a_list"])
-		if e != nil {
-			return e
-		}
-		for _, r := range rows {
-			id := str(r["id"])
-			if _, ok := groups[id]; !ok {
-				continue
-			}
-			if !strings.Contains(search.Searchable(str(r["name"])+" "+str(r["aliases_json"])), search.Normalize(q)) || kind != "" && str(r["artist_type"]) != kind || less != nil && len(groups[id]) >= *less {
-				continue
-			}
-			v, e := artistProfile(r)
-			if e != nil {
-				return e
-			}
-			v["count"] = len(groups[id])
-			items = append(items, v)
-		}
-		return nil
+		var e error
+		items, e = s.filteredArtists(ctx, tx, f)
+		return e
 	})
 	if e != nil {
 		return nil, e
@@ -288,6 +315,16 @@ func (s *Service) artistImage(ctx context.Context, id, kind, expected string, b 
 		if e = s.exec(ctx, tx, "a_insertPolicy", id, k, true); e != nil {
 			return nil, e
 		}
+		state := "READY"
+		if remove {
+			state = "BLOCKED"
+		}
+		if e = s.exec(ctx, tx, "a_manualImageState", state, id, k); e != nil {
+			return nil, e
+		}
+		if e = s.closeArtworkReviews(ctx, tx, id, k, "SKIPPED", "已采用手动图片设置，候选不再等待确认"); e != nil {
+			return nil, e
+		}
 		r, e := s.artist(ctx, tx, id)
 		if e != nil {
 			return nil, e
@@ -304,6 +341,9 @@ func (s *Service) retryArtwork(ctx context.Context, id string) error {
 			return nil, e
 		}
 		for _, kind := range []string{"PORTRAIT", "BACKGROUND"} {
+			if e := s.closeArtworkReviews(ctx, tx, id, kind, "SKIPPED", "已重新请求自动补图，旧候选不再生效"); e != nil {
+				return nil, e
+			}
 			if e := s.exec(ctx, tx, "a_deletePolicy", id, kind); e != nil {
 				return nil, e
 			}

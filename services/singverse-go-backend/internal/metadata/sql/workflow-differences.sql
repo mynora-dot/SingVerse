@@ -1,0 +1,1 @@
+SELECT original_path,relative_path,outcome,differences_json,verification FROM media_import_entry WHERE job_id=@{id} AND (outcome='PRESERVED' OR verification IN ('MISSING','MISMATCH','UNREACHABLE')) AND ordinal>@{cursor} ORDER BY ordinal LIMIT 100

@@ -18,7 +18,7 @@ const candidate: MetadataCandidate = { id: 'candidate-1', score: .95, track: { p
 function batch(status = 'RUNNING'): MetadataBatch { return { id: 'batch-1', mode: 'SELECTED', status, total: 1, completed: 0, pending: 1, processing: 0, review: 0, applied: 0, failed: 0, skippedExisting: 0, autoApply: false, threshold: .95, createdAt: '', updatedAt: '', items: [], page: 0, size: 20, totalElements: 1 } }
 function button(text: string) { return wrapper.findAll('button').find(item => item.text() === text)! }
 async function page(path = '/library/songs/metadata') {
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/library/songs/metadata', component: MetadataScrapeView }, { path: '/library/songs', component: { template: '<div>歌曲管理</div>' } }] })
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/library/songs/metadata', component: MetadataScrapeView }, { path: '/system/music-platforms', component: { template: '<div>音乐平台设置</div>' } }, { path: '/library/songs', component: { template: '<div>歌曲管理</div>' } }] })
   await router.push(path)
   wrapper = mount({ template: '<RouterView />' }, { global: { plugins: [router], stubs: { teleport: true } } })
   await flushPromises(); return router
@@ -50,16 +50,16 @@ it('历史查询期间误标已应用的记录可重新匹配，正常应用记�
   await button('重新匹配').trigger('click'); await flushPromises()
   expect(metadata.retry).toHaveBeenCalledWith('batch-1', 'item-1')
 })
-it('关闭状态阻止启动，修改设置需先保存，自动写入保持关闭', async () => {
+it('平台关闭时阻止启动，管理入口转到设置并保留所选歌曲', async () => {
   vi.mocked(metadata.settings).mockResolvedValue({ ...config, enabled: false })
-  vi.mocked(metadata.saveSettings).mockResolvedValue(config)
-  await page()
+  const router = await page('/library/songs/metadata?songIds=a,b')
   expect((button('刮削全部歌曲').element as HTMLButtonElement).disabled).toBe(true)
-  await wrapper.findAll('input[type=checkbox]')[0]!.setValue(true)
-  expect((button('刮削全部歌曲').element as HTMLButtonElement).disabled).toBe(true)
-  await wrapper.get('form').trigger('submit'); await flushPromises()
-  expect(metadata.saveSettings).toHaveBeenCalledWith(config)
-  expect((button('刮削全部歌曲').element as HTMLButtonElement).disabled).toBe(false)
+  expect(wrapper.text()).toContain('设置 → 音乐平台')
+  expect(wrapper.find('input[type=checkbox]').exists()).toBe(false)
+  await button('管理平台').trigger('click'); await flushPromises()
+  expect(router.currentRoute.value.path).toBe('/system/music-platforms')
+  expect(router.currentRoute.value.query.returnTo).toBe('/library/songs/metadata?songIds=a,b')
+  expect(metadata.saveSettings).not.toHaveBeenCalled()
 })
 it('选中批次确认后提交所选歌曲，并显示持久化进度', async () => {
   vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>)
@@ -103,33 +103,25 @@ it('批次审核复用单曲编辑工作区及批次候选', async () => {
   expect(singleReview.applyBatch).toHaveBeenCalledWith('batch-1', 'item-1', expect.objectContaining({ candidateId: 'candidate-1', fields: expect.arrayContaining(['album']) }))
 })
 
-it('批量随机间隔显示服务端配置并随设置保存', async () => {
-  vi.mocked(metadata.saveSettings).mockResolvedValue({ ...config, minIntervalSeconds: 10, maxIntervalSeconds: 20 })
+it('歌曲信息页只展示已保存的平台与间隔，不再内嵌配置表单', async () => {
+  vi.mocked(metadata.settings).mockResolvedValue({ ...config, minIntervalSeconds: 10, maxIntervalSeconds: 20 })
   await page()
-  expect((wrapper.get('input[aria-label="批量最小间隔秒"]').element as HTMLInputElement).value).toBe('3')
-  await wrapper.get('input[aria-label="批量最小间隔秒"]').setValue('10')
-  await wrapper.get('input[aria-label="批量最大间隔秒"]').setValue('20')
-  await wrapper.get('form').trigger('submit'); await flushPromises()
-  expect(metadata.saveSettings).toHaveBeenCalledWith({ ...config, minIntervalSeconds: 10, maxIntervalSeconds: 20 })
+  expect(wrapper.get('.metadata-settings').text()).toContain('间隔 10～20 秒')
+  expect(wrapper.find('input[aria-label="批量最小间隔秒"]').exists()).toBe(false)
+  expect(metadata.saveSettings).not.toHaveBeenCalled()
 })
-it('批量请求间隔允许设置为零秒', async () => {
-  vi.mocked(metadata.saveSettings).mockResolvedValue({ ...config, minIntervalSeconds: 0, maxIntervalSeconds: 0 })
+it('歌曲信息页准确展示零秒等待配置', async () => {
+  vi.mocked(metadata.settings).mockResolvedValue({ ...config, minIntervalSeconds: 0, maxIntervalSeconds: 0 })
   await page()
-  expect(wrapper.get('input[aria-label="批量最小间隔秒"]').attributes('min')).toBe('0')
-  await wrapper.get('input[aria-label="批量最小间隔秒"]').setValue('0')
-  await wrapper.get('input[aria-label="批量最大间隔秒"]').setValue('0')
-  await wrapper.get('form').trigger('submit'); await flushPromises()
-  expect(metadata.saveSettings).toHaveBeenCalledWith({ ...config, minIntervalSeconds: 0, maxIntervalSeconds: 0 })
+  expect(wrapper.get('.metadata-settings').text()).toContain('间隔 0～0 秒')
 })
-it('运行批次优先显示统一整体进度且设置默认折叠，可重新展开', async () => {
+it('运行批次保留整体进度并将平台配置交给设置页', async () => {
   vi.mocked(metadata.latest).mockResolvedValue({ ...batch(), total: 12, completed: 5, pending: 6, processing: 1, review: 2, skippedExisting: 3, processableTotal: 9, legacySkipped: 3, observedAt: '2026-10-28T00:00:00Z' })
   await page()
   expect(wrapper.get('.progress-caption').text()).toContain('已处理 5 / 12 首')
   expect(wrapper.get('[role=progressbar]').attributes('aria-valuenow')).toBe('42')
-  expect(wrapper.get('#batch-settings-form').isVisible()).toBe(false)
-  await button('展开配置').trigger('click'); await flushPromises()
-  expect(button('收起配置').attributes('aria-expanded')).toBe('true')
-  expect((wrapper.get('#batch-settings-form').element as HTMLElement).style.display).not.toBe('none')
+  expect(wrapper.find('#batch-settings-form').exists()).toBe(false)
+  expect(button('管理平台')).toBeDefined()
   expect(wrapper.text()).toContain('仅保存汇总')
   expect(wrapper.text()).toContain('最近读取')
 })
@@ -154,18 +146,12 @@ it('状态快捷筛选、歌手搜索和排序提交给后端，而不是只过�
   await wrapper.get('select[aria-label="批次排序"]').setValue('SCORE_DESC'); await flushPromises()
   expect(metadata.batch).toHaveBeenLastCalledWith('batch-1', 0, 'SKIPPED_EXISTING', '歌手%', 'SCORE_DESC')
 })
-it('保存运行中设置前告知暂停，后端返回暂停状态后提供继续', async () => {
-  vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>)
-  vi.mocked(metadata.latest).mockResolvedValue(batch())
+it('从音乐平台设置返回指定批次时显示服务端暂停状态并提供继续', async () => {
   vi.mocked(metadata.batch).mockResolvedValue(batch('PAUSED'))
-  vi.mocked(metadata.saveSettings).mockResolvedValue({ ...config, threshold: .96 })
-  await page(); await button('展开配置').trigger('click')
-  await wrapper.get('input[aria-label="自动写入阈值"]').setValue('0.96')
-  await wrapper.get('form').trigger('submit'); await flushPromises()
-  expect(ElMessageBox.confirm).toHaveBeenCalledWith(expect.stringContaining('暂停'), '保存并暂停批次', expect.anything())
-  expect(metadata.saveSettings).toHaveBeenCalledWith(expect.objectContaining({ threshold: .96 }))
+  await page('/library/songs/metadata?batch=batch-1')
   expect(button('继续')).toBeDefined()
   expect(wrapper.text()).toContain('批次已暂停')
+  expect(metadata.saveSettings).not.toHaveBeenCalled()
 })
 it('终止确认说明未处理和已写入的真实语义，终止后不再显示续跑', async () => {
   vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>)

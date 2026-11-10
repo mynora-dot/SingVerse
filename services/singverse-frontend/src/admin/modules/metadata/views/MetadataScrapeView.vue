@@ -3,29 +3,28 @@ import TaskGuide from '../../../shared/ui/TaskGuide.vue'
 import PageHeader from '../../../shared/ui/PageHeader.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElAlert, ElButton, ElCard, ElCheckbox, ElForm, ElMessage, ElMessageBox, ElPagination, ElProgress, ElTag } from 'element-plus'
+import { ElAlert, ElButton, ElCard, ElMessage, ElMessageBox, ElPagination, ElProgress } from 'element-plus'
 import { ArrowLeft, RefreshRight } from '@element-plus/icons-vue'
 import { metadata } from '../api/metadata'
 import { media, type MediaSource } from '../../media-library/api/media'
 import { providerNames, itemStatusNames } from '../types'
-import type { MetadataBatch, MetadataItem, MetadataSettings, MusicProvider } from '../types'
+import type { MetadataBatch, MetadataItem, MetadataSettings } from '../types'
 import SingleSongScrapeDialog from '../components/SingleSongScrapeDialog.vue'
 import BatchSongTable from '../components/BatchSongTable.vue'
 const route = useRoute(), router = useRouter()
 const config = ref<MetadataSettings>({ enabled: false, providers: [], autoApply: false, threshold: .95, minIntervalSeconds: 3, maxIntervalSeconds: 8 })
-const baseline = ref(''), saved = ref(false), busy = ref(false), loading = ref(false), refreshing = ref(false)
-const error = ref(''), progressError = ref(''), settingsOpen = ref(true), lastRefresh = ref('')
+const saved = ref(false), busy = ref(false), loading = ref(false), refreshing = ref(false)
+const error = ref(''), progressError = ref(''), lastRefresh = ref('')
 const batch = ref<MetadataBatch | null>(null), page = ref(1), filter = ref(''), reviewItem = ref<MetadataItem | null>(null)
 const keyword = ref(''), appliedKeyword = ref(''), sort = ref('DEFAULT')
 const sourceId = ref(''), sources = ref<MediaSource[]>([]), sourcesLoading = ref(false), sourcesError = ref('')
 const selectedIds = computed(() => typeof route.query.songIds === 'string' ? [...new Set(route.query.songIds.split(',').filter(Boolean))] : [])
-const dirty = computed(() => JSON.stringify(config.value) !== baseline.value)
 const activeBatch = computed(() => !!batch.value && ['RUNNING', 'PAUSED'].includes(batch.value.status))
-const canStart = computed(() => saved.value && config.value.enabled && !!config.value.providers.length && !dirty.value && !activeBatch.value && !busy.value && !loading.value)
+const canStart = computed(() => saved.value && config.value.enabled && !!config.value.providers.length && !activeBatch.value && !busy.value && !loading.value)
 const canStartScope = computed(() => canStart.value && (!sourceId.value || sources.value.some(source => source.id === sourceId.value)))
 const selectedSourceName = computed(() => sources.value.find(source => source.id === sourceId.value)?.name ?? '')
-const startReason = computed(() => !saved.value ? '请先成功读取并保存平台设置' : activeBatch.value ? '已有运行或暂停的批次，请先完成或终止' : dirty.value ? '请先保存设置' : !config.value.enabled || !config.value.providers.length ? '请先启用并选择平台' : '')
-const retryReason = computed(() => batch.value?.status === 'CANCELLED' ? '已终止批次不能重试，请新建批次' : !saved.value || !config.value.enabled ? '请先启用平台并保存' : dirty.value ? '请先保存设置' : '')
+const startReason = computed(() => !saved.value ? '请先成功读取并保存平台设置' : activeBatch.value ? '已有运行或暂停的批次，请先完成或终止' : !config.value.enabled || !config.value.providers.length ? '请到设置 → 音乐平台启用并选择平台' : '')
+const retryReason = computed(() => batch.value?.status === 'CANCELLED' ? '已终止批次不能重试，请新建批次' : !saved.value || !config.value.enabled ? '请到设置 → 音乐平台启用查询' : '')
 const percentage = computed(() => batch.value?.total ? Math.min(100, Math.round(batch.value.completed / batch.value.total * 100)) : 0)
 const batchNames: Record<string, string> = { RUNNING: '正在匹配', PAUSED: '已暂停', COMPLETED: '匹配完成', CANCELLED: '已终止' }
 const stats = computed(() => batch.value ? [
@@ -62,9 +61,9 @@ async function load() {
   const token = ++loadGeneration; generation++; clearTimeout(timer); loading.value = true; error.value = ''; progressError.value = ''
   const [settings, latest] = await Promise.allSettled([metadata.settings(), typeof route.query.batch === 'string' ? metadata.batch(route.query.batch) : metadata.latest()])
   if (!active || token !== loadGeneration) return
-  if (settings.status === 'fulfilled') { config.value = settings.value; baseline.value = JSON.stringify(settings.value); saved.value = true }
+  if (settings.status === 'fulfilled') { config.value = settings.value; saved.value = true }
   else { saved.value = false; error.value = settings.reason instanceof Error ? settings.reason.message : '设置读取失败' }
-  if (latest.status === 'fulfilled') { batch.value = latest.value ?? null; if (latest.value) accept(latest.value); settingsOpen.value = !latest.value }
+  if (latest.status === 'fulfilled') { batch.value = latest.value ?? null; if (latest.value) accept(latest.value) }
   else progressError.value = latest.reason instanceof Error ? latest.reason.message : '读取批次失败'
   loading.value = false; schedule()
 }
@@ -82,24 +81,12 @@ async function loadSources() {
   } catch (failure) { if (active) sourcesError.value = failure instanceof Error ? failure.message : '读取媒体来源失败' }
   finally { if (active) sourcesLoading.value = false }
 }
-async function save() {
-  if (busy.value || !dirty.value || !saved.value) return
-  if (batch.value?.status === 'RUNNING') {
-    try { await ElMessageBox.confirm('保存设置将暂停正在运行的批次；已写入结果保留，确认平台后需手动继续。', '保存并暂停批次', { confirmButtonText: '保存并暂停', cancelButtonText: '取消' }) } catch { return }
-  }
-  await action(async () => {
-    const settings = await metadata.saveSettings(config.value)
-    config.value = settings; baseline.value = JSON.stringify(settings); saved.value = true
-    await refreshBatch()
-    ElMessage.success(progressError.value ? '设置已保存；批次状态读取失败，请刷新确认' : batch.value ? `设置已保存，批次${batchNames[batch.value.status]}` : '刮削设置已保存')
-  })
-}
 async function start(all: boolean) {
   if (!canStart.value || (all && !canStartScope.value)) return
   const scopeId = all ? sourceId.value : ''
   const scopeName = selectedSourceName.value
   try { await ElMessageBox.confirm(`${all ? scopeId ? `将仅检查媒体来源「${scopeName}」的歌曲` : '将检查全部媒体来源的歌曲' : `将检查所选 ${selectedIds.value.length} 首歌曲`}。已有有效确认结果的歌曲会跳过并计入整体进度。歌名和歌手将发送至启用平台；${config.value.autoApply ? '排序第一的候选达到有效阈值时自动写入，其余等待审核' : '自动写入关闭，候选均等待人工审核'}。不会修改媒体文件。`, '开始元数据刮削', { confirmButtonText: '开始刮削', cancelButtonText: '取消' }) } catch { return }
-  await action(async () => { accept(await (scopeId ? metadata.start(true, [], scopeId) : metadata.start(all, all ? [] : selectedIds.value))); page.value = 1; filter.value = ''; keyword.value = ''; appliedKeyword.value = ''; sort.value = 'DEFAULT'; settingsOpen.value = false; await router.replace({ query: { batch: batch.value!.id } }) })
+  await action(async () => { accept(await (scopeId ? metadata.start(true, [], scopeId) : metadata.start(all, all ? [] : selectedIds.value))); page.value = 1; filter.value = ''; keyword.value = ''; appliedKeyword.value = ''; sort.value = 'DEFAULT'; await router.replace({ query: { batch: batch.value!.id } }) })
 }
 async function action(operation: () => Promise<void>) {
   if (busy.value) return
@@ -141,25 +128,11 @@ onBeforeUnmount(() => { active = false; generation++; loadGeneration++; clearTim
     <ElAlert v-if="progressError" :title="progressError" type="error" :closable="false" show-icon><ElButton text :disabled="busy" @click="batch ? refreshBatch() : load()">重新读取进度</ElButton></ElAlert>
     <div class="batch-overview" :class="{ 'has-batch': !!batch }">
     <ElCard shadow="never" class="metadata-settings">
-      <div class="section-heading"><div><h2>平台与写入设置</h2><p class="config-summary">{{ settingsSummary }}{{ dirty ? ' · 有未保存修改' : '' }}</p></div><div><ElTag :type="saved && config.enabled && !dirty ? 'success' : 'info'">{{ saved && config.enabled && !dirty ? '已启用' : '未启用或待保存' }}</ElTag><ElButton text :aria-expanded="settingsOpen" aria-controls="batch-settings-form" @click="settingsOpen = !settingsOpen">{{ settingsOpen ? '收起配置' : '展开配置' }}</ElButton></div></div>
-      <div v-show="settingsOpen" id="batch-settings-form">
-      <ElForm @submit.prevent="save">
-        <div class="setting-line"><strong>启用元数据刮削</strong><ElCheckbox v-model="config.enabled" :disabled="busy || !saved">将查询发送至所选平台，不上传原始媒体</ElCheckbox></div>
-        <div class="setting-line"><strong>刮削平台</strong><div class="settings-checks"><ElCheckbox v-for="(name, platform) in providerNames" :key="platform" :model-value="config.providers.includes(platform)" :disabled="busy || !saved" @change="value => config.providers = value ? [...config.providers, platform as MusicProvider] : config.providers.filter(item => item !== platform)">{{ name }}</ElCheckbox></div></div>
-        <details class="matching-options">
-          <summary>自动应用与请求节奏 <span>{{ config.autoApply ? '已开启自动应用，请核对' : '默认逐曲审核，按需调整' }}</span></summary>
-        <div class="setting-line"><strong>自动写入</strong><ElCheckbox v-model="config.autoApply" :disabled="busy || !saved">排序第一的候选达到阈值时自动应用</ElCheckbox></div>
-        <div class="setting-line"><strong>自动写入阈值</strong><label class="threshold"><input v-model.number="config.threshold" aria-label="自动写入阈值" type="number" min="0.8" max="1" step="0.01" :disabled="busy || !saved" /><span>{{ Math.round(config.threshold * 100) }}%</span></label></div>
-        <div class="setting-line"><strong>批量请求间隔</strong><label class="threshold"><input v-model.number="config.minIntervalSeconds" aria-label="批量最小间隔秒" type="number" min="0" max="300" :disabled="busy || !saved" /><span>至</span><input v-model.number="config.maxIntervalSeconds" aria-label="批量最大间隔秒" type="number" min="0" max="300" :disabled="busy || !saved" /><span>秒</span></label></div>
-        <p class="panel-description">每首处理结束后，在范围内随机等待再处理下一首；默认 3～8 秒。平台返回 HTTP 429 后冷却至少 60 秒，失败项可稍后重试。随机间隔不能保证避免平台限流。</p>
-        <p class="panel-description">自动写入默认关闭。相似度是匹配参考，不是正确率；仅控制自动写入，不过滤搜索候选。排序第一的候选须达到本批次阈值；当前全局阈值和开关仍会约束旧批次。相似度相同时使用服务端返回的第一条。保存设置会暂停运行中的批次，确认平台后手动继续。</p>
-        </details>
-        <div class="settings-footer"><ElButton type="primary" native-type="submit" :loading="busy" :disabled="!saved || !dirty">保存刮削设置</ElButton><span v-if="dirty" class="panel-description">有未保存修改，请先保存再启动批次。</span></div>
-      </ElForm>
-      </div>
+      <div class="section-heading"><div><h2>音乐平台</h2><p class="config-summary">{{ saved ? settingsSummary : '正在读取平台设置…' }}</p></div><ElButton @click="router.push({ path: '/system/music-platforms', query: { returnTo: route.fullPath } })">管理平台</ElButton></div>
+      <ElButton v-if="!saved && !loading" text @click="load">重新读取配置</ElButton>
     </ElCard>
     <ElCard shadow="never" class="batch-control">
-      <div class="section-heading"><div><h2>{{ batch ? batchNames[batch.status] : '尚未创建刮削批次' }}</h2><p class="panel-description">{{ batch ? '处理完成包含待审核，不代表已全部写入。' : '先配置平台，再选择全库或从歌曲管理勾选歌曲。' }}</p></div><div class="batch-actions"><ElButton v-if="batch?.status === 'RUNNING'" :disabled="busy" @click="control('pause')">暂停</ElButton><span v-if="batch?.status === 'PAUSED'" :title="dirty ? '先保存设置再继续' : !config.enabled ? '先启用平台' : ''"><ElButton :disabled="busy || dirty || !config.enabled || !saved" @click="control('resume')">继续</ElButton></span><ElButton v-if="activeBatch" :disabled="busy" @click="cancel">终止</ElButton><ElButton v-if="batch" :icon="RefreshRight" :loading="refreshing" :disabled="busy" @click="refreshBatch">刷新进度</ElButton></div></div>
+      <div class="section-heading"><div><h2>{{ batch ? batchNames[batch.status] : '尚未创建刮削批次' }}</h2><p class="panel-description">{{ batch ? '处理完成包含待审核，不代表已全部写入。' : '选择整个来源，或从歌曲管理勾选本页歌曲。' }}</p></div><div class="batch-actions"><ElButton v-if="batch?.status === 'RUNNING'" :disabled="busy" @click="control('pause')">暂停</ElButton><span v-if="batch?.status === 'PAUSED'" :title="!config.enabled ? '请在设置 → 音乐平台启用平台查询' : ''"><ElButton :disabled="busy || !config.enabled || !saved" @click="control('resume')">继续</ElButton></span><ElButton v-if="activeBatch" :disabled="busy" @click="cancel">终止</ElButton><ElButton v-if="batch" :icon="RefreshRight" :loading="refreshing" :disabled="busy" @click="refreshBatch">刷新进度</ElButton></div></div>
       <p v-if="loading" role="status" class="panel-description">正在读取配置与进度…</p>
       <template v-if="batch">
         <ElProgress :percentage="percentage" :status="batch.status === 'COMPLETED' ? 'success' : undefined" />
@@ -233,67 +206,6 @@ onBeforeUnmount(() => { active = false; generation++; loadGeneration++; clearTim
   margin-bottom: 0;
 }
 
-#batch-settings-form {
-  padding-top: 12px;
-}
-
-.matching-options {
-  border-top: 1px solid var(--sv-border-subtle);
-  margin-top: 16px;
-  padding-top: 12px;
-}
-
-.matching-options summary {
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.matching-options summary span {
-  margin-left: 8px;
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--sv-text-secondary);
-}
-
-.matching-options[open] summary {
-  margin-bottom: 16px;
-}
-
-.setting-line {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  flex-wrap: wrap;
-  margin: 8px 0;
-}
-
-.setting-line>strong {
-  width: 110px;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.settings-checks {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.settings-checks .el-checkbox {
-  margin-right: 0;
-}
-
-.threshold {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 12px;
-  color: var(--sv-text-secondary);
-  flex-wrap: wrap;
-}
-
-.threshold input,
 .batch-filter input {
   padding: 7px 10px;
   color: var(--sv-text-primary);
@@ -303,11 +215,6 @@ onBeforeUnmount(() => { active = false; generation++; loadGeneration++; clearTim
   font: inherit;
 }
 
-.threshold input {
-  width: 85px;
-}
-
-.settings-footer,
 .batch-start {
   display: flex;
   justify-content: space-between;
@@ -315,11 +222,6 @@ onBeforeUnmount(() => { active = false; generation++; loadGeneration++; clearTim
   gap: 12px;
   flex-wrap: wrap;
   margin-top: 14px;
-}
-
-.metadata-settings .panel-description {
-  margin: 8px 0;
-  font-size: 12px;
 }
 
 .source-scope {
@@ -472,22 +374,6 @@ onBeforeUnmount(() => { active = false; generation++; loadGeneration++; clearTim
   gap: 8px;
 }
 
-@media(min-width: 1100px) {
-  .batch-overview:not(.has-batch) {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    align-items: start;
-  }
-
-  .batch-overview:not(.has-batch) .setting-line {
-    align-items: flex-start;
-  }
-
-  .batch-overview:not(.has-batch) .setting-line>strong {
-    width: 100%;
-  }
-}
-
 @media(max-width: 850px) {
   .batch-stats {
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -497,14 +383,6 @@ onBeforeUnmount(() => { active = false; generation++; loadGeneration++; clearTim
 @media(max-width: 600px) {
   .metadata-page :deep(.el-card__body) {
     padding: 14px;
-  }
-
-  .setting-line {
-    gap: 4px;
-  }
-
-  .setting-line>strong {
-    width: 100%;
   }
 
   .batch-start>div {

@@ -596,6 +596,9 @@ func (s *Service) recover(ctx context.Context) error {
 		if e := s.exec(ctx, tx, "c_recoverItems", now()); e != nil {
 			return e
 		}
+		if e := s.exec(ctx, tx, "ab_recover", now()); e != nil {
+			return e
+		}
 		return s.exec(ctx, tx, "c_recoverTasks", now())
 	})
 }

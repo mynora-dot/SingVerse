@@ -1,7 +1,7 @@
 import type { BackgroundTask, TaskExecution } from './api'
 
 export const typeNames: Record<string, string> = {
-  LX_DOWNLOAD: '歌曲下载', LOCAL_SCAN: '本地扫描', WEBDAV_SCAN: 'WebDAV 扫描', METADATA: '元数据整理', CLASSIFICATION: 'AI 分类',
+  ARTIST_ARTWORK: '歌手封面获取', LX_DOWNLOAD: '歌曲下载', LOCAL_SCAN: '本地扫描', WEBDAV_SCAN: 'WebDAV 扫描', METADATA: '元数据整理', CLASSIFICATION: 'AI 分类',
   AUDIO_DISCOVERY: '自动音轨识别', AUDIO_BATCH: '批量伴奏生成', AUDIO_JOB: '单曲音频处理', TRANSCODE: '离线转码', CACHE_CLEANUP: '缓存清理', SHARE_EXPORT: '分享包导出',
 }
 export const statusNames: Record<string, string> = {
@@ -10,12 +10,12 @@ export const statusNames: Record<string, string> = {
 }
 export const itemStatusNames: Record<string, string> = {
   RESOLVING: '获取歌曲地址', DOWNLOADING: '正在下载', PUBLISHING: '正在加入曲库', SUCCESS: '已加入曲库',
-  ...statusNames, PENDING: '等待处理', PROCESSING: '处理中', PROBING: '读取音轨', REVIEW: '待审核',
+  NO_MATCH: '未找到匹配', ...statusNames, PENDING: '等待处理', PROCESSING: '处理中', PROBING: '读取音轨', REVIEW: '待审核',
   AUTO_APPLIED: '已自动保存', MANUAL_APPLIED: '已人工保存', APPLIED: '已保存', SKIPPED_EXISTING: '保留已有结果',
   SKIPPED: '已跳过', UNCHANGED: '无需更改', SUCCEEDED: '处理成功',
 }
 const stages: Record<string, string> = {
-  RESOLVING: '获取歌曲地址', DOWNLOADING: '正在下载', PUBLISHING: '正在加入曲库',
+  FETCHING_ARTWORK: '获取歌手封面', RESOLVING: '获取歌曲地址', DOWNLOADING: '正在下载', PUBLISHING: '正在加入曲库',
   DISCOVERING: '发现待处理歌曲', RECOGNIZING: '处理扫描后的音轨任务', WAITING_RECOGNITION: '等待后续音轨处理', LEGACY: '未记录原始批次',
   ...statusNames, SCANNING: '遍历目录', READING_TAGS: '读取文件标签', COMMITTING: '保存索引', MATCHING: '匹配元数据',
   CLASSIFYING: '生成分类建议', PREPARING: '准备批次', PREVIEW: '等待确认开始', PROCESSING: '处理歌曲',
@@ -34,7 +34,7 @@ export function tone(status: string): 'success' | 'warning' | 'danger' | 'info' 
 export function date(value?: string | null) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '未记录' }
 export function progressText(task: BackgroundTask) {
   const { completed, total, unit } = task.progress
-  const suffix = unit === 'SONGS' ? '首' : '项'
+  const suffix = unit === 'SONGS' ? '首' : unit === 'ARTISTS' ? '位' : '项'
   const scope = task.stage === 'PREPARING' ? '已准备' : task.stage === 'READING_TAGS' ? '已读取' : '已处理'
   if (completed !== null && total !== null) return scope + ' ' + completed.toLocaleString() + ' / ' + total.toLocaleString() + ' ' + suffix
   if (task.type.endsWith('SCAN')) return '已发现 ' + Number(task.statistics.total_songs || 0).toLocaleString() + ' 首歌曲'
@@ -53,7 +53,7 @@ export function bytes(value: number) {
   return Math.max(0, value).toLocaleString() + ' B'
 }
 const statisticNames: Record<string, string> = {
-  interrupted: '已中断', cancelled: '已取消',
+  noMatch: '未找到匹配', interrupted: '已中断', cancelled: '已取消',
   pending: '等待处理', processing: '正在处理', review: '待审核', failed: '失败', skipped: '跳过', applied: '已保存',
   prepared: '已准备', directories: '已遍历目录', entries: '已访问条目', total_songs: '发现歌曲',
   matched_songs: '匹配歌曲', review_songs: '待复核歌曲', skipped_files: '跳过文件', added_songs: '新增歌曲',

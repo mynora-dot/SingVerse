@@ -214,7 +214,7 @@ func readManifest(data []byte) (map[string]any, error) {
 	var document map[string]any
 	decoder := json.NewDecoder(bytes.NewReader(manifest))
 	decoder.UseNumber()
-	if decoder.Decode(&document) != nil || document["format"] != "singverse-media-index" || number(document["version"]) != 2 {
+	if decoder.Decode(&document) != nil || document["format"] != "singverse-media-index" || (number(document["version"]) != 2 && number(document["version"]) != 3) {
 		return nil, bad("索引包版本无效")
 	}
 	entries, ok := document["entries"].([]any)

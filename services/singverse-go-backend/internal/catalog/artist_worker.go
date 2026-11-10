@@ -58,6 +58,9 @@ func (s *Service) artworkLoop(ctx context.Context, done chan<- struct{}) {
 	}
 }
 func (s *Service) processArtwork(ctx context.Context) {
+	if s.processArtworkBatch(ctx) {
+		return
+	}
 	var job map[string]any
 	var name string
 	var titles []string
@@ -97,7 +100,13 @@ func (s *Service) processArtwork(ctx context.Context) {
 			return e
 		}
 		if blocked {
-			e = s.exec(ctx, tx, "a_imageFetchState", "READY", job["attempts"], "", id, kind, job["generation"])
+			state := "READY"
+			if _, imageErr := one(ctx, tx, s.q["a_image"], id, kind); errors.Is(imageErr, sql.ErrNoRows) {
+				state = "BLOCKED"
+			} else if imageErr != nil {
+				return imageErr
+			}
+			e = s.exec(ctx, tx, "a_imageFetchState", state, job["attempts"], "", id, kind, job["generation"])
 			job = nil
 			return e
 		}
@@ -128,74 +137,7 @@ func (s *Service) processArtwork(ctx context.Context) {
 	}
 	id, kind := str(job["artist_id"]), str(job["image_kind"])
 
-	review := []ArtworkChoice{}
-	var chosen *ArtworkChoice
-	address := ""
-	var data []byte
-	var primaryError error
-	if kind == "PORTRAIT" && s.artistProvider != nil {
-		old, err := s.artistProvider.ArtistArtwork(ctx, name, titles, refs)
-		primaryError = err
-		if old != nil {
-			chosen = &ArtworkChoice{Provider: old.Provider, ExternalID: old.ExternalID, Portrait: old.Portrait, Attribution: old.Provider, Verified: true}
-			address = old.Portrait
-			if address != "" {
-				data, err = downloadArtwork(ctx, address)
-				if err != nil {
-					primaryError = err
-					chosen = nil
-					address = ""
-				}
-			}
-		}
-	}
-	if data == nil {
-		var choices []ArtworkChoice
-		choices, e = s.findArtwork(ctx, name, titles)
-		if e == nil {
-			if kind == "PORTRAIT" {
-				filtered := []ArtworkChoice{}
-				for _, c := range choices {
-					if c.Portrait != "" {
-						filtered = append(filtered, c)
-					}
-				}
-				choices = filtered
-			}
-			if len(choices) > 1 || len(choices) == 1 && !choices[0].Verified {
-				review = choices
-			} else if len(choices) == 1 {
-				chosen = &choices[0]
-				address = chosen.Portrait
-				if kind == "BACKGROUND" {
-					address = chosen.Background
-					if address == "" {
-						extra, err := s.fanart(ctx, *chosen)
-						if err != nil {
-							e = err
-						} else if extra != nil {
-							chosen = extra
-							address = extra.Background
-						}
-					}
-				}
-			}
-			if e == nil && address != "" {
-				data, e = downloadArtwork(ctx, address)
-				if e != nil && kind == "BACKGROUND" && chosen != nil {
-					extra, err := s.fanart(ctx, *chosen)
-					if err == nil && extra != nil && extra.Background != "" {
-						chosen = extra
-						address = extra.Background
-						data, e = downloadArtwork(ctx, address)
-					}
-				}
-			}
-			if address == "" && len(review) == 0 && primaryError != nil {
-				e = primaryError
-			}
-		}
-	}
+	chosen, address, data, review, e := s.lookupArtwork(ctx, name, titles, refs, kind, "AUTO")
 
 	if ctx.Err() != nil {
 		return
@@ -244,4 +186,111 @@ func (s *Service) processArtwork(ctx context.Context) {
 		}
 		return nil, s.exec(ctx, tx, "a_imageFetchState", state, attempts, "", id, kind, job["generation"])
 	})
+}
+
+func (s *Service) lookupArtwork(ctx context.Context, name string, titles []string, refs []metadata.ArtistRef, kind, provider string) (*ArtworkChoice, string, []byte, []ArtworkChoice, error) {
+	review := []ArtworkChoice{}
+	var chosen *ArtworkChoice
+	address := ""
+	var data []byte
+	var primaryError error
+	var e error
+	if kind == "PORTRAIT" && s.artistProvider != nil && has(provider, "AUTO", "NETEASE", "QQ", "KUGOU") {
+		old, err := s.artistProvider.ArtistArtworkFrom(ctx, name, titles, refs, provider)
+		primaryError = err
+		if old != nil {
+			for _, candidate := range old.Candidates {
+				review = append(review, ArtworkChoice{Provider: candidate.Provider, ExternalID: candidate.ExternalID, Portrait: candidate.Portrait, Attribution: candidate.Provider})
+			}
+			address = old.Portrait
+			if address != "" {
+				chosen = &ArtworkChoice{Provider: old.Provider, ExternalID: old.ExternalID, Portrait: old.Portrait, Attribution: old.Provider, Verified: true}
+				data, err = downloadArtwork(ctx, address)
+				if err != nil {
+					primaryError = err
+					chosen = nil
+					address = ""
+				}
+			}
+		}
+	}
+	if kind == "PORTRAIT" && data == nil && len(review) == 0 && has(provider, "AUTO", "KUWO", "QISHUI") {
+		for _, source := range []string{"KUWO", "QISHUI"} {
+			if provider != "AUTO" && provider != source {
+				continue
+			}
+			choices, err := s.findMusicArtwork(ctx, source, name, titles, refs)
+			if err != nil {
+				primaryError = err
+				continue
+			}
+			if len(choices) > 1 || len(choices) == 1 && !choices[0].Verified {
+				review = choices
+				break
+			}
+			if len(choices) == 1 {
+				chosen = &choices[0]
+				address = chosen.Portrait
+				data, err = downloadArtwork(ctx, address)
+				if err == nil {
+					return chosen, address, data, nil, nil
+				}
+				primaryError = err
+				chosen = nil
+				address = ""
+			}
+		}
+	}
+	if data == nil && len(review) == 0 && (provider == "AUTO" || provider == "THEAUDIODB") {
+		var choices []ArtworkChoice
+		choices, e = s.findArtwork(ctx, name, titles)
+		if e == nil {
+			if kind == "PORTRAIT" {
+				filtered := []ArtworkChoice{}
+				for _, c := range choices {
+					if c.Portrait != "" {
+						filtered = append(filtered, c)
+					}
+				}
+				choices = filtered
+			}
+			if len(choices) > 1 || len(choices) == 1 && !choices[0].Verified {
+				review = choices
+			} else if len(choices) == 1 {
+				chosen = &choices[0]
+				address = chosen.Portrait
+				if kind == "BACKGROUND" {
+					address = chosen.Background
+					if address == "" {
+						extra, err := s.fanart(ctx, *chosen)
+						if err != nil {
+							e = err
+						} else if extra != nil {
+							chosen = extra
+							address = extra.Background
+						}
+					}
+				}
+			}
+			if e == nil && address != "" {
+				data, e = downloadArtwork(ctx, address)
+				if e != nil && kind == "BACKGROUND" && chosen != nil {
+					extra, err := s.fanart(ctx, *chosen)
+					if err == nil && extra != nil && extra.Background != "" {
+						chosen = extra
+						address = extra.Background
+						data, e = downloadArtwork(ctx, address)
+					}
+				}
+			}
+			if address == "" && len(review) == 0 && primaryError != nil {
+				e = primaryError
+			}
+		}
+	}
+
+	if e == nil && data == nil && len(review) == 0 {
+		e = primaryError
+	}
+	return chosen, address, data, review, e
 }

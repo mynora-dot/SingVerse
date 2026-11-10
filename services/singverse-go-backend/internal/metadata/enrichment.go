@@ -66,7 +66,7 @@ func (s *Service) search(ctx context.Context, song map[string]any, input SearchI
 	if len(selected) == 0 {
 		selected = configured
 	}
-	if len(selected) > 3 {
+	if len(selected) > len(providers) {
 		return out, bad("搜索包含未启用的平台")
 	}
 	seenP := map[string]bool{}
@@ -102,7 +102,18 @@ func (s *Service) search(ctx context.Context, song map[string]any, input SearchI
 		}
 		delete(seenP, p)
 		provider := s.providers[p]
-		tracks, err := s.callProvider(ctx, p, provider, keyword)
+		query := keyword
+		if p == "KUWO" {
+			// Kuwo's all= query treats a natural "title artist" as a fuzzy OR
+			// search. For the unchanged song query, search the full title and
+			// let the normal title/artist score rank the actual returned tracks.
+			v := current(song)
+			title := text(v["title"])
+			if title != "" && keyword == strings.TrimSpace(title+" "+strings.Join(stringsOf(v["artists"]), " ")) {
+				query = title
+			}
+		}
+		tracks, err := s.callProvider(ctx, p, provider, query)
 		if err != nil {
 			out.Errors = append(out.Errors, ProviderError{p, safeDetail(err)})
 			continue

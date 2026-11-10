@@ -53,6 +53,7 @@ type Page[T any] struct {
 	TotalElements int64 `json:"totalElements"`
 }
 type Song struct {
+	MediaVerification *string `json:"mediaVerification,omitempty"`
 	ID                 string      `json:"id"`
 	SourceID           string      `json:"sourceId"`
 	SourceName         string      `json:"sourceName"`

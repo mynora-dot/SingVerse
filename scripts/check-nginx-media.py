@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import time
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 import uuid
 
 
@@ -17,6 +18,16 @@ const pending = new Map();
 http.createServer((req, res) => {
   const url = new URL(req.url, 'http://fixture');
   const key = url.searchParams.get('check');
+  if (req.method === 'POST' && /^\/api\/v1\/artists\/(artwork-batches|categories)$/.test(url.pathname)) {
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => {
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ bytes: Buffer.concat(chunks).length,
+        csrf: req.headers['x-csrf-token'], origin: req.headers.origin }));
+    });
+    return;
+  }
   if (url.pathname === '/api/v1/__release') {
     pending.get(key)?.();
     res.end('released');
@@ -81,6 +92,29 @@ def main():
           if time.monotonic() >= deadline:
             raise
           time.sleep(.1)
+      # Verify the advertised 1000-artist range through the real proxy, including
+      # protected request headers. Other JSON endpoints retain the 16 KiB limit.
+      artist_ids = [str(uuid.uuid4()) for _ in range(1000)]
+      batches = {
+        '/api/v1/artists/artwork-batches': {'requestId': str(uuid.uuid4()),
+          'provider': 'AUTO', 'artistIds': artist_ids, 'allMatching': False, 'filter': {}},
+        '/api/v1/artists/categories': {'type': 'MALE',
+          'artists': [{'id': artist, 'revision': 1} for artist in artist_ids]},
+      }
+      for path, payload in batches.items():
+        body = json.dumps(payload).encode()
+        assert 16 * 1024 < len(body) < 128 * 1024
+        request = Request(base + path, data=body, method='POST',
+          headers={'Content-Type': 'application/json', 'X-CSRF-Token': 'isolated-fixture', 'Origin': base})
+        with urlopen(request, timeout=2) as response:
+          assert response.status == 200, path
+          assert json.load(response) == {'bytes': len(body), 'csrf': 'isolated-fixture', 'origin': base}, path
+      for path, size in [(path, 128 * 1024 + 1) for path in batches] + [('/api/v1/artists/artwork-settings', 16 * 1024 + 1)]:
+        try:
+          urlopen(Request(base + path, data=b' ' * size, method='POST'), timeout=2)
+          raise AssertionError(f'{path}: oversized body was accepted')
+        except HTTPError as response:
+          assert response.code == 413, path
       paths = [
         '/api/v1/media-songs/song/video', '/api/v1/tv/media/song',
         '/api/v1/media-songs/song/accompaniment/job',
@@ -119,6 +153,7 @@ def main():
           assert response.status == 206 and response.read() == b'', path
           assert response.headers['Content-Length'] == '1024', path
       print(json.dumps({'routes': len(paths), 'get_head_checks': len(paths) * 2,
+        'artist_batch_limit_checks': 5,
         'first_32_bytes_ms': [round(value, 2) for value in timings]}, ensure_ascii=False))
   finally:
     for container in reversed(containers):

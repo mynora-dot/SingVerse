@@ -9,6 +9,7 @@ import { singleReview } from '../src/admin/modules/metadata/api/single-review'
 import { preview } from './fixtures/filename-workspace'
 import type { SingleReview, ReviewResult } from '../src/admin/modules/metadata/single-types'
 import type { MetadataCandidate } from '../src/admin/modules/metadata/types'
+import SingleCoverPicker from '../src/admin/modules/metadata/components/SingleCoverPicker.vue'
 vi.mock('../src/admin/modules/metadata/api/single-review', () => ({ singleReview: { load: vi.fn(), apply: vi.fn(), covers: vi.fn(), upload: vi.fn(), assetUrl: (id: string) => `/api/v1/metadata/cover-assets/${id}` } }))
 vi.mock('../src/admin/modules/metadata/api/metadata', () => ({ metadata: { settings: vi.fn(), search: vi.fn(), candidateCover: (id: string) => `/api/v1/metadata/candidates/${id}/cover`, songCover: (id: string) => `/api/v1/metadata/songs/${id}/cover` } }))
 function context(): SingleReview { return { song: { id: 'song-1', sourceId: 'source', sourceName: '家庭曲库', relativePath: '歌手《歌名》.mkv', fileSize: 2000, modifiedAt: null, scannedAt: '', parserProfileId: 'default', parserRevision: 0, selectedRuleId: null, result: preview().result }, fingerprint: 'fingerprint', version: 'version', values: { title: '歌名', artists: ['歌手'], album: null, releaseDate: null, aliases: [], durationMs: null, cover: null } } }
@@ -106,14 +107,41 @@ it('未选字段不提交，上传封面加入真实变更摘要', async () => {
 it('总开关关闭时配置中的平台不会显示为可选或已勾选，未搜索不显示结果数', async () => {
   wrapper = mount(SingleSongScrapeDialog, { props: { song: context().song }, global: { stubs: { teleport: true } } }); await flushPromises()
   const platforms = wrapper.find('.platform-select').findAll('input[type=checkbox]')
-  expect(platforms).toHaveLength(3)
+  expect(platforms).toHaveLength(5)
   for (const input of platforms) { expect((input.element as HTMLInputElement).checked).toBe(false); expect((input.element as HTMLInputElement).disabled).toBe(true) }
   expect(wrapper.text()).toContain('尚未搜索')
   expect(wrapper.text()).not.toContain('0 条结果')
-  expect(wrapper.text()).toContain('打开刮削设置')
+  expect(wrapper.text()).toContain('打开音乐平台设置')
   expect(wrapper.text()).toContain('手工编辑元数据')
   expect(wrapper.text()).toContain('选择或上传封面')
   expect(wrapper.findAll('button').find(b => b.text() === '重新搜索')!.attributes('disabled')).toBeDefined()
+})
+
+it.each(['KUGOU', 'KUWO', 'QISHUI'] as const)('单曲匹配真实提交所选的 %s 平台，仍需确认后应用', async provider => {
+  vi.mocked(metadata.settings).mockResolvedValue({ enabled: true, providers: [provider], autoApply: false, threshold: .95 })
+  const state = useSingleSongScrape()
+  await state.open('song-1')
+  expect(metadata.search).toHaveBeenCalledWith('song-1', '歌名 歌手', [provider])
+  expect(singleReview.apply).not.toHaveBeenCalled()
+})
+
+it('封面窗口可独立选择新增平台和原图/高清，画质与草稿一起提交', async () => {
+  const withCover: MetadataCandidate = { ...candidate, track: { ...candidate.track, provider: 'QISHUI', coverUrl: 'https://p3-luna.douyinpic.com/img/a~tplv-test-image.image' } }
+  const props = { open: false, songId: 'song-1', fingerprint: 'fingerprint', keyword: '歌名 歌手', candidates: [withCover], providers: ['QISHUI' as const], available: ['QISHUI' as const, 'KUWO' as const, 'KUGOU' as const], enabled: true, currentUrl: null, currentValue: null, selection: null }
+  vi.mocked(singleReview.covers).mockResolvedValue({ items: [], errors: [] })
+  wrapper = mount(SingleCoverPicker, { props, global: { stubs: { teleport: true } } })
+  await wrapper.setProps({ open: true }); await flushPromises()
+  expect(wrapper.get('[aria-label="平台封面画质"] button[aria-pressed="true"]').text()).toBe('原图')
+  await wrapper.get('.cover-grid > button').trigger('click')
+  await wrapper.findAll('[aria-label="平台封面画质"] button').find(button => button.text() === '高清')!.trigger('click')
+  await wrapper.findAll('button').find(button => button.text() === '使用此封面')!.trigger('click')
+  const selected = wrapper.emitted('select')![0]![0]
+  expect(selected).toMatchObject({ quality: 'HIGH', value: 'https://p3-luna.douyinpic.com/img/a~tplv-test-resize:2048:2048.png' })
+  const state = useSingleSongScrape(); await state.open('song-1'); state.chooseCover(selected as never); await state.apply()
+  expect(singleReview.apply).toHaveBeenCalledWith('song-1', expect.objectContaining({ coverCandidateId: 'candidate', coverQuality: 'HIGH', fields: ['cover'] }))
+  await wrapper.findAll('.cover-platforms label').find(label => label.text().includes('酷我音乐'))!.get('input').setValue(true)
+  await wrapper.find('form.cover-search').trigger('submit'); await flushPromises()
+  expect(singleReview.covers).toHaveBeenCalledWith('song-1', '歌名 歌手', ['QISHUI', 'KUWO'])
 })
 it('平台已启用时真实空结果和请求失败有不同状态，部分失败保留成功候选', async () => {
   vi.mocked(metadata.settings).mockResolvedValue({ enabled: true, providers: ['QQ'], autoApply: false, threshold: .95 })

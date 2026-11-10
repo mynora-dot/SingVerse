@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/store"
 	"image"
@@ -20,7 +21,7 @@ import (
 	"time"
 )
 
-var coverHosts = map[string][]string{"NETEASE": {"music.126.net"}, "QQ": {"y.gtimg.cn"}, "KUGOU": {"kugou.com", "kugoucdn.com", "kgimg.com"}}
+var coverHosts = map[string][]string{"NETEASE": {"music.126.net"}, "QQ": {"y.gtimg.cn"}, "KUGOU": {"kugou.com", "kugoucdn.com", "kgimg.com"}, "KUWO": {"img1.kuwo.cn", "img2.kuwo.cn", "img3.kuwo.cn", "img4.kuwo.cn"}, "QISHUI": {"p3-luna.douyinpic.com", "p6-luna.douyinpic.com"}}
 
 type Cover struct {
 	Bytes         []byte
@@ -112,6 +113,8 @@ func (s *Service) asset(ctx context.Context, id string) (Cover, error) {
 func imageResponse(c *gin.Context, cover Cover) {
 	c.Header("X-Content-Type-Options", "nosniff")
 	c.Header("Cache-Control", "no-store")
+	c.Header("X-SingVerse-Image-Width", fmt.Sprint(cover.Width))
+	c.Header("X-SingVerse-Image-Height", fmt.Sprint(cover.Height))
 	c.Data(200, cover.MIME, cover.Bytes)
 }
 func (s *Service) assetImage(c *gin.Context) {
@@ -276,9 +279,9 @@ func (s *Service) loadCover(ctx context.Context, provider *string, raw *string) 
 	if provider == nil || raw == nil || checkedCover(*provider, raw) == nil {
 		return Cover{}, missing("没有可用的封面")
 	}
-	u, _ := url.Parse(*raw)
+	u, _ := url.Parse(*checkedCover(*provider, raw))
 	path := filepath.Join(s.cfg.MetadataCachePath, hash(*provider+":"+u.String())+".image")
-	if cover, e := readImage(path); e == nil {
+	if cover, e := readRemoteCover(path); e == nil {
 		return cover, nil
 	}
 	cfg, e := s.settings(ctx, s.db, true)
@@ -286,16 +289,27 @@ func (s *Service) loadCover(ctx context.Context, provider *string, raw *string) 
 		return Cover{}, e
 	}
 	if !contains(cfg.Providers, *provider) {
-		return Cover{}, missing("没有可用的封面")
+		return Cover{}, conflict("该平台已停用，请启用平台或选择其他封面")
 	}
-	fetchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	fetchCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	client, e := safeClient(fetchCtx, u, false)
 	if e != nil {
 		return Cover{}, e
 	}
 	defer client.CloseIdleConnections()
-	req, _ := http.NewRequestWithContext(fetchCtx, "GET", u.String(), nil)
+	cover, e := fetchCover(fetchCtx, client, u.String())
+	if e != nil {
+		return cover, e
+	}
+	if e = atomicWrite(path, cover.Bytes); e != nil {
+		return Cover{}, &problem{502, "封面缓存不可用"}
+	}
+	return cover, nil
+}
+
+func fetchCover(fetchCtx context.Context, client *http.Client, address string) (Cover, error) {
+	req, _ := http.NewRequestWithContext(fetchCtx, "GET", address, nil)
 	req.Header.Set("Accept", "image/jpeg,image/png")
 	req.Header.Set("User-Agent", "SingVerse/0.1 metadata-cover")
 	resp, e := client.Do(req)
@@ -303,29 +317,30 @@ func (s *Service) loadCover(ctx context.Context, provider *string, raw *string) 
 		return Cover{}, &problem{502, "封面暂时不可用"}
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return Cover{}, missing("没有可用的封面")
+	if resp.StatusCode == 404 || resp.StatusCode == 410 {
+		return Cover{}, missing("平台上的这张封面已不可用，可重新搜索或更换平台")
 	}
-	b, e := io.ReadAll(io.LimitReader(resp.Body, 2_000_001))
+	if resp.StatusCode != 200 {
+		return Cover{}, &problem{422, "平台暂未允许读取这张封面，可重试或更换平台"}
+	}
+	b, e := io.ReadAll(io.LimitReader(resp.Body, remoteCoverLimit+1))
 	if e != nil {
 		return Cover{}, &problem{502, "封面暂时不可用"}
 	}
-	cover, e := validateCover(b)
-	if e != nil {
-		return cover, e
-	}
-	if e = atomicWrite(path, b); e != nil {
-		return Cover{}, &problem{502, "封面缓存不可用"}
-	}
-	return cover, nil
+	return validateRemoteCover(b)
 }
 func (s *Service) candidateCover(c *gin.Context) {
+	quality := c.DefaultQuery("quality", "ORIGINAL")
+	if !validCoverQuality(quality) {
+		s.fail(c, bad("请选择原图或高清封面"))
+		return
+	}
 	_, track, e := s.candidate(c.Request.Context(), s.db, c.Param("id"))
 	if e != nil {
 		s.fail(c, e)
 		return
 	}
-	cover, e := s.loadCover(c.Request.Context(), track.Provider, track.CoverURL)
+	cover, e := s.loadCover(c.Request.Context(), track.Provider, coverVariant(track.Provider, track.CoverURL, quality))
 	if e != nil {
 		s.fail(c, e)
 		return

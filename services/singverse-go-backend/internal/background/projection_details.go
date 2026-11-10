@@ -12,6 +12,13 @@ func (s *Service) applyTaskDetails(ctx context.Context, tx store.DBTX, kind stri
 	rawStatus := text(source, "raw_status")
 	label := ""
 	switch kind {
+	case "ARTIST_ARTWORK":
+		label = "歌手封面获取"
+		projection.row["progress_unit"] = "ARTISTS"
+		projection.statistics["noMatch"] = number(projection.counts, "NO_MATCH")
+		if rawStatus == "RUNNING" {
+			projection.row["stage"] = "FETCHING_ARTWORK"
+		}
 	case "LX_DOWNLOAD":
 		label = "歌曲下载"
 		if rawStatus == "RUNNING" {

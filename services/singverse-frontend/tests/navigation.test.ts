@@ -39,7 +39,7 @@ it('精简主导航与当前分区提供全部现有管理功能', async () => {
   await router.push('/library/songs'); const wrapper = mount(App, { global: { plugins: [router] } }); await flushPromises()
   expect(wrapper.findAll('.primary-navigation a').map(a => a.text())).toEqual(['概览','曲库','添加与整理','电视与反馈'])
   expect(wrapper.findAll('.section-navigation a').map(a => a.text())).toEqual(['全部歌曲','歌手','共享歌单'])
-  const expected = ['/library/songs','/library/artists','/library/playlists','/library/media','/library/downloads','/library/songs/metadata','/library/audio-processing','/library/classification','/system/tv-devices','/system/tv-settings','/library/playback-history','/library/missing-feedback','/system/parameters','/library/cache','/system/compute','/system/ai','/system']
+  const expected = ['/library/songs','/library/artists','/library/playlists','/library/media','/library/downloads','/library/songs/metadata','/library/audio-processing','/library/classification','/system/tv-devices','/system/tv-settings','/library/playback-history','/library/missing-feedback','/system/parameters','/system/music-platforms','/library/cache','/system/compute','/system/ai','/system']
   expect(navigationGroups.flatMap(g => g.children.map(e => e.path)).sort()).toEqual(expected.sort())
   await wrapper.get('.mobile-nav-toggle').trigger('click')
   expect(wrapper.get('#admin-navigation').text()).toContain('账号与安全'); expect(wrapper.get('#admin-navigation').text()).toContain('分类与标签')
@@ -65,4 +65,21 @@ it('旧方案和规则链接归入歌曲来源并保留指定方案、查询与�
   expect(router.currentRoute.value.query.profile).toBe('chosen')
   expect(navigationContext(router.currentRoute.value.path).entry?.label).toBe('歌曲来源')
   expect(navigationContext('/library/filename-parser-profiles').entry?.label).toBe('歌曲来源')
+})
+
+it('音乐平台在设置中直接可达并高亮，显示真实五平台配置', async () => {
+  vi.mocked(fetch).mockImplementation(async input => {
+    const path = String(input)
+    if (path.endsWith('/metadata/settings')) return Response.json({ enabled: true, providers: ['NETEASE', 'QQ', 'KUGOU', 'KUWO', 'QISHUI'], autoApply: false, threshold: .95, minIntervalSeconds: 3, maxIntervalSeconds: 8 })
+    if (path.endsWith('/metadata/batches/latest')) return new Response(null, { status: 204 })
+    return Response.json({ username: 'admin', status: 'UP', items: [], totalElements: 0 })
+  })
+  await router.push('/system/music-platforms')
+  const wrapper = mount(App, { global: { plugins: [router] } }); await flushPromises()
+  expect(wrapper.get('.settings-link').attributes('aria-current')).toBe('page')
+  expect(wrapper.get('.section-navigation [aria-current="page"]').text()).toBe('音乐平台')
+  expect(wrapper.get('h1').text()).toBe('音乐平台')
+  expect(wrapper.findAll('.platform-options input[type="checkbox"]')).toHaveLength(5)
+  expect(wrapper.text()).toContain('已开启 5 个平台')
+  wrapper.unmount()
 })

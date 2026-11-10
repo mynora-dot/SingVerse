@@ -269,7 +269,32 @@ func exerciseBusiness(t *testing.T, a *Application, db *sqlx.DB, cfg config.Conf
 		t.Fatal(response.StatusCode, string(data))
 	}
 	c.call("GET", "/api/v1/background-tasks", nil, "", 200)
-	c.call("GET", "/api/v1/artists?q=zhoujielun", nil, "", 200)
+	artists := c.call("GET", "/api/v1/artists?q=zhoujielun", nil, "", 200)
+	artist := object(artists["items"].([]any)[0])
+	artistID := stringField(artist, "id")
+	category := map[string]any{"artists": []any{map[string]any{"id": artistID, "revision": artist["revision"]}}, "type": "MALE"}
+	c.call("POST", "/api/v1/artists/categories", category, "", 200)
+	c.call("POST", "/api/v1/artists/categories", category, "", 409)
+	male := c.call("GET", "/api/v1/artists?type=MALE&size=1", nil, "", 200)
+	if male["totalElements"].(float64) != 1 {
+		t.Fatal("artist category pagination", male)
+	}
+	// A deliberately removed portrait is never refilled by a batch.
+	if _, e = db.Exec("INSERT INTO artist_image_policy(artist_id,image_kind,blocked) VALUES(?,'PORTRAIT',1)", artistID); e != nil {
+		t.Fatal(e)
+	}
+	artworkInput := map[string]any{"requestId": requestID(), "provider": "AUTO", "artistIds": []string{artistID}}
+	artwork := c.call("POST", "/api/v1/artists/artwork-batches", artworkInput, "", 201)
+	repeatedArtwork := c.call("POST", "/api/v1/artists/artwork-batches", artworkInput, "", 201)
+	if artwork["id"] != repeatedArtwork["id"] || object(artwork["counts"])["SKIPPED"].(float64) != 1 {
+		t.Fatal("artwork receipt or removal policy", artwork)
+	}
+	projectedArtwork := c.call("GET", "/api/v1/background-tasks?view=ALL&type=ARTIST_ARTWORK", nil, "", 200)
+	if projectedArtwork["totalElements"].(float64) != 1 {
+		t.Fatal("artwork task missing", projectedArtwork)
+	}
+	unprivileged := &businessClient{t: t, origin: c.origin, client: &http.Client{}}
+	unprivileged.call("GET", "/api/v1/artists/artwork-batches/"+stringField(artwork, "id"), nil, token, 401)
 	c.call("GET", "/api/v1/transcoding/cache", nil, "", 200)
 	var projected int
 	if e = db.QueryRow("SELECT COUNT(*) FROM background_task WHERE type='LOCAL_SCAN'").Scan(&projected); e != nil || projected != 1 {

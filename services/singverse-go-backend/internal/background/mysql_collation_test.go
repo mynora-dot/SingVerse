@@ -27,11 +27,17 @@ func TestMySQLItemProjectionChangeDetectionAcrossCollations(t *testing.T) {
 	}{
 		{"METADATA", "metadata_item", "status", `INSERT INTO metadata_item(id,batch_id,song_id,fingerprint,title,artists_json,status,updated_at) VALUES('item','batch','song','fingerprint','Song','[]','PENDING','1')`},
 		{"CLASSIFICATION", "classification_item", "status", `INSERT INTO classification_item(id,task_id,song_id,status,input_json,input_version,song_revision,updated_at) VALUES('item','batch','song','PENDING','{}','1',1,'1')`},
+		{"ARTIST_ARTWORK", "artist_artwork_item", "status", `INSERT INTO artist_artwork_item(id,batch_id,artist_id,artist_name,ordinal,status,message,updated_at) VALUES('item','batch','artist','Artist',0,'PENDING','','1')`},
 		{"LX_DOWNLOAD", "lx_download_item", "status", `INSERT INTO lx_download_item(id,batch_id,track_key,track_json,requested_quality,status,updated_at) VALUES('item','batch','key','{}','128k','PENDING','1')`},
 		{"AUDIO_BATCH", "audio_batch_item", "state", `INSERT INTO audio_batch_item(batch_id,song_id,fingerprint,title,category,state,error,updated_at) VALUES('batch','item','fingerprint','Song','READY','PENDING','',1)`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.kind, func(t *testing.T) {
+			if tc.kind == "ARTIST_ARTWORK" {
+				if _, err := db.ExecContext(ctx, `INSERT INTO artist_artwork_batch(id,request_id,request_hash,provider,status,created_at,updated_at) VALUES('batch','request','hash','AUTO','RUNNING','1','1')`); err != nil {
+					t.Fatal(err)
+				}
+			}
 			if _, err := db.ExecContext(ctx, tc.seed); err != nil {
 				t.Fatal(err)
 			}

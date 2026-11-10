@@ -10,6 +10,7 @@ import (
 
 func (s *Service) registerArtists(r *gin.Engine) {
 	base := "/api/v1/artists"
+	s.registerArtworkBatches(r, base)
 	r.GET(base+"/artwork-settings", func(c *gin.Context) { v, e := s.artworkSettings(c.Request.Context()); s.reply(c, 200, v, e) })
 	r.PUT(base+"/artwork-settings", func(c *gin.Context) {
 		var in struct {
@@ -37,7 +38,7 @@ func (s *Service) registerArtists(r *gin.Engine) {
 			}
 			less = &v
 		}
-		v, e := s.artistList(c.Request.Context(), c.Query("q"), c.Query("type"), less, p, size)
+		v, e := s.artistList(c.Request.Context(), ArtistFilter{Q: c.Query("q"), Type: c.Query("type"), CountLessThan: less, Artwork: c.Query("artwork")}, p, size)
 		s.reply(c, 200, v, e)
 	})
 	r.GET(base+"/:id", func(c *gin.Context) { v, e := s.artistGet(c.Request.Context(), c.Param("id")); s.reply(c, 200, v, e) })

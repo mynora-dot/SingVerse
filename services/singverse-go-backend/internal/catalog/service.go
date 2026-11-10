@@ -38,6 +38,8 @@ type Library interface {
 type Invalidator interface{ Invalidate() }
 type ArtistProvider interface {
 	ArtistArtwork(context.Context, string, []string, []metadata.ArtistRef) (*metadata.Artwork, error)
+	ArtistArtworkFrom(context.Context, string, []string, []metadata.ArtistRef, string) (*metadata.Artwork, error)
+	ArtistArtworkProviders(context.Context, store.DBTX) ([]string, error)
 }
 type Service struct {
 	db             *sqlx.DB

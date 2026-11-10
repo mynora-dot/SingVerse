@@ -9,7 +9,7 @@ import (
 func (s *Service) projectSourceItems(ctx context.Context, tx store.DBTX, key doc, historical bool) error {
 	kind, taskID := text(key, "type"), text(key, "taskId")
 	switch kind {
-	case "METADATA", "CLASSIFICATION", "AUDIO_BATCH", "LX_DOWNLOAD":
+	case "METADATA", "CLASSIFICATION", "AUDIO_BATCH", "LX_DOWNLOAD", "ARTIST_ARTWORK":
 	default:
 		return nil
 	}

@@ -1,6 +1,7 @@
 """Exercise the fresh SQLite baseline using dbmate, without touching local data."""
 
 import os
+import json
 from pathlib import Path
 import re
 import sqlite3
@@ -11,7 +12,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = "202611070001_initial_schema.sql"
 VERSION = BASELINE.split("_", 1)[0]
-MIGRATIONS = (BASELINE, "202611080001_background_tasks.sql", "202611090001_background_task_batches.sql", "202611090002_audio_separation_profiles.sql", "202611090003_lx_downloads.sql")
+MIGRATIONS = (BASELINE, "202611080001_background_tasks.sql", "202611090001_background_task_batches.sql", "202611090002_audio_separation_profiles.sql", "202611090003_lx_downloads.sql", "202611100001_artist_artwork_batches.sql", "202611100002_music_platform_defaults.sql")
 VERSIONS = sorted((name.split("_", 1)[0],) for name in MIGRATIONS)
 
 
@@ -44,8 +45,10 @@ def verify_fresh(path):
             == ("HYBRID", 0, 90, 75), "Wrong fresh cache defaults")
     require(db.execute("SELECT ready,phase,cursor_started_at,cursor_id FROM playback_activity_state WHERE id=1").fetchone()
             == (1, "READY", 0, ""), "Fresh playback statistics must be ready")
+    music = db.execute("SELECT enabled,providers_json,auto_apply,threshold,min_interval_seconds,max_interval_seconds FROM metadata_settings WHERE id=1").fetchone()
+    require(music[0] == 1 and json.loads(music[1]) == ["NETEASE", "QQ", "KUGOU", "KUWO", "QISHUI"] and music[2:] == (0, .95, 3, 8), "Wrong fresh music platform defaults")
     require(data["lx_download_settings"] == [(1, None, None, 0)], "Wrong download binding defaults")
-    for table in ("lx_script", "lx_catalog_track", "lx_download_batch", "lx_download_item", "lx_download_asset", "auth_account", "media_source", "media_song", "playback_history", "playback_attempt", "song_cache_entry", "song_playback_profile", "background_task", "background_task_item", "background_task_relation", "background_scan_scope"):
+    for table in ("artist_artwork_batch", "artist_artwork_item", "lx_script", "lx_catalog_track", "lx_download_batch", "lx_download_item", "lx_download_asset", "auth_account", "media_source", "media_song", "playback_history", "playback_attempt", "song_cache_entry", "song_playback_profile", "background_task", "background_task_item", "background_task_relation", "background_scan_scope"):
       require(not data[table], f"Fresh database unexpectedly contains {table} data")
     for table in ("media_song", "media_scan_song"):
       columns = {row[1]: row for row in db.execute(f"PRAGMA table_info({table})")}
@@ -105,17 +108,25 @@ def main():
     require(snapshot(path) == initial, "Second migrate changed schema or seeds")
     migrate("down")
     with sqlite3.connect(path) as db:
-      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-1], "LX rollback must retain prior features")
+      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-1], "Music default rollback must retain features")
+      require(db.execute("SELECT enabled,providers_json,auto_apply FROM metadata_settings WHERE id=1").fetchone() == (0, '["NETEASE"]', 0), "Music default rollback changed the wrong seed")
+    migrate("down")
+    with sqlite3.connect(path) as db:
+      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-2], "Artwork rollback must retain prior features")
+      require(not db.execute("SELECT name FROM sqlite_master WHERE name IN ('artist_artwork_batch','artist_artwork_item')").fetchall(), "Artwork rollback left queue tables")
+    migrate("down")
+    with sqlite3.connect(path) as db:
+      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-3], "LX rollback must retain prior features")
       require(not db.execute("SELECT name FROM sqlite_master WHERE name LIKE 'lx_%'").fetchall(), "LX rollback left download tables")
     migrate("down")
     with sqlite3.connect(path) as db:
-      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-2], "Audio rollback must retain background tasks")
+      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-4], "Audio rollback must retain background tasks")
       require(not db.execute("SELECT name FROM sqlite_master WHERE name='media_audio_selection'").fetchall(), "Audio rollback left selection table")
       for table in ("media_audio_job", "audio_batch"):
         require("recipe_json" not in {row[1] for row in db.execute(f"PRAGMA table_info({table})")}, "Audio rollback left recipe column")
     migrate("down")
     with sqlite3.connect(path) as db:
-      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-3], "Batch rollback must retain prior schema")
+      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-5], "Batch rollback must retain prior schema")
       require(not db.execute("SELECT name FROM sqlite_master WHERE name IN ('background_task_relation','background_scan_scope')").fetchall(), "Batch rollback left relation tables")
       columns = {row[1] for row in db.execute("PRAGMA table_info(background_task)")}
       require("is_batch" not in columns, "Batch rollback left columns")
@@ -123,8 +134,10 @@ def main():
         db.execute("INSERT INTO background_task(id,type,business_id,parent_id,name,subject_name,status,business_status,stage,progress_unit,statistics_json,error,created_at,updated_at,items_available,time_incomplete,fingerprint) VALUES(?,'AUDIO_JOB',?,?,'既有记录','歌曲','QUEUED','QUEUED','QUEUED','ITEMS','{}','',1,1,0,1,'fp')", (task_id,task_id,parent))
       db.execute("INSERT INTO song_playback_profile(song_id,pinned,pin_revision) VALUES('upgrade-preserved',1,3)")
       db.execute("UPDATE song_cache_settings SET max_bytes=67108864,revision=7 WHERE id=1")
+      db.execute("UPDATE metadata_settings SET enabled=0, providers_json=?, auto_apply=1, threshold=.98, min_interval_seconds=0, max_interval_seconds=20, updated_at='2026-11-10T00:00:00Z' WHERE id=1", ('["QQ"]',))
     migrate("migrate")
     with sqlite3.connect(path) as db:
+      require(db.execute("SELECT enabled,providers_json,auto_apply,threshold,min_interval_seconds,max_interval_seconds FROM metadata_settings WHERE id=1").fetchone() == (0, '["QQ"]', 1, .98, 0, 20), "Music defaults changed saved preferences")
       require(db.execute("SELECT pinned,pin_revision FROM song_playback_profile WHERE song_id='upgrade-preserved'").fetchone() == (1,3), "Feature upgrade changed song data")
       require(db.execute("SELECT max_bytes,revision FROM song_cache_settings WHERE id=1").fetchone() == (67108864,7), "Feature upgrade changed settings")
       require(db.execute("SELECT id,is_batch FROM background_task ORDER BY id").fetchall() == [("kept-batch",1),("kept-child",0)], "Batch upgrade lost original tasks")
@@ -132,7 +145,10 @@ def main():
     migrate("down")
     migrate("down")
     migrate("down")
+    migrate("down")
+    migrate("down")
     with sqlite3.connect(path) as db:
+      require(db.execute("SELECT enabled,providers_json,auto_apply,threshold,min_interval_seconds,max_interval_seconds FROM metadata_settings WHERE id=1").fetchone() == (0, '["QQ"]', 1, .98, 0, 20), "Music defaults changed saved preferences")
       require(db.execute("SELECT pinned,pin_revision FROM song_playback_profile WHERE song_id='upgrade-preserved'").fetchone() == (1,3), "Feature rollback changed song data")
       require(db.execute("SELECT COUNT(*) FROM background_task").fetchone() == (2,), "Batch rollback changed task records")
     migrate("down")

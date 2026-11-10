@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/jsondata"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/store"
 	"io"
 	"net"
@@ -89,6 +90,12 @@ func sourceJSON(ctx context.Context, address, host, key string) (map[string]any,
 	}
 	r.Header.Set("Accept", "application/json")
 	r.Header.Set("User-Agent", "SingVerse/0.1 (https://github.com/mynora-dot/SingVerse)")
+	if host == "api.qishui.com" {
+		r.Header.Set("User-Agent", "Luna/19.1.0 Android")
+	}
+	if host == "search.kuwo.cn" {
+		r.Header.Set("Referer", "https://www.kuwo.cn/")
+	}
 	if key != "" {
 		r.Header.Set("client-key", key)
 	}
@@ -107,9 +114,24 @@ func sourceJSON(ctx context.Context, address, host, key string) (map[string]any,
 	if e != nil || len(b) > 2000000 {
 		return nil, errors.New("artwork source too large")
 	}
+	text := string(b)
+	if host == "search.kuwo.cn" {
+		text, e = jsondata.NormalizeSingleQuoted(text)
+		if e != nil {
+			return nil, errors.New("invalid artwork source data")
+		}
+	}
 	var root map[string]any
-	e = json.Unmarshal(b, &root)
-	return root, e
+	dec := json.NewDecoder(strings.NewReader(text))
+	dec.UseNumber()
+	if dec.Decode(&root) != nil || root == nil {
+		return nil, errors.New("invalid artwork source data")
+	}
+	var extra any
+	if dec.Decode(&extra) != io.EOF {
+		return nil, errors.New("invalid artwork source data")
+	}
+	return root, nil
 }
 func list(v any) []any          { a, _ := v.([]any); return a }
 func canonical(s string) string { return strings.ToLower(artistName(s)) }
@@ -248,7 +270,7 @@ func downloadArtwork(ctx context.Context, address string) ([]byte, error) {
 		return nil, e
 	}
 	host := strings.ToLower(u.Hostname())
-	allowed := has(host, "y.gtimg.cn", "music.126.net", "www.theaudiodb.com", "assets.fanart.tv", "fanart.tv") || regexp.MustCompile(`^p[1-4]\.music\.126\.net$`).MatchString(host) || regexp.MustCompile(`^r[0-9]\.theaudiodb\.com$`).MatchString(host)
+	allowed := has(host, "y.gtimg.cn", "music.126.net", "www.theaudiodb.com", "assets.fanart.tv", "fanart.tv", "singerimg.kugou.com", "p3-luna.douyinpic.com", "p6-luna.douyinpic.com") || regexp.MustCompile(`^p[1-4]\.music\.126\.net$`).MatchString(host) || regexp.MustCompile(`^r[0-9]\.theaudiodb\.com$`).MatchString(host) || regexp.MustCompile(`^img[1-4]\.kuwo\.cn$`).MatchString(host)
 	if u.Scheme != "https" || u.User != nil || u.Port() != "" || !allowed {
 		return nil, errors.New("invalid artwork address")
 	}
@@ -258,6 +280,10 @@ func downloadArtwork(ctx context.Context, address string) ([]byte, error) {
 	if e != nil {
 		return nil, e
 	}
+	// Some music CDNs reject Go's default agent. Identify this application
+	// explicitly while keeping the same public-host and image validation limits.
+	req.Header.Set("User-Agent", "SingVerse/0.1 (+https://github.com/mynora-dot/SingVerse)")
+	req.Header.Set("Accept", "image/jpeg,image/png")
 	response, e := sourceClient.Do(req)
 	if e != nil {
 		return nil, e
@@ -343,6 +369,9 @@ func (s *Service) selectArtwork(ctx context.Context, id, kind, provider, externa
 			return nil, e
 		}
 		if e = s.exec(ctx, tx, "a_imageFetchState", "READY", 0, "", id, k, r["generation"]); e != nil {
+			return nil, e
+		}
+		if e = s.closeArtworkReviews(ctx, tx, id, k, "APPLIED", "候选封面已经确认并保存"); e != nil {
 			return nil, e
 		}
 		r, e = s.artist(ctx, tx, id)

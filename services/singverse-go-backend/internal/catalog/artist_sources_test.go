@@ -50,6 +50,9 @@ func TestDownloadArtworkValidatesActualImage(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			sourceClient = &http.Client{Transport: artworkTransport(func(r *http.Request) (*http.Response, error) {
+				if !strings.HasPrefix(r.Header.Get("User-Agent"), "SingVerse/") {
+					t.Fatal("missing application identity for music CDN")
+				}
 				return &http.Response{StatusCode: tc.status, Header: http.Header{"Content-Type": {tc.declared}}, Body: io.NopCloser(bytes.NewReader(tc.body))}, nil
 			})}
 			data, err := downloadArtwork(context.Background(), "https://p1.music.126.net/portrait.jpg")
@@ -81,6 +84,9 @@ func TestDownloadArtworkKeepsURLRestrictions(t *testing.T) {
 	for _, address := range []string{
 		"http://p1.music.126.net/image.png", "https://127.0.0.1/image.png", "https://evil.example/image.png",
 		"https://p1.music.126.net:8443/image.png", "https://user:password@p1.music.126.net/image.png",
+		"https://singerimg.kugou.com.evil.example/image.jpg", "https://img1.kuwo.cn.evil.example/image.jpg",
+		"https://p3-luna.douyinpic.com.evil.example/image.jpg", "https://p3.douyinpic.com/image.jpg",
+		"http://img1.kuwo.cn/image.jpg", "https://singerimg.kugou.com:8443/image.jpg",
 	} {
 		if _, err := downloadArtwork(context.Background(), address); err == nil {
 			t.Fatalf("untrusted address accepted: %s", address)

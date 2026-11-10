@@ -333,6 +333,8 @@ func related(r doc) string {
 	switch text(r, "type") {
 	case "METADATA":
 		return "/library/songs/metadata?batch=" + business
+	case "ARTIST_ARTWORK":
+		return "/library/artists?batch=" + business
 	case "LX_DOWNLOAD":
 		return "/library/downloads?tab=records&batch=" + business
 	case "CLASSIFICATION":

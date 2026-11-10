@@ -4,6 +4,7 @@ import { metadata } from '../api/metadata'
 import { singleReview } from '../api/single-review'
 import { highSimilarityCandidate } from '../candidate-selection'
 import { providerNames } from '../types'
+import { coverValue } from '../cover-quality'
 import type { MetadataCandidate, MusicProvider } from '../types'
 import { reviewFields } from '../single-types'
 import type { Values, ReviewField, SingleReview, ReviewResult, ReviewApply, CoverSelection } from '../single-types'
@@ -12,7 +13,7 @@ export const equal = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === J
 export const copyValues = (values: Values): Values => JSON.parse(JSON.stringify(values)) as Values
 export function candidateValues(candidate: MetadataCandidate): Values {
   const t = candidate.track
-  return { title: t.title, artists: [...t.artists], album: t.album, releaseDate: t.releaseDate, aliases: [...t.aliases], durationMs: t.durationMs, cover: t.coverUrl }
+  return { title: t.title, artists: [...t.artists], album: t.album, releaseDate: t.releaseDate, aliases: [...t.aliases], durationMs: t.durationMs, cover: t.coverUrl ? coverValue(t.provider, t.coverUrl, 'ORIGINAL') : null }
 }
 export function useSingleSongScrape() {
   const review = ref<SingleReview | null>(null), keyword = ref(''), providers = ref<MusicProvider[]>([]), available = ref<MusicProvider[]>([])
@@ -76,7 +77,7 @@ export function useSingleSongScrape() {
   }
   function choose(candidate: MetadataCandidate) {
     autoSelected.value = false; selected.value = candidate; draft.value = candidateValues(candidate); edits.value = {}; result.value = null; error.value = ''; attempt = null
-    cover.value = candidate.track.coverUrl ? { kind: 'candidate', id: candidate.id, value: candidate.track.coverUrl, url: metadata.candidateCover(candidate.id), label: providerNames[candidate.track.provider] } : null
+    cover.value = candidate.track.coverUrl ? { kind: 'candidate', id: candidate.id, value: coverValue(candidate.track.provider, candidate.track.coverUrl, 'ORIGINAL'), originalValue: candidate.track.coverUrl, provider: candidate.track.provider, quality: 'ORIGINAL', url: metadata.candidateCover(candidate.id, 'ORIGINAL'), label: providerNames[candidate.track.provider] } : null
     fields.value = reviewFields.filter(f => present(draft.value![f]) && !equal(review.value!.values[f], draft.value![f]))
   }
   function saveEdits(values: Values) {
@@ -102,7 +103,8 @@ export function useSingleSongScrape() {
     if (!review.value || !draft.value || !changed.value.length || applying.value) return
     const token = session
     const base = { fingerprint: review.value.fingerprint, version: review.value.version, candidateId: selected.value?.id ?? null,
-      fields: [...changed.value], edits: { ...edits.value }, coverCandidateId: cover.value?.kind === 'candidate' ? cover.value.id : null, coverAssetId: cover.value?.kind === 'asset' ? cover.value.id : null }
+      fields: [...changed.value], edits: { ...edits.value }, coverCandidateId: cover.value?.kind === 'candidate' ? cover.value.id : null, coverAssetId: cover.value?.kind === 'asset' ? cover.value.id : null,
+      ...(cover.value?.kind === 'candidate' ? { coverQuality: cover.value.quality ?? 'ORIGINAL' } : {}) }
     const signature = JSON.stringify(base)
     if (!attempt || attempt.signature !== signature) attempt = { signature, input: { ...base, requestId: newRequestId() } }
     applying.value = true; error.value = ''
