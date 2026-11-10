@@ -14933,7 +14933,7 @@
     "/api/v1/media-sources/{id}/embedded-metadata/share": {
       "post": {
         "operationId": "importWebDavShareIndex",
-        "summary": "Import into recipient source root without remote reads; existing songs are skipped; requires session and CSRF.",
+        "summary": "Legacy synchronous ZIP import: merge saved metadata into existing songs, preserve local edits.",
         "parameters": [
           {
             "name": "id",
@@ -14982,7 +14982,7 @@
             "description": "Outer upload exceeds 8 GiB or a nested part exceeds 32 MiB compressed/expanded."
           }
         },
-        "description": "Accepts a version 2 single part (32 MiB compressed/expanded, up to 5000 songs), or the downloaded outer share-set ZIP (8 GiB compressed/expanded in total). Outer sets are streamed in declared part order without buffering the entire archive; each part retains its 32 MiB limit. Persistent receipts allow resubmitting the same whole ZIP after an interrupted upload. Existing songs and manual changes are preserved; deletion advisories are not applied."
+        "description": "v2/v3 ZIP supported; bounded durable receipts retain completed work if interrupted. Prefer import-jobs for upload/preview/background processing and verification. Complete share sets advance the shared baseline only after all parts succeed. Single advanced v3 parts do not establish a complete delta baseline. Deletions are advisory."
       }
     },
     "/api/v1/media-sources/{id}/embedded-metadata/share-jobs": {
@@ -15024,7 +15024,7 @@
             }
           }
         },
-        "description": "Local and WebDAV sources. Automatically waits for durable text-file synchronization in WAITING state, then fixes the snapshot in the background. One active export per source. Maximum 5000 songs per part, with a 32 MiB compressed/expanded bound. Optional unavailable artwork does not block current text metadata."
+        "description": "Local/WebDAV durable export. Background WAITING prepares a consistent snapshot of saved database metadata and persistent attachments independently of derivative-file generation. Default v3 complete sets have stable collectionId and increasing collectionRevision. Optional baseId creates a delta; parts remain bounded to 5000 songs/32 MiB compressed and expanded. STRM paths are portable; no media bytes, source root, credentials or temporary direct links are exported."
       }
     },
     "/api/v1/media-sources/{id}/embedded-metadata/share-jobs/latest": {
@@ -19653,7 +19653,9 @@
                 "CACHE_CLEANUP",
                 "SHARE_EXPORT",
                 "LX_DOWNLOAD",
-                "ARTIST_ARTWORK"
+                "ARTIST_ARTWORK",
+                "SHARE_IMPORT",
+                "SOURCE_INGEST"
               ]
             }
           },
@@ -19904,7 +19906,9 @@
                 "CACHE_CLEANUP",
                 "SHARE_EXPORT",
                 "LX_DOWNLOAD",
-                "ARTIST_ARTWORK"
+                "ARTIST_ARTWORK",
+                "SHARE_IMPORT",
+                "SOURCE_INGEST"
               ]
             }
           },
@@ -21865,6 +21869,584 @@
           }
         }
       }
+    },
+    "/api/v1/media-sources/{id}/embedded-metadata/import-jobs": {
+      "post": {
+        "operationId": "uploadMediaImport",
+        "summary": "Upload a local metadata ZIP; parse in background and preview before application.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/zip": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Saved workflow state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaImportJob"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source or task not found"
+          },
+          "409": {
+            "description": "Workflow state, source binding, revision or baseline conflict"
+          },
+          "413": {
+            "description": "8 GiB total/32 MiB part/5000 entries per part exceeded"
+          }
+        },
+        "description": "Upload must finish before leaving. After 202, browser connection is no longer required. v2 and v3 packages supported. One active import per source. Parsing and bounded apply checkpoints resume after restart; at most 100000 songs. Media verification runs after metadata and attachments are persisted, without compute."
+      }
+    },
+    "/api/v1/media-sources/{id}/embedded-metadata/import-jobs/latest": {
+      "get": {
+        "operationId": "latestMediaImport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved workflow state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaImportJob"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source or task not found"
+          },
+          "409": {
+            "description": "Workflow state, source binding, revision or baseline conflict"
+          }
+        }
+      }
+    },
+    "/api/v1/media-sources/{id}/embedded-metadata/import-jobs/{jobId}": {
+      "get": {
+        "operationId": "getMediaImport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved workflow state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaImportJob"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source or task not found"
+          },
+          "409": {
+            "description": "Workflow state, source binding, revision or baseline conflict"
+          }
+        }
+      }
+    },
+    "/api/v1/media-sources/{id}/embedded-metadata/import-jobs/{jobId}/mapping": {
+      "put": {
+        "operationId": "mapMediaImport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "removePrefix": {
+                    "type": "string"
+                  },
+                  "addPrefix": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved workflow state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaImportJob"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source or task not found"
+          },
+          "409": {
+            "description": "Workflow state, source binding, revision or baseline conflict"
+          }
+        },
+        "description": "Preview only. Recompute from original portable paths. Replace the exact removePrefix on matching paths and retain other directories; an empty removePrefix adds addPrefix to every path. Reject unmatched prefixes, invalid paths or collisions atomically. This never matches by song title."
+      }
+    },
+    "/api/v1/media-sources/{id}/embedded-metadata/import-jobs/{jobId}/apply": {
+      "post": {
+        "operationId": "applyMediaImport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved workflow state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaImportJob"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source or task not found"
+          },
+          "409": {
+            "description": "Workflow state, source binding, revision or baseline conflict"
+          }
+        },
+        "description": "Confirm preview: merge into existing/new songs in bounded atomic checkpoints, preserve local edits, then verify recipient media. Version downgrade and delta without its completed baseline return 409."
+      }
+    },
+    "/api/v1/media-sources/{id}/embedded-metadata/import-jobs/{jobId}/cancel": {
+      "post": {
+        "operationId": "cancelMediaImport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved workflow state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaImportJob"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source or task not found"
+          },
+          "409": {
+            "description": "Workflow state, source binding, revision or baseline conflict"
+          }
+        },
+        "description": "Stop between checkpoints. Already committed metadata and attachments remain."
+      }
+    },
+    "/api/v1/media-sources/{id}/embedded-metadata/import-jobs/{jobId}/retry": {
+      "post": {
+        "operationId": "retryMediaImport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved workflow state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaImportJob"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source or task not found"
+          },
+          "409": {
+            "description": "Workflow state, source binding, revision or baseline conflict"
+          }
+        },
+        "description": "Resume failed/cancelled parsing or application; for verification retry only missing/mismatched/unreachable entries. A changed root requires a new binding workflow."
+      }
+    },
+    "/api/v1/media-sources/{id}/embedded-metadata/import-jobs/{jobId}/differences": {
+      "get": {
+        "operationId": "mediaImportDifferences",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Up to 100 items ordered by ordinal, nextCursor and hasMore. Item contains relativePath, fields, local/incoming values and verification/error; local protected values are kept."
+          },
+          "404": {
+            "description": "Import not found"
+          }
+        }
+      }
+    },
+    "/api/v1/media-sources/{id}/rebind": {
+      "post": {
+        "operationId": "rebindWebDAVMedia",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "location"
+                ],
+                "properties": {
+                  "location": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2048,
+                    "description": "LOCAL: absolute server-visible readable directory, canonicalized on save. WEBDAV: HTTP(S) collection URL without userinfo, query or fragment; normalized with a trailing slash. Saving never connects to WebDAV."
+                  },
+                  "username": {
+                    "type": "string",
+                    "maxLength": 256,
+                    "description": "WebDAV only; empty for anonymous access."
+                  },
+                  "password": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 1024,
+                    "writeOnly": true,
+                    "description": "WebDAV only. Omitted/null retains the saved password only when URL and username are unchanged; empty string clears it. Stored encrypted; never returned."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Saved workflow state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaImportJob"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source or task not found"
+          },
+          "409": {
+            "description": "Workflow state, source binding, revision or baseline conflict"
+          }
+        },
+        "description": "WebDAV only. Preserve source/song IDs, metadata, attachments, field origins and local edits. Change only recipient root/credentials, reset media observation, enqueue background verification. Re-enter or explicitly clear a configured password when changing destination; conflicting active imports return 409."
+      }
+    },
+    "/api/v1/media-sources/{id}/ingest-tasks": {
+      "post": {
+        "operationId": "createSourceIngest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved workflow state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceIngestTask"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source or task not found"
+          },
+          "409": {
+            "description": "Workflow state, source binding, revision or baseline conflict"
+          }
+        },
+        "description": "Enqueue durable local/WebDAV scanning. Resume/restart after service restart. Original media is read only."
+      }
+    },
+    "/api/v1/media-sources/{id}/ingest-tasks/latest": {
+      "get": {
+        "operationId": "latestSourceIngest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved workflow state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceIngestTask"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source or task not found"
+          },
+          "409": {
+            "description": "Workflow state, source binding, revision or baseline conflict"
+          },
+          "204": {
+            "description": "No durable source ingest"
+          }
+        }
+      }
+    },
+    "/api/v1/media-sources/{id}/diagnostics": {
+      "post": {
+        "operationId": "diagnoseWebDAVSource",
+        "summary": "Check directory access and bounded media Range support separately",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "description": "Administrator-only explicit diagnostic. Uses recipient source credentials, Depth: 1 directory access and at most one byte from one indexed media file. Does not follow download redirects or consume full responses when Range is ignored. Listing success does not establish playback or codec compatibility.",
+        "responses": {
+          "200": {
+            "description": "Separate directory and media observations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "directory",
+                    "media",
+                    "directoryMessage",
+                    "mediaMessage"
+                  ],
+                  "properties": {
+                    "directory": {
+                      "type": "string",
+                      "enum": [
+                        "PRESENT",
+                        "UNREACHABLE"
+                      ]
+                    },
+                    "media": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_TESTED",
+                        "RANGE_READY",
+                        "RANGE_UNSUPPORTED",
+                        "REDIRECT",
+                        "AUTH_REQUIRED",
+                        "MISSING",
+                        "RATE_LIMITED",
+                        "UNREACHABLE"
+                      ]
+                    },
+                    "directoryMessage": {
+                      "type": "string"
+                    },
+                    "mediaMessage": {
+                      "type": "string"
+                    },
+                    "relativePath": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Source is not WebDAV"
+          },
+          "404": {
+            "description": "Source not found"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -22127,6 +22709,15 @@
             ],
             "default": false,
             "description": "Only LOCAL sources can be the single LX download destination. True replaces the binding after an actual write probe; omitted/null on update preserves it. Active batches prevent clearing/changing the target path or deleting its source."
+          },
+          "startScan": {
+            "type": "boolean",
+            "default": false,
+            "description": "Explicitly enqueue a durable source ingest after save. Omission preserves save-only behavior for older clients. Ordinary edits do not rescan unless true."
+          },
+          "autoExtractEmbedded": {
+            "type": "boolean",
+            "description": "WebDAV only: opt in/out of background embedded metadata enrichment. Imported resources are reused. Omitted leaves current setting unchanged; new sources default off."
           }
         }
       },
@@ -22245,6 +22836,11 @@
             "type": "boolean",
             "default": false,
             "description": "Only LOCAL sources can be the single LX download destination. True replaces the binding after an actual write probe; omitted/null on update preserves it. Active batches prevent clearing/changing the target path or deleting its source."
+          },
+          "initialTaskId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Present when this save enqueued a durable ingest task."
           }
         }
       },
@@ -23131,6 +23727,21 @@
           },
           "classification": {
             "$ref": "#/components/schemas/ClassificationState"
+          },
+          "mediaVerification": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "PENDING",
+              "PRESENT",
+              "MISSING",
+              "MISMATCH",
+              "UNREACHABLE",
+              null
+            ],
+            "description": "Shared-media directory/size observation, not playback validation. Unverified/problem items remain in admin library and are excluded from normal party song selection."
           }
         },
         "required": [
@@ -26850,6 +27461,39 @@
                 "description": "Optional artwork pending retry; text metadata and sharing remain available."
               }
             }
+          },
+          "quality": {
+            "type": "object",
+            "required": [
+              "total",
+              "identityComplete",
+              "informationMissing",
+              "pendingVerification",
+              "mediaIssues"
+            ],
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "identityComplete": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "informationMissing": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "pendingVerification": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "mediaIssues": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "description": "Server counts effective saved fields. Processing completion is independent of metadata completeness and media verification."
           }
         }
       },
@@ -29075,7 +29719,9 @@
               "CACHE_CLEANUP",
               "SHARE_EXPORT",
               "LX_DOWNLOAD",
-              "ARTIST_ARTWORK"
+              "ARTIST_ARTWORK",
+              "SHARE_IMPORT",
+              "SOURCE_INGEST"
             ]
           },
           "businessId": {
@@ -30506,6 +31152,217 @@
           }
         },
         "description": "Durable portrait-cover batch. APPLIED is a validated image saved to NAS; REVIEW requires explicit candidate confirmation; NO_MATCH is distinct from FAILED. Existing artwork is skipped. Completed counts include review, no-match, failure and skipped outcomes; they do not imply every artist received an image."
+      },
+      "MediaImportJob": {
+        "type": "object",
+        "properties": {
+          "totalCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "processedCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "addedCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updatedCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "preservedCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unchangedCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "verifiedCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "presentCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "missingCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "mismatchCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unreachableCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "deletionCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "collectionRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "removePrefix": {
+            "type": "string"
+          },
+          "addPrefix": {
+            "type": "string"
+          },
+          "collectionId": {
+            "type": "string"
+          },
+          "snapshotId": {
+            "type": "string"
+          },
+          "baseId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "PARSING",
+              "PREVIEW",
+              "QUEUED",
+              "RUNNING",
+              "VERIFYING",
+              "SUCCEEDED",
+              "FAILED",
+              "CANCELLED"
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "samples": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+              "type": "object",
+              "properties": {
+                "originalPath": {
+                  "type": "string"
+                },
+                "relativePath": {
+                  "type": "string"
+                },
+                "mediaURL": {
+                  "type": "string"
+                },
+                "local": {
+                  "type": "object",
+                  "description": "Existing effective fields",
+                  "additionalProperties": true
+                },
+                "incoming": {
+                  "type": "object",
+                  "description": "Incoming shared fields",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "preview": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "newSongs": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "existingSongs": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          },
+          "completeSnapshot": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Only an imported complete snapshot establishes the baseline for later delta packages."
+          }
+        },
+        "description": "Durable uploaded metadata workflow. No binding digest or credentials are returned. Latest may be an empty object. Samples are constructed from recipient source root; they never use sender addresses."
+      },
+      "SourceIngestTask": {
+        "type": "object",
+        "required": [
+          "id",
+          "sourceId",
+          "state",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "QUEUED",
+              "RUNNING",
+              "SUCCEEDED",
+              "FAILED"
+            ]
+          },
+          "scanTaskId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        }
       }
     }
   }

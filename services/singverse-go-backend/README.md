@@ -71,3 +71,6 @@ make backend-check        # Go + Python 检查及真实联动
 音乐平台配置在管理端“设置 → 音乐平台”，复用受管理员会话和 CSRF 保护的 `/api/v1/metadata/settings`。新安装默认开启五个平台，自动应用默认关闭；增量迁移只修改未动过的安装种子，保存过的配置保持原值。
 
 生产默认 Dockerfile 为 `infra/docker/build/go.Dockerfile`，Compose 为 `infra/docker/compose/compose.app.yaml`，项目名 `singverse-go-app` 使用全新卷。采用全新部署，不迁移旧 Java 账号或库，不允许两种实现共享写入后的数据库。旧数据保护与明确回退见 [迁移说明](../../docs/go-migration.md)。本机管理员恢复为停止服务后 `bin/singverse --reset-admin`，需真实终端，见 [认证说明](../../docs/authentication.md)。
+
+
+媒体来源新增持久化入库启动请求与资料包后台工作流：上传完成后解析、路径映射预览、确认后按字段合并并持久保存，再用接收方 WebDAV 配置核验目录和大小；无需 compute 即可导入和使用资料。共享 v3 使用稳定系列和递增版本，兼容 v2，保护本地订正。正式附件存于 `WEBDAV_METADATA_PATH`，衍生文件独立重试，分享不再等待衍生文件。接口与完整流程见[媒体库管理](../../docs/media-library.md#媒体入库资料合并与分享2026-11-10)。

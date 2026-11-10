@@ -57,6 +57,7 @@ type Service struct {
 	audioClaim      func(context.Context, store.DBTX, string, map[string]any) error
 	fileMu          sync.Mutex
 	shareMu         sync.Mutex
+	importMu        sync.Mutex
 }
 
 func New(db *sqlx.DB, dialect string, cfg config.Config, cipher Cipher, lib *library.Service, log *slog.Logger) (*Service, error) {
@@ -86,11 +87,12 @@ func New(db *sqlx.DB, dialect string, cfg config.Config, cipher Cipher, lib *lib
 		cancel()
 		return nil, err
 	}
-	s.wg.Add(4)
+	s.wg.Add(5)
 	go s.worker()
 	go s.remoteLoop()
 	go s.filesLoop()
 	go s.shareLoop()
+	go s.importLoop()
 	return s, nil
 }
 func (s *Service) Close() error {
@@ -273,6 +275,13 @@ func (s *Service) Register(g *gin.RouterGroup) {
 	g.GET("/media-songs/:id/embedded-metadata/cover", s.embeddedCoverHTTP)
 	g.POST("/media-songs/embedded-metadata/refresh", s.refreshHTTP)
 	g.POST("/media-sources/:id/embedded-metadata/share", s.importShare)
+	g.POST("/media-sources/:id/rebind", s.rebindSource)
+	g.POST("/media-sources/:id/embedded-metadata/import-jobs", s.uploadImport)
+	g.GET("/media-sources/:id/embedded-metadata/import-jobs/latest", s.latestImport)
+	g.GET("/media-sources/:id/embedded-metadata/import-jobs/:jobId", s.getImport)
+	g.PUT("/media-sources/:id/embedded-metadata/import-jobs/:jobId/mapping", s.mapImport)
+	g.GET("/media-sources/:id/embedded-metadata/import-jobs/:jobId/differences", s.importDifferences)
+	g.POST("/media-sources/:id/embedded-metadata/import-jobs/:jobId/:action", s.importAction)
 	g.POST("/media-sources/:id/embedded-metadata/share-jobs", s.createShare)
 	g.GET("/media-sources/:id/embedded-metadata/share-jobs/latest", s.latestShare)
 	g.GET("/media-sources/:id/embedded-metadata/share-jobs/:jobId", s.getShare)

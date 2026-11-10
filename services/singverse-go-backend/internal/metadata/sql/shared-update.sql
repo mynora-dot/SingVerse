@@ -1,1 +1,1 @@
-UPDATE media_shared_song SET snapshot_json=@{snapshot},revision=@{revision},updated_at=@{now} WHERE song_id=@{songId}
+UPDATE media_shared_song SET snapshot_json=@{snapshot},verification=CASE WHEN @{size} IS NOT NULL AND (expected_size IS NULL OR expected_size<>@{size}) THEN 'PENDING' ELSE verification END,expected_size=COALESCE(@{size},expected_size),revision=@{revision},updated_at=@{now} WHERE song_id=@{songId}

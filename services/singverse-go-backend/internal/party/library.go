@@ -152,6 +152,9 @@ func (s *Service) current(ctx context.Context) (*readIndex, error) {
 		return nil, err
 	}
 	for _, song := range songs {
+		if state := str(song, "mediaVerification"); state != "" && state != "PRESENT" {
+			continue
+		}
 		projection := Projection(song)
 		names := stringList(projection["artists"])
 		entry := readEntry{song: projection, raw: song, search: search.Searchable(str(projection, "title") + " " + strings.Join(names, " ") + " " + str(projection, "album")), code: str(object(song, "result"), "songCode"), artists: []string{}}

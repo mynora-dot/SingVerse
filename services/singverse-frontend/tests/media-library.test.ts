@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ElDialog, ElInput, ElMessageBox } from 'element-plus'
 import MediaLibraryView from '../src/admin/modules/media-library/views/MediaLibraryView.vue'
 import { media } from '../src/admin/modules/media-library/api/media'
+import { embeddedMetadata } from '../src/admin/modules/media-library/api/embeddedMetadata'
 import { lx } from '../src/admin/modules/lx-downloads/api'
 
 import { parserProfiles, ruleLibrary } from '../src/admin/modules/filename-parser/api/rules'
@@ -11,8 +12,9 @@ import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import { workspace } from './fixtures/filename-workspace'
 
 vi.mock('../src/admin/modules/filename-parser/api/rules', () => ({ parserProfiles: { load: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), preview: vi.fn() }, ruleLibrary: { load: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() } }))
+vi.mock('../src/admin/modules/media-library/api/embeddedMetadata', () => ({ embeddedMetadata: { summary: vi.fn() } }))
 vi.mock('../src/admin/modules/lx-downloads/api', () => ({ lx: { status: vi.fn() } }))
-vi.mock('../src/admin/modules/media-library/api/media', () => ({ media: { get: vi.fn(), directories: vi.fn(), list: vi.fn(), save: vi.fn(), remove: vi.fn(), scan: vi.fn(), songs: vi.fn(), createTask: vi.fn(), latestTask: vi.fn(), task: vi.fn(), cancelTask: vi.fn() } }))
+vi.mock('../src/admin/modules/media-library/api/media', () => ({ media: { get: vi.fn(), directories: vi.fn(), list: vi.fn(), save: vi.fn(), remove: vi.fn(), scan: vi.fn(), songs: vi.fn(), createTask: vi.fn(), latestTask: vi.fn(), latestIngest: vi.fn(), task: vi.fn(), cancelTask: vi.fn() } }))
 let wrapper: VueWrapper
 let router: Router
 beforeEach(async () => {
@@ -27,6 +29,8 @@ beforeEach(async () => {
   vi.mocked(media.list).mockResolvedValue({ items: [], page: 0, size: 20, totalElements: 0 })
   vi.mocked(media.directories).mockImplementation(async (path = '') => ({ path: path || '/media', parent: '/',
     items: path === '/media/songs' ? [] : [{ name: 'songs', path: '/media/songs' }], hasMore: false }))
+  vi.mocked(media.latestIngest).mockResolvedValue(undefined)
+  vi.mocked(embeddedMetadata.summary).mockResolvedValue({ counts: {} } as never)
   vi.mocked(media.latestTask).mockResolvedValue(undefined)
   vi.mocked(media.save).mockResolvedValue({ id: 'saved' } as never)
 })
@@ -49,7 +53,7 @@ it('WebDAV 地址在卡片中显示解码后的中文，编辑时保留原地址
   wrapper = mount(MediaLibraryView, { global: { plugins: [router], stubs: { teleport: true } } })
   await flushPromises()
   expect(wrapper.get('.source-location').text()).toBe('http://nas.example.invalid/媒体库/ktv/music/')
-  expect(button('内嵌元数据与分享').exists()).toBe(true)
+  expect(button('完善信息').exists()).toBe(true)
   await wrapper.get('summary[aria-label="all的更多操作"]').trigger('click')
   await button('编辑').trigger('click')
   await flushPromises()
@@ -68,7 +72,7 @@ it('本地目录表单独立于远端认证，保存后刷新真实列表', asyn
   await selectFolder()
   await form.get('form').trigger('submit')
   await flushPromises()
-  expect(media.save).toHaveBeenCalledWith({ name: '本地歌曲', type: 'LOCAL', location: '/media/songs', parserProfileId: 'default', useForLxDownloads: false }, undefined)
+  expect(media.save).toHaveBeenCalledWith({ startScan: true, name: '本地歌曲', type: 'LOCAL', location: '/media/songs', parserProfileId: 'default', useForLxDownloads: false }, undefined)
   expect(media.list).toHaveBeenCalledTimes(2)
 })
 it('WebDAV 编辑不回显密码，留空时不覆盖密码', async () => {
@@ -121,7 +125,7 @@ it('本地与 WebDAV 都保存所选完整方案，编辑可回显方案', async
     expect(form.text()).toContain('1 条启用规则')
     await form.get('form').trigger('submit'); await flushPromises()
     expect(media.save).toHaveBeenLastCalledWith(expect.objectContaining({ parserProfileId: 'reverse-profile' }), undefined)
-    await button('关闭').trigger('click'); await flushPromises()
+    expect(wrapper.findComponent(ElDialog).props('modelValue')).toBe(false)
   }
 })
 
@@ -131,9 +135,9 @@ it('方案加载失败时禁止保存，重新加载后可继续编辑', async (
   vi.mocked(parserProfiles.load).mockRejectedValueOnce(new Error('方案读取失败'))
   await button('添加媒体库').trigger('click'); await flushPromises()
   expect(wrapper.findComponent(ElDialog).text()).toContain('方案读取失败')
-  expect(button('添加位置').attributes('disabled')).toBeDefined()
+  expect(button('保存并扫描').attributes('disabled')).toBeDefined()
   await button('重新加载解析方案').trigger('click'); await flushPromises()
-  expect(button('添加位置').attributes('disabled')).toBeUndefined()
+  expect(button('保存并扫描').attributes('disabled')).toBeUndefined()
 })
 
 it('本地扫描完成保留当前位置，查看歌曲时筛选来源', async () => {

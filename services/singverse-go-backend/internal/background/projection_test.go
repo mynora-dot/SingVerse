@@ -51,6 +51,34 @@ func testTaskProjectionProgressAndRetention(t *testing.T, db *sqlx.DB, dialect s
 	}
 	at := time.Now().UTC().Format(time.RFC3339Nano)
 
+	t.Run("media import separates preparation merging and verification", func(t *testing.T) {
+		exec(`INSERT INTO media_source(id,name,source_type,location,location_hash,username,created_at,updated_at)
+			VALUES('workflow-source','共享曲库','WEBDAV','https://example.invalid/dav/','workflow-root','',?,?)`, at, at)
+		exec(`INSERT INTO media_import_job(id,source_id,binding,state,phase,created_at,updated_at)
+			VALUES('workflow-import','workflow-source','workflow-binding','PARSING','PARSING',?,?)`, at, at)
+		row := project("SHARE_IMPORT", "workflow-import", false)
+		if text(row, "status") != "RUNNING" || row["total"] != nil || row["completed"] != nil {
+			t.Fatal("parsing invented a total", row)
+		}
+		exec(`UPDATE media_import_job SET state='PREVIEW',phase='PREVIEW',total_count=10 WHERE id='workflow-import'`)
+		row = project("SHARE_IMPORT", "workflow-import", false)
+		if text(row, "status") != "AWAITING_CONFIRMATION" || number(row, "total") != 10 || number(row, "completed") != 0 || related(row) != "/library/media?source=workflow-source&import=workflow-import" {
+			t.Fatal("preview lost confirmation or resume link", row)
+		}
+		exec(`UPDATE media_import_job SET state='VERIFYING',phase='VERIFYING',processed_count=10,verified_count=4,added_count=3,updated_count=5,preserved_count=2,present_count=2,unreachable_count=2 WHERE id='workflow-import'`)
+		row = project("SHARE_IMPORT", "workflow-import", false)
+		stats := object(read(row["statistics_json"]), "statistics")
+		if text(row, "status") != "RUNNING" || text(row, "stage") != "VERIFYING" || number(row, "completed") != 4 || number(stats, "preserved_count") != 2 || number(stats, "unreachable_count") != 2 {
+			t.Fatal("verification confused imported songs with observed media", row, stats)
+		}
+		exec(`INSERT INTO media_ingest_request(id,source_id,state,created_at,updated_at)
+			VALUES('workflow-ingest','workflow-source','QUEUED',?,?)`, at, at)
+		row = project("SOURCE_INGEST", "workflow-ingest", false)
+		if text(row, "status") != "QUEUED" || related(row) != "/library/media?source=workflow-source" {
+			t.Fatal("durable ingest lost its source", row)
+		}
+	})
+
 	t.Run("metadata failures and legacy skipped songs", func(t *testing.T) {
 		exec(`INSERT INTO metadata_batch(id,mode,status,providers_json,auto_apply,threshold,skipped_existing,created_at,updated_at)
 			VALUES('metadata-progress','MISSING','COMPLETED','[]',0,0.9,3,?,?)`, at, at)

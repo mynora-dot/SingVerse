@@ -126,6 +126,14 @@ func exerciseShareRoundTrip(t *testing.T, f *fixture) {
 	if a == nil || a.Origins["artists"].Kind != "SHARED" {
 		t.Fatalf("shared projection %#v", a)
 	}
+	wBase := httptest.NewRecorder()
+	f.router.ServeHTTP(wBase, httptest.NewRequest("GET", "/api/v1/media-sources/"+source+"/embedded-metadata/share-jobs/"+jobID+"/download", nil))
+	if wBase.Code != 200 {
+		t.Fatal(wBase.Code, wBase.Body.String())
+	}
+	if _, e = f.s.ImportStream(ctx, target, bytes.NewReader(wBase.Body.Bytes())); e != nil {
+		t.Fatal(e)
+	}
 	// A metadata edit is exported in an incremental part; removal is advisory only.
 	review := request(t, f.router, "GET", "/api/v1/metadata/songs/"+ids[0]+"/review", nil, 200)
 	request(t, f.router, "POST", "/api/v1/metadata/songs/"+ids[0]+"/review/apply", ReviewApply{RequestID: uuid(), Fingerprint: text(review["fingerprint"]), Version: text(review["version"]), Fields: []string{"title"}, Edits: map[string]any{"title": "Confirmed Updated"}}, 200)
@@ -152,7 +160,7 @@ func exerciseShareRoundTrip(t *testing.T, f *fixture) {
 	}
 	outer := w.Body.Bytes()
 	result, e := f.s.ImportStream(ctx, target, bytes.NewReader(outer))
-	if e != nil || result["skipped"] != 1 {
+	if e != nil || result["imported"] != 1 {
 		t.Fatalf("set import %v %v", result, e)
 	}
 	songs = request(t, f.router, "GET", "/api/v1/media-sources/"+target+"/songs", nil, 200)
@@ -328,7 +336,7 @@ func TestShareExportResumesSavedPartAndRejectsManagedSymlink(t *testing.T) {
 	}
 	snapshot := map[string]any{"tags": map[string]any{"title": "Long lyrics", "artists": []string{"A"}}, "lyrics": map[string]any{"timing": "none", "text": strings.Repeat("line\n", 40000)}}
 	for _, id := range ids {
-		if _, e := f.db.Exec("UPDATE media_metadata_file SET result_json=? WHERE song_id=?", encode(snapshot), id); e != nil {
+		if _, e := f.db.Exec("UPDATE media_song SET embedded_tags_json=? WHERE id=?", encode(snapshot), id); e != nil {
 			t.Fatal(e)
 		}
 	}

@@ -13,11 +13,14 @@ export interface MediaSource {
   lastScanAt?: string | null
   lastScanStatus?: string | null
   lastScanError?: string | null
+  initialTaskId?: string
   passwordConfigured: boolean
   createdAt: string
   updatedAt: string
 }
 export interface SourceInput {
+  startScan?: boolean
+  autoExtractEmbedded?: boolean
   useForLxDownloads?: boolean
   scanEnabled?: boolean
   scanCron?: string
@@ -31,6 +34,7 @@ export interface SourceInput {
 export interface SourcePage { items: MediaSource[]; page: number; size: number; totalElements: number }
 
 export interface MediaSong {
+  mediaVerification?: string
   classification?: import('../classification/types').ClassState
   id: string; sourceId: string; sourceName: string; relativePath: string; fileSize: number | null
   modifiedAt: string | null; scannedAt: string; parserProfileId: string; parserRevision: number

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/library"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/store"
 	"io"
 	"os"
@@ -181,7 +182,10 @@ func (s *Service) writeFile(ctx context.Context, row map[string]any) error {
 			return e
 		}
 	}
-	target := portableURL(text(song["relativePath"]))
+	target, e := library.MediaURL(text(source["location"]), text(song["relativePath"]))
+	if text(source["source_type"]) != "LOCAL" && e != nil {
+		return e
+	}
 	if text(source["source_type"]) == "LOCAL" {
 		target = filepath.Join(text(source["location"]), filepath.FromSlash(text(song["relativePath"])))
 	}
@@ -224,6 +228,7 @@ func (s *Service) Cleanup(ctx context.Context) error {
 				return e
 			}
 			_ = os.Remove(filepath.Join(s.cfg.MetadataCachePath, "uploads", id+".image"))
+			_ = os.Remove(filepath.Join(s.cfg.MetadataPath, "uploads", id+".image"))
 		}
 		for _, name := range []string{"review-pruneReceipts", "meta-pruneCandidates"} {
 			if _, e = s.exec(ctx, tx, name, map[string]any{"before": before}); e != nil {
@@ -282,6 +287,9 @@ func (s *Service) Cleanup(ctx context.Context) error {
 		} else if strings.HasPrefix(name, "metadata-") && strings.HasSuffix(name, ".tmp") {
 			_ = os.Remove(filepath.Join(s.cfg.MetadataPath, name))
 		}
+	}
+	if e = s.cleanupImports(ctx, cutoff.UTC().Format(time.RFC3339Nano)); e != nil {
+		return e
 	}
 	return s.cleanupShares(ctx, before)
 }

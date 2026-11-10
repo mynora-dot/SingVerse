@@ -1,0 +1,1 @@
+SELECT t.id,t.source_id,s.name AS subject_name,t.state AS raw_status,t.error,t.created_at,t.updated_at FROM media_ingest_request t LEFT JOIN media_source s ON s.id=t.source_id WHERE t.id=@{businessId}

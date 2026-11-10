@@ -6,6 +6,29 @@ import (
 	"testing"
 )
 
+func TestSharedMediaMustPassVerificationBeforeSelection(t *testing.T) {
+	f := newPartyFixture(t)
+	device, _ := f.device(t)
+	session := want(t, f.request(t, "POST", "/api/v1/tv/sessions", nil, device, false, false), 200)
+	commands := "/api/v1/tv/sessions/" + str(session, "id") + "/commands"
+	for _, state := range []string{"PENDING", "MISSING", "MISMATCH", "UNREACHABLE"} {
+		f.lib.songs[0]["mediaVerification"] = state
+		f.s.Invalidate()
+		list := want(t, f.request(t, "GET", "/api/v1/tv/library/songs?q=晴天", nil, device, false, false), 200)
+		if number(list, "totalElements") != 0 {
+			t.Fatal("unverified shared media entered the selection library", state, list)
+		}
+		want(t, f.request(t, "POST", commands, document{"requestId": "add-" + state, "expectedRevision": 0, "action": "ADD", "songId": "song-a"}, device, false, false), 409)
+	}
+	f.lib.songs[0]["mediaVerification"] = "PRESENT"
+	f.s.Invalidate()
+	list := want(t, f.request(t, "GET", "/api/v1/tv/library/songs?q=晴天", nil, device, false, false), 200)
+	if number(list, "totalElements") != 1 {
+		t.Fatal("verified shared media did not enter the selection library", list)
+	}
+	want(t, f.request(t, "POST", commands, document{"requestId": "add-PRESENT", "expectedRevision": 0, "action": "ADD", "songId": "song-a"}, device, false, false), 200)
+}
+
 func TestQueueCommandsPreserveOrderingPermissionsAndPlayback(t *testing.T) {
 	fixture := newPartyFixture(t)
 	device, _ := fixture.device(t)

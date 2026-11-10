@@ -2,7 +2,6 @@ package metadata
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -31,6 +30,13 @@ func mediaPath(v string) bool { return library.SupportsMedia(v) }
 
 // ImportPart commits bounded chunks with a durable receipt, so retries preserve prior work.
 func (s *Service) ImportPart(ctx context.Context, sourceID string, data []byte) (map[string]int64, error) {
+	document, e := readManifest(data)
+	if e != nil {
+		return nil, e
+	}
+	return s.importDocument(ctx, sourceID, document)
+}
+func (s *Service) importDocument(ctx context.Context, sourceID string, document map[string]any) (map[string]int64, error) {
 	source, e := s.row(ctx, s.db, "source", map[string]any{"id": sourceID})
 	if e != nil {
 		return nil, absent(e, "媒体来源不存在")
@@ -39,13 +45,13 @@ func (s *Service) ImportPart(ctx context.Context, sourceID string, data []byte) 
 		return nil, bad("请选择 WebDAV 媒体库导入")
 	}
 	binding := hash(text(source["location"]))
-	document, e := readManifest(data)
+	collection, revision, e := sharedIdentity(document)
 	if e != nil {
 		return nil, e
 	}
-	collection, revision, e := sharedIdentity(document)
-	if e != nil { return nil,e }
-	if e=s.checkSharedBaseline(ctx,s.db,sourceID,document); e!=nil{return nil,e}
+	if e = s.checkSharedBaseline(ctx, s.db, sourceID, document); e != nil {
+		return nil, e
+	}
 	entries := array(document["entries"])
 	seen := map[string]bool{}
 	if raw, ok := document["assets"]; ok && raw != nil {
@@ -101,7 +107,7 @@ func (s *Service) ImportPart(ctx context.Context, sourceID string, data []byte) 
 			}
 		}
 	}
-	key := map[string]any{"sourceId": sourceID, "binding": binding, "hash": hash(base64.StdEncoding.EncodeToString(data))}
+	key := map[string]any{"sourceId": sourceID, "binding": binding, "hash": hash(encode(document))}
 	e = s.transaction(ctx, func(tx store.DBTX) error {
 		if _, e := s.exec(ctx, tx, "share-lock", nil); e != nil {
 			return e
@@ -138,7 +144,11 @@ func (s *Service) ImportPart(ctx context.Context, sourceID string, data []byte) 
 			return nil, conflict("分享导入进度无效")
 		}
 		if cursor == len(entries) {
-			if text(document["baseId"])!="" || number(document["part"])<=1 { if e=s.saveSharedBaseline(ctx,s.db,sourceID,document);e!=nil{return nil,e} }
+			if document["part"] == nil {
+				if e = s.saveSharedBaseline(ctx, s.db, sourceID, document); e != nil {
+					return nil, e
+				}
+			}
 			return map[string]int64{"imported": number(receipt["imported"]), "skipped": number(receipt["skipped"]), "processed": int64(cursor)}, nil
 		}
 		next := cursor
@@ -181,9 +191,20 @@ func (s *Service) ImportPart(ctx context.Context, sourceID string, data []byte) 
 					return e
 				}
 
+				if !added {
+					exists, e := s.rows(ctx, tx, "shared-songExists", map[string]any{"songId": id})
+					if e != nil {
+						return e
+					}
+					if scalar(exists) == 0 {
+						skipped++
+						continue
+					}
+				}
 				snapshot := item["metadata"].(map[string]any)
-				outcome,_,mergeErr := s.mergeShared(ctx,tx,id,snapshot,collection,revision,size)
-				if mergeErr != nil { e=mergeErr
+				outcome, _, mergeErr := s.mergeShared(ctx, tx, id, snapshot, collection, revision, size)
+				if mergeErr != nil {
+					e = mergeErr
 
 					return e
 				}
@@ -197,7 +218,11 @@ func (s *Service) ImportPart(ctx context.Context, sourceID string, data []byte) 
 						}
 					}
 				}
-				if added || outcome=="UPDATED" { imported++ } else { skipped++ }
+				if added || outcome == "UPDATED" {
+					imported++
+				} else {
+					skipped++
+				}
 			}
 			a := map[string]any{}
 			for k, v := range key {
@@ -259,112 +284,46 @@ func (s *Service) ImportStream(ctx context.Context, sourceID string, input io.Re
 	if e = ctx.Err(); e != nil {
 		return nil, e
 	}
-	z, e := checkedZip(temp, size, 30001)
-	if e != nil {
+	if e = temp.Sync(); e != nil {
 		return nil, e
-	}
-	if len(z.File) == 0 {
-		return nil, bad("分享包为空")
-	}
-	if z.File[0].Name != "index.json" {
-		if size > shareLimit {
-			return nil, &problem{413, "索引包最多 32 MiB"}
-		}
-		b := make([]byte, int(size))
-		if _, e = temp.ReadAt(b, 0); e != nil {
-			return nil, e
-		}
-		return s.ImportPart(ctx, sourceID, b)
-	}
-	indexBytes, e := readZipFile(z.File[0], 1024*1024)
-	if e != nil {
-		return nil, e
-	}
-	var index map[string]any
-	d := json.NewDecoder(bytes.NewReader(indexBytes))
-	d.UseNumber()
-	if d.Decode(&index) != nil || index["format"] != "singverse-share-set" || (number(index["version"]) != 2 && number(index["version"]) != 3) {
-		return nil, bad("分享清单无效")
-	}
-	rawParts, ok := index["parts"].([]any)
-	if !ok || len(rawParts) > 4096 {
-		return nil, bad("分享分包清单无效")
-	}
-	expected := []string{}
-	known := map[string]bool{"index.json": true}
-	for _, raw := range rawParts {
-		name, ok := raw.(string)
-		if !ok || !partName.MatchString(name) || known[name] {
-			return nil, bad("分享分包清单无效")
-		}
-		known[name] = true
-		expected = append(expected, name)
-	}
-	advisories := map[string]bool{}
-	if raw, ok := index["deletions"]; ok {
-		a, ok := raw.([]any)
-		if !ok || len(a) > 4096 {
-			return nil, bad("删除提示无效")
-		}
-		for _, raw := range a {
-			name, ok := raw.(string)
-			if !ok || !deletionName.MatchString(name) || known[name] {
-				return nil, bad("删除提示无效")
-			}
-			known[name], advisories[name] = true, true
-		}
-	}
-	// Check all names and declared bounds before any part can commit.
-	cursor := 0
-	seen := map[string]bool{"index.json": true}
-	expanded := uint64(len(indexBytes))
-	for _, file := range z.File[1:] {
-		name := file.Name
-		if seen[name] || !known[name] || file.FileInfo().Mode()&os.ModeSymlink != 0 {
-			return nil, bad("分享包包含重复或未知文件")
-		}
-		seen[name] = true
-		if !advisories[name] {
-			if cursor >= len(expected) || expected[cursor] != name {
-				return nil, bad("分享分包顺序错误")
-			}
-			cursor++
-		}
-		if file.UncompressedSize64 > shareLimit || expanded+file.UncompressedSize64 > uint64(uploadLimit) {
-			return nil, &problem{413, "分享包过大"}
-		}
-		expanded += file.UncompressedSize64
-	}
-	if cursor != len(expected) {
-		return nil, bad("分享包不完整，请选择完整文件")
-	}
-	for name := range advisories {
-		if !seen[name] {
-			return nil, bad("分享包缺少删除提示文件")
-		}
 	}
 	result := map[string]int64{"imported": 0, "skipped": 0, "processed": 0}
-	for _, file := range z.File[1:] {
-		if e = ctx.Err(); e != nil {
-			return nil, e
+	var manifest map[string]any
+	e = visitSharePackage(temp.Name(), func(doc map[string]any) error {
+		if e := ctx.Err(); e != nil {
+			return e
 		}
-		b, e := readZipFile(file, shareLimit)
+		part, e := s.importDocument(ctx, sourceID, doc)
 		if e != nil {
-			return nil, e
-		}
-		if advisories[file.Name] {
-			continue
-		}
-		part, e := s.ImportPart(ctx, sourceID, b)
-		if e != nil {
-			return nil, e
+			return e
 		}
 		for k, v := range part {
 			result[k] += v
 		}
+		manifest = doc
+		return nil
+	})
+	if e != nil {
+		return nil, e
+	}
+	if manifest != nil {
+		e = s.transaction(ctx, func(tx store.DBTX) error {
+			latest, e := s.row(ctx, tx, "source", map[string]any{"id": sourceID})
+			if e != nil {
+				return e
+			}
+			if text(latest["location"]) != text(source["location"]) {
+				return conflict("导入期间来源根目录已变化")
+			}
+			return s.saveSharedBaseline(ctx, tx, sourceID, manifest)
+		})
+		if e != nil {
+			return nil, e
+		}
 	}
 	return result, nil
 }
+
 func (s *Service) importShare(c *gin.Context) {
 	result, e := s.ImportStream(c.Request.Context(), c.Param("id"), c.Request.Body)
 	if e != nil {

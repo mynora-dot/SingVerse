@@ -1,5 +1,6 @@
 import { authRequest } from '../../../core/auth/api'
 export interface EmbeddedSummary {
+  quality?: { total: number; identityComplete: number; informationMissing: number; pendingVerification: number; mediaIssues: number }
   files?: { pending: number; failed: number; attachments?: number; directory: string }
   remoteReady?: boolean; nodeStatus?: string; nodeMessage?: string
   enabled: boolean; paused: boolean; accessGroup: string; privateOrigins: string[]
@@ -21,4 +22,4 @@ export const embeddedMetadata = {
   detail: (id: string) => authRequest<EmbeddedDetail>(`/api/v1/media-songs/${encodeURIComponent(id)}/embedded-metadata`),
   refresh: (songIds: string[], deep = false) => authRequest<{ accepted: number }>('/api/v1/media-songs/embedded-metadata/refresh', 'POST', { songIds, deep }),
 }
-export const embeddedState = (value: string) => ({ IMPORTED: '来自共享索引（未经本地媒体验证）', PENDING: '等待提取', QUEUED: '等待提取', RUNNING: '正在提取', COMPLETE: '提取完成', EMPTY: '没有内嵌标签', PARTIAL: '部分完成', BUDGET_EXCEEDED: '已达读取上限', UNSUPPORTED: '格式暂不支持', RANGE_UNSUPPORTED: '来源不支持分段读取', UNSTABLE: '读取期间文件发生变化', NETWORK_ERROR: '网络异常', AUTH_REQUIRED: '需要检查来源权限', RATE_LIMITED: '访问冷却中' }[value] ?? value)
+export const embeddedState = (value: string) => ({ IMPORTED: '共享资料已保存', PENDING: '等待提取', QUEUED: '等待提取', RUNNING: '正在提取', COMPLETE: '已处理，有内嵌信息', EMPTY: '已处理，文件没有内嵌标签', PARTIAL: '部分完成', BUDGET_EXCEEDED: '已达读取上限', UNSUPPORTED: '格式暂不支持', RANGE_UNSUPPORTED: '来源不支持分段读取', UNSTABLE: '读取期间文件发生变化', NETWORK_ERROR: '网络异常', AUTH_REQUIRED: '需要检查来源权限', RATE_LIMITED: '访问冷却中' }[value] ?? value)

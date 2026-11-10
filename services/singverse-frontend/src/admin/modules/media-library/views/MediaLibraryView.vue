@@ -12,9 +12,13 @@ import WebDavMetadataDialog from '../components/WebDavMetadataDialog.vue'
 import LocalFolderPicker from '../components/LocalFolderPicker.vue'
 import SourceWorkspaceNav from '../components/SourceWorkspaceNav.vue'
 import { lx } from '../../lx-downloads/api'
+import { embeddedMetadata, type EmbeddedSummary } from '../api/embeddedMetadata'
 const FilenameProfilesView = defineAsyncComponent(() => import('../../filename-parser/views/FilenameProfilesView.vue'))
 const FilenameParserView = defineAsyncComponent(() => import('../../filename-parser/views/FilenameParserView.vue'))
 const metadataSource = ref<MediaSource | null>(null)
+const importMode = ref(false)
+const summaries = reactive<Record<string, EmbeddedSummary | undefined>>({})
+const ingests = reactive<Record<string, { state: string; error?: string } | undefined>>({})
 const router = useRouter()
 const route = useRoute()
 const vLoading = ElLoading.directive
@@ -29,11 +33,11 @@ function chooseFolder() { picker.value = true }
 function confirmFolder(path: string) { draft.location = path; picker.value = false }
 function changeType(type: SourceType) {
   if (editing.value || saving.value || draft.type === type) return
-  Object.assign(draft, { type, location: '', username: '', password: '', useForLxDownloads: false }); clearPassword.value = false
+  Object.assign(draft, { autoExtractEmbedded: false, type, location: '', username: '', password: '', useForLxDownloads: false }); clearPassword.value = false
 }
 const loading = ref(false), saving = ref(false), loaded = ref(false), dialog = ref(false)
 const error = ref(''), formError = ref(''), editing = ref<MediaSource | null>(null), clearPassword = ref(false)
-const draft = reactive({ useForLxDownloads: false, scanEnabled: false, scanCron: '0 3 * * *', parserProfileId: 'default', name: '', type: 'LOCAL' as SourceType, location: '', username: '', password: '' })
+const draft = reactive({ autoExtractEmbedded: false, useForLxDownloads: false, scanEnabled: false, scanCron: '0 3 * * *', parserProfileId: 'default', name: '', type: 'LOCAL' as SourceType, location: '', username: '', password: '' })
 const editorPanel = ref<'source' | 'profiles' | 'rules'>('source')
 const workbenchProfileId = ref('default')
 const workbench = ref<{ canLeave: () => Promise<boolean> }>()
@@ -51,6 +55,8 @@ const taskVersions: Record<string, number> = {}
 const taskErrors = reactive<Record<string, string>>({})
 const cancelling = reactive<Record<string, boolean>>({})
 let taskTimer: ReturnType<typeof setTimeout> | undefined, taskGeneration = 0, loadGeneration = 0
+function enhancing(id: string) { const s = summaries[id]; return !!s?.enabled && !s.paused && (s.counts.PENDING ?? 0) + (s.counts.QUEUED ?? 0) + (s.counts.RUNNING ?? 0) > 0 }
+function ingestActive(id: string) { return ['QUEUED', 'RUNNING'].includes(ingests[id]?.state ?? '') }
 function taskActive(task?: ScanTask) { return !!task && ['QUEUED', 'RUNNING'].includes(task.status) }
 function taskLabel(task: ScanTask) {
   if (task.cancelRequested && taskActive(task)) return '正在取消'
@@ -60,19 +66,19 @@ function taskLabel(task: ScanTask) {
 function scheduleTasks(token = taskGeneration) {
   clearTimeout(taskTimer)
   if (!active || token !== taskGeneration) return
-  if (items.value.some(item => item.type === 'WEBDAV' && (taskActive(tasks[item.id]) || taskErrors[item.id]))) {
+  if (items.value.some(item => ingestActive(item.id) || enhancing(item.id) || taskActive(tasks[item.id]) || taskErrors[item.id])) {
     taskTimer = setTimeout(() => { void refreshTasks(false, token) }, 2000)
   }
 }
 async function refreshTasks(latest: boolean, token = taskGeneration) {
-  const sources = items.value.filter(item => item.type === 'WEBDAV')
+  const sources = items.value
   await Promise.all(sources.map(async item => {
     const previous = tasks[item.id], version = taskVersions[item.id] ?? 0
-    if (!latest && !taskActive(previous) && !taskErrors[item.id]) return
+    if (!latest && !ingestActive(item.id) && !enhancing(item.id) && !taskActive(previous) && !taskErrors[item.id]) return
     try {
-      const task = latest || !previous ? await media.latestTask(item.id) : await media.task(item.id, previous.id)
+      const [task, ingest, summary] = await Promise.all([item.type === 'WEBDAV' ? latest || !previous ? media.latestTask(item.id) : media.task(item.id, previous.id) : undefined, media.latestIngest(item.id), embeddedMetadata.summary(item.id)])
       if (!active || token !== taskGeneration || version !== (taskVersions[item.id] ?? 0)) return
-      tasks[item.id] = task; taskErrors[item.id] = ''
+      tasks[item.id] = task; ingests[item.id] = ingest; summaries[item.id] = summary; taskErrors[item.id] = ''
     } catch (e) {
       if (active && token === taskGeneration && version === (taskVersions[item.id] ?? 0)) taskErrors[item.id] = e instanceof Error ? e.message : '读取扫描状态失败'
     }
@@ -146,9 +152,10 @@ async function load(append = false) {
   } catch (e) { if (active && token === loadGeneration) error.value = e instanceof Error ? e.message : '读取媒体库失败' }
   finally { if (active && token === loadGeneration) loading.value = false }
 }
-function open(type: SourceType, item?: MediaSource) {
+function open(type: SourceType, item?: MediaSource, forImport = false) {
+  importMode.value = forImport
   editing.value = item ?? null
-  Object.assign(draft, { scanEnabled: item?.scanEnabled ?? false, scanCron: item?.scanCron ?? '0 3 * * *', name: item?.name ?? '', type, location: item?.location ?? '', username: item?.username ?? '', password: '', parserProfileId: item?.parserProfileId ?? 'default' })
+  Object.assign(draft, { autoExtractEmbedded: false, scanEnabled: item?.scanEnabled ?? false, scanCron: item?.scanCron ?? '0 3 * * *', name: item?.name ?? '', type, location: item?.location ?? '', username: item?.username ?? '', password: '', parserProfileId: item?.parserProfileId ?? 'default' })
   draft.useForLxDownloads = item?.useForLxDownloads ?? route.query.download === '1'
   advanced.value = false; clearPassword.value = false; formError.value = ''; editorPanel.value = 'source'
   formBaseline.value = formSignature.value; dialog.value = true; void loadProfiles()
@@ -192,7 +199,7 @@ async function returnToProfiles(profileId = workbenchProfileId.value) {
   workbenchProfileId.value = profileId; editorPanel.value = 'profiles'
   await nextTick(); (editorBack.value?.$el as HTMLElement | undefined)?.focus()
 }
-async function save() {
+async function save(startScan = !editing.value && !importMode.value) {
   if (saving.value) return
   if (!draft.location.trim()) { formError.value = draft.type === 'LOCAL' ? '请选择歌曲文件夹' : '请填写 WebDAV 目录地址'; return }
   if (profilesLoading.value || profilesError.value || !selectedProfile.value) { formError.value = '请选择有效的解析方案，或重新加载方案列表'; return }
@@ -207,14 +214,24 @@ async function save() {
         catch { return }
       }
     }
-    const saved = await media.save({ name: draft.name.trim() || (draft.type === 'LOCAL' ? draft.location.split(/[\\/]/).filter(Boolean).pop() || '本地歌曲' : 'WebDAV 歌曲').slice(0, 100), type: draft.type, location: draft.location, parserProfileId: draft.parserProfileId,
+    const profileChanged = editing.value && editing.value.parserProfileId !== draft.parserProfileId
+    const saved = await media.save({ startScan, ...(!editing.value && draft.type === 'WEBDAV' ? { autoExtractEmbedded: !importMode.value && draft.autoExtractEmbedded } : {}), name: draft.name.trim() || (draft.type === 'LOCAL' ? draft.location.split(/[\\/]/).filter(Boolean).pop() || '本地歌曲' : 'WebDAV 歌曲').slice(0, 100), type: draft.type, location: draft.location, parserProfileId: draft.parserProfileId,
       ...(draft.type === 'LOCAL' ? { useForLxDownloads: draft.useForLxDownloads } : {}),
       ...(draft.scanEnabled || editing.value?.scanEnabled || editing.value?.scanCron ? { scanEnabled: draft.scanEnabled, scanCron: draft.scanCron.trim() } : {}),
       ...(draft.type === 'WEBDAV' ? { username: draft.username,
         password: clearPassword.value ? '' : draft.password || (editing.value ? undefined : '') } : {}) }, editing.value?.id)
-    dialog.value = false; draft.password = ''; ElMessage.success('媒体库配置已保存'); await load(); if (saved) metadataSource.value = saved
+    dialog.value = false; draft.password = ''; ElMessage.success(startScan ? '已保存，后台将自动扫描入库，可以离开页面' : profileChanged ? '已保存解析方案，请重新扫描以更新文件名识别结果' : '媒体库配置已保存'); await load(); if (saved && importMode.value) metadataSource.value = saved
   } catch (e) { formError.value = e instanceof Error ? e.message : '保存失败' }
   finally { saving.value = false }
+}
+async function reloadMetadataSource() {
+  const id = metadataSource.value?.id
+  if (id) {
+    const previous = metadataSource.value?.location, source = await media.get(id)
+    if (previous !== source.location && route.query.import) { const query = { ...route.query }; delete query.import; await router.replace({ query }) }
+    metadataSource.value = source
+  }
+  void refreshTasks(true)
 }
 async function remove(item: MediaSource) {
   try {
@@ -236,8 +253,8 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
 
 <template>
   <div class="media-library-page management-page">
-    <PageHeader class="media-heading" title="好歌，从这里入库" description="添加歌曲所在的本地目录或 WebDAV，扫描后歌曲会出现在曲库中。扫描只读取文件，不会修改原文件。">
-      <template #actions><div class="media-actions"><ElButton :icon="RefreshRight" :loading="loading" @click="load()">刷新</ElButton><ElButton type="primary" :icon="Plus" @click="open('LOCAL')">添加媒体库</ElButton></div></template>
+    <PageHeader class="media-heading" title="好歌，从这里入库" description="添加后自动扫描入库，资料自动保存在本机。收到分享包时，先导入资料，再核对自己的媒体目录。">
+      <template #actions><div class="media-actions"><ElButton :icon="RefreshRight" :loading="loading" @click="load()">刷新</ElButton><ElButton @click="open('WEBDAV', undefined, true)">导入资料包</ElButton><ElButton type="primary" :icon="Plus" @click="open('LOCAL')">添加媒体库</ElButton></div></template>
     </PageHeader>
     <SourceWorkspaceNav />
     <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon class="media-error"><ElButton text @click="load()">重试</ElButton></ElAlert>
@@ -250,6 +267,9 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
             <div class="source-title"><h2>{{ row.name }}</h2><ElTag v-if="row.useForLxDownloads" type="success" effect="plain">下载保存位置</ElTag><ElTag type="info" effect="plain">{{ row.type === 'LOCAL' ? '本地目录' : 'WebDAV' }}</ElTag></div>
             <p class="source-location">{{ displayLocation(row) }}</p>
             <ElButton class="source-profile-link" text :disabled="profilesLoading" @click="showRecognition(row)">文件名识别：{{ profilesLoading ? '读取中…' : profileName(row.parserProfileId) }} →</ElButton>
+            <p v-if="summaries[row.id]?.quality" class="panel-description">已入库 {{ summaries[row.id]!.quality!.total.toLocaleString() }} 首 · {{ summaries[row.id]!.quality!.identityComplete.toLocaleString() }} 首有歌名和歌手<br>正在完善 {{ (summaries[row.id]!.counts.RUNNING ?? 0) + (summaries[row.id]!.counts.QUEUED ?? 0) }} · 信息不足 {{ summaries[row.id]!.quality!.informationMissing }} · 待核验路径 {{ summaries[row.id]!.quality!.pendingVerification }} · 媒体待处理 {{ summaries[row.id]!.quality!.mediaIssues }}</p>
+            <p v-if="ingestActive(row.id)" class="panel-description" role="status">{{ ingests[row.id]?.state === 'QUEUED' ? '已保存，等待后台扫描入库' : '正在后台扫描入库，可以离开页面' }}</p>
+            <p v-if="ingests[row.id]?.error" class="scan-error">{{ ingests[row.id]?.error }}</p>
             <div v-if="tasks[row.id]" class="scan-progress" aria-live="polite">
               <strong>{{ taskLabel(tasks[row.id]!) }}</strong>
               <span>已处理 {{ tasks[row.id]!.directories }} 个目录、{{ tasks[row.id]!.entries }} 个条目；{{ tasks[row.id]!.totalSongs }} 首，{{ tasks[row.id]!.needsReviewSongs }} 首需复核</span>
@@ -264,25 +284,25 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
             <p v-if="row.lastScanError" class="scan-error">{{ row.lastScanError }}</p>
           </div>
           <div class="source-actions">
-            <ElButton type="primary" :loading="scanning === row.id" :disabled="!!scanning || taskActive(tasks[row.id])" @click="scan(row)">扫描歌曲</ElButton>
-            <ElButton @click="showSongs(row)">查看歌曲</ElButton>
-            <ElButton @click="metadataSource = row">{{ row.type === 'WEBDAV' ? '内嵌元数据与分享' : '整理与分享' }}</ElButton>
-            <details class="source-menu"><summary :aria-label="`${row.name}的更多操作`">⋯</summary><div><ElButton text @click="open(row.type, row)">编辑</ElButton><ElButton text type="danger" @click="remove(row)">移除</ElButton></div></details>
+            <ElButton type="primary" @click="showSongs(row)">查看歌曲</ElButton>
+            <ElButton @click="metadataSource = row">完善信息</ElButton>
+            <ElButton @click="metadataSource = row">分享资料</ElButton>
+            <details class="source-menu"><summary :aria-label="`${row.name}的更多操作`">⋯</summary><div><ElButton text :disabled="!!scanning || ingestActive(row.id) || taskActive(tasks[row.id])" @click="scan(row)">扫描歌曲</ElButton><ElButton text @click="open(row.type, row)">编辑</ElButton><ElButton text type="danger" @click="remove(row)">移除</ElButton></div></details>
           </div>
         </div>
       </ElCard>
       <ElButton v-if="moreSources" :loading="loading" @click="load(true)">显示更多位置</ElButton>
     </section>
     <p class="feature-note">本地目录优先读取音频与视频内嵌标签，缺失信息用文件名补充；WebDAV 可启用后台内嵌元数据提取，同路径复用缓存。扫描不会修改原文件，不代表已验证可播放。</p>
-    <WebDavMetadataDialog v-if="metadataSource" :source="metadataSource" @songs="showSongs(metadataSource!); metadataSource = null" @close="metadataSource = null" />
-    <ElDialog v-model="dialog" :title="editorPanel === 'source' ? (editing ? '编辑媒体库' : '添加媒体库') : `${editing?.name || draft.name || '新来源'} · ${editorPanel === 'profiles' ? '文件名识别' : '自定义规则'}`" :width="editorPanel === 'source' ? 'min(560px, calc(100vw - 32px))' : 'min(1120px, calc(100vw - 32px))'" class="media-dialog" :class="{ 'source-workbench': editorPanel !== 'source' }" :close-on-click-modal="false" :close-on-press-escape="!saving" :show-close="!saving" :before-close="closeSource" @closed="closed">
+    <WebDavMetadataDialog v-if="metadataSource" :source="metadataSource" :import-job-id="typeof route.query.import === 'string' ? route.query.import : undefined" @songs="showSongs(metadataSource!); metadataSource = null" @close="metadataSource = null" @updated="reloadMetadataSource" />
+    <ElDialog v-model="dialog" :title="editorPanel === 'source' ? (editing ? '编辑媒体库' : importMode ? '导入资料包 · 绑定自己的 WebDAV' : '添加媒体库') : `${editing?.name || draft.name || '新来源'} · ${editorPanel === 'profiles' ? '文件名识别' : '自定义规则'}`" :width="editorPanel === 'source' ? 'min(560px, calc(100vw - 32px))' : 'min(1120px, calc(100vw - 32px))'" class="media-dialog" :class="{ 'source-workbench': editorPanel !== 'source' }" :close-on-click-modal="false" :close-on-press-escape="!saving" :show-close="!saving" :before-close="closeSource" @closed="closed">
       <template v-if="editorPanel !== 'source'">
         <div class="source-workbench-context"><ElButton ref="editorBack" @click="editorPanel === 'rules' ? returnToProfiles() : returnToSource()">{{ editorPanel === 'rules' ? '← 返回识别方案' : '← 返回来源设置' }}</ElButton><p>来源草稿已保留，选好方案后再保存来源。</p></div>
         <FilenameProfilesView v-if="editorPanel === 'profiles'" ref="workbench" embedded :profile-id="workbenchProfileId" @use-profile="returnToSource" @rules="showRules" />
         <FilenameParserView v-else ref="workbench" embedded @profile="returnToProfiles" />
       </template>
-      <ElForm v-else label-position="top" @submit.prevent="save">
-        <div v-if="!editing" class="source-types" aria-label="位置类型"><ElButton :type="draft.type === 'LOCAL' ? 'primary' : 'default'" :disabled="saving" @click="changeType('LOCAL')">本地目录</ElButton><ElButton :type="draft.type === 'WEBDAV' ? 'primary' : 'default'" :disabled="saving" @click="changeType('WEBDAV')">WebDAV</ElButton></div>
+      <ElForm v-else label-position="top" @submit.prevent="save()">
+        <div v-if="!editing && !importMode" class="source-types" aria-label="位置类型"><ElButton :type="draft.type === 'LOCAL' ? 'primary' : 'default'" :disabled="saving" @click="changeType('LOCAL')">本地目录</ElButton><ElButton :type="draft.type === 'WEBDAV' ? 'primary' : 'default'" :disabled="saving" @click="changeType('WEBDAV')">WebDAV</ElButton></div>
         <template v-if="draft.type === 'LOCAL'">
           <ElFormItem label="歌曲文件夹" required><div class="folder-selection"><span>{{ draft.location || '尚未选择文件夹' }}</span><ElButton :disabled="saving" @click="chooseFolder">选择文件夹</ElButton></div></ElFormItem>
           <ElFormItem><ElCheckbox v-model="draft.useForLxDownloads" :disabled="saving">用于保存洛雪下载</ElCheckbox><p class="profile-help">仅能指定一个本地媒体库。启用后检查实际写入权限，下载完成自动加入曲库。有未完成任务时不能修改保存位置。</p></ElFormItem>
@@ -293,8 +313,11 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
           <ElFormItem label="用户名（可选）"><ElInput v-model="draft.username" autocomplete="off" maxlength="256" :disabled="saving" /></ElFormItem>
           <ElFormItem :label="editing?.passwordConfigured ? '密码 / 应用密码（留空保留）' : '密码 / 应用密码（可选）'"><ElInput v-model="draft.password" type="password" show-password autocomplete="new-password" maxlength="1024" :disabled="saving || clearPassword" /></ElFormItem>
           <ElCheckbox v-if="editing?.passwordConfigured" v-model="clearPassword" :disabled="saving" @change="draft.password = ''">清除已保存密码</ElCheckbox>
-          <p class="muted">凭据仅加密保存在服务端，不会回显。修改地址或账号时需重新填写密码或明确清除。保存不会访问远端，建议使用 HTTPS。OpenList 地址填写 /dav/ 加挂载目录，账号需开启 WebDAV 读取权限；扫描仅列目录、索引文件名，不下载视频。</p>
+          <p class="muted">凭据仅加密保存在服务端，不会回显。修改地址或账号时需重新填写密码或明确清除。建议使用 HTTPS。OpenList 地址填写 /dav/ 加挂载目录，账号需开启 WebDAV 读取权限；扫描列目录并索引文件名；可按需开启文件内信息读取。目录连接成功不代表媒体可播放。</p>
         </template>
+        <ElCheckbox v-if="!editing && !importMode && draft.type === 'WEBDAV'" v-model="draft.autoExtractEmbedded" :disabled="saving">自动读取文件内的歌曲信息</ElCheckbox>
+        <p v-if="importMode" class="profile-help">保存后先上传资料包并预览路径，不会自动全量扫描或提取。资料保存后在后台核验媒体。</p>
+        <p v-if="editing?.type === 'WEBDAV'" class="profile-help">迁移媒体目录并保留已整理资料，请从“完善信息 → 高级选项 → 重新绑定自己的媒体目录”操作。</p>
         <ElFormItem label="名称（可选）"><ElInput v-model="draft.name" placeholder="留空使用文件夹名称" maxlength="100" :disabled="saving" /></ElFormItem>
         <ElFormItem label="文件名识别" for="source-parser-profile" required class="profile-field">
           <div class="source-profile-selection"><select id="source-parser-profile" v-model="draft.parserProfileId" aria-label="解析方案" :disabled="saving || profilesLoading || !!profilesError" class="profile-select">
@@ -311,7 +334,7 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
         </details>
         <ElAlert v-if="profilesError" :title="profilesError" type="error" :closable="false"><ElButton text @click="loadProfiles">重新加载解析方案</ElButton></ElAlert>
         <ElAlert v-if="formError" :title="formError" type="error" :closable="false" show-icon />
-        <div class="dialog-actions"><ElButton :disabled="saving" @click="closeSource()">取消</ElButton><ElButton type="primary" native-type="submit" :loading="saving" :disabled="profilesLoading || !!profilesError || !selectedProfile">{{ editing ? '保存修改' : '添加位置' }}</ElButton></div>
+        <div class="dialog-actions"><ElButton :disabled="saving" @click="closeSource()">取消</ElButton><ElButton v-if="!editing && !importMode" :disabled="saving || profilesLoading || !!profilesError || !selectedProfile" @click="save(false)">仅保存</ElButton><ElButton type="primary" native-type="submit" :loading="saving" :disabled="profilesLoading || !!profilesError || !selectedProfile">{{ editing ? '保存修改' : importMode ? '保存并选择资料包' : '保存并扫描' }}</ElButton></div>
       </ElForm>
     </ElDialog>
 

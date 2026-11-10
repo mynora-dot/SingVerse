@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { mediaVerification } from '../../media-library/api/shareImports'
 import { ElButton, ElDrawer, ElTag } from 'element-plus'
 import { VideoPlay, EditPen } from '@element-plus/icons-vue'
 import SongCover from './SongCover.vue'
@@ -68,7 +69,7 @@ const origin = computed(() => {
 
 <template>
   <ElDrawer :model-value="visible" title="歌曲详情" size="min(680px, 100vw)" class="song-detail-drawer" :append-to-body="false" @update:model-value="value => { if (!value) emit('close') }">
-    <template v-if="song">
+    <template v-if="song"><p v-if="song.mediaVerification" role="status">{{ mediaVerification(song.mediaVerification) }}；目录核对不代表已验证可播放。</p>
       <section class="song-hero" aria-label="歌曲概览">
         <div class="song-artwork">
           <img v-if="artwork && !coverFailed" :src="artwork" :alt="songTitle(song) + '的封面'" decoding="async" @error="coverFailed = true">

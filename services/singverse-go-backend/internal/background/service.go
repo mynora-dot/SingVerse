@@ -27,7 +27,7 @@ var files embed.FS
 
 const retention int64 = 30 * 86400000
 
-var types = []string{"WEBDAV_SCAN", "METADATA", "CLASSIFICATION", "AUDIO_BATCH", "AUDIO_JOB", "TRANSCODE", "CACHE_CLEANUP", "SHARE_EXPORT", "LX_DOWNLOAD", "ARTIST_ARTWORK"}
+var types = []string{"SHARE_IMPORT", "SOURCE_INGEST", "WEBDAV_SCAN", "METADATA", "CLASSIFICATION", "AUDIO_BATCH", "AUDIO_JOB", "TRANSCODE", "CACHE_CLEANUP", "SHARE_EXPORT", "LX_DOWNLOAD", "ARTIST_ARTWORK"}
 
 type doc = map[string]any
 type Service struct {
@@ -188,7 +188,7 @@ func active(state string) bool {
 
 func sourceActive(state string) bool {
 	switch state {
-	case "QUEUED", "RUNNING", "PAUSED", "STARTING", "PREPARING", "PREVIEW", "WAITING", "CANCELLING":
+	case "QUEUED", "RUNNING", "PAUSED", "STARTING", "PREPARING", "PREVIEW", "WAITING", "CANCELLING", "PARSING", "VERIFYING":
 		return true
 	}
 	return false
@@ -196,7 +196,7 @@ func sourceActive(state string) bool {
 
 func normalize(raw string) string {
 	switch raw {
-	case "PREPARING", "STARTING", "RUNNING", "PROCESSING":
+	case "PREPARING", "STARTING", "RUNNING", "PROCESSING", "PARSING", "VERIFYING":
 		return "RUNNING"
 	case "PREVIEW":
 		return "AWAITING_CONFIRMATION"

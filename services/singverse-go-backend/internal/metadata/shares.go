@@ -88,7 +88,7 @@ func (s *Service) createShare(c *gin.Context) {
 			if e != nil {
 				return e
 			}
-			if text(job["binding"]) != hash(text(source["location"])) || text(job["state"]) != "SUCCEEDED" {
+			if text(job["collection_id"]) == "" || text(job["binding"]) != hash(text(source["location"])) || text(job["state"]) != "SUCCEEDED" {
 				return conflict("基准快照与当前媒体来源不兼容")
 			}
 			base = *input.BaseID
@@ -111,29 +111,24 @@ func (s *Service) createShare(c *gin.Context) {
 		if _, e = s.exec(ctx, tx, "share-insert", a); e != nil {
 			return e
 		}
-		if _, e = s.exec(ctx, tx, "files-enqueueSource", a); e != nil {
+
+		if _, e = s.exec(ctx, tx, "shared-seriesInsert", map[string]any{"sourceId": sourceID, "collectionId": uuid()}); e != nil {
 			return e
 		}
-		pending, e := s.rows(ctx, tx, "files-pendingSource", a)
+		if _, e = s.exec(ctx, tx, "shared-seriesNext", map[string]any{"sourceId": sourceID}); e != nil {
+			return e
+		}
+		series, e := s.row(ctx, tx, "shared-seriesRead", map[string]any{"sourceId": sourceID})
 		if e != nil {
 			return e
 		}
-		if scalar(pending) > 0 {
-			if _, e = s.exec(ctx, tx, "files-retrySource", a); e != nil {
-				return e
-			}
-			if _, e = s.exec(ctx, tx, "share-sourceCount", a); e != nil {
-				return e
-			}
-			return s.shareProgress(ctx, tx, a, "WAITING", "", 0, 0, nil)
-		}
-		if _, e = s.exec(ctx, tx, "share-snapshot", a); e != nil {
+		if _, e = s.exec(ctx, tx, "shared-jobSeries", map[string]any{"id": id, "collectionId": series["collection_id"], "revision": series["revision"]}); e != nil {
 			return e
 		}
-		if _, e = s.exec(ctx, tx, "share-count", a); e != nil {
+		if _, e = s.exec(ctx, tx, "share-sourceCount", a); e != nil {
 			return e
 		}
-		return s.project(ctx, tx, "SHARE_EXPORT", id)
+		return s.shareProgress(ctx, tx, a, "WAITING", "", 0, 0, nil)
 	})
 	if e != nil {
 		s.fail(c, e)
@@ -232,7 +227,11 @@ func (s *Service) shareIndex(ctx context.Context, source, id string) (map[string
 	for i := int64(1); i <= number(job["part_count"]); i++ {
 		parts = append(parts, fmt.Sprintf("part-%06d.zip", i))
 	}
-	return map[string]any{"format": "singverse-share-set", "version": 2, "id": id, "state": job["state"], "total": job["total_count"], "baseId": text(job["base_id"]), "deletions": deletions, "parts": parts}, nil
+	version := 2
+	if text(job["collection_id"]) != "" {
+		version = 3
+	}
+	return map[string]any{"format": "singverse-share-set", "version": version, "id": id, "collectionId": job["collection_id"], "collectionRevision": job["collection_revision"], "state": job["state"], "total": job["total_count"], "baseId": text(job["base_id"]), "deletions": deletions, "parts": parts}, nil
 }
 func (s *Service) indexShare(c *gin.Context) {
 	index, e := s.shareIndex(c.Request.Context(), c.Param("id"), c.Param("jobId"))
@@ -391,73 +390,44 @@ func (s *Service) ProcessShare(ctx context.Context) error {
 		return e
 	}
 	for _, job := range pending {
+
 		if text(job["state"]) == "WAITING" {
-			sourceID := text(job["source_id"])
-			failures, e := s.rows(ctx, s.db, "files-failures", map[string]any{"sourceId": sourceID})
-			if e != nil {
-				return e
-			}
-			if scalar(failures) > 0 {
-				if e = s.transaction(ctx, func(tx store.DBTX) error {
-					return s.shareProgress(ctx, tx, job, "FAILED", "", 0, 0, "分享准备暂时不可用，请重试")
-				}); e != nil {
-					return e
-				}
-				continue
-			}
-			files, e := s.rows(ctx, s.db, "files-pendingSource", map[string]any{"sourceId": sourceID})
-			if e != nil {
-				return e
-			}
-			if scalar(files) > 0 {
-				continue
-			}
-			ready := false
 			e = s.transaction(ctx, func(tx store.DBTX) error {
-				if _, e := s.exec(ctx, tx, "share-lock", nil); e != nil {
-					return e
-				}
-				current, e := s.shareJob(ctx, tx, sourceID, text(job["id"]))
-				if e != nil {
-					return e
-				}
-				if text(current["state"]) != "WAITING" {
-					ready = contains([]string{"QUEUED", "RUNNING"}, text(current["state"]))
-					return nil
-				}
-				source, e := s.row(ctx, tx, "source", map[string]any{"id": sourceID})
+				source, e := s.row(ctx, tx, "source", map[string]any{"id": job["source_id"]})
 				if e != nil {
 					return e
 				}
 				if hash(text(source["location"])) != text(job["binding"]) {
-					return s.shareProgress(ctx, tx, job, "FAILED", "", 0, 0, "媒体来源根目录已变化")
+					return conflict("媒体来源根目录已变化")
 				}
-				files, e := s.rows(ctx, tx, "files-pendingSource", map[string]any{"sourceId": sourceID})
-				if e != nil || scalar(files) > 0 {
+				if e = s.freezeShare(ctx, tx, job); e != nil {
 					return e
 				}
-				a := map[string]any{"id": job["id"], "sourceId": sourceID}
-				if _, e = s.exec(ctx, tx, "share-snapshot", a); e != nil {
+				if _, e = s.exec(ctx, tx, "share-count", map[string]any{"id": job["id"]}); e != nil {
 					return e
 				}
-				if _, e = s.exec(ctx, tx, "share-count", a); e != nil {
-					return e
-				}
-				ready = true
 				return s.shareProgress(ctx, tx, job, "QUEUED", "", 0, 0, nil)
 			})
 			if e != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				failure := s.transaction(ctx, func(tx store.DBTX) error {
+					return s.shareProgress(ctx, tx, job, "FAILED", "", 0, 0, "准备资料快照失败，请重试")
+				})
+				if failure != nil {
+					return failure
+				}
 				return e
 			}
-			if !ready {
-				continue
-			}
-			job, e = s.shareJob(ctx, s.db, sourceID, text(job["id"]))
+			job, e = s.shareJob(ctx, s.db, text(job["source_id"]), text(job["id"]))
 			if e != nil {
 				return e
 			}
 		}
-		return s.exportShare(ctx, job)
+		if e = s.exportShare(ctx, job); e != nil {
+			return e
+		}
 	}
 	return nil
 }
@@ -505,4 +475,32 @@ func (s *Service) cleanupShares(ctx context.Context, before string) error {
 		}
 	}
 	return nil
+}
+
+// freezeShare decouples portable snapshots from derivative-file retries.
+// Snapshot performs no upstream IO; incomplete covers remain explicitly absent.
+func (s *Service) freezeShare(ctx context.Context, tx store.DBTX, job map[string]any) error {
+	if _, e := s.exec(ctx, tx, "share-clearSnapshot", map[string]any{"id": job["id"]}); e != nil {
+		return e
+	}
+	cursor := ""
+	for {
+		rows, e := s.rows(ctx, tx, "share-sourcePage", map[string]any{"sourceId": job["source_id"], "cursor": cursor})
+		if e != nil {
+			return e
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		for _, row := range rows {
+			snapshot, e := s.Snapshot(ctx, tx, text(row["id"]))
+			if e != nil {
+				return e
+			}
+			if _, e = s.exec(ctx, tx, "share-entrySnapshot", map[string]any{"id": job["id"], "songId": row["id"], "path": row["relative_path"], "size": row["file_size"], "snapshot": encode(snapshot), "filename": row["result_json"]}); e != nil {
+				return e
+			}
+			cursor = text(row["id"])
+		}
+	}
 }

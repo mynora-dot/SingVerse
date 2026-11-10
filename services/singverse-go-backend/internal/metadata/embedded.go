@@ -68,6 +68,10 @@ func (s *Service) summary(ctx context.Context, db store.DBTX, id string) (map[st
 	if e != nil {
 		return nil, absent(e, "媒体来源不存在")
 	}
+	quality, e := s.library.SourceQuality(ctx, db, id)
+	if e != nil {
+		return nil, e
+	}
 	args := map[string]any{"sourceId": id}
 	files := map[string]any{"directory": "library/" + id}
 	for key, name := range map[string]string{"pending": "files-pendingSource", "failed": "files-failures", "attachments": "files-attachments"} {
@@ -89,7 +93,7 @@ func (s *Service) summary(ctx context.Context, db store.DBTX, id string) (map[st
 		if e != nil {
 			return nil, e
 		}
-		return map[string]any{"enabled": false, "paused": false, "accessGroup": "", "privateOrigins": []string{}, "counts": map[string]any{"COMPLETE": number(r["count"])}, "presence": map[string]any{}, "budget": map[string]any{"files_started": 0, "bytes_read": 0}, "emptyScans": 0, "canConfirmEmpty": false, "files": files}, nil
+		return map[string]any{"enabled": false, "paused": false, "accessGroup": "", "privateOrigins": []string{}, "counts": map[string]any{"COMPLETE": number(r["count"])}, "presence": map[string]any{}, "budget": map[string]any{"files_started": 0, "bytes_read": 0}, "emptyScans": 0, "canConfirmEmpty": false, "files": files, "quality": quality}, nil
 	}
 	_, cfg, e := s.ensureSource(ctx, db, id, true)
 	if e != nil {
@@ -116,7 +120,7 @@ func (s *Service) summary(ctx context.Context, db store.DBTX, id string) (map[st
 	}
 	emptySince, e := time.Parse(time.RFC3339Nano, text(cfg["empty_since"]))
 	canConfirm := e == nil && number(cfg["empty_scans"]) >= 2 && time.Since(emptySince) >= 30*time.Minute
-	out := map[string]any{"enabled": boolean(cfg["enabled"]), "paused": boolean(cfg["paused"]), "accessGroup": cfg["access_group"], "privateOrigins": stringsFromJSON(cfg["private_origins"]), "blockedUntil": cfg["blocked_until"], "blockedReason": cfg["blocked_reason"], "emptyScans": number(cfg["empty_scans"]), "emptySince": cfg["empty_since"], "canConfirmEmpty": canConfirm, "counts": states, "presence": presence, "budget": budget, "nodeStatus": "NOT_CHECKED", "remoteReady": false, "nodeMessage": "等待执行时检查计算节点能力", "files": files}
+	out := map[string]any{"enabled": boolean(cfg["enabled"]), "paused": boolean(cfg["paused"]), "accessGroup": cfg["access_group"], "privateOrigins": stringsFromJSON(cfg["private_origins"]), "blockedUntil": cfg["blocked_until"], "blockedReason": cfg["blocked_reason"], "emptyScans": number(cfg["empty_scans"]), "emptySince": cfg["empty_since"], "canConfirmEmpty": canConfirm, "counts": states, "presence": presence, "budget": budget, "nodeStatus": "NOT_CHECKED", "remoteReady": false, "nodeMessage": "等待执行时检查计算节点能力", "files": files, "quality": quality}
 	s.hookMu.RLock()
 	for k, v := range s.remoteState {
 		out[k] = v
@@ -230,6 +234,33 @@ func (s *Service) detail(ctx context.Context, db store.DBTX, id string) (map[str
 	if row["result_json"] != nil {
 		if e = decode(row["result_json"], &result); e != nil {
 			return nil, e
+		}
+	}
+	shared, sharedErr := s.sharedSnapshot(ctx, db, id)
+	if sharedErr != nil {
+		return nil, sharedErr
+	}
+	if len(shared) > 0 {
+		// File evidence stays primary; the panel supplements absent shared assets.
+		base, _ := result.(map[string]any)
+		if base == nil {
+			base = map[string]any{}
+		}
+		for k, v := range shared {
+			if base[k] == nil {
+				base[k] = v
+			}
+		}
+		if result == nil {
+			out["state"] = "IMPORTED"
+		}
+		result = base
+		records, e := s.rows(ctx, db, "shared-read", map[string]any{"songId": id})
+		if e != nil {
+			return nil, e
+		}
+		if len(records) > 0 {
+			out["verification"] = records[0]["verification"]
 		}
 	}
 	out["result"] = result
@@ -545,7 +576,10 @@ func (s *Service) Snapshot(ctx context.Context, tx store.DBTX, id string) (map[s
 	if e != nil {
 		return nil, e
 	}
-	out := map[string]any{}
+	out, e := s.sharedSnapshot(ctx, tx, id)
+	if e != nil {
+		return nil, e
+	}
 	rows, e := s.rows(ctx, tx, "dav-resource", map[string]any{"songId": id})
 	if e != nil {
 		return nil, e
@@ -629,7 +663,7 @@ func (s *Service) Snapshot(ctx context.Context, tx store.DBTX, id string) (map[s
 				if !uuidPattern.MatchString(assetID) {
 					return nil, bad("封面资源标识无效")
 				}
-				cover, coverErr = readImage(filepath.Join(s.cfg.MetadataCachePath, "uploads", assetID+".image"))
+				cover, coverErr = s.uploadedCover(assetID)
 			} else if strings.HasPrefix(raw, "embedded:") {
 				coverErr = nil
 				if _, ok := out["cover"]; !ok {
@@ -651,6 +685,15 @@ func (s *Service) Snapshot(ctx context.Context, tx store.DBTX, id string) (map[s
 				out["cover"] = key
 				coverage["cover"] = "PRESENT"
 			} else if coverErr != nil {
+				if saved, e := s.savedCover(ctx, tx, id, raw); e == nil {
+					key, e := s.portableCover(saved.Bytes)
+					if e != nil {
+						return nil, e
+					}
+					out["cover"] = key
+					coverage["cover"] = "PRESENT"
+					return out, nil
+				}
 				coverage["cover"] = "UNKNOWN"
 				delete(out, "cover")
 			}

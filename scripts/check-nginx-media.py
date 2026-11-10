@@ -18,7 +18,8 @@ const pending = new Map();
 http.createServer((req, res) => {
   const url = new URL(req.url, 'http://fixture');
   const key = url.searchParams.get('check');
-  if (req.method === 'POST' && /^\/api\/v1\/artists\/(artwork-batches|categories)$/.test(url.pathname)) {
+  if (req.method === 'POST' && (/^\/api\/v1\/artists\/(artwork-batches|categories)$/.test(url.pathname) ||
+      /^\/api\/v1\/media-sources\/[A-Za-z0-9-]+\/embedded-metadata\/(share|import-jobs)$/.test(url.pathname))) {
     const chunks = [];
     req.on('data', chunk => chunks.push(chunk));
     req.on('end', () => {
@@ -109,6 +110,15 @@ def main():
         with urlopen(request, timeout=2) as response:
           assert response.status == 200, path
           assert json.load(response) == {'bytes': len(body), 'csrf': 'isolated-fixture', 'origin': base}, path
+      # ZIP uploads use the streaming upload location; mapping and task actions
+      # continue to use the ordinary bounded JSON location.
+      for endpoint in ('share', 'import-jobs'):
+        path = '/api/v1/media-sources/source/embedded-metadata/' + endpoint
+        body = b'z' * (256 * 1024)
+        request = Request(base + path, data=body, method='POST',
+          headers={'Content-Type': 'application/zip', 'X-CSRF-Token': 'isolated-fixture', 'Origin': base})
+        with urlopen(request, timeout=2) as response:
+          assert json.load(response) == {'bytes': len(body), 'csrf': 'isolated-fixture', 'origin': base}, path
       for path, size in [(path, 128 * 1024 + 1) for path in batches] + [('/api/v1/artists/artwork-settings', 16 * 1024 + 1)]:
         try:
           urlopen(Request(base + path, data=b' ' * size, method='POST'), timeout=2)
@@ -153,7 +163,7 @@ def main():
           assert response.status == 206 and response.read() == b'', path
           assert response.headers['Content-Length'] == '1024', path
       print(json.dumps({'routes': len(paths), 'get_head_checks': len(paths) * 2,
-        'artist_batch_limit_checks': 5,
+        'artist_batch_limit_checks': 5, 'metadata_upload_checks': 2,
         'first_32_bytes_ms': [round(value, 2) for value in timings]}, ensure_ascii=False))
   finally:
     for container in reversed(containers):

@@ -151,7 +151,29 @@ func (s *Service) saveSource(c *gin.Context, create bool) {
 			}
 			return e
 		}
+
+		if in.AutoExtractEmbedded != nil {
+			if src.Type != "WEBDAV" {
+				return bad("自动读取远端信息仅适用于 WebDAV 来源")
+			}
+			u, _ := url.Parse(src.Location)
+			if _, e = s.named(ctx, tx, "dav-configInsert", map[string]any{"sourceId": id, "binding": hash(src.Location), "group": hash(u.Scheme + "://" + u.Host + "\x00" + src.Username)}); e != nil {
+				return e
+			}
+			if _, e = tx.ExecContext(ctx, s.q["ingest-enable"], *in.AutoExtractEmbedded, id); e != nil {
+				return e
+			}
+		}
+		if in.StartScan != nil && *in.StartScan {
+			requestID, e := s.enqueueIngest(ctx, tx, id)
+			if e != nil {
+				return e
+			}
+			out.InitialTaskID = &requestID
+		}
+		taskID := out.InitialTaskID
 		out, e = s.findSource(ctx, tx, id)
+		out.InitialTaskID = taskID
 		return e
 	})
 	if e != nil {
@@ -373,7 +395,7 @@ func (s *Service) deleteSource(c *gin.Context) {
 	c.Status(204)
 }
 func (s *Service) clearSource(ctx context.Context, tx store.DBTX, id string) error {
-	for _, name := range []string{"source-clear-metadata", "source-clear-assignments", "source-clear-classification", "source-clear-artists", "source-clear-overrides", "source-clear-dav-tasks", "source-clear-webdav", "source-clear-dav-config", "song-delete-source"} {
+	for _, name := range []string{"source-clear-import-entries", "source-clear-imports", "source-clear-shared", "source-clear-shared-baseline", "source-clear-share-series", "source-clear-ingests", "source-clear-metadata", "source-clear-assignments", "source-clear-classification", "source-clear-artists", "source-clear-overrides", "source-clear-dav-tasks", "source-clear-webdav", "source-clear-dav-config", "song-delete-source"} {
 		if _, e := tx.ExecContext(ctx, s.q[name], id); e != nil {
 			return e
 		}

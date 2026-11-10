@@ -13,6 +13,7 @@ export const media = {
     return authRequest<SourcePage>(`${base}?${query}`)
   },
   save: (input: SourceInput, id?: string) => authRequest<MediaSource>(id ? `${base}/${id}` : base, id ? 'PUT' : 'POST', input),
+  latestIngest: (id: string) => authRequest<{ id: string; state: string; error?: string } | undefined>(`${base}/${encodeURIComponent(id)}/ingest-tasks/latest`),
   scan: (id: string) => authRequest<ScanResult>(`${base}/${encodeURIComponent(id)}/scan`, 'POST', undefined, 60000),
   createTask: (id: string) => authRequest<ScanTask>(`${base}/${encodeURIComponent(id)}/scan-tasks`, 'POST'),
   latestTask: (id: string) => authRequest<ScanTask | undefined>(`${base}/${encodeURIComponent(id)}/scan-tasks/latest`),

@@ -1,1 +1,1 @@
-DELETE FROM song_artist_override WHERE EXISTS(SELECT 1 FROM webdav_resource r WHERE r.source_id=song_artist_override.source_id AND r.path_hash=song_artist_override.path_key AND r.archived_at<@{before})
+DELETE FROM song_artist_override WHERE EXISTS(SELECT 1 FROM webdav_resource r WHERE r.source_id=song_artist_override.source_id AND r.path_hash=song_artist_override.path_key AND r.archived_at<@{before} AND NOT EXISTS(SELECT 1 FROM media_shared_song shared WHERE shared.song_id=r.song_id) AND NOT EXISTS(SELECT 1 FROM media_metadata_file saved WHERE saved.song_id=r.song_id))

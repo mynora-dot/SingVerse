@@ -1,1 +1,1 @@
-DELETE FROM webdav_resource WHERE archived_at<@{before}
+DELETE FROM webdav_resource WHERE archived_at<@{before} AND NOT EXISTS(SELECT 1 FROM media_shared_song shared WHERE shared.song_id=webdav_resource.song_id) AND NOT EXISTS(SELECT 1 FROM media_metadata_file saved WHERE saved.song_id=webdav_resource.song_id)

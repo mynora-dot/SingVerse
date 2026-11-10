@@ -92,7 +92,9 @@ func (r songRecord) model() (Song, error) {
 	}
 	var err error
 	song.Metadata, err = effectiveMetadata(song, r.Track, r.Fields, r.Applied, r.Origins, r.Fingerprint, r.Remote, r.OverrideSource, r.OverrideArtists, r.Download, r.DownloadAt)
-	if err == nil { song.Metadata, err = sharedMetadata(song, song.Metadata, r.Shared) }
+	if err == nil {
+		song.Metadata, err = sharedMetadata(song, song.Metadata, r.Shared)
+	}
 	return song, err
 }
 

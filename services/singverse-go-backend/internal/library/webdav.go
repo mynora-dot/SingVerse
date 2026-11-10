@@ -490,6 +490,9 @@ func (s *Service) publishDAV(ctx context.Context, tx store.DBTX, work scanWork, 
 			return e
 		}
 	}
+	if _, e = s.named(ctx, tx, "shared-observed", a); e != nil {
+		return e
+	}
 	var missing, archived, changed int64
 	query := namedParameter.ReplaceAllString(s.q["dav-presence"], "?")
 	if e = tx.QueryRowContext(ctx, query, work.source.ID).Scan(&missing, &archived, &changed); e != nil {

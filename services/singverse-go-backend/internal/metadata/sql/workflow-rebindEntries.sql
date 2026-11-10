@@ -1,0 +1,1 @@
+INSERT INTO media_import_entry(job_id,ordinal,original_path,relative_path,path_hash,mapped_hash,file_size,snapshot_json,song_id,outcome) SELECT @{id},ROW_NUMBER() OVER(ORDER BY s.id),s.relative_path,s.relative_path,s.path_hash,s.path_hash,s.file_size,'{}',s.id,'UNCHANGED' FROM media_song s WHERE s.source_id=@{sourceId}

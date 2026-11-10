@@ -30,7 +30,7 @@ it('内嵌元数据主操作直接开启和暂停提取，无需勾选和额外�
   await flushPromises()
   expect(wrapper.text()).not.toContain('MiB')
   expect(wrapper.find('.el-tabs').exists()).toBe(false)
-  expect(wrapper.get('.embedded-action h3').text()).toBe('获取内嵌元数据')
+  expect(wrapper.get('.embedded-action h3').text()).toBe('完善歌曲信息')
   expect(wrapper.get('.embedded-action').element.closest('details')).toBeNull()
   await wrapper.findAllComponents(ElButton).find(button => button.text() === '开始自动提取')!.trigger('click')
   await flushPromises()
@@ -75,7 +75,8 @@ it('切换歌曲后忽略旧请求结果', async () => {
 
 it('ZIP 导入使用当前来源、会话与 CSRF，并刷新状态', async () => {
   vi.spyOn(ElMessageBox, 'alert').mockResolvedValue('confirm' as Awaited<ReturnType<typeof ElMessageBox.alert>>)
-  const fetcher = vi.fn(async (path: string) => Response.json(path.endsWith('/latest') ? {} : path.endsWith('/csrf') ? { token: 'test-csrf' } : { imported: 2, skipped: 1 }))
+  const fetcher = vi.fn(async () => Response.json({ id: 'import-task', state: 'PARSING', phase: 'PARSING', totalCount: 0, processedCount: 0 }))
+  vi.mocked(authRequest).mockImplementation(async (path: string) => path.endsWith('/csrf') ? { token: 'test-csrf' } as never : path.endsWith('/import-task') ? { id: 'import-task', state: 'PARSING', phase: 'PARSING', totalCount: 0, processedCount: 0 } as never : {} as never)
   vi.stubGlobal('fetch', fetcher)
   try {
     wrapper = mount(WebDavMetadataDialog, { props: { source }, global: { stubs: { teleport: true } } })
@@ -84,12 +85,13 @@ it('ZIP 导入使用当前来源、会话与 CSRF，并刷新状态', async () =
     const input = wrapper.get('input[type="file"]')
     Object.defineProperty(input.element, 'files', { value: [file] })
     await input.trigger('change'); await flushPromises()
-    expect(fetcher).toHaveBeenCalledWith('/api/v1/media-sources/source/embedded-metadata/share', expect.objectContaining({
+    expect(fetcher).toHaveBeenCalledWith('/api/v1/media-sources/source/embedded-metadata/import-jobs', expect.objectContaining({
       method: 'POST', credentials: 'same-origin', body: file,
       headers: { 'Content-Type': 'application/zip', 'X-CSRF-Token': 'test-csrf' },
     }))
     expect(wrapper.text()).not.toContain('开始导入')
-    expect(wrapper.text()).toContain('已导入 2 首，已有 1 首自动跳过')
+    expect(wrapper.text()).toContain('上传已完成，可以关闭页面')
+    expect(wrapper.text()).not.toContain('自动跳过')
   } finally { vi.unstubAllGlobals() }
 })
 
@@ -127,7 +129,7 @@ it('默认隐藏同步和分包细节，分享可直接提交给后台准备', a
   expect(media.latestTask).not.toHaveBeenCalled()
   await openAdvanced()
   expect(wrapper.text()).toContain('等待处理 2 首')
-  expect(wrapper.text()).toContain('1 首暂未保存')
+  expect(wrapper.text()).toContain('1 首待重新生成')
   expect(wrapper.text()).toContain('5000 首')
 })
 

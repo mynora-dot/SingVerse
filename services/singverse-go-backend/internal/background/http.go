@@ -331,6 +331,8 @@ func related(r doc) string {
 	}
 	business, source, song := url.QueryEscape(text(r, "business_id")), url.QueryEscape(text(r, "source_id")), url.QueryEscape(text(r, "song_id"))
 	switch text(r, "type") {
+	case "SHARE_IMPORT":
+		return "/library/media?source=" + source + "&import=" + business
 	case "METADATA":
 		return "/library/songs/metadata?batch=" + business
 	case "ARTIST_ARTWORK":

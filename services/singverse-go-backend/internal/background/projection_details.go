@@ -12,6 +12,22 @@ func (s *Service) applyTaskDetails(ctx context.Context, tx store.DBTX, kind stri
 	rawStatus := text(source, "raw_status")
 	label := ""
 	switch kind {
+	case "SOURCE_INGEST":
+		label = "来源入库"
+	case "SHARE_IMPORT":
+		label = "曲库资料导入"
+		projection.row["stage"] = source["stage"]
+		projection.row["progress_unit"] = "SONGS"
+		if text(source, "stage") != "PARSING" {
+			projection.row["total"] = number(source, "total_count")
+			projection.row["completed"] = number(source, "processed_count")
+			if text(source, "stage") == "VERIFYING" {
+				projection.row["completed"] = number(source, "verified_count")
+			}
+		}
+		for _, key := range []string{"added_count", "updated_count", "preserved_count", "unchanged_count", "present_count", "missing_count", "mismatch_count", "unreachable_count"} {
+			projection.statistics[key] = number(source, key)
+		}
 	case "ARTIST_ARTWORK":
 		label = "歌手封面获取"
 		projection.row["progress_unit"] = "ARTISTS"

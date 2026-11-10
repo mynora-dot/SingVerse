@@ -29,7 +29,7 @@
 
 ## 媒体来源管理
 
-`singverse.openapi.json` 新增 `/api/v1/media-sources` 列表/创建及 `/{id}` 查询/更新/移除，继承管理员 Cookie 会话、同源及 CSRF。列表默认 20、最大 100，按创建时间倒序与 ID 升序；响应不含密码，编辑省略密码保留、空值字符串清除。来源通过 `parserProfileId` 绑定已保存方案，本地可通过 `/{id}/scan` 扫描并用 `/{id}/songs` 分页读取已保存歌曲数据；WebDAV 没有连接测试或扫描；详见[媒体库说明](../../docs/media-library.md)。
+`singverse.openapi.json` 新增 `/api/v1/media-sources` 列表/创建及 `/{id}` 查询/更新/移除，继承管理员 Cookie 会话、同源及 CSRF。列表默认 20、最大 100，按创建时间倒序与 ID 升序；响应不含密码，编辑省略密码保留、空值字符串清除。来源通过 `parserProfileId` 绑定已保存方案，本地可通过 `/{id}/scan` 扫描并用 `/{id}/songs` 分页读取已保存歌曲数据；WebDAV 使用后台扫描任务，目录可列出不代表媒体可分段读取或播放；详见[媒体库说明](../../docs/media-library.md)。
 
 ## 文件名解析规则配置与预览
 
@@ -218,3 +218,8 @@ SEPARATE 与批量请求新增可选 separationProfile（DSP_FAST/AI_CLEAN/LEGAC
 Nginx 为上述两个批量写入接口单独允许 128 KiB 请求，以容纳 1000 位歌手；其他 JSON 请求默认上限不变，Go 仍逐项校验范围、标识与修订号。
 
 歌曲元数据平台现为 `NETEASE|QQ|KUGOU|KUWO|QISHUI`，设置与搜索最多 5 个，默认配置不变。候选封面 GET 可传 `quality=ORIGINAL|HIGH`，单曲确认可传 `coverQuality`，均默认原图；服务端只从已有候选推导 CDN 版本，确认结果保存所选版本，不接收外部 URL。平台原图不再经过 2 MB / 4096 像素门槛，保留源字节，网络与缓存读取上限 32 MiB、20 秒；上传限制保持独立。图片加载失败与平台未提供封面分别处理。
+
+
+## 媒体资料导入与来源入库
+
+来源创建可选 `startScan` 和 WebDAV 的 `autoExtractEmbedded`；省略时保持旧客户端只保存的行为。后台导入使用 `embedded-metadata/import-jobs` 上传、预览、映射、确认、查询、取消与重试，返回 lower camelCase 的 `MediaImportJob`；上传完成后由服务端续跑。`rebind` 保留歌曲身份与本地订正，单独重新核验媒体。共享 v3 稳定系列和版本支持已有歌曲合并，v2 仍可导入；默认完整 ZIP，增量要求匹配基线，旧版本拒绝，删除提示不自动应用。详细状态、路径规则、限额及兼容边界见[媒体库说明](../../docs/media-library.md#媒体入库资料合并与分享2026-11-10)。

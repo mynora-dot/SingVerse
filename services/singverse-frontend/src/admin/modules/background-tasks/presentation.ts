@@ -1,7 +1,7 @@
 import type { BackgroundTask, TaskExecution } from './api'
 
 export const typeNames: Record<string, string> = {
-  ARTIST_ARTWORK: '歌手封面获取', LX_DOWNLOAD: '歌曲下载', LOCAL_SCAN: '本地扫描', WEBDAV_SCAN: 'WebDAV 扫描', METADATA: '元数据整理', CLASSIFICATION: 'AI 分类',
+  SHARE_IMPORT: '曲库资料导入', SOURCE_INGEST: '来源入库', ARTIST_ARTWORK: '歌手封面获取', LX_DOWNLOAD: '歌曲下载', LOCAL_SCAN: '本地扫描', WEBDAV_SCAN: 'WebDAV 扫描', METADATA: '元数据整理', CLASSIFICATION: 'AI 分类',
   AUDIO_DISCOVERY: '自动音轨识别', AUDIO_BATCH: '批量伴奏生成', AUDIO_JOB: '单曲音频处理', TRANSCODE: '离线转码', CACHE_CLEANUP: '缓存清理', SHARE_EXPORT: '分享包导出',
 }
 export const statusNames: Record<string, string> = {
@@ -19,7 +19,7 @@ const stages: Record<string, string> = {
   DISCOVERING: '发现待处理歌曲', RECOGNIZING: '处理扫描后的音轨任务', WAITING_RECOGNITION: '等待后续音轨处理', LEGACY: '未记录原始批次',
   ...statusNames, SCANNING: '遍历目录', READING_TAGS: '读取文件标签', COMMITTING: '保存索引', MATCHING: '匹配元数据',
   CLASSIFYING: '生成分类建议', PREPARING: '准备批次', PREVIEW: '等待确认开始', PROCESSING: '处理歌曲',
-  WAITING: '等待文件准备', STARTING: '正在启动', SUCCEEDED: '处理完成', CLEAR: '清理全部', POLICY: '按策略回收', DELETE: '清理指定缓存',
+  PARSING: '解析资料包', APPLYING: '保存共享资料', VERIFYING: '核对媒体路径', WAITING: '准备资料快照', STARTING: '正在启动', SUCCEEDED: '处理完成', CLEAR: '清理全部', POLICY: '按策略回收', DELETE: '清理指定缓存',
   probe: '读取歌曲', extract: '准备音频', separate: '生成伴奏', encode: '保存结果', validate: '校验结果', hash: '校验结果',
   download: '读取素材', transcode: '转换媒体', analyze: '分析音轨', inference: '模型推理',
 }
@@ -53,6 +53,7 @@ export function bytes(value: number) {
   return Math.max(0, value).toLocaleString() + ' B'
 }
 const statisticNames: Record<string, string> = {
+  added_count: '新增', updated_count: '更新', preserved_count: '保留本地修改', unchanged_count: '未变化', present_count: '已核对媒体', missing_count: '媒体缺失', mismatch_count: '大小不符', unreachable_count: '连接问题',
   noMatch: '未找到匹配', interrupted: '已中断', cancelled: '已取消',
   pending: '等待处理', processing: '正在处理', review: '待审核', failed: '失败', skipped: '跳过', applied: '已保存',
   prepared: '已准备', directories: '已遍历目录', entries: '已访问条目', total_songs: '发现歌曲',

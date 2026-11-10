@@ -29,6 +29,7 @@ type Service struct {
 	log            *slog.Logger
 	q              map[string]string
 	mu             sync.Mutex
+	ingestMu       sync.Mutex
 	running        map[string]bool
 	tasks          map[string]context.CancelFunc
 	ctx            context.Context
@@ -71,7 +72,7 @@ func New(db *sqlx.DB, dialect string, cfg config.Config, cipher Cipher, log *slo
 	}
 	s := &Service{db: db, dialect: dialect, cfg: cfg, cipher: cipher, log: log, q: q, running: map[string]bool{}, tasks: map[string]context.CancelFunc{}, ctx: ctx, cancel: cancel, queue: make(chan scanWork, 32), client: &http.Client{Transport: &http.Transport{Proxy: nil, ResponseHeaderTimeout: 15 * time.Second, IdleConnTimeout: 30 * time.Second}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 	err = store.WithinTx(ctx, db, func(tx store.DBTX) error {
-		for _, name := range []string{"scan-recover", "scan-clear-abandoned", "scan-clear-abandoned-dirs"} {
+		for _, name := range []string{"scan-recover", "scan-clear-abandoned", "scan-clear-abandoned-dirs", "ingest-recover"} {
 			args := []any{}
 			if name == "scan-recover" {
 				args = append(args, now())
@@ -92,6 +93,8 @@ func New(db *sqlx.DB, dialect string, cfg config.Config, cipher Cipher, log *slo
 	}
 	s.wg.Add(1)
 	go s.schedule()
+	s.wg.Add(1)
+	go s.ingestLoop()
 	return s, nil
 }
 func (s *Service) Close() error {
@@ -118,9 +121,12 @@ func (s *Service) Register(g *gin.RouterGroup) {
 	g.GET("/media-sources", s.listSources)
 	g.POST("/media-sources", s.createSource)
 	g.GET("/media-sources/:id", s.getSource)
+	g.POST("/media-sources/:id/diagnostics", s.diagnose)
 	g.PUT("/media-sources/:id", s.updateSource)
 	g.DELETE("/media-sources/:id", s.deleteSource)
 	g.POST("/media-sources/:id/scan", s.scanLocalHTTP)
+	g.GET("/media-sources/:id/ingest-tasks/latest", s.latestIngest)
+	g.POST("/media-sources/:id/ingest-tasks", s.createIngest)
 	g.GET("/media-sources/:id/songs", s.sourceSongs)
 	g.POST("/media-sources/:id/scan-tasks", s.createTask)
 	g.GET("/media-sources/:id/scan-tasks/latest", s.latestTask)

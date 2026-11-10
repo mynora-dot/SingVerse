@@ -113,6 +113,9 @@ func (s *Service) addQueueSong(ctx context.Context, tx store.DBTX, actor, sessio
 	if err != nil {
 		return err
 	}
+	if state := str(song, "mediaVerification"); state != "" && state != "PRESENT" {
+		return fail(409, "此歌曲的媒体路径尚未核验，请管理员处理来源")
+	}
 	ownerName := str(actor, "name")
 	if ownerName == "" {
 		ownerName = "电视"

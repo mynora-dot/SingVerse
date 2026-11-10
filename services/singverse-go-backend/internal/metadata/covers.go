@@ -108,7 +108,7 @@ func (s *Service) asset(ctx context.Context, id string) (Cover, error) {
 	if _, e := s.row(ctx, s.db, "review-asset", map[string]any{"id": id}); e != nil {
 		return Cover{}, absent(e, "封面资源不存在或已清理")
 	}
-	return readImage(filepath.Join(s.cfg.MetadataCachePath, "uploads", id+".image"))
+	return s.uploadedCover(id)
 }
 func imageResponse(c *gin.Context, cover Cover) {
 	c.Header("X-Content-Type-Options", "nosniff")
@@ -172,7 +172,7 @@ func (s *Service) upload(c *gin.Context) {
 		return
 	}
 	assetID := uuid()
-	target := filepath.Join(s.cfg.MetadataCachePath, "uploads", assetID+".image")
+	target := filepath.Join(s.cfg.MetadataPath, "uploads", assetID+".image")
 	if e = atomicWrite(target, cover.Bytes); e != nil {
 		s.fail(c, bad("封面上传失败，请检查存储权限"))
 		return
@@ -375,7 +375,26 @@ func (s *Service) SongCover(ctx context.Context, id string) (Cover, error) {
 		}
 		return validateCover(b)
 	}
+	if cover, err := s.savedCover(ctx, s.db, id, raw); err == nil {
+		return cover, nil
+	}
 	return s.loadCover(ctx, a.Origins["cover"].Provider, a.Track.CoverURL)
+}
+
+func (s *Service) savedCover(ctx context.Context, tx store.DBTX, id, raw string) (Cover, error) {
+	rows, err := s.rows(ctx, tx, "files-previous", map[string]any{"songId": id})
+	if err != nil {
+		return Cover{}, err
+	}
+	if len(rows) > 0 {
+		var snapshot map[string]any
+		if decode(rows[0]["result_json"], &snapshot) == nil && text(snapshot["coverKey"]) == hash(raw) {
+			if b, err := s.SharedCover(text(snapshot["cover"])); err == nil {
+				return validateCover(b)
+			}
+		}
+	}
+	return Cover{}, missing("没有已保存的封面")
 }
 func (s *Service) songCover(c *gin.Context) {
 	cover, e := s.SongCover(c.Request.Context(), c.Param("songId"))
@@ -384,4 +403,12 @@ func (s *Service) songCover(c *gin.Context) {
 		return
 	}
 	imageResponse(c, cover)
+}
+
+func (s *Service) uploadedCover(id string) (Cover, error) {
+	cover, e := readImage(filepath.Join(s.cfg.MetadataPath, "uploads", id+".image"))
+	if e == nil {
+		return cover, nil
+	}
+	return readImage(filepath.Join(s.cfg.MetadataCachePath, "uploads", id+".image"))
 }

@@ -1,0 +1,1 @@
+SELECT COUNT(*) AS total,SUM(CASE WHEN s.id IS NULL THEN 1 ELSE 0 END) AS newSongs,SUM(CASE WHEN s.id IS NOT NULL THEN 1 ELSE 0 END) AS existingSongs FROM media_import_entry e LEFT JOIN media_song s ON s.source_id=@{sourceId} AND s.path_hash=e.mapped_hash AND s.relative_path=e.relative_path WHERE e.job_id=@{id}

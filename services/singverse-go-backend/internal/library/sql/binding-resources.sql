@@ -1,0 +1,1 @@
+UPDATE webdav_resource SET binding=#{binding},generation=generation+1,last_scan_id=NULL,missing_scans=0,missing_since=NULL,archived_at=NULL,state=CASE WHEN state='RUNNING' THEN 'PENDING' ELSE state END WHERE source_id=#{sourceId}

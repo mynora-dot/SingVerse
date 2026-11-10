@@ -1,1 +1,1 @@
-DELETE FROM artist_credit_binding WHERE song_id IN (SELECT song_id FROM webdav_resource WHERE archived_at<@{before})
+DELETE FROM artist_credit_binding WHERE song_id IN (SELECT r.song_id FROM webdav_resource r WHERE r.archived_at<@{before} AND NOT EXISTS(SELECT 1 FROM media_shared_song shared WHERE shared.song_id=r.song_id) AND NOT EXISTS(SELECT 1 FROM media_metadata_file saved WHERE saved.song_id=r.song_id))

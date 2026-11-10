@@ -17,6 +17,7 @@ type Cipher interface {
 	Decrypt(value, purpose string) (string, error)
 }
 type Source struct {
+	InitialTaskID      *string `json:"initialTaskId,omitempty"`
 	ID                 string  `json:"id"`
 	Name               string  `json:"name"`
 	Type               string  `json:"type"`
@@ -36,15 +37,17 @@ type Source struct {
 	encrypted          *string
 }
 type SourceInput struct {
-	Name              string  `json:"name"`
-	Type              string  `json:"type"`
-	Location          string  `json:"location"`
-	Username          string  `json:"username"`
-	Password          *string `json:"password"`
-	ParserProfileID   *string `json:"parserProfileId"`
-	ScanEnabled       *bool   `json:"scanEnabled"`
-	ScanCron          *string `json:"scanCron"`
-	UseForLxDownloads *bool   `json:"useForLxDownloads"`
+	StartScan           *bool   `json:"startScan"`
+	AutoExtractEmbedded *bool   `json:"autoExtractEmbedded"`
+	Name                string  `json:"name"`
+	Type                string  `json:"type"`
+	Location            string  `json:"location"`
+	Username            string  `json:"username"`
+	Password            *string `json:"password"`
+	ParserProfileID     *string `json:"parserProfileId"`
+	ScanEnabled         *bool   `json:"scanEnabled"`
+	ScanCron            *string `json:"scanCron"`
+	UseForLxDownloads   *bool   `json:"useForLxDownloads"`
 }
 type Page[T any] struct {
 	Items         []T   `json:"items"`
@@ -53,7 +56,7 @@ type Page[T any] struct {
 	TotalElements int64 `json:"totalElements"`
 }
 type Song struct {
-	MediaVerification *string `json:"mediaVerification,omitempty"`
+	MediaVerification  *string     `json:"mediaVerification,omitempty"`
 	ID                 string      `json:"id"`
 	SourceID           string      `json:"sourceId"`
 	SourceName         string      `json:"sourceName"`

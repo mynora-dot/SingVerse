@@ -44,7 +44,11 @@ func (s *Service) exportShare(ctx context.Context, job map[string]any) (err erro
 		if e = ctx.Err(); e != nil {
 			return e
 		}
-		manifest := map[string]any{"format": "singverse-media-index", "version": 2, "setId": id, "part": parts + 1, "baseId": text(job["base_id"])}
+		version := 2
+		if text(job["collection_id"]) != "" {
+			version = 3
+		}
+		manifest := map[string]any{"format": "singverse-media-index", "version": version, "collectionId": job["collection_id"], "collectionRevision": job["collection_revision"], "setId": id, "part": parts + 1, "baseId": text(job["base_id"])}
 		entries := []any{}
 		assets := map[string]any{}
 		estimated := 0
