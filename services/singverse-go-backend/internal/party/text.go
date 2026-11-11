@@ -22,9 +22,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/store"
 )
 
-const textLimit = 131072
+const textLimit = 262144
 
 var stamp = regexp.MustCompile(`\[(\d{1,3}):(\d{2})(?:[.,]\d{1,3})?\]`)
 var htmlTags = regexp.MustCompile(`<[^>]*>`)
@@ -94,6 +95,21 @@ func (s *Service) tracks(ctx context.Context, key string) (document, error) {
 	song, err := s.library.Song(ctx, key)
 	if err != nil {
 		return nil, err
+	}
+	if reader, ok := s.library.(interface {
+		FormalLyrics(context.Context, store.DBTX, string) (map[string]any, error)
+	}); ok {
+		lyrics, e := reader.FormalLyrics(ctx, s.db, key)
+		if e != nil {
+			return nil, e
+		}
+		if lyrics != nil {
+			item, e := formalLyricTrack(lyrics)
+			if e != nil {
+				return nil, e
+			}
+			return document{"songId": key, "items": []document{item}, "warnings": []string{}}, nil
+		}
 	}
 	relative := str(song, "relativePath")
 	if strings.HasPrefix(relative, "/") || strings.Contains(relative, "\\") {
@@ -247,6 +263,55 @@ func (s *Service) tracks(ctx context.Context, key string) (document, error) {
 		}
 	}
 	return document{"songId": key, "items": items, "warnings": warnings}, nil
+}
+
+func formalLyricTrack(lyrics map[string]any) (document, error) {
+	text, _ := lyrics["text"].(string)
+	format := "text"
+	timing, _ := lyrics["timing"].(string)
+	if timing == "milliseconds" {
+		var out strings.Builder
+		lines, _ := lyrics["lines"].([]any)
+		for _, raw := range lines {
+			line, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			var at int64
+			switch v := line["time"].(type) {
+			case json.Number:
+				at, _ = v.Int64()
+			case float64:
+				at = int64(v)
+			}
+			if at < 0 {
+				return nil, fail(400, "歌词时间轴无效")
+			}
+			content, _ := line["text"].(string)
+			fmt.Fprintf(&out, "[%02d:%02d.%03d]%s\n", at/60000, at/1000%60, at%1000, content)
+		}
+		text = out.String()
+		format = "lrc"
+	} else if timing == "mpeg-frames" {
+		lines, _ := lyrics["lines"].([]any)
+		texts := []string{}
+		for _, raw := range lines {
+			if line, ok := raw.(map[string]any); ok {
+				if value, ok := line["text"].(string); ok {
+					texts = append(texts, value)
+				}
+			}
+		}
+		text = strings.Join(texts, "\n")
+	} else if timing == "lrc" || hasTimedLyrics(text) {
+		format = "lrc"
+	} else if timing == "srt" || timing == "vtt" {
+		format = timing
+	}
+	if len(text) > textLimit {
+		return nil, fail(413, "歌词超过大小限制")
+	}
+	return document{"id": "metadata-lyrics", "format": format, "text": text}, nil
 }
 func (s *Service) cachedLyrics(ctx context.Context, key string) (document, bool, error) {
 	var remote, archived sql.NullString

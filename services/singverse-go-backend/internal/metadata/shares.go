@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/metastandard"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/store"
 	"io"
 	"net/http"
@@ -109,6 +110,9 @@ func (s *Service) createShare(c *gin.Context) {
 		}
 		a := map[string]any{"id": id, "sourceId": sourceID, "binding": hash(text(source["location"])), "baseId": base, "now": now()}
 		if _, e = s.exec(ctx, tx, "share-insert", a); e != nil {
+			return e
+		}
+		if _, e = s.exec(ctx, tx, "v4-share-version", a); e != nil {
 			return e
 		}
 
@@ -231,7 +235,11 @@ func (s *Service) shareIndex(ctx context.Context, source, id string) (map[string
 	if text(job["collection_id"]) != "" {
 		version = 3
 	}
-	return map[string]any{"format": "singverse-share-set", "version": version, "id": id, "collectionId": job["collection_id"], "collectionRevision": job["collection_revision"], "state": job["state"], "total": job["total_count"], "baseId": text(job["base_id"]), "deletions": deletions, "parts": parts}, nil
+	index := map[string]any{"format": "singverse-share-set", "version": version, "id": id, "collectionId": job["collection_id"], "collectionRevision": job["collection_revision"], "state": job["state"], "total": job["total_count"], "baseId": text(job["base_id"]), "deletions": deletions, "parts": parts}
+	if number(job["package_version"]) == 4 {
+		return s.v4Index(ctx, job, index)
+	}
+	return index, nil
 }
 func (s *Service) indexShare(c *gin.Context) {
 	index, e := s.shareIndex(c.Request.Context(), c.Param("id"), c.Param("jobId"))
@@ -464,6 +472,9 @@ func (s *Service) cleanupShares(ctx context.Context, before string) error {
 			if e = os.RemoveAll(folder); e != nil {
 				return e
 			}
+			if _, e = s.exec(ctx, tx, "v4-release-leases", map[string]any{"importId": "", "exportId": job["id"]}); e != nil {
+				return e
+			}
 			for _, q := range []string{"share-deleteEntries", "share-deleteAssets", "share-deleteJob"} {
 				if _, e = s.exec(ctx, tx, q, map[string]any{"id": job["id"]}); e != nil {
 					return e
@@ -496,6 +507,20 @@ func (s *Service) freezeShare(ctx context.Context, tx store.DBTX, job map[string
 			snapshot, e := s.Snapshot(ctx, tx, text(row["id"]))
 			if e != nil {
 				return e
+			}
+			if number(job["package_version"]) == 4 {
+				docs, e := s.portableDocuments(ctx, tx, text(row["id"]))
+				if e != nil {
+					return e
+				}
+				snapshot["documents"] = docs
+				for _, doc := range docs {
+					for _, asset := range metastandard.AssetIDs(doc) {
+						if _, e = s.exec(ctx, tx, "v4-export-lease", map[string]any{"owner": job["id"], "asset": asset}); e != nil {
+							return e
+						}
+					}
+				}
 			}
 			if _, e = s.exec(ctx, tx, "share-entrySnapshot", map[string]any{"id": job["id"], "songId": row["id"], "path": row["relative_path"], "size": row["file_size"], "snapshot": encode(snapshot), "filename": row["result_json"]}); e != nil {
 				return e

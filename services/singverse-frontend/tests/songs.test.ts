@@ -20,7 +20,7 @@ vi.mock('../src/admin/modules/classification/api/classification')
 vi.mock('../src/admin/modules/metadata/api/metadata')
 vi.mock('../src/admin/modules/metadata/api/single-review')
 
-const routes = [{ path: '/library/songs', component: SongsView, name: 'Songs', meta: { activeMenu: '/library/songs' } }]
+const routes = [{ path: '/library/songs/files', component: SongsView, name: 'Songs', meta: { activeMenu: '/library/songs' } }]
 
 function song(id = 'song-1', opts: { sourceId?: string; needsReview?: boolean } = {}): MediaSong {
   const result: RulePreview['result'] = {
@@ -72,7 +72,7 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
   let wrapper: VueWrapper, router: Router
   beforeEach(async () => {
     router = createRouter({ history: createMemoryHistory(), routes })
-    await router.push('/library/songs')
+    await router.push('/library/songs/files')
     vi.mocked(metadata.settings).mockResolvedValue({ enabled: false, providers: [], autoApply: false, threshold: 0.9 })
     vi.mocked(classification.tags).mockResolvedValue([])
     vi.mocked(songs.sources).mockResolvedValue([])
@@ -366,7 +366,7 @@ describe('歌曲明细表信息与交互', () => {
     const row = song()
     row.metadata = { track: { provider: null, externalId: null, title: null, artists: [], album: null, releaseDate: null, durationMs: null, aliases: [], coverUrl: 'asset:cover-one', availability: 'UNKNOWN', fetchedAt: '' }, fields: ['cover'], appliedAt: '', stale: false, origins: {} }
     const w = mount(SongLibraryTable, { props: { ...props(), items: [row] } })
-    expect(w.get('.song-cover img').attributes('src')).toBe('/api/v1/metadata/songs/song-1/cover')
+    expect(w.get('.song-cover img').attributes('src')).toBe('/api/v1/metadata/songs/song-1/cover?variant=thumbnail')
     expect(w.get('.song-cover img').attributes('loading')).toBe('lazy')
     await w.get('.song-cover img').trigger('error')
     expect(w.find('.song-cover img').exists()).toBe(false)
@@ -388,7 +388,7 @@ describe('歌曲明细表信息与交互', () => {
     await w.setProps({ items: [{ ...row, metadata: { ...row.metadata, fields: ['album'] } }] })
     expect(w.text()).not.toContain('时长 4:29'); expect(w.text()).not.toContain('2003-07-31')
     await w.setProps({ items: [{ ...row, metadata: { ...row.metadata, stale: true } }] })
-    expect(w.text()).not.toContain('叶惠美'); expect(w.text()).toContain('元数据需重审'); w.unmount()
+    expect(w.text()).not.toContain('叶惠美'); expect(w.text()).toContain('媒体需核验'); w.unmount()
   })
   it('共享核心信息须核对，人工确认后才解除提示', () => {
     const row = song()
@@ -406,12 +406,12 @@ describe('歌曲明细表信息与交互', () => {
     const w = mount(SongLibraryTable, { props: { ...props(), items: [row] } })
     expect(w.text()).toContain('歌曲信息已复核'); expect(w.findAll('.table-actions button')[1]!.text()).toBe('编辑')
     await w.setProps({ items: [{ ...row, metadata: { ...row.metadata, origins: { title: { provider: null, externalId: null, appliedAt: '', kind: 'FILE' } } } }] })
-    expect(w.text()).toContain('优先使用文件内嵌信息')
+    expect(w.text()).toContain('包含文件标签资料')
     expect(row.result.needsReview).toBe(true)
     await w.setProps({ items: [{ ...row, metadata: { ...row.metadata, fields: ['album'] } }] })
     expect(w.text()).toContain('文件名待复核'); expect(w.findAll('.table-actions button')[1]!.text()).toBe('复核')
     await w.setProps({ items: [{ ...row, metadata: { ...row.metadata, stale: true } }] })
-    expect(w.text()).toContain('文件名待复核'); expect(w.text()).toContain('元数据需重审')
+    expect(w.text()).toContain('文件名待复核'); expect(w.text()).toContain('媒体需核验')
     w.unmount()
   })
 

@@ -3,6 +3,8 @@ package library
 import (
 	"context"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/store"
@@ -27,11 +29,51 @@ func (s *Service) MediaDirectory(ctx context.Context, sourceID, directory string
 	if e != nil {
 		return nil, false, e
 	}
-	if src.Type != "WEBDAV" {
-		return nil, false, bad("仅支持 WebDAV 媒体目录核验")
-	}
 	if directory != "" && !validRelative(directory) {
 		return nil, false, bad("媒体目录无效")
+	}
+	if src.Type == "LOCAL" {
+		root, e := os.OpenRoot(src.Location)
+		if e != nil {
+			return nil, false, e
+		}
+		defer root.Close()
+		dir := directory
+		if dir == "" {
+			dir = "."
+		}
+		f, e := root.Open(filepath.FromSlash(dir))
+		if e != nil {
+			return nil, os.IsNotExist(e), e
+		}
+		defer f.Close()
+		children, e := f.ReadDir(-1)
+		if e != nil {
+			return nil, false, e
+		}
+		out := map[string]*int64{}
+		for _, child := range children {
+			if e = ctx.Err(); e != nil {
+				return nil, false, e
+			}
+			if child.Type()&os.ModeSymlink != 0 || child.IsDir() {
+				continue
+			}
+			info, e := child.Info()
+			if e != nil {
+				return nil, false, e
+			}
+			if !info.Mode().IsRegular() {
+				continue
+			}
+			name := child.Name()
+			if directory != "" {
+				name = directory + "/" + name
+			}
+			size := info.Size()
+			out[name] = &size
+		}
+		return out, false, nil
 	}
 	root, e := url.Parse(src.Location)
 	if e != nil {
@@ -88,6 +130,9 @@ func (s *Service) RebindWith(ctx context.Context, tx store.DBTX, id string, in S
 		if _, e = s.named(ctx, tx, q, a); e != nil {
 			return Source{}, e
 		}
+	}
+	if e = s.SyncSourceMetadata(ctx, tx, id); e != nil {
+		return Source{}, e
 	}
 	return src, nil
 }

@@ -1,0 +1,1 @@
+SELECT song.id FROM media_song song JOIN metadata_document doc ON doc.id=song.id WHERE song.id>@{cursor} AND (EXISTS(SELECT 1 FROM media_audio_role role WHERE role.song_id=song.id) OR EXISTS(SELECT 1 FROM media_audio_job job WHERE job.song_id=song.id AND job.state='SUCCEEDED')) ORDER BY song.id LIMIT 100

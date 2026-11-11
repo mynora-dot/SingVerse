@@ -78,7 +78,8 @@ func effectiveMetadata(song Song, rawTrack, rawFields, appliedAt, rawOrigins, fp
 		}
 	}
 	fields = retained
-	stale := fp == nil || *fp != song.contentFingerprint
+	// The fingerprint validates file evidence, never a person's song data.
+	stale := false
 	var metadata map[string]any
 	if rawTrack != nil && len(fields) > 0 {
 		metadata = map[string]any{"track": track, "fields": fields, "appliedAt": appliedAt, "stale": stale, "origins": origins}
@@ -161,7 +162,7 @@ func effectiveMetadata(song Song, rawTrack, rawFields, appliedAt, rawOrigins, fp
 			}
 		}
 		for f := range supplied {
-			if kind == "SHARED" && metadata != nil && !stale && hasField(fields, f) && originKind(origins[f]) != "SHARED" {
+			if metadata != nil && hasField(fields, f) && originKind(origins[f]) != kind {
 				delete(supplied, f)
 			}
 		}
@@ -211,6 +212,12 @@ func projectionEmpty(v any) bool {
 	}
 	if text, ok := v.(string); ok {
 		return text == ""
+	}
+	if a, ok := v.([]any); ok {
+		return len(a) == 0
+	}
+	if a, ok := v.([]string); ok {
+		return len(a) == 0
 	}
 	return false
 }

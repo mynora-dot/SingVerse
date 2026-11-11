@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/metastandard"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/store"
 )
 
@@ -31,20 +32,23 @@ func roleView(song, row map[string]any) map[string]any {
 	return v
 }
 func (s *Service) audioStatus(ctx context.Context, songID string) (map[string]any, error) {
-	song, err := s.song(ctx, s.db, songID)
+	return s.audioStatusWith(ctx, s.db, songID)
+}
+func (s *Service) audioStatusWith(ctx context.Context, db store.DBTX, songID string) (map[string]any, error) {
+	song, err := s.song(ctx, db, songID)
 	if err != nil {
 		return nil, err
 	}
 	fp := contentFingerprint(song)
-	row, err := s.optional(ctx, s.db, "audio-role", map[string]any{"song": songID})
+	row, err := s.optional(ctx, db, "audio-role", map[string]any{"song": songID})
 	if err != nil {
 		return nil, err
 	}
-	history, err := s.maps(ctx, s.db, "audio-for-song", map[string]any{"song": songID, "fingerprint": fp})
+	history, err := s.maps(ctx, db, "audio-for-song", map[string]any{"song": songID, "fingerprint": fp})
 	if err != nil {
 		return nil, err
 	}
-	selection, err := s.optional(ctx, s.db, "audio-selection", map[string]any{"song": songID})
+	selection, err := s.optional(ctx, db, "audio-selection", map[string]any{"song": songID})
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +64,7 @@ func (s *Service) audioStatus(ctx context.Context, songID string) (map[string]an
 			}
 		}
 		if !found {
-			job, e := s.optional(ctx, s.db, "audio-job", map[string]any{"id": selected})
+			job, e := s.optional(ctx, db, "audio-job", map[string]any{"id": selected})
 			if e != nil {
 				return nil, e
 			}
@@ -132,6 +136,9 @@ func (s *Service) audioStatus(ctx context.Context, songID string) (map[string]an
 		active["active"] = true
 		v["backingResource"] = active
 	}
+	if err = s.projectFormalRoles(ctx, db, songID, v); err != nil {
+		return nil, err
+	}
 	return v, nil
 }
 func (s *Service) AudioStatus(ctx context.Context, song string) (map[string]any, error) {
@@ -199,6 +206,15 @@ func (s *Service) writeRole(ctx context.Context, tx store.DBTX, prior map[string
 	if count != 1 {
 		return fail(409, "音轨标记已变化，请刷新后重试")
 	}
+	roles := metastandard.AudioRoles(original, backing)
+	if origin == "MANUAL" {
+		err = s.library.Formal().Decide(ctx, tx, song, map[string]any{"audioRoles": roles}, metastandard.Origin{Kind: "MANUAL"})
+	} else {
+		_, _, err = s.library.Formal().Observe(ctx, tx, song, formalAudioEvidence(map[string]any{"audioRoles": roles}))
+	}
+	if err != nil {
+		return err
+	}
 	return s.dirtyMetadata(ctx, tx, song)
 }
 func (s *Service) applySuggestion(ctx context.Context, tx store.DBTX, songID, fp string, result map[string]any, shared bool) error {
@@ -231,12 +247,23 @@ func (s *Service) applySuggestion(ctx context.Context, tx store.DBTX, songID, fp
 }
 func (s *Service) verifyImported(ctx context.Context, tx store.DBTX, songID, fp string, probe map[string]any) error {
 	row, err := s.optional(ctx, tx, "audio-claim", map[string]any{"song": songID})
-	if err != nil || row == nil {
+	if err != nil {
 		return err
 	}
-	envelope := decoded(row["claim_json"])
-	claim := obj(envelope["claim"])
-	if str(envelope, "fingerprint") != fp || str(claim, "state") != "CONFIRMED" || encoded(claim["streams"]) != encoded(probe["streams"]) || math.Abs(number(claim["duration"])-number(probe["duration"])) > .25 {
+	var claim map[string]any
+	if row != nil {
+		envelope := decoded(row["claim_json"])
+		if str(envelope, "fingerprint") != fp {
+			return nil
+		}
+		claim = obj(envelope["claim"])
+	} else {
+		claim, err = s.formalAudioClaim(ctx, tx, songID)
+		if err != nil {
+			return err
+		}
+	}
+	if str(claim, "state") != "CONFIRMED" || encoded(claim["streams"]) != encoded(probe["streams"]) || math.Abs(number(claim["duration"])-number(probe["duration"])) > .25 {
 		return nil
 	}
 	ids := map[string]bool{}

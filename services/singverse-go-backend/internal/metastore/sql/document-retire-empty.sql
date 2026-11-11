@@ -1,0 +1,1 @@
+UPDATE metadata_document SET suppressed=1 WHERE id=? AND NOT EXISTS(SELECT 1 FROM metadata_document c WHERE c.parent_id=? AND c.suppressed=0) AND NOT EXISTS(SELECT 1 FROM metadata_request r WHERE r.entity_id=?)

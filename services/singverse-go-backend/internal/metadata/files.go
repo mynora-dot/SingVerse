@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
-	"encoding/base64"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/library"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/store"
 	"io"
@@ -89,6 +88,9 @@ func (s *Service) writeFile(ctx context.Context, row map[string]any) error {
 		return bad("元数据文件标识无效")
 	}
 	var warning any
+	if _, err := s.PersistCover(ctx, id); err != nil {
+		warning = "封面待补齐"
+	}
 	var warmed *Cover
 	if a := metaOf(song); a != nil && contains(a.Fields, "cover") {
 		if cover, coverErr := s.SongCover(ctx, id); coverErr != nil {
@@ -141,15 +143,12 @@ func (s *Service) writeFile(ctx context.Context, row map[string]any) error {
 	}
 	packedSnapshot := map[string]any{}
 	for k, v := range snapshot {
-		packedSnapshot[k] = v
-	}
-	if key := text(snapshot["cover"]); key != "" {
-		b, e := s.SharedCover(key)
-		if e != nil {
-			return e
+		if k != "coverData" {
+			packedSnapshot[k] = v
 		}
-		packedSnapshot["coverData"] = base64.StdEncoding.EncodeToString(b)
 	}
+	// Derivatives are adapters. Original attachments live once in the asset
+	// store and are copied independently of the bounded legacy ZIP builder.
 	manifest := map[string]any{"format": "singverse-media-index", "version": 2, "entries": []any{map[string]any{"path": "media", "metadata": packedSnapshot}}}
 	bundle, e := packManifest(manifest)
 	if e != nil {
@@ -181,6 +180,12 @@ func (s *Service) writeFile(ctx context.Context, row map[string]any) error {
 		if e = atomicWrite(filepath.Join(directory, file.Name), data); e != nil {
 			return e
 		}
+	}
+	if warmed != nil {
+		if e = atomicWrite(filepath.Join(directory, "media.image"), warmed.Bytes); e != nil {
+			return e
+		}
+		expected["media.image"] = true
 	}
 	target, e := library.MediaURL(text(source["location"]), text(song["relativePath"]))
 	if text(source["source_type"]) != "LOCAL" && e != nil {
@@ -289,6 +294,17 @@ func (s *Service) Cleanup(ctx context.Context) error {
 		}
 	}
 	if e = s.cleanupImports(ctx, cutoff.UTC().Format(time.RFC3339Nano)); e != nil {
+		return e
+	}
+	if e = s.transaction(ctx, func(tx store.DBTX) error {
+		if _, e := s.exec(ctx, tx, "v4-renew-leases", nil); e != nil {
+			return e
+		}
+		if _, e := s.exec(ctx, tx, "v4-active-leases", nil); e != nil {
+			return e
+		}
+		return s.library.Formal().Cleanup(ctx, tx)
+	}); e != nil {
 		return e
 	}
 	return s.cleanupShares(ctx, before)

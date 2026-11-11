@@ -5,9 +5,9 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/metastandard"
 	"io"
 	"math"
 	"net/url"
@@ -211,11 +211,18 @@ func readManifest(data []byte) (map[string]any, error) {
 	if manifest == nil {
 		return nil, bad("缺少 manifest.json")
 	}
-	var document map[string]any
-	decoder := json.NewDecoder(bytes.NewReader(manifest))
-	decoder.UseNumber()
-	if decoder.Decode(&document) != nil || document["format"] != "singverse-media-index" || (number(document["version"]) != 2 && number(document["version"]) != 3) {
+	raw, e := metastandard.Parse(manifest)
+	if e != nil {
+		return nil, bad(e.Error())
+	}
+	document, ok := raw.(map[string]any)
+	if !ok || document["format"] != "singverse-media-index" || (number(document["version"]) != 2 && number(document["version"]) != 3 && number(document["version"]) != 4) {
 		return nil, bad("索引包版本无效")
+	}
+	if number(document["version"]) == 4 {
+		if e = unpackV4(document, z); e != nil {
+			return nil, e
+		}
 	}
 	entries, ok := document["entries"].([]any)
 	if !ok || len(entries) > 5000 {

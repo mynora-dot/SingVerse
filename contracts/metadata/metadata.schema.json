@@ -1,0 +1,4591 @@
+{
+  "$defs": {
+    "asset": {
+      "additionalProperties": false,
+      "properties": {
+        "assetId": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "assetId"
+      ],
+      "type": "object"
+    },
+    "audioRoles": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "enum": [
+              "ORIGINAL",
+              "BACKING",
+              "OTHER",
+              "UNKNOWN"
+            ]
+          },
+          "streamId": {
+            "pattern": "^stream:[0-9]{1,3}(?::(?:LEFT|RIGHT))?$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "streamId",
+          "role"
+        ],
+        "type": "object"
+      },
+      "maxItems": 128,
+      "type": "array"
+    },
+    "credits": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "artistId": {
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "join": {
+            "maxLength": 100,
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "role": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "artistId",
+          "name"
+        ],
+        "type": "object"
+      },
+      "maxItems": 64,
+      "type": "array"
+    },
+    "date": {
+      "pattern": "^[0-9]{4}(-[0-9]{2}(-[0-9]{2})?)?$",
+      "type": "string"
+    },
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "duration": {
+      "maximum": 604800000,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "externalIds": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "entityType": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "provider": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "entityType",
+          "id"
+        ],
+        "type": "object"
+      },
+      "maxItems": 128,
+      "type": "array"
+    },
+    "lyrics": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "timing": {
+                "enum": [
+                  "none",
+                  "lrc"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "text"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "timing": {
+                "enum": [
+                  "milliseconds",
+                  "mpeg-frames"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "lines"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "language": {
+          "maxLength": 100,
+          "type": "string"
+        },
+        "lines": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "time": {
+                "maximum": 604800000,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "time",
+              "text"
+            ],
+            "type": "object"
+          },
+          "maxItems": 20000,
+          "type": "array"
+        },
+        "text": {
+          "maxLength": 262144,
+          "type": "string"
+        },
+        "timing": {
+          "enum": [
+            "none",
+            "lrc",
+            "milliseconds",
+            "mpeg-frames"
+          ]
+        }
+      },
+      "required": [
+        "timing"
+      ],
+      "type": "object"
+    },
+    "object": {
+      "type": "object"
+    },
+    "observation": {
+      "properties": {
+        "durationMs": {
+          "$ref": "#/$defs/duration"
+        },
+        "streams": {
+          "items": {
+            "properties": {
+              "frameRate": {
+                "additionalProperties": false,
+                "properties": {
+                  "denominator": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "numerator": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "numerator",
+                  "denominator"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "maxItems": 128,
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "origin": {
+      "additionalProperties": false,
+      "properties": {
+        "collectionId": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "entityType": {
+          "maxLength": 500,
+          "minLength": 1,
+          "type": "string"
+        },
+        "externalId": {
+          "maxLength": 500,
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "FILENAME",
+            "FILE",
+            "PLATFORM",
+            "SHARED",
+            "MANUAL",
+            "UPLOAD",
+            "DOWNLOAD",
+            "UNKNOWN"
+          ]
+        },
+        "provider": {
+          "maxLength": 500,
+          "minLength": 1,
+          "type": "string"
+        },
+        "revision": {
+          "pattern": "^[1-9][0-9]{0,18}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    },
+    "revision": {
+      "pattern": "^[1-9][0-9]{0,18}$",
+      "type": "string"
+    },
+    "sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "state": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "decision": {
+                "const": "CLEAR"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "status": {
+                "const": "CLEARED"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "decision": {
+          "enum": [
+            "AUTO",
+            "SET",
+            "CLEAR"
+          ]
+        },
+        "origin": {
+          "$ref": "#/$defs/origin"
+        },
+        "revision": {
+          "pattern": "^[1-9][0-9]{0,18}$",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "PRESENT",
+            "UNREAD",
+            "MISSING",
+            "NOT_APPLICABLE",
+            "CLEARED"
+          ]
+        }
+      },
+      "required": [
+        "origin",
+        "decision",
+        "status",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "text": {
+      "maxLength": 500,
+      "minLength": 1,
+      "type": "string"
+    },
+    "texts": {
+      "items": {
+        "maxLength": 500,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 64,
+      "type": "array"
+    },
+    "uuid": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "uuids": {
+      "items": {
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "type": "string"
+      },
+      "maxItems": 64,
+      "type": "array"
+    },
+    "variantKind": {
+      "enum": [
+        "UNKNOWN",
+        "MV",
+        "KTV",
+        "LIVE",
+        "AUDIO",
+        "OTHER"
+      ]
+    }
+  },
+  "$id": "urn:singverse:metadata:1.0",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "WORK"
+          }
+        }
+      },
+      "then": {
+        "allOf": [
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "aliases"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "aliases"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "aliases"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "aliases": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "aliases": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "aliases"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "aliases": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "credits"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "credits"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "credits"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "credits": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "credits": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "credits"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "credits": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "externalIds"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "externalIds"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "externalIds"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "externalIds": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "externalIds": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "externalIds"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "externalIds": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "title"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "title"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "title"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "title": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "title": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "title"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "title": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "parentId"
+              ]
+            },
+            {
+              "required": [
+                "parentState"
+              ]
+            }
+          ]
+        },
+        "properties": {
+          "fields": {
+            "additionalProperties": false,
+            "properties": {
+              "aliases": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/texts"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "credits": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/credits"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "externalIds": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/externalIds"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "title": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/text"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "states": {
+            "additionalProperties": false,
+            "properties": {
+              "aliases": {
+                "$ref": "#/$defs/state"
+              },
+              "credits": {
+                "$ref": "#/$defs/state"
+              },
+              "externalIds": {
+                "$ref": "#/$defs/state"
+              },
+              "title": {
+                "$ref": "#/$defs/state"
+              }
+            },
+            "type": "object"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "SONG"
+          }
+        }
+      },
+      "then": {
+        "allOf": [
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "album"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "album"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "album"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "album": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "album": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "album"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "album": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "aliases"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "aliases"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "aliases"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "aliases": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "aliases": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "aliases"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "aliases": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "artists"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "artists"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "artists"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "artists": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "artists": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "artists"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "artists": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "cover"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "cover"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "cover"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "cover": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "cover": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "cover"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "cover": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "credits"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "credits"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "credits"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "credits": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "credits": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "credits"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "credits": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "externalIds"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "externalIds"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "externalIds"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "externalIds": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "externalIds": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "externalIds"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "externalIds": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "referenceDurationMs"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "referenceDurationMs"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "referenceDurationMs"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "referenceDurationMs": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "referenceDurationMs": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "referenceDurationMs"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "referenceDurationMs": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "releaseDate"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "releaseDate"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "releaseDate"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "releaseDate": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "releaseDate": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "releaseDate"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "releaseDate": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "releaseId"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "releaseId"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "releaseId"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "releaseId": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "releaseId": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "releaseId"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "releaseId": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "tagIds"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "tagIds"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "tagIds"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "tagIds": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "tagIds": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "tagIds"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "tagIds": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "title"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "title"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "title"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "title": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "title": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "title"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "title": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "workId"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "workId"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "workId"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "workId": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "workId": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "workId"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "workId": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "parentId"
+              ]
+            },
+            {
+              "required": [
+                "parentState"
+              ]
+            }
+          ]
+        },
+        "properties": {
+          "fields": {
+            "additionalProperties": false,
+            "properties": {
+              "album": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/text"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "aliases": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/texts"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "artists": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/texts"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cover": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/asset"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "credits": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/credits"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "externalIds": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/externalIds"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "referenceDurationMs": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/duration"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "releaseDate": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/date"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "releaseId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "tagIds": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/uuids"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "title": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/text"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "workId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "states": {
+            "additionalProperties": false,
+            "properties": {
+              "album": {
+                "$ref": "#/$defs/state"
+              },
+              "aliases": {
+                "$ref": "#/$defs/state"
+              },
+              "artists": {
+                "$ref": "#/$defs/state"
+              },
+              "cover": {
+                "$ref": "#/$defs/state"
+              },
+              "credits": {
+                "$ref": "#/$defs/state"
+              },
+              "externalIds": {
+                "$ref": "#/$defs/state"
+              },
+              "referenceDurationMs": {
+                "$ref": "#/$defs/state"
+              },
+              "releaseDate": {
+                "$ref": "#/$defs/state"
+              },
+              "releaseId": {
+                "$ref": "#/$defs/state"
+              },
+              "tagIds": {
+                "$ref": "#/$defs/state"
+              },
+              "title": {
+                "$ref": "#/$defs/state"
+              },
+              "workId": {
+                "$ref": "#/$defs/state"
+              }
+            },
+            "type": "object"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "VARIANT"
+          }
+        }
+      },
+      "then": {
+        "allOf": [
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "aliases"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "aliases"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "aliases"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "aliases": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "aliases": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "aliases"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "aliases": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "artists"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "artists"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "artists"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "artists": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "artists": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "artists"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "artists": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "cover"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "cover"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "cover"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "cover": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "cover": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "cover"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "cover": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "credits"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "credits"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "credits"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "credits": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "credits": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "credits"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "credits": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "externalIds"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "externalIds"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "externalIds"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "externalIds": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "externalIds": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "externalIds"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "externalIds": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "kind"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "kind"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "kind"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "kind": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "kind": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "kind": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "languages"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "languages"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "languages"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "languages": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "languages": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "languages"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "languages": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "lyrics"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "lyrics"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "lyrics"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "lyrics": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "lyrics": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "lyrics"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "lyrics": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "lyricsAsset"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "lyricsAsset"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "lyricsAsset"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "lyricsAsset": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "lyricsAsset": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "lyricsAsset"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "lyricsAsset": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "timelineDurationMs"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "timelineDurationMs"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "timelineDurationMs"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "timelineDurationMs": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "timelineDurationMs": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "timelineDurationMs"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "timelineDurationMs": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "title"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "title"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "title"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "title": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "title": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "title"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "title": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "properties": {
+          "fields": {
+            "additionalProperties": false,
+            "properties": {
+              "aliases": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/texts"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "artists": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/texts"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cover": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/asset"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "credits": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/credits"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "externalIds": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/externalIds"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "kind": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/variantKind"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "languages": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/texts"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "lyrics": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/lyrics"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "lyricsAsset": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/asset"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "timelineDurationMs": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/duration"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "title": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/text"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "states": {
+            "additionalProperties": false,
+            "properties": {
+              "aliases": {
+                "$ref": "#/$defs/state"
+              },
+              "artists": {
+                "$ref": "#/$defs/state"
+              },
+              "cover": {
+                "$ref": "#/$defs/state"
+              },
+              "credits": {
+                "$ref": "#/$defs/state"
+              },
+              "externalIds": {
+                "$ref": "#/$defs/state"
+              },
+              "kind": {
+                "$ref": "#/$defs/state"
+              },
+              "languages": {
+                "$ref": "#/$defs/state"
+              },
+              "lyrics": {
+                "$ref": "#/$defs/state"
+              },
+              "lyricsAsset": {
+                "$ref": "#/$defs/state"
+              },
+              "timelineDurationMs": {
+                "$ref": "#/$defs/state"
+              },
+              "title": {
+                "$ref": "#/$defs/state"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "parentId"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "MEDIA"
+          }
+        }
+      },
+      "then": {
+        "allOf": [
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "audioRoles"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "audioRoles"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "audioRoles"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "audioRoles": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "audioRoles": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "audioRoles"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "audioRoles": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "durationMs"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "durationMs"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "durationMs"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "durationMs": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "durationMs": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "durationMs"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "durationMs": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "externalIds"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "externalIds"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "externalIds"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "externalIds": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "externalIds": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "externalIds"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "externalIds": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "observation"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "observation"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "observation"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "observation": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "observation": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "observation"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "observation": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "sha256"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "sha256"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "sha256"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "sha256": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "sha256": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "sha256"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "sha256": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "properties": {
+          "fields": {
+            "additionalProperties": false,
+            "properties": {
+              "audioRoles": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/audioRoles"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "durationMs": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/duration"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "externalIds": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/externalIds"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "observation": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/observation"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "sha256": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/digest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "states": {
+            "additionalProperties": false,
+            "properties": {
+              "audioRoles": {
+                "$ref": "#/$defs/state"
+              },
+              "durationMs": {
+                "$ref": "#/$defs/state"
+              },
+              "externalIds": {
+                "$ref": "#/$defs/state"
+              },
+              "observation": {
+                "$ref": "#/$defs/state"
+              },
+              "sha256": {
+                "$ref": "#/$defs/state"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "parentId"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ARTIST"
+          }
+        }
+      },
+      "then": {
+        "allOf": [
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "aliases"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "aliases"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "aliases"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "aliases": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "aliases": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "aliases"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "aliases": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "externalIds"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "externalIds"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "externalIds"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "externalIds": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "externalIds": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "externalIds"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "externalIds": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "name"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "name"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "name"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "name": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "name": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "name": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "portrait"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "portrait"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "portrait"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "portrait": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "portrait": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "portrait"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "portrait": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "parentId"
+              ]
+            },
+            {
+              "required": [
+                "parentState"
+              ]
+            }
+          ]
+        },
+        "properties": {
+          "fields": {
+            "additionalProperties": false,
+            "properties": {
+              "aliases": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/texts"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "externalIds": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/externalIds"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "name": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/text"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "portrait": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/asset"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "states": {
+            "additionalProperties": false,
+            "properties": {
+              "aliases": {
+                "$ref": "#/$defs/state"
+              },
+              "externalIds": {
+                "$ref": "#/$defs/state"
+              },
+              "name": {
+                "$ref": "#/$defs/state"
+              },
+              "portrait": {
+                "$ref": "#/$defs/state"
+              }
+            },
+            "type": "object"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RELEASE"
+          }
+        }
+      },
+      "then": {
+        "allOf": [
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "cover"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "cover"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "cover"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "cover": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "cover": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "cover"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "cover": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "credits"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "credits"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "credits"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "credits": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "credits": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "credits"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "credits": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "externalIds"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "externalIds"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "externalIds"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "externalIds": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "externalIds": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "externalIds"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "externalIds": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "releaseDate"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "releaseDate"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "releaseDate"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "releaseDate": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "releaseDate": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "releaseDate"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "releaseDate": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "title"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "title"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "title"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "title": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "title": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "title"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "title": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "parentId"
+              ]
+            },
+            {
+              "required": [
+                "parentState"
+              ]
+            }
+          ]
+        },
+        "properties": {
+          "fields": {
+            "additionalProperties": false,
+            "properties": {
+              "cover": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/asset"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "credits": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/credits"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "externalIds": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/externalIds"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "releaseDate": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/date"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "title": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/text"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "states": {
+            "additionalProperties": false,
+            "properties": {
+              "cover": {
+                "$ref": "#/$defs/state"
+              },
+              "credits": {
+                "$ref": "#/$defs/state"
+              },
+              "externalIds": {
+                "$ref": "#/$defs/state"
+              },
+              "releaseDate": {
+                "$ref": "#/$defs/state"
+              },
+              "title": {
+                "$ref": "#/$defs/state"
+              }
+            },
+            "type": "object"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "TAG"
+          }
+        }
+      },
+      "then": {
+        "allOf": [
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "dimension"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "dimension"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "dimension"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "dimension": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "dimension": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "dimension"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "dimension": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "externalIds"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "externalIds"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "externalIds"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "externalIds": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "externalIds": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "externalIds"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "externalIds": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "states": {
+                  "not": {
+                    "required": [
+                      "name"
+                    ]
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "fields": {
+                  "required": [
+                    "name"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "states": {
+                  "required": [
+                    "name"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "name": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "states": {
+                  "properties": {
+                    "name": {
+                      "properties": {
+                        "status": {
+                          "const": "PRESENT"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fields": {
+                  "properties": {
+                    "name": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "parentId"
+              ]
+            },
+            {
+              "required": [
+                "parentState"
+              ]
+            }
+          ]
+        },
+        "properties": {
+          "fields": {
+            "additionalProperties": false,
+            "properties": {
+              "dimension": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/text"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "externalIds": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/externalIds"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "name": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/text"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "states": {
+            "additionalProperties": false,
+            "properties": {
+              "dimension": {
+                "$ref": "#/$defs/state"
+              },
+              "externalIds": {
+                "$ref": "#/$defs/state"
+              },
+              "name": {
+                "$ref": "#/$defs/state"
+              }
+            },
+            "type": "object"
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "extensions": {
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9-]*)+:[a-zA-Z][a-zA-Z0-9._-]*$"
+      },
+      "type": "object"
+    },
+    "fields": {
+      "type": "object"
+    },
+    "id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "parentId": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "parentState": {
+      "$ref": "#/$defs/state"
+    },
+    "requiredCapabilities": {
+      "items": {
+        "enum": [
+          "core/1",
+          "music/1",
+          "ktv/1"
+        ]
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "revision": {
+      "pattern": "^[1-9][0-9]{0,18}$",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "states": {
+      "additionalProperties": {
+        "$ref": "#/$defs/state"
+      },
+      "type": "object"
+    },
+    "type": {
+      "enum": [
+        "WORK",
+        "SONG",
+        "VARIANT",
+        "MEDIA",
+        "ARTIST",
+        "RELEASE",
+        "TAG"
+      ]
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "type",
+    "revision",
+    "fields",
+    "states"
+  ],
+  "title": "SingVerse Metadata Schema 1.0",
+  "type": "object"
+}

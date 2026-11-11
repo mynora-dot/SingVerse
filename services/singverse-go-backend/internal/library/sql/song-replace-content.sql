@@ -1,0 +1,2 @@
+INSERT INTO media_song(id,source_id,relative_path,path_hash,file_size,modified_at,scanned_at,parser_profile_id,parser_revision,selected_rule_id,result_json,needs_review,embedded_tags_json,location_state)
+SELECT ?,source_id,relative_path,?,NULL,NULL,?,parser_profile_id,parser_revision,selected_rule_id,result_json,needs_review,NULL,'PENDING' FROM media_song WHERE id=?

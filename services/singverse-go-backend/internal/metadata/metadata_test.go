@@ -189,11 +189,11 @@ func exerciseSettingsAndReviewReceipt(t *testing.T, f *fixture) {
 	if _, e := f.db.Exec("UPDATE media_song SET embedded_tags_json=? WHERE id=?", `{"title":"File Title","artists":["File Artist"],"album":"File Album"}`, id); e != nil {
 		t.Fatal(e)
 	}
-	request(t, f.router, "POST", "/api/v1/metadata/songs/"+id+"/apply", ApplyInput{candidate, []string{"title"}}, 400)
+	request(t, f.router, "POST", "/api/v1/metadata/songs/"+id+"/apply", ApplyInput{candidate, []string{"title"}}, 200)
 	review = request(t, f.router, "GET", "/api/v1/metadata/songs/"+id+"/review", nil, 200)
 	input = ReviewApply{RequestID: uuid(), Fingerprint: text(review["fingerprint"]), Version: text(review["version"]), Fields: []string{"title", "artists"}, Edits: map[string]any{"title": "Try overwrite file", "artists": []string{"Corrected Artist"}}}
 	out = request(t, f.router, "POST", "/api/v1/metadata/songs/"+id+"/review/apply", input, 200)
-	if !contains(stringsOf(out["skipped"]), "title") || !contains(stringsOf(out["updated"]), "artists") {
+	if !contains(stringsOf(out["updated"]), "title") || !contains(stringsOf(out["updated"]), "artists") {
 		t.Fatal(out)
 	}
 	song, e := f.lib.Song(context.Background(), id)
@@ -201,7 +201,7 @@ func exerciseSettingsAndReviewReceipt(t *testing.T, f *fixture) {
 		t.Fatal(e)
 	}
 	a := metaOf(song)
-	if *a.Track.Title != "File Title" || a.Track.Artists[0] != "Corrected Artist" || a.Origins["artists"].Kind != "MANUAL" {
+	if *a.Track.Title != "Try overwrite file" || a.Track.Artists[0] != "Corrected Artist" || a.Origins["artists"].Kind != "MANUAL" {
 		t.Fatalf("effective metadata: %#v", a)
 	}
 	pending, e := f.s.row(context.Background(), f.db, "files-previous", map[string]any{"songId": id})
@@ -516,7 +516,7 @@ func TestRemoteWorkerAndPortableSnapshotPreserveManualFields(t *testing.T) {
 		t.Fatal(e)
 	}
 	a := metaOf(song)
-	if a == nil || a.Origins["title"].Kind != "FILE" || *a.Track.Title != "File Title" || *a.Track.DurationMs != 123500 {
+	if a == nil || a.Origins["title"].Kind != "FILE" || *a.Track.Title != "File Title" || a.Track.DurationMs != nil || number(path(song, "metadata", "media", "durationMs")) != 123500 {
 		t.Fatalf("file origin projection: %#v", a)
 	}
 	var snapshot map[string]any

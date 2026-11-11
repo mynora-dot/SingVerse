@@ -1,0 +1,1 @@
+INSERT INTO media_metadata_file(song_id) SELECT m.id FROM metadata_document m JOIN metadata_document v ON v.id=m.parent_id JOIN media_song legacy ON legacy.id=m.id WHERE m.entity_type='MEDIA' AND (m.id=? OR v.id=? OR v.parent_id=?) AND NOT EXISTS(SELECT 1 FROM media_metadata_file f WHERE f.song_id=m.id)

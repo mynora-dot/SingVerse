@@ -1,0 +1,86 @@
+{
+  "schemaVersion": "1.0",
+  "id": "2f0ba825-b0f7-49f8-9d8d-d14a5e24c003",
+  "type": "SONG",
+  "revision": "1",
+  "fields": {
+    "title": "示例歌曲",
+    "credits": [
+      {
+        "artistId": "2f0ba825-b0f7-49f8-9d8d-d14a5e24c001",
+        "name": "示例演唱者",
+        "role": "performer",
+        "join": ""
+      }
+    ],
+    "workId": "2f0ba825-b0f7-49f8-9d8d-d14a5e24c002",
+    "releaseDate": "2024-02",
+    "referenceDurationMs": 240000,
+    "externalIds": [
+      {
+        "provider": "example",
+        "entityType": "track",
+        "id": 9007199254740993
+      }
+    ]
+  },
+  "states": {
+    "title": {
+      "origin": {
+        "kind": "MANUAL"
+      },
+      "decision": "SET",
+      "status": "PRESENT",
+      "revision": "1"
+    },
+    "credits": {
+      "origin": {
+        "kind": "MANUAL"
+      },
+      "decision": "SET",
+      "status": "PRESENT",
+      "revision": "1"
+    },
+    "workId": {
+      "origin": {
+        "kind": "MANUAL"
+      },
+      "decision": "SET",
+      "status": "PRESENT",
+      "revision": "1"
+    },
+    "releaseDate": {
+      "origin": {
+        "kind": "MANUAL"
+      },
+      "decision": "SET",
+      "status": "PRESENT",
+      "revision": "1"
+    },
+    "referenceDurationMs": {
+      "origin": {
+        "kind": "MANUAL"
+      },
+      "decision": "SET",
+      "status": "PRESENT",
+      "revision": "1"
+    },
+    "externalIds": {
+      "origin": {
+        "kind": "MANUAL"
+      },
+      "decision": "SET",
+      "status": "PRESENT",
+      "revision": "1"
+    }
+  },
+  "requiredCapabilities": [
+    "core/1",
+    "music/1"
+  ],
+  "extensions": {
+    "org.example:rating": {
+      "value": 4.5
+    }
+  }
+}

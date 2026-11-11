@@ -8,11 +8,13 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/metastandard"
 )
 
-// Keep platform originals byte-for-byte. Only bound the network/cache allocation;
-// a large pixel dimension is not a reason to replace an original with a thumbnail.
-const remoteCoverLimit = 32 * 1024 * 1024
+// Keep platform originals byte-for-byte within the persistent asset limits.
+// A display thumbnail is generated separately and never replaces the original.
+const remoteCoverLimit = metastandard.ImageLimit
 
 var kugouCoverSize = regexp.MustCompile(`(/(?:stdmusic|albumcover)/)([0-9]+|\{size\})(/)`)
 var kuwoCoverSize = regexp.MustCompile(`(/star/albumcover/)[0-9]+(/)`)
@@ -79,6 +81,9 @@ func validateRemoteCover(b []byte) (Cover, error) {
 	cfg, format, err := image.DecodeConfig(bytes.NewReader(b))
 	if err != nil || !contains([]string{"jpeg", "png"}, format) || cfg.Width < 1 || cfg.Height < 1 {
 		return Cover{}, &problem{422, "平台返回的内容不是可用的 JPEG 或 PNG 图片"}
+	}
+	if int64(cfg.Width)*int64(cfg.Height) > metastandard.MaxImagePixels {
+		return Cover{}, &problem{422, "平台原图超过可保存的像素范围，请选择高清版本或其他封面"}
 	}
 	return Cover{Bytes: b, MIME: "image/" + format, Width: cfg.Width, Height: cfg.Height}, nil
 }

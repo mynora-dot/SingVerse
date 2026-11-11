@@ -127,8 +127,8 @@ func exerciseWorkflowMerge(t *testing.T, f *fixture) {
 	blank["metadata"].(map[string]any)["technical"] = map[string]any{"video": map[string]any{"codec": "hevc"}}
 	job = applyWorkflow(t, f, source, workflowPackage(t, collection, 3, blank))
 	song, err = f.s.song(ctx, f.db, songID)
-	if err != nil || text(array(current(song)["artists"])[0]) != "共享新歌手" || number(current(song)["durationMs"]) != 123500 {
-		t.Fatal("blank tags or partial technical update erased saved values", song, err)
+	if err != nil || text(array(current(song)["artists"])[0]) != "共享新歌手" || current(song)["durationMs"] != nil || number(path(song, "metadata", "media", "durationMs")) != 123500 || path(song, "metadata", "media", "observation", "duration") != nil {
+		t.Fatal("blank tags or atomic media observation violates ownership", song, err)
 	}
 	request(t, f.router, "POST", "/api/v1/media-sources/"+source+"/embedded-metadata/import-jobs/"+text(job["id"])+"/cancel", nil, 200)
 	old := uploadWorkflow(t, f, source, data)
@@ -451,10 +451,36 @@ func TestSourceSaveCompatibilityAndDurableAutomaticIngest(t *testing.T) {
 	if err := f.db.Get(&count, "SELECT COUNT(*) FROM media_ingest_request WHERE source_id=?", source["id"]); err != nil || count != 1 {
 		t.Fatal(count, err)
 	}
-	dav := request(t, f.router, "POST", "/api/v1/media-sources", map[string]any{"name": "导入专用", "type": "WEBDAV", "location": "https://my.example.invalid/dav/", "startScan": false, "autoExtractEmbedded": false}, 201)
-	summary := request(t, f.router, "GET", "/api/v1/media-sources/"+text(dav["id"])+"/embedded-metadata", nil, 200)
+	dav := request(t, f.router, "POST", "/api/v1/media-sources", map[string]any{"name": "导入专用", "type": "WEBDAV", "location": "https://my.example.invalid/dav/", "startScan": false, "autoExtractEmbedded": false, "scanEnabled": false}, 201)
+	davID := text(dav["id"])
+	if dav["initialTaskId"] != nil || dav["nextScanAt"] != nil || dav["scanEnabled"] != false {
+		t.Fatal("package creation unexpectedly scheduled a scan", dav)
+	}
+	summary := request(t, f.router, "GET", "/api/v1/media-sources/"+davID+"/embedded-metadata", nil, 200)
 	if summary["enabled"] != false {
 		t.Fatal(summary)
+	}
+	var extractions atomic.Int32
+	f.s.SetRemoteExtractor(func(context.Context, map[string]any) (map[string]any, error) {
+		extractions.Add(1)
+		return nil, fmt.Errorf("imported metadata must not trigger content extraction")
+	})
+	imported := applyWorkflow(t, f, davID, workflowPackage(t, uuid(), 1, entry("华语/歌 曲.mkv", nil)))
+	if number(imported["addedCount"]) != 1 {
+		t.Fatal(imported)
+	}
+	f.lib.RunIngest(context.Background())
+	if err := f.s.RunRemoteNext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	request(t, f.router, "GET", "/api/v1/media-sources/"+davID+"/ingest-tasks/latest", nil, 204)
+	request(t, f.router, "GET", "/api/v1/media-sources/"+davID+"/scan-tasks/latest", nil, 204)
+	if extractions.Load() != 0 {
+		t.Fatal("package import redundantly read the remote media", extractions.Load())
+	}
+	songs = request(t, f.router, "GET", "/api/v1/media-sources/"+davID+"/songs", nil, 200)
+	if number(songs["totalElements"]) != 1 {
+		t.Fatal("package did not populate the library without scanning", songs)
 	}
 }
 

@@ -11,7 +11,7 @@ const palette = computed(() => {
 const artwork = computed(() => {
   const metadata = props.song.metadata
   return metadata && !metadata.stale && metadata.fields.includes('cover') && metadata.track.coverUrl
-    ? `/api/v1/metadata/songs/${encodeURIComponent(props.song.id)}/cover` : ''
+    ? `/api/v1/metadata/songs/${encodeURIComponent(props.song.id)}/cover?variant=thumbnail` : ''
 })
 watch(() => [props.song.id, props.song.metadata, artwork.value], () => { failed.value = false })
 </script>

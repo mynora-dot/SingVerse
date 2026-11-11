@@ -1,0 +1,1 @@
+SELECT document_json FROM metadata_document d WHERE entity_type=? AND suppressed=0 AND search_text LIKE ? ESCAPE '!' AND EXISTS(SELECT 1 FROM metadata_document v JOIN metadata_document m ON m.parent_id=v.id JOIN metadata_location l ON l.media_id=m.id WHERE v.parent_id=d.id AND l.source_id=?) ORDER BY display_title,id LIMIT ? OFFSET ?

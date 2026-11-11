@@ -167,3 +167,5 @@ Go 的 ai 模块负责共享模型/搜索适配、配置、加密凭据和功能
 Go 主服务用显式依赖组装、有界 worker、持久任务状态、context 取消与优雅退出；业务 SQL 嵌入模块文件，sqlx 提供结构体/通用结果映射，跨模块传递持有同一事务的 `store.DBTX`。日志为结构化 slog JSON、HTTP 带请求 ID；可选诊断监听器仅回环，不暴露到公开 API。版本统一从根 `VERSION` 构建注入。默认容器不包含 JVM/Node/Go 编译器，媒体工具只在 compute。
 
 本次采用全新 Go 部署，`singverse-go-app` 项目和新卷与旧 `singverse-app` 完全隔离；不迁移旧账号，也不承诺 Go 写入后数据库可退回 Java。旧镜像/旧数据回退见 [迁移说明](go-migration.md)，实际验证见 [Go 验证](go-migration-verification.md)。
+
+元数据采用 [Metadata Schema 1.0](../contracts/metadata/README.md)：WORK（可选）→ SONG → VARIANT → MEDIA → LOCATION。Go 的 metastore 是正式字段和附件引用的写入入口，路径与媒体身份分离；管理、点歌、歌词与分享读取统一正式值。Schema 校验不依赖业务库，v4 容器与资料语义独立版本化。平台参考时长、版本时间轴与媒体实际时长分别保存；详情见规范。

@@ -87,6 +87,10 @@ func New(db *sqlx.DB, dialect string, cfg config.Config, cipher Cipher, lib *lib
 		cancel()
 		return nil, err
 	}
+	if err = s.bootstrapShared(ctx); err != nil {
+		cancel()
+		return nil, err
+	}
 	s.wg.Add(5)
 	go s.worker()
 	go s.remoteLoop()
@@ -167,6 +171,13 @@ func (s *Service) SongCoverHandler(c *gin.Context) {
 	if e != nil {
 		s.fail(c, e)
 		return
+	}
+	if c.Query("variant") == "thumbnail" {
+		cover, e = s.thumbnail(cover)
+		if e != nil {
+			s.fail(c, e)
+			return
+		}
 	}
 	imageResponse(c, cover)
 }

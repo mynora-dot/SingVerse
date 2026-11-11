@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/store"
-	"reflect"
 	"regexp"
 	"sort"
 	"time"
@@ -251,9 +250,7 @@ func (s *Service) reviewApply(ctx context.Context, tx store.DBTX, id string, in 
 	out.Skipped = []string{}
 	out.Retained = []string{}
 	for _, f := range fields {
-		protected := prior != nil && prior.Origins[f].Kind == "FILE"
-		equal := reflect.DeepEqual(jsonValue(before[f]), jsonValue(values[f]))
-		if protected || !supplied[f] || !present(values[f]) || equal {
+		if !supplied[f] {
 			out.Skipped = append(out.Skipped, f)
 		} else {
 			out.Updated = append(out.Updated, f)
@@ -323,7 +320,7 @@ func (s *Service) reviewApply(ctx context.Context, tx store.DBTX, id string, in 
 			}
 		}
 		applied := Applied{Track: mergeTrack(after, base), Fields: all, AppliedAt: at, Origins: merged}
-		if e = s.saveApplied(ctx, tx, song, applied); e != nil {
+		if e = s.saveApplied(ctx, tx, song, applied, out.Updated, false); e != nil {
 			return out, e
 		}
 		out.Metadata = &applied
@@ -336,7 +333,6 @@ func (s *Service) reviewApply(ctx context.Context, tx store.DBTX, id string, in 
 	_, e = s.exec(ctx, tx, "review-receiptSave", map[string]any{"id": in.RequestID, "songId": id, "hash": requestHash, "response": encode(out), "now": now()})
 	return out, e
 }
-func jsonValue(v any) any { var out any; _ = decode(encode(v), &out); return out }
 func remove(v []string, s string) []string {
 	out := []string{}
 	for _, x := range v {

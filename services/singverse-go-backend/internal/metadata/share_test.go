@@ -327,7 +327,7 @@ func TestShareExportResumesSavedPartAndRejectsManagedSymlink(t *testing.T) {
 	f := setup(t)
 	ctx := context.Background()
 	names := []string{}
-	for i := 0; i < 30; i++ {
+	for i := 0; i < 80; i++ {
 		names = append(names, fmt.Sprintf("A-Item%02d.mkv", i))
 	}
 	source, ids := f.local(t, names...)
@@ -340,16 +340,19 @@ func TestShareExportResumesSavedPartAndRejectsManagedSymlink(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
+	if e := store.WithinTx(ctx, f.db, func(tx store.DBTX) error { return f.lib.SyncSourceMetadata(ctx, tx, source) }); e != nil {
+		t.Fatal(e)
+	}
 	job := request(t, f.router, "POST", "/api/v1/media-sources/"+source+"/embedded-metadata/share-jobs", nil, 202)
 	id := text(job["id"])
-	if _, e := f.db.Exec("CREATE TRIGGER reject_finished_export BEFORE UPDATE OF state ON webdav_share_job WHEN NEW.state='SUCCEEDED' BEGIN SELECT RAISE(ABORT,'forced export failure'); END"); e != nil {
+	if _, e := f.db.Exec("CREATE TRIGGER reject_finished_export BEFORE UPDATE OF state ON webdav_share_job WHEN NEW.state='RUNNING' AND OLD.processed_count>0 AND NEW.processed_count>OLD.processed_count BEGIN SELECT RAISE(ABORT,'forced export failure'); END"); e != nil {
 		t.Fatal(e)
 	}
 	if e := f.s.ProcessShare(ctx); e == nil {
 		t.Fatal("expected export checkpoint failure")
 	}
 	job = request(t, f.router, "GET", "/api/v1/media-sources/"+source+"/embedded-metadata/share-jobs/"+id, nil, 200)
-	if job["state"] != "FAILED" || number(job["part_count"]) != 1 || number(job["processed_count"]) <= 0 || number(job["processed_count"]) >= 30 {
+	if job["state"] != "FAILED" || number(job["part_count"]) != 1 || number(job["processed_count"]) <= 0 || number(job["processed_count"]) >= 80 {
 		t.Fatal("missing saved checkpoint", job)
 	}
 	firstPath, e := f.s.shareFile(ctx, source, id, 1, false)
@@ -368,7 +371,7 @@ func TestShareExportResumesSavedPartAndRejectsManagedSymlink(t *testing.T) {
 		t.Fatal(e)
 	}
 	job = request(t, f.router, "GET", "/api/v1/media-sources/"+source+"/embedded-metadata/share-jobs/"+id, nil, 200)
-	if job["state"] != "SUCCEEDED" || number(job["part_count"]) != 2 || number(job["processed_count"]) != 30 {
+	if job["state"] != "SUCCEEDED" || number(job["part_count"]) != 2 || number(job["processed_count"]) != 80 {
 		t.Fatal(job)
 	}
 	after, e := os.ReadFile(firstPath)
@@ -397,7 +400,7 @@ func TestShareExportResumesSavedPartAndRejectsManagedSymlink(t *testing.T) {
 			seen[relative] = true
 		}
 	}
-	if len(seen) != 30 {
+	if len(seen) != 80 {
 		t.Fatal("lost entries", len(seen))
 	}
 	outside := t.TempDir()

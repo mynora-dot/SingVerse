@@ -12,7 +12,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = "202611070001_initial_schema.sql"
 VERSION = BASELINE.split("_", 1)[0]
-MIGRATIONS = (BASELINE, "202611080001_background_tasks.sql", "202611090001_background_task_batches.sql", "202611090002_audio_separation_profiles.sql", "202611090003_lx_downloads.sql", "202611100001_artist_artwork_batches.sql", "202611100002_music_platform_defaults.sql", "202611100003_media_library_workflows.sql")
+MIGRATIONS = (BASELINE, "202611080001_background_tasks.sql", "202611090001_background_task_batches.sql", "202611090002_audio_separation_profiles.sql", "202611090003_lx_downloads.sql", "202611100001_artist_artwork_batches.sql", "202611100002_music_platform_defaults.sql", "202611100003_media_library_workflows.sql", "202611110001_metadata_standard.sql")
 VERSIONS = sorted((name.split("_", 1)[0],) for name in MIGRATIONS)
 
 
@@ -108,30 +108,35 @@ def main():
     require(snapshot(path) == initial, "Second migrate changed schema or seeds")
     migrate("down")
     with sqlite3.connect(path) as db:
-      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-1], "Media workflow rollback must retain previous features")
+      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-1], "Metadata standard rollback must preserve previous features")
+      require(not db.execute("SELECT name FROM sqlite_master WHERE name LIKE 'metadata_document%' OR name IN ('metadata_location','metadata_asset','metadata_evidence','metadata_request','metadata_upgrade')").fetchall(), "Metadata standard rollback left tables")
+      require("location_state" not in {row[1] for row in db.execute("PRAGMA table_info(media_song)")}, "Metadata rollback left media columns")
+    migrate("down")
+    with sqlite3.connect(path) as db:
+      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-2], "Media workflow rollback must retain previous features")
       require(not db.execute("SELECT name FROM sqlite_master WHERE name IN ('media_import_job','media_import_entry','media_shared_song','media_shared_baseline','media_ingest_request','media_share_series')").fetchall(), "Media workflow rollback left tables")
       require("collection_id" not in {row[1] for row in db.execute("PRAGMA table_info(webdav_share_job)")}, "Workflow rollback left export columns")
     migrate("down")
     with sqlite3.connect(path) as db:
-      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-2], "Music default rollback must retain features")
+      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-3], "Music default rollback must retain features")
       require(db.execute("SELECT enabled,providers_json,auto_apply FROM metadata_settings WHERE id=1").fetchone() == (0, '["NETEASE"]', 0), "Music default rollback changed the wrong seed")
     migrate("down")
     with sqlite3.connect(path) as db:
-      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-3], "Artwork rollback must retain prior features")
+      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-4], "Artwork rollback must retain prior features")
       require(not db.execute("SELECT name FROM sqlite_master WHERE name IN ('artist_artwork_batch','artist_artwork_item')").fetchall(), "Artwork rollback left queue tables")
     migrate("down")
     with sqlite3.connect(path) as db:
-      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-4], "LX rollback must retain prior features")
+      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-5], "LX rollback must retain prior features")
       require(not db.execute("SELECT name FROM sqlite_master WHERE name LIKE 'lx_%'").fetchall(), "LX rollback left download tables")
     migrate("down")
     with sqlite3.connect(path) as db:
-      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-5], "Audio rollback must retain background tasks")
+      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-6], "Audio rollback must retain background tasks")
       require(not db.execute("SELECT name FROM sqlite_master WHERE name='media_audio_selection'").fetchall(), "Audio rollback left selection table")
       for table in ("media_audio_job", "audio_batch"):
         require("recipe_json" not in {row[1] for row in db.execute(f"PRAGMA table_info({table})")}, "Audio rollback left recipe column")
     migrate("down")
     with sqlite3.connect(path) as db:
-      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-6], "Batch rollback must retain prior schema")
+      require(sorted(db.execute("SELECT version FROM schema_migrations").fetchall()) == VERSIONS[:-7], "Batch rollback must retain prior schema")
       require(not db.execute("SELECT name FROM sqlite_master WHERE name IN ('background_task_relation','background_scan_scope')").fetchall(), "Batch rollback left relation tables")
       columns = {row[1] for row in db.execute("PRAGMA table_info(background_task)")}
       require("is_batch" not in columns, "Batch rollback left columns")
@@ -147,6 +152,7 @@ def main():
       require(db.execute("SELECT max_bytes,revision FROM song_cache_settings WHERE id=1").fetchone() == (67108864,7), "Feature upgrade changed settings")
       require(db.execute("SELECT id,is_batch FROM background_task ORDER BY id").fetchall() == [("kept-batch",1),("kept-child",0)], "Batch upgrade lost original tasks")
       require(db.execute("SELECT batch_id,task_id FROM background_task_relation").fetchall() == [("kept-batch","kept-child")], "Batch upgrade lost confirmed ancestry")
+    migrate("down")
     migrate("down")
     migrate("down")
     migrate("down")

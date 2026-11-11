@@ -1,0 +1,1 @@
+INSERT INTO metadata_identity_alias(source_id,collection_id,remote_id,local_id) SELECT @{sourceId},@{collectionId},@{remoteId},@{localId} WHERE NOT EXISTS(SELECT 1 FROM metadata_identity_alias WHERE source_id=@{sourceId} AND collection_id=@{collectionId} AND remote_id=@{remoteId})

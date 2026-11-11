@@ -3,6 +3,7 @@ package library
 import (
 	"context"
 	"fmt"
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/store"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -38,6 +39,11 @@ func TestIdentitySearchBeforePaginationAndLegacyPath(t *testing.T) {
 		}
 		_, err = s.db.ExecContext(context.Background(), "INSERT INTO song_metadata(song_id,source_id,fingerprint,track_json,fields_json,origins_json,applied_at) VALUES(?,?,?,?,?,?,?)", id, sourceID, song.contentFingerprint, encode(track), `["title","artists"]`, `{"title":{"kind":"MANUAL"},"artists":{"kind":"MANUAL"}}`, now())
 		if err != nil {
+			t.Fatal(err)
+		}
+		if err = store.WithinTx(context.Background(), s.db, func(tx store.DBTX) error {
+			return s.ApplyFormal(context.Background(), tx, id, track, map[string]any{"title": map[string]any{"kind": "MANUAL"}, "artists": map[string]any{"kind": "MANUAL"}})
+		}); err != nil {
 			t.Fatal(err)
 		}
 		expected = append(expected, id)
@@ -76,13 +82,13 @@ func TestIdentitySearchBeforePaginationAndLegacyPath(t *testing.T) {
 	}
 	requestJSON(t, router, "GET", "/api/v1/media-songs?search="+url.QueryEscape(strings.Repeat("长", 201)), nil, 400)
 	requestJSON(t, router, "GET", "/api/v1/media-songs?search=bad%00value", nil, 400)
-	// Once a file changes, old confirmed identity must not remain searchable.
+	// A file fingerprint change must preserve the independent formal identity.
 	if _, err := s.db.ExecContext(context.Background(), "UPDATE song_metadata SET fingerprint=? WHERE song_id=?", "stale", expected[0]); err != nil {
 		t.Fatal(err)
 	}
 	stale := requestJSON(t, router, "GET", "/api/v1/media-songs?search="+url.QueryEscape("100%_! live"), nil, 200)
-	if stale["totalElements"] != float64(0) {
-		t.Fatal("stale identity appeared in search", stale)
+	if stale["totalElements"] != float64(1) {
+		t.Fatal("formal identity lost after file fingerprint changed", stale)
 	}
 }
 

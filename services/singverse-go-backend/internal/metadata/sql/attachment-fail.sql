@@ -1,0 +1,1 @@
+UPDATE metadata_attachment_task SET status='PENDING',error='封面下载或持久保存失败，后台稍后重试',updated_at=@{now} WHERE media_id=@{songId} AND cover_url=@{url} AND origin_json=@{origin} AND cover_revision=@{revision}

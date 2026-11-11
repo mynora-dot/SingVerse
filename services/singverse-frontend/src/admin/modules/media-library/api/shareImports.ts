@@ -16,6 +16,11 @@ export interface ImportDifference {
   local?: Record<string, unknown>; incoming?: Record<string, unknown>
 }
 const base = (id: string) => `/api/v1/media-sources/${encodeURIComponent(id)}/embedded-metadata/import-jobs`
+export function validateSharePackage(file: File) {
+  if (!/\.zip$/i.test(file.name)) throw new Error('请选择 ZIP 格式的资料包')
+  if (!file.size) throw new Error('资料包为空，请重新选择')
+  if (file.size > 8 * 1024 ** 3) throw new Error('分享包不能超过 8 GiB')
+}
 export const shareImports = {
   latest: (id: string) => authRequest<ShareImportJob>(base(id) + '/latest'),
   get: (id: string, job: string) => authRequest<ShareImportJob>(base(id) + '/' + encodeURIComponent(job)),
@@ -23,7 +28,7 @@ export const shareImports = {
   action: (id: string, job: string, action: 'apply' | 'cancel' | 'retry') => authRequest<ShareImportJob>(base(id) + '/' + encodeURIComponent(job) + '/' + action, 'POST'),
   differences: (id: string, job: string, cursor = 0) => authRequest<{ items: ImportDifference[]; nextCursor: number; hasMore: boolean }>(base(id) + '/' + encodeURIComponent(job) + '/differences?cursor=' + cursor),
   async upload(id: string, file: File, signal: AbortSignal): Promise<ShareImportJob> {
-    if (file.size > 8 * 1024 ** 3) throw new Error('分享包不能超过 8 GiB')
+    validateSharePackage(file)
     const csrf = await authRequest<{ token: string }>('/api/v1/auth/csrf')
     const response = await fetch(base(id), {
       method: 'POST', credentials: 'same-origin', redirect: 'error',

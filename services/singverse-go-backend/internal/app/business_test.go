@@ -241,7 +241,7 @@ func exerciseBusiness(t *testing.T, a *Application, db *sqlx.DB, cfg config.Conf
 		data, _ := io.ReadAll(response.Body)
 		response.Body.Close()
 		if response.StatusCode != 200 || response.Header.Get("Content-Type") != "image/webp" || !bytes.Equal(data, cover) {
-			t.Fatalf("shared download cover %s: HTTP %d MIME %s", path, response.StatusCode, response.Header.Get("Content-Type"))
+			t.Fatalf("shared download cover %s: HTTP %d MIME %s: %s", path, response.StatusCode, response.Header.Get("Content-Type"), data)
 		}
 	}
 	queueCommand := map[string]any{"requestId": "acceptance-add", "expectedRevision": 0, "action": "ADD", "songId": songID}

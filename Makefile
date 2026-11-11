@@ -29,7 +29,7 @@ help:
 	@printf '%s\n' 'app-package       Package frontend, Go and persistent SQLite deployment without .env'
 	@printf '%s\n' 'app-package-offline Export prebuilt Linux AMD64 business images with no-pull Compose'
 	@printf '%s\n' 'dbmate-setup      Install checksum-pinned language-neutral migration tool'
-	@printf '%s\n' 'db-fresh-check    Verify fresh SQLite baseline, repeat migration and rollback/recreate in disposable data'
+	@printf '%s\n' 'db-fresh-check    Verify fresh SQLite baseline, repeat migration and rollback/recreate in disposable data' 'metadata-standard-check Validate public metadata schema, examples, revisions and asset rules'
 	@printf '%s\n' 'macos-audio-check  Real native Apple MPS qualification, CPU comparison and convolution regression tests (model required)'
 	@printf '%s\n' 'mobile-check       Flutter format, analysis, tests and Android network policy tests' 'mobile-build       Flutter Android debug APK' 'mobile-audio-test  Native karaoke instrumentation on a running emulator (isolated app ID)' 'web-check          NAS H5 and admin page/assets HTTP tests' 'tv-build           Android TV unit tests, debug APK and lint' 'tv-release         Signed release APK (requires signing environment)' 'backend-test       Go backend checks (alias of go-backend-test)' 'db-sqlite-check    SQLite connection and health tests' 'db-mysql-up        Start MySQL and wait for health' 'db-mysql-check     Go business tests in disposable loopback MySQL container' 'verify             Run all checks, including MySQL'
 	@printf '%s\n' 'compute-setup      Create Python 3.12+ venv and install locked dependencies' 'compute-check      Python compute HTTP and internal contract tests' 'compute-run        Start compute node on 127.0.0.1:8090' 'compute-fast-audio-setup Install pinned fast classifier runtime and model for scans' 'compute-audio-setup Install optional pinned CPU Demucs runtime and local model (explicit download)' 'compute-audio-cuda-setup Install pinned Linux x86_64 CUDA audio runtime (model downloaded in admin)' 'compute-audio-rocm-setup Install pinned Linux x86_64 ROCm audio runtime (compatible GPUs only)' 'compute-audio-openvino-setup Install pinned Linux x86_64 OpenVINO audio runtime' 'compute-audio-uvr-setup Install ONNX CPU baseline runtime and pinned UVR 9482 model' 'compute-audio-rknn-setup Install native Linux ARM64 RKNN Lite2 runtime (no model download)' 'compute-images     Build backend image matrix using infra/docker/build/docker-bake.hcl' 'compute-package-nvidia Package CUDA source deployment without media mounts or .env' 'transcode-tools    Download checksum-pinned Jellyfin media tools into .tools (no global installation)' 'transcode-fixtures Download optional checksum-pinned official Dolby Vision verification samples'
@@ -250,3 +250,9 @@ go-container-check:
 .PHONY: docker-context-check
 docker-context-check:
 	$(PYTHON) infra/docker/check-build-context.py
+
+
+.PHONY: metadata-standard-check
+metadata-standard-check:
+	sh scripts/run-go.sh test ./internal/metastandard ./internal/metastore
+	sh scripts/run-go.sh run ./cmd/metadata-validate "$(CURDIR)/contracts/metadata/examples/song.valid.json"

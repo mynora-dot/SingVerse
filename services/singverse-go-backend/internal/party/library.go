@@ -64,6 +64,17 @@ func Projection(song map[string]any) map[string]any {
 			out["coverPath"] = "/api/v1/tv/library/songs/" + str(song, "id") + "/cover"
 		}
 	}
+	if actual, ok := metadata["media"].(map[string]any); ok {
+		if out["durationMs"] != nil {
+			out["referenceDurationMs"] = out["durationMs"]
+		}
+		out["durationMs"] = actual["durationMs"]
+		variant := object(metadata, "variant")
+		if variant["kind"] != nil {
+			out["version"] = variant["kind"]
+		}
+		out["timelineDurationMs"] = variant["timelineDurationMs"]
+	}
 	fingerprint := str(song, "id") + ":" + encode(song["fileSize"]) + ":" + encode(song["modifiedAt"])
 	out["revision"] = hash(fingerprint) + ":" + hash(encode(out)+encode(song["metadata"]))
 	return out

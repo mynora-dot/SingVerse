@@ -3,6 +3,8 @@ package metadata
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
+	"hash/crc32"
 	"image"
 	"image/png"
 	"io"
@@ -12,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/metastandard"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/testutil"
 )
 
@@ -41,8 +44,25 @@ func TestPlatformOriginalCoverRetainsPixelsAndBytes(t *testing.T) {
 	if err != nil || !bytes.Equal(cached.Bytes, original) || cached.Width != 5906 {
 		t.Fatal("original cache did not retain source bytes", err)
 	}
-	if _, err := validateCover(original); err == nil {
-		t.Fatal("local upload bounds were unintentionally changed")
+	if saved, err := validateCover(original); err != nil || !bytes.Equal(saved.Bytes, original) {
+		t.Fatal("32 MiB original policy is inconsistent with upload", err)
+	}
+}
+
+func TestPlatformPreviewAndPersistentAssetHaveSamePixelBoundary(t *testing.T) {
+	data := append([]byte(nil), tinyPNG(t)...)
+	// A valid PNG header lets the boundary reject before allocating the pixels.
+	binary.BigEndian.PutUint32(data[16:20], 8193)
+	binary.BigEndian.PutUint32(data[20:24], 8193)
+	binary.BigEndian.PutUint32(data[29:33], crc32.ChecksumIEEE(data[12:29]))
+	if _, err := validateRemoteCover(data); err == nil {
+		t.Fatal("preview accepted an original that cannot be persisted")
+	}
+	if _, err := validateCover(data); err == nil {
+		t.Fatal("compatibility storage accepted an oversized original")
+	}
+	if _, _, err := metastandard.InspectAsset(data, "image/png"); err == nil {
+		t.Fatal("formal asset storage accepted an oversized original")
 	}
 }
 

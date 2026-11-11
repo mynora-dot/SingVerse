@@ -25,7 +25,7 @@ it('封面与播放置顶，歌词直接可读，技术信息默认折叠且不�
   const hero = wrapper.get('.song-hero')
   expect(hero.text()).toContain('王小六打豆腐'); expect(hero.text()).toContain('黄梅戏精选'); expect(hero.text()).toContain('5:52')
   expect(wrapper.findAll('img')).toHaveLength(1)
-  expect(hero.get('img').attributes('src')).toBe('/api/v1/metadata/songs/song-one/cover')
+  expect(hero.get('img').attributes('src')).toBe('/api/v1/metadata/songs/song-one/cover?variant=thumbnail')
   expect(wrapper.get('.lyrics-content').text()).toContain('第一句歌词\n第二句歌词')
   expect(wrapper.get('.lyrics-content').text()).not.toContain('[00:'); expect(wrapper.get('.lyrics-content').text()).not.toContain('[ti:')
   expect(wrapper.get('.file-details').attributes('open')).toBeUndefined(); expect(wrapper.text()).not.toContain('SONG DETAILS')

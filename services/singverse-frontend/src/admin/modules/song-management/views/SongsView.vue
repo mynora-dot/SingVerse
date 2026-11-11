@@ -113,7 +113,7 @@ async function apply(nextPage = 1) {
   if (unclassified.value) query.unclassified = 'true'
   if (pageSize.value !== 20) query.size = String(pageSize.value)
   if (nextPage > 1) query.page = String(nextPage)
-  const target = router.resolve({ path: '/library/songs', query })
+  const target = router.resolve({ path: '/library/songs/files', query })
   if (target.fullPath === route.fullPath) { page.value = nextPage; await load() }
   else await router.replace(target.fullPath)
 }

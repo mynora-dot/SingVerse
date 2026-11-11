@@ -26,7 +26,10 @@ services/singverse-go-backend/
   internal/platform/  配置、SQL/迁移、HTTP、测试设施
   internal/auth/      单管理员、Cookie/CSRF、MFA 与密钥
   internal/library/   来源、规则、扫描、歌曲与原片
+  internal/metastandard/ 公开 Schema 1.0、严格 JSON/JCS 和独立校验规则
+  internal/metastore/ 正式文档、字段决定、证据、位置与原始附件
   internal/metadata/  平台刮削、审核、文件标签、共享包与持久衍生文件
+  cmd/metadata-validate/ 不依赖数据库或 compute 的资料格式校验器
   internal/catalog/   分类、歌手与歌单
   internal/party/     TV、亲友 H5、移动授权、队列与曲库索引
   internal/compute/   内部节点配置、配对、认证和受控请求

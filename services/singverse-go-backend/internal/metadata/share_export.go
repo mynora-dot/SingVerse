@@ -27,6 +27,9 @@ func (s *Service) exportShare(ctx context.Context, job map[string]any) (err erro
 			}
 		}
 	}()
+	if number(job["package_version"]) == 4 {
+		return s.exportV4(ctx, job)
+	}
 	folder, e := s.shareFolder(id)
 	if e != nil {
 		return e

@@ -1,0 +1,293 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:singverse:share:4",
+  "title": "SingVerse share container v4",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/index"
+    },
+    {
+      "$ref": "#/$defs/part"
+    }
+  ],
+  "$defs": {
+    "index": {
+      "type": "object",
+      "properties": {
+        "format": {
+          "const": "singverse-share-set"
+        },
+        "version": {
+          "const": 4
+        },
+        "metadataSchema": {
+          "const": "1.0"
+        },
+        "collectionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$"
+        },
+        "collectionRevision": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$"
+        },
+        "baseId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$"
+            },
+            {
+              "const": ""
+            }
+          ]
+        },
+        "state": {
+          "const": "SUCCEEDED"
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^part-[0-9]{6}\\.zip$"
+          },
+          "maxItems": 4096,
+          "uniqueItems": true
+        },
+        "deletions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^deletions-[0-9]{6}\\.json$"
+          },
+          "maxItems": 4096,
+          "uniqueItems": true
+        },
+        "contentDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "files": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 33554432
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "sha256",
+              "size"
+            ]
+          },
+          "maxProperties": 8192,
+          "propertyNames": {
+            "pattern": "^(?:part-[0-9]{6}\\.zip|deletions-[0-9]{6}\\.json)$"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "format",
+        "version",
+        "metadataSchema",
+        "collectionId",
+        "collectionRevision",
+        "id",
+        "baseId",
+        "state",
+        "total",
+        "parts",
+        "deletions",
+        "contentDigest",
+        "files"
+      ]
+    },
+    "part": {
+      "type": "object",
+      "properties": {
+        "format": {
+          "const": "singverse-media-index"
+        },
+        "version": {
+          "const": 4
+        },
+        "metadataSchema": {
+          "const": "1.0"
+        },
+        "collectionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$"
+        },
+        "collectionRevision": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "setId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$"
+        },
+        "baseId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$"
+            },
+            {
+              "const": ""
+            }
+          ]
+        },
+        "part": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entry"
+          },
+          "maxItems": 5000
+        },
+        "resources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/resource"
+          },
+          "maxItems": 5000
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "format",
+        "version",
+        "metadataSchema",
+        "collectionId",
+        "collectionRevision",
+        "setId",
+        "baseId",
+        "part",
+        "entries",
+        "resources"
+      ]
+    },
+    "entry": {
+      "type": "object",
+      "properties": {
+        "rootId": {
+          "const": "media"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "mediaId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$"
+        },
+        "size": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "documents": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 256,
+          "items": {
+            "$ref": "urn:singverse:metadata:1.0"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "rootId",
+        "path",
+        "mediaId",
+        "documents"
+      ]
+    },
+    "resource": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "mime": {
+          "enum": [
+            "image/jpeg",
+            "image/png",
+            "application/json",
+            "text/plain",
+            "application/x-subrip",
+            "text/vtt",
+            "image/webp"
+          ]
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 33554432
+        },
+        "chunks": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 16777216
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "size"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "mime",
+        "size",
+        "chunks"
+      ]
+    }
+  }
+}

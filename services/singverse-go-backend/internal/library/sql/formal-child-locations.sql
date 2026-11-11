@@ -1,0 +1,1 @@
+SELECT l.id,l.media_id,l.source_id,l.relative_path,l.state FROM metadata_location l WHERE l.media_id=? UNION ALL SELECT l.id,l.media_id,l.source_id,l.relative_path,l.state FROM metadata_location l JOIN (SELECT id FROM metadata_document WHERE parent_id=? AND suppressed=0 ORDER BY id LIMIT ? OFFSET ?) p ON p.id=l.media_id

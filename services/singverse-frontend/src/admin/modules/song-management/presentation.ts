@@ -47,7 +47,7 @@ export function sharedIdentity(song: MediaSong): boolean {
 export function identityReviewed(song: MediaSong): boolean {
   const metadata = song.metadata
   return !!metadata && !metadata.stale && !sharedIdentity(song) && metadata.fields.includes('title') && metadata.fields.includes('artists')
-    && !!metadata.track.title?.trim() && metadata.track.artists.some(artist => !!artist.trim())
+    && !!metadata.track.title?.trim() && metadata.track.artists?.some(artist => !!artist.trim())
 }
 export function needsSongReview(song: MediaSong): boolean { return sharedIdentity(song) || song.result.needsReview && !identityReviewed(song) }
 export function songReviewLabel(song: MediaSong): string {

@@ -3,11 +3,14 @@ package library
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -93,6 +96,7 @@ func (s *Service) scanLocal(parent context.Context, sourceID string) (result Sca
 		}()
 	}
 	songs := []Song{}
+	localKeys := map[string]string{}
 	visited := 0
 	e = filepath.WalkDir(src.Location, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -155,7 +159,27 @@ func (s *Service) scanLocal(parent context.Context, sourceID string) (result Sca
 		if err != nil {
 			return err
 		}
-		song := Song{ID: songID(sourceID, relative), SourceID: sourceID, SourceName: src.Name, RelativePath: relative, FileSize: ptr(info.Size()), ModifiedAt: ptr(info.ModTime().UTC().Format(time.RFC3339Nano)), ScannedAt: result.ScannedAt, ParserProfileID: p.ID, ParserRevision: st.revision, Result: parsed.Result, pathHash: hash(relative)}
+		id, e := s.indexIdentity(ctx, s.db, sourceID, relative)
+		if e != nil {
+			return e
+		}
+		key := ""
+		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+			key = fmt.Sprintf("%d:%d", stat.Dev, stat.Ino)
+		}
+		if key != "" {
+			if existing, e := s.formal.LocalMedia(ctx, s.db, sourceID, key); e != nil {
+				return e
+			} else if len(existing) == 1 {
+				var observation map[string]any
+				_ = json.Unmarshal([]byte(existing[0].Observation), &observation)
+				if decimalNumber(observation["size"]) == float64(info.Size()) && observation["modifiedAt"] == info.ModTime().UTC().Format(time.RFC3339Nano) {
+					id = existing[0].MediaID
+				}
+			}
+		}
+		localKeys[id] = key
+		song := Song{ID: id, SourceID: sourceID, SourceName: src.Name, RelativePath: relative, FileSize: ptr(info.Size()), ModifiedAt: ptr(info.ModTime().UTC().Format(time.RFC3339Nano)), ScannedAt: result.ScannedAt, ParserProfileID: p.ID, ParserRevision: st.revision, Result: parsed.Result, pathHash: hash(relative)}
 		if parsed.SelectedRule != nil {
 			song.SelectedRuleID = &parsed.SelectedRule.ID
 			result.MatchedSongs++
@@ -224,16 +248,29 @@ func (s *Service) scanLocal(parent context.Context, sourceID string) (result Sca
 		if e = changed(tx.ExecContext(ctx, s.q["source-touch"], now(), sourceID, src.UpdatedAt)); e != nil {
 			return e
 		}
-		if _, e = tx.ExecContext(ctx, s.q["song-delete-source"], sourceID); e != nil {
+		if _, e = tx.ExecContext(ctx, s.q["song-local-missing"], sourceID); e != nil {
 			return e
 		}
 		for _, song := range songs {
-			if _, e = tx.ExecContext(ctx, s.q["song-insert"], song.ID, song.SourceID, song.RelativePath, song.pathHash, song.FileSize, song.ModifiedAt, song.ScannedAt, song.ParserProfileID, song.ParserRevision, song.SelectedRuleID, encode(song.Result), song.Result.NeedsReview, song.embedded); e != nil {
+			exists := false
+			var current string
+			e = tx.QueryRowContext(ctx, s.q["song-import-existing"], song.ID, song.ID).Scan(&current)
+			if e == nil {
+				exists = true
+			} else if !errors.Is(e, sql.ErrNoRows) {
 				return e
 			}
-		}
-		if _, e = tx.ExecContext(ctx, s.q["song-prune-metadata"], sourceID, sourceID); e != nil {
-			return e
+			if exists {
+				_, e = tx.ExecContext(ctx, s.q["song-upsert-local"], song.RelativePath, song.pathHash, song.FileSize, song.ModifiedAt, song.ScannedAt, song.ParserProfileID, song.ParserRevision, song.SelectedRuleID, encode(song.Result), song.Result.NeedsReview, song.embedded, song.ID)
+			} else {
+				_, e = tx.ExecContext(ctx, s.q["song-insert"], song.ID, song.SourceID, song.RelativePath, song.pathHash, song.FileSize, song.ModifiedAt, song.ScannedAt, song.ParserProfileID, song.ParserRevision, song.SelectedRuleID, encode(song.Result), song.Result.NeedsReview, song.embedded)
+			}
+			if e != nil {
+				return e
+			}
+			if e = s.formal.Location(ctx, tx, song.ID, sourceID, song.RelativePath, localKeys[song.ID], "PRESENT", map[string]any{"size": song.FileSize, "modifiedAt": song.ModifiedAt}); e != nil {
+				return e
+			}
 		}
 		if e = s.indexChanged(ctx, tx, sourceID); e != nil {
 			return e

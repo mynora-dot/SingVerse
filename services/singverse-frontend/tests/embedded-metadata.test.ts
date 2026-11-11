@@ -8,6 +8,7 @@ import { embeddedMetadata, type EmbeddedSummary } from '../src/admin/modules/med
 import type { MediaSource } from '../src/admin/modules/media-library/types'
 import { media } from '../src/admin/modules/media-library/api/media'
 import { authRequest } from '../src/admin/core/auth/api'
+import { shareImports, type ShareImportJob } from '../src/admin/modules/media-library/api/shareImports'
 vi.mock('../src/admin/modules/media-library/api/embeddedMetadata', async importOriginal => {
   const original = await importOriginal<typeof import('../src/admin/modules/media-library/api/embeddedMetadata')>()
   return { ...original, embeddedMetadata: { summary: vi.fn(), configure: vi.fn(), confirmEmpty: vi.fn(), detail: vi.fn(), refresh: vi.fn() } }
@@ -93,6 +94,18 @@ it('ZIP 导入使用当前来源、会话与 CSRF，并刷新状态', async () =
     expect(wrapper.text()).toContain('上传已完成，可以关闭页面')
     expect(wrapper.text()).not.toContain('自动跳过')
   } finally { vi.unstubAllGlobals() }
+})
+
+it('已有歌曲的来源上传期间也不能通过查看歌曲离开，面板销毁后解除离页保护', async () => {
+  let finish!: (value: ShareImportJob) => void
+  vi.spyOn(shareImports, 'upload').mockReturnValue(new Promise(resolve => { finish = resolve }))
+  wrapper = mount(WebDavMetadataDialog, { props: { source, initialImportFile: new File(['zip'], '资料.zip') }, global: { stubs: { teleport: true } } })
+  await flushPromises()
+  expect(wrapper.findAllComponents(ElButton).find(button => button.text() === '查看歌曲')!.props('disabled')).toBe(true)
+  expect(wrapper.emitted('uploading')?.at(-1)).toEqual([true])
+  wrapper.unmount()
+  expect(wrapper.emitted('uploading')?.at(-1)).toEqual([false])
+  finish({ id: 'late', state: 'PARSING' } as ShareImportJob); await flushPromises()
 })
 
 it('主区域试提取一首不会开启整库自动提取，分享不再暴露旧版入口', async () => {

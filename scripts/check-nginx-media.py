@@ -1,6 +1,7 @@
 """Check actual media streaming through Nginx with disposable, isolated fixtures."""
 
 import argparse
+from http.client import HTTPConnection
 import json
 from pathlib import Path
 import socket
@@ -18,8 +19,9 @@ const pending = new Map();
 http.createServer((req, res) => {
   const url = new URL(req.url, 'http://fixture');
   const key = url.searchParams.get('check');
-  if (req.method === 'POST' && (/^\/api\/v1\/artists\/(artwork-batches|categories)$/.test(url.pathname) ||
-      /^\/api\/v1\/media-sources\/[A-Za-z0-9-]+\/embedded-metadata\/(share|import-jobs)$/.test(url.pathname))) {
+  if (['POST', 'PATCH'].includes(req.method) && (/^\/api\/v1\/artists\/(artwork-batches|categories)$/.test(url.pathname) ||
+      /^\/api\/v1\/media-sources\/[A-Za-z0-9-]+\/embedded-metadata\/(share|import-jobs)$/.test(url.pathname) ||
+      /^\/api\/v1\/metadata\/(assets|entities(?:\/[A-Za-z0-9-]+)?|songs\/[A-Za-z0-9-]+\/covers\/upload)$/.test(url.pathname))) {
     const chunks = [];
     req.on('data', chunk => chunks.push(chunk));
     req.on('end', () => {
@@ -125,6 +127,35 @@ def main():
           raise AssertionError(f'{path}: oversized body was accepted')
         except HTTPError as response:
           assert response.code == 413, path
+      # Legal originals and lyrics must survive the production proxy. These
+      # disposable routes count bytes only and never write an application DB.
+      formal_uploads = [
+        ('/api/v1/metadata/assets', 'POST', 32 * 1024 * 1024, 'image/png'),
+        ('/api/v1/metadata/songs/song/covers/upload', 'POST', 32 * 1024 * 1024 + 128 * 1024,
+         'multipart/form-data; boundary=isolated'),
+        ('/api/v1/metadata/entities/song', 'PATCH', 256 * 1024, 'application/json'),
+      ]
+      for path, method, size, mime in formal_uploads:
+        request = Request(base + path, data=b'x' * size, method=method,
+          headers={'Content-Type': mime, 'X-CSRF-Token': 'isolated-fixture', 'Origin': base})
+        with urlopen(request, timeout=10) as response:
+          assert json.load(response) == {'bytes': size, 'csrf': 'isolated-fixture', 'origin': base}, path
+      for path, method, size in [
+        ('/api/v1/metadata/assets', 'POST', 32 * 1024 * 1024 + 1),
+        ('/api/v1/metadata/songs/song/covers/upload', 'POST', 33 * 1024 * 1024 + 1),
+        ('/api/v1/metadata/entities/song', 'PATCH', 16 * 1024 * 1024 + 1),
+      ]:
+        # Nginx rejects an excessive Content-Length before receiving the body.
+        connection = HTTPConnection(base.removeprefix('http://'), timeout=2)
+        try:
+          connection.putrequest(method, path)
+          connection.putheader('Content-Length', str(size))
+          connection.endheaders()
+          response = connection.getresponse()
+          assert response.status == 413, path
+          response.read()
+        finally:
+          connection.close()
       paths = [
         '/api/v1/media-songs/song/video', '/api/v1/tv/media/song',
         '/api/v1/media-songs/song/accompaniment/job',
@@ -163,7 +194,7 @@ def main():
           assert response.status == 206 and response.read() == b'', path
           assert response.headers['Content-Length'] == '1024', path
       print(json.dumps({'routes': len(paths), 'get_head_checks': len(paths) * 2,
-        'artist_batch_limit_checks': 5, 'metadata_upload_checks': 2,
+        'artist_batch_limit_checks': 5, 'metadata_upload_checks': 2, 'formal_metadata_body_checks': 6,
         'first_32_bytes_ms': [round(value, 2) for value in timings]}, ensure_ascii=False))
   finally:
     for container in reversed(containers):

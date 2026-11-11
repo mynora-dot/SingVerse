@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "1.0",
+  "id": "2f0ba825-b0f7-49f8-9d8d-d14a5e24c004",
+  "type": "VARIANT",
+  "revision": "1",
+  "fields": {
+    "kind": "LIVE",
+    "timelineDurationMs": 245120,
+    "lyrics": {
+      "timing": "milliseconds",
+      "lines": [
+        {
+          "time": 0,
+          "text": "示例第一句"
+        },
+        {
+          "time": 1250,
+          "text": "示例第二句"
+        }
+      ]
+    }
+  },
+  "states": {
+    "kind": {
+      "origin": {
+        "kind": "MANUAL"
+      },
+      "decision": "SET",
+      "status": "PRESENT",
+      "revision": "1"
+    },
+    "timelineDurationMs": {
+      "origin": {
+        "kind": "MANUAL"
+      },
+      "decision": "SET",
+      "status": "PRESENT",
+      "revision": "1"
+    },
+    "lyrics": {
+      "origin": {
+        "kind": "MANUAL"
+      },
+      "decision": "SET",
+      "status": "PRESENT",
+      "revision": "1"
+    }
+  },
+  "parentId": "2f0ba825-b0f7-49f8-9d8d-d14a5e24c003"
+}

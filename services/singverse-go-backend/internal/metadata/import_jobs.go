@@ -1,9 +1,7 @@
 package metadata
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -15,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/library"
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/metastandard"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/store"
 )
 
@@ -32,8 +31,8 @@ func (s *Service) uploadImport(c *gin.Context) {
 		s.fail(c, absent(e, "媒体来源不存在"))
 		return
 	}
-	if text(source["source_type"]) != "WEBDAV" {
-		s.fail(c, bad("请选择自己的 WebDAV 媒体来源"))
+	if text(source["source_type"]) != "WEBDAV" && text(source["source_type"]) != "LOCAL" {
+		s.fail(c, bad("请选择自己的媒体来源"))
 		return
 	}
 	id := uuid()
@@ -131,6 +130,10 @@ func (s *Service) importJob(ctx context.Context, sourceID, id string) (map[strin
 			break
 		}
 		url, e := library.MediaURL(text(source["location"]), text(entry["relative_path"]))
+		if text(source["source_type"]) == "LOCAL" {
+			url = filepath.Join(text(source["location"]), filepath.FromSlash(text(entry["relative_path"])))
+			e = nil
+		}
 		if e != nil {
 			return nil, e
 		}
@@ -345,11 +348,15 @@ func (s *Service) importAction(c *gin.Context) {
 	s.respondImport(c, c.Param("id"), c.Param("jobId"), 200)
 }
 func jobManifest(job map[string]any) map[string]any {
-	version := int64(2)
-	if text(job["collection_id"]) != "" {
+	version := number(job["package_version"])
+	if version == 0 {
 		version = 3
 	}
-	return map[string]any{"version": version, "collectionId": job["collection_id"], "collectionRevision": job["collection_revision"], "setId": job["snapshot_id"], "baseId": job["base_id"]}
+	rev := any(job["collection_revision"])
+	if version == 4 {
+		rev = strconv.FormatInt(number(job["collection_revision"]), 10)
+	}
+	return map[string]any{"version": version, "collectionId": job["collection_id"], "collectionRevision": rev, "setId": job["snapshot_id"], "baseId": job["base_id"], "contentDigest": job["content_digest"]}
 }
 func (s *Service) validateImportBinding(ctx context.Context, tx store.DBTX, job map[string]any) error {
 	source, e := s.row(ctx, tx, "source", map[string]any{"id": job["source_id"]})
@@ -462,10 +469,11 @@ func (s *Service) prepareImport(ctx context.Context, job map[string]any) error {
 			return e
 		})
 	}
-	e = visitSharePackage(filepath.Join(folder, "bundle.zip"), func(doc map[string]any) error {
+	e = visitValidatedShareFile(filepath.Join(folder, "bundle.zip"), func(doc map[string]any) error {
 		if e := ctx.Err(); e != nil {
 			return e
 		}
+		doc["_leaseOwner"] = id
 		if e := s.normalizeSharedAssets(doc); e != nil {
 			return e
 		}
@@ -518,6 +526,9 @@ func (s *Service) prepareImport(ctx context.Context, job map[string]any) error {
 		if manifest["completeSnapshot"] == true {
 			complete = 1
 		}
+		if _, err := s.exec(ctx, tx, "v4-workflow-version", map[string]any{"id": id, "version": number(manifest["version"]), "digest": text(manifest["contentDigest"])}); err != nil {
+			return err
+		}
 		if _, e = s.exec(ctx, tx, "workflow-manifest", map[string]any{"id": id, "collectionId": collection, "revision": revision, "snapshotId": text(manifest["setId"]), "baseId": text(manifest["baseId"]), "deletions": number(manifest["deletionHints"]), "complete": complete}); e != nil {
 			return e
 		}
@@ -562,7 +573,15 @@ func (s *Service) applyImport(ctx context.Context, job map[string]any) error {
 					n := number(entry["file_size"])
 					size = &n
 				}
-				songID, added, e := s.library.ImportSong(ctx, tx, text(job["source_id"]), text(entry["relative_path"]), size)
+				snapshot := map[string]any{}
+				if e = decode(entry["snapshot_json"], &snapshot); e != nil {
+					return e
+				}
+				preferred, e := s.preferredMedia(ctx, tx, text(job["source_id"]), text(job["collection_id"]), snapshot)
+				if e != nil {
+					return e
+				}
+				songID, added, e := s.library.ImportPortableSong(ctx, tx, text(job["source_id"]), text(entry["relative_path"]), size, preferred)
 				if e != nil {
 					return e
 				}
@@ -580,10 +599,6 @@ func (s *Service) applyImport(ctx context.Context, job map[string]any) error {
 						}
 						continue
 					}
-				}
-				snapshot := map[string]any{}
-				if e = decode(entry["snapshot_json"], &snapshot); e != nil {
-					return e
 				}
 				outcome, diff, e := s.mergeShared(ctx, tx, songID, snapshot, text(job["collection_id"]), number(job["collection_revision"]), size)
 				if e != nil {
@@ -692,6 +707,9 @@ func (s *Service) verifyImport(ctx context.Context, job map[string]any) error {
 					if _, e = s.exec(ctx, tx, "shared-verification", a); e != nil {
 						return e
 					}
+					if e = s.library.Formal().Location(ctx, tx, text(entry["song_id"]), text(job["source_id"]), text(entry["relative_path"]), "", state, map[string]any{"size": size}); e != nil {
+						return e
+					}
 				}
 				if e = s.importCounters(ctx, tx, id); e != nil {
 					return e
@@ -732,6 +750,9 @@ func visitSharePackage(filename string, visit func(map[string]any) error) error 
 	if e != nil {
 		return e
 	}
+	if st.Size() > uploadLimit {
+		return &problem{413, "分享包超过 8 GiB"}
+	}
 	z, e := checkedZip(f, st.Size(), 30001)
 	if e != nil {
 		return e
@@ -758,13 +779,20 @@ func visitSharePackage(filename string, visit func(map[string]any) error) error 
 	if e != nil {
 		return e
 	}
-	index := map[string]any{}
-	d := json.NewDecoder(bytes.NewReader(b))
-	d.UseNumber()
-	if d.Decode(&index) != nil || index["format"] != "singverse-share-set" || (number(index["version"]) != 2 && number(index["version"]) != 3) {
+	rawIndex, e := metastandard.Parse(b)
+	if e != nil {
+		return bad(e.Error())
+	}
+	index, ok := rawIndex.(map[string]any)
+	if !ok || index["format"] != "singverse-share-set" || (number(index["version"]) != 2 && number(index["version"]) != 3 && number(index["version"]) != 4) {
 		return bad("分享清单无效")
 	}
-	if number(index["version"]) == 3 && text(index["state"]) != "SUCCEEDED" {
+	if number(index["version"]) == 4 {
+		if e = checkV4Index(index); e != nil {
+			return e
+		}
+	}
+	if number(index["version"]) >= 3 && text(index["state"]) != "SUCCEEDED" {
 		return bad("资料快照未完整导出，请重新获取完整 ZIP")
 	}
 	expected := []string{}
@@ -823,8 +851,14 @@ func visitSharePackage(filename string, visit func(map[string]any) error) error 
 		if e != nil {
 			return e
 		}
-		var hint map[string]any
-		if json.Unmarshal(raw, &hint) != nil || hint["advisoryOnly"] != true {
+		if number(index["version"]) == 4 {
+			if e = checkV4Part(index, file.Name, raw); e != nil {
+				return e
+			}
+		}
+		parsedHint, parseErr := metastandard.Parse(raw)
+		hint, validHint := parsedHint.(map[string]any)
+		if parseErr != nil || !validHint || hint["advisoryOnly"] != true {
 			return bad("删除提示无效")
 		}
 		paths, ok := hint["paths"].([]any)
@@ -850,6 +884,11 @@ func visitSharePackage(filename string, visit func(map[string]any) error) error 
 		if e != nil {
 			return e
 		}
+		if number(index["version"]) == 4 {
+			if e = checkV4Part(index, file.Name, b); e != nil {
+				return e
+			}
+		}
 		doc, e := readManifest(b)
 		if e != nil {
 			return e
@@ -857,8 +896,11 @@ func visitSharePackage(filename string, visit func(map[string]any) error) error 
 		if number(index["version"]) != number(doc["version"]) {
 			return bad("资料分包版本不一致")
 		}
-		if number(index["version"]) == 3 && (text(index["collectionId"]) != text(doc["collectionId"]) || number(index["collectionRevision"]) != number(doc["collectionRevision"]) || text(index["id"]) != text(doc["setId"])) {
+		if number(index["version"]) >= 3 && (text(index["collectionId"]) != text(doc["collectionId"]) || number(index["collectionRevision"]) != number(doc["collectionRevision"]) || text(index["id"]) != text(doc["setId"])) {
 			return bad("资料分包与快照标识不匹配")
+		}
+		if number(index["version"]) == 4 {
+			doc["contentDigest"] = index["contentDigest"]
 		}
 		doc["deletionHints"] = deletionCount
 		doc["completeSnapshot"] = true
@@ -870,7 +912,7 @@ func visitSharePackage(filename string, visit func(map[string]any) error) error 
 		}
 	}
 	if len(expected) == 0 {
-		return visit(map[string]any{"format": "singverse-media-index", "version": index["version"], "collectionId": index["collectionId"], "collectionRevision": index["collectionRevision"], "setId": index["id"], "baseId": index["baseId"], "entries": []any{}, "deletionHints": deletionCount, "completeSnapshot": true})
+		return visit(map[string]any{"format": "singverse-media-index", "version": index["version"], "collectionId": index["collectionId"], "collectionRevision": index["collectionRevision"], "setId": index["id"], "baseId": index["baseId"], "entries": []any{}, "deletionHints": deletionCount, "completeSnapshot": true, "metadataSchema": index["metadataSchema"], "contentDigest": index["contentDigest"]})
 	}
 	return nil
 }
@@ -983,6 +1025,9 @@ func (s *Service) cleanupImports(ctx context.Context, before string) error {
 			if _, e = s.exec(ctx, tx, "workflow-clearEntries", map[string]any{"id": job["id"]}); e != nil {
 				return e
 			}
+			if _, e = s.exec(ctx, tx, "v4-release-leases", map[string]any{"importId": job["id"], "exportId": ""}); e != nil {
+				return e
+			}
 			_, e = s.exec(ctx, tx, "workflow-delete", map[string]any{"id": job["id"]})
 			return e
 		})
@@ -1017,6 +1062,35 @@ func (s *Service) cleanupImports(ctx context.Context, before string) error {
 		}
 		if scalar(rows) == 0 {
 			if e = os.RemoveAll(filepath.Join(folder, child.Name())); e != nil {
+				return e
+			}
+		}
+	}
+	chunks, e := managedDirectory(s.cfg.MetadataPath, "import-chunks")
+	if e != nil {
+		return e
+	}
+	children, e = os.ReadDir(chunks)
+	if e != nil {
+		return e
+	}
+	for i, child := range children {
+		if i >= 1000 {
+			break
+		}
+		if !uuidPattern.MatchString(child.Name()) || !child.IsDir() || child.Type()&os.ModeSymlink != 0 {
+			continue
+		}
+		st, e := child.Info()
+		if e != nil || st.ModTime().After(cutoff) {
+			continue
+		}
+		rows, e := s.rows(ctx, s.db, "v4-chunk-active", map[string]any{"snapshotId": child.Name()})
+		if e != nil {
+			return e
+		}
+		if scalar(rows) == 0 {
+			if e = os.RemoveAll(filepath.Join(chunks, child.Name())); e != nil {
 				return e
 			}
 		}

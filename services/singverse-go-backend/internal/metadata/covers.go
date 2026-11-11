@@ -9,8 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/store"
 	"image"
-	"image/jpeg"
-	"image/png"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net"
 	"net/http"
@@ -19,6 +19,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/metastandard"
 )
 
 var coverHosts = map[string][]string{"NETEASE": {"music.126.net"}, "QQ": {"y.gtimg.cn"}, "KUGOU": {"kugou.com", "kugoucdn.com", "kgimg.com"}, "KUWO": {"img1.kuwo.cn", "img2.kuwo.cn", "img3.kuwo.cn", "img4.kuwo.cn"}, "QISHUI": {"p3-luna.douyinpic.com", "p6-luna.douyinpic.com"}}
@@ -30,36 +32,15 @@ type Cover struct {
 }
 
 func validateCover(b []byte) (Cover, error) {
-	if len(b) == 0 || len(b) > 2_000_000 {
+	if len(b) == 0 || len(b) > remoteCoverLimit {
 		return Cover{}, missing("没有可用的封面")
 	}
 	cfg, format, e := image.DecodeConfig(bytes.NewReader(b))
-	if e != nil || (format != "jpeg" && format != "png") || cfg.Width < 1 || cfg.Height < 1 || cfg.Width > 4096 || cfg.Height > 4096 {
+	if e != nil || (format != "jpeg" && format != "png" && format != "webp") || cfg.Width < 1 || cfg.Height < 1 || int64(cfg.Width)*int64(cfg.Height) > metastandard.MaxImagePixels {
 		return Cover{}, missing("没有可用的封面")
 	}
 	mime := "image/" + format
 	return Cover{b, mime, cfg.Width, cfg.Height}, nil
-}
-func reencodeCover(b []byte) (Cover, error) {
-	c, e := validateCover(b)
-	if e != nil {
-		return c, e
-	}
-	decoded, format, e := image.Decode(bytes.NewReader(b))
-	if e != nil {
-		return Cover{}, bad("图片无法解码")
-	}
-	var out bytes.Buffer
-	if format == "png" {
-		e = png.Encode(&out, decoded)
-	} else {
-		e = jpeg.Encode(&out, decoded, &jpeg.Options{Quality: 90})
-	}
-	if e != nil || out.Len() > 2_000_000 {
-		return Cover{}, bad("图片重新编码后超过 2 MB，请压缩后重试")
-	}
-	c.Bytes = out.Bytes()
-	return c, nil
 }
 func atomicWrite(target string, b []byte) error {
 	dir := filepath.Dir(target)
@@ -87,7 +68,7 @@ func atomicWrite(target string, b []byte) error {
 }
 func readImage(path string) (Cover, error) {
 	st, e := os.Lstat(path)
-	if e != nil || !st.Mode().IsRegular() || st.Size() > 2_000_000 {
+	if e != nil || !st.Mode().IsRegular() || st.Size() > remoteCoverLimit {
 		return Cover{}, missing("封面文件不可用")
 	}
 	f, e := os.Open(path)
@@ -95,7 +76,7 @@ func readImage(path string) (Cover, error) {
 		return Cover{}, missing("封面文件不可用")
 	}
 	defer f.Close()
-	b, e := io.ReadAll(io.LimitReader(f, 2_000_001))
+	b, e := io.ReadAll(io.LimitReader(f, remoteCoverLimit+1))
 	if e != nil {
 		return Cover{}, missing("封面文件不可用")
 	}
@@ -127,9 +108,9 @@ func (s *Service) assetImage(c *gin.Context) {
 }
 func (s *Service) upload(c *gin.Context) {
 	ctx := c.Request.Context()
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2_100_000)
-	if e := c.Request.ParseMultipartForm(2_100_000); e != nil {
-		s.fail(c, bad("请选择 2 MB 以内的 JPEG 或 PNG 图片"))
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, remoteCoverLimit+128*1024)
+	if e := c.Request.ParseMultipartForm(remoteCoverLimit + 128*1024); e != nil {
+		s.fail(c, bad("请选择 32 MiB 以内的 JPEG 或 PNG 图片"))
 		return
 	}
 	if c.Request.MultipartForm != nil {
@@ -153,16 +134,16 @@ func (s *Service) upload(c *gin.Context) {
 	}
 	defer file.Close()
 	mime := header.Header.Get("Content-Type")
-	if header.Size == 0 || header.Size > 2_000_000 || (mime != "image/png" && mime != "image/jpeg") {
-		s.fail(c, bad("请选择 2 MB 以内的 JPEG 或 PNG 图片"))
+	if header.Size == 0 || header.Size > remoteCoverLimit || (mime != "image/png" && mime != "image/jpeg") {
+		s.fail(c, bad("请选择 32 MiB 以内的 JPEG 或 PNG 图片"))
 		return
 	}
-	b, e := io.ReadAll(io.LimitReader(file, 2_000_001))
+	b, e := io.ReadAll(io.LimitReader(file, remoteCoverLimit+1))
 	if e != nil {
 		s.fail(c, bad("封面读取失败"))
 		return
 	}
-	cover, e := reencodeCover(b)
+	cover, e := validateRemoteCover(b)
 	if e != nil {
 		s.fail(c, bad("图片内容无效，请上传可解码的 JPEG 或 PNG"))
 		return
@@ -348,11 +329,26 @@ func (s *Service) candidateCover(c *gin.Context) {
 	imageResponse(c, cover)
 }
 func (s *Service) SongCover(ctx context.Context, id string) (Cover, error) {
+	if cover, found, e := s.formalCover(ctx, id); found {
+		return cover, e
+	}
+	if _, err := s.PersistCover(ctx, id); err != nil {
+		return Cover{}, err
+	}
+	if cover, found, err := s.formalCover(ctx, id); found {
+		return cover, err
+	}
 	song, e := s.song(ctx, s.db, id)
 	if e != nil {
 		return Cover{}, e
 	}
 	a := metaOf(song)
+	if a == nil || a.Track.CoverURL == nil {
+		a, e = s.legacyApplied(ctx, s.db, id)
+		if e != nil {
+			return Cover{}, e
+		}
+	}
 	if a == nil || !contains(a.Fields, "cover") || a.Track.CoverURL == nil {
 		return Cover{}, missing("没有可用的封面")
 	}
@@ -401,6 +397,13 @@ func (s *Service) songCover(c *gin.Context) {
 	if e != nil {
 		s.fail(c, e)
 		return
+	}
+	if c.Query("variant") == "thumbnail" {
+		cover, e = s.thumbnail(cover)
+		if e != nil {
+			s.fail(c, e)
+			return
+		}
 	}
 	imageResponse(c, cover)
 }

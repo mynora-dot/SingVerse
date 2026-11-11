@@ -13,10 +13,14 @@ import LocalFolderPicker from '../components/LocalFolderPicker.vue'
 import SourceWorkspaceNav from '../components/SourceWorkspaceNav.vue'
 import { lx } from '../../lx-downloads/api'
 import { embeddedMetadata, type EmbeddedSummary } from '../api/embeddedMetadata'
+import { validateSharePackage } from '../api/shareImports'
 const FilenameProfilesView = defineAsyncComponent(() => import('../../filename-parser/views/FilenameProfilesView.vue'))
 const FilenameParserView = defineAsyncComponent(() => import('../../filename-parser/views/FilenameParserView.vue'))
 const metadataSource = ref<MediaSource | null>(null)
+const metadataImportFile = ref<File>()
+const metadataUploading = ref(false)
 const importMode = ref(false)
+const importFile = ref<File>()
 const summaries = reactive<Record<string, EmbeddedSummary | undefined>>({})
 const ingests = reactive<Record<string, { state: string; error?: string } | undefined>>({})
 const router = useRouter()
@@ -34,6 +38,17 @@ function confirmFolder(path: string) { draft.location = path; picker.value = fal
 function changeType(type: SourceType) {
   if (editing.value || saving.value || draft.type === type) return
   Object.assign(draft, { autoExtractEmbedded: false, type, location: '', username: '', password: '', useForLxDownloads: false }); clearPassword.value = false
+  importMode.value = false; importFile.value = undefined
+}
+function changeImportMode() {
+  importFile.value = undefined; formError.value = ''
+  if (importMode.value) { draft.autoExtractEmbedded = false; draft.scanEnabled = false }
+}
+function chooseImportFile(event: Event) {
+  const input = event.target as HTMLInputElement, file = input.files?.[0]; input.value = ''
+  if (!file || saving.value) return
+  try { validateSharePackage(file); importFile.value = file; formError.value = '' }
+  catch (e) { importFile.value = undefined; formError.value = e instanceof Error ? e.message : '无法读取资料包' }
 }
 const loading = ref(false), saving = ref(false), loaded = ref(false), dialog = ref(false)
 const error = ref(''), formError = ref(''), editing = ref<MediaSource | null>(null), clearPassword = ref(false)
@@ -43,7 +58,7 @@ const workbenchProfileId = ref('default')
 const workbench = ref<{ canLeave: () => Promise<boolean> }>()
 const editorBack = ref<InstanceType<typeof ElButton>>()
 const formBaseline = ref('')
-const formSignature = computed(() => JSON.stringify({ ...draft, clearPassword: clearPassword.value }))
+const formSignature = computed(() => JSON.stringify({ ...draft, clearPassword: clearPassword.value, importMode: importMode.value, importFile: importFile.value ? [importFile.value.name, importFile.value.size, importFile.value.lastModified] : null }))
 const formDirty = computed(() => dialog.value && formSignature.value !== formBaseline.value)
 const profileWorkspace = ref<ParserWorkspace | null>(null), profilesLoading = ref(false), profilesError = ref('')
 const selectedProfile = computed(() => profileWorkspace.value?.profiles.find(p => p.id === draft.parserProfileId))
@@ -132,7 +147,7 @@ async function scan(item: MediaSource) {
 async function showSongs(item: MediaSource) {
   await router.push({ path: '/library/songs', query: { sourceId: item.id } })
 }
-async function load(append = false) {
+async function load(append = false, openLinkedSource = true) {
   const token = ++loadGeneration
   loading.value = true; error.value = ''
   try {
@@ -141,7 +156,7 @@ async function load(append = false) {
     if (!active || token !== loadGeneration) return
     items.value = append ? [...items.value, ...result.items] : result.items
     const selectedSource = route.query.source
-    if (!append && typeof selectedSource === 'string') {
+    if (openLinkedSource && !append && typeof selectedSource === 'string') {
       const selected = items.value.find(item => item.id === selectedSource) ?? await media.get(selectedSource)
       if (!active || token !== loadGeneration) return
       if (!items.value.some(item => item.id === selected.id)) items.value.unshift(selected)
@@ -154,15 +169,17 @@ async function load(append = false) {
 }
 function open(type: SourceType, item?: MediaSource, forImport = false) {
   importMode.value = forImport
+  importFile.value = undefined
   editing.value = item ?? null
   Object.assign(draft, { autoExtractEmbedded: false, scanEnabled: item?.scanEnabled ?? false, scanCron: item?.scanCron ?? '0 3 * * *', name: item?.name ?? '', type, location: item?.location ?? '', username: item?.username ?? '', password: '', parserProfileId: item?.parserProfileId ?? 'default' })
   draft.useForLxDownloads = item?.useForLxDownloads ?? route.query.download === '1'
   advanced.value = false; clearPassword.value = false; formError.value = ''; editorPanel.value = 'source'
   formBaseline.value = formSignature.value; dialog.value = true; void loadProfiles()
 }
-function closed() { if (dialog.value) return; picker.value = false; draft.password = ''; formError.value = ''; editing.value = null; editorPanel.value = 'source' }
+function closed() { if (dialog.value) return; picker.value = false; draft.password = ''; importFile.value = undefined; formError.value = ''; editing.value = null; editorPanel.value = 'source' }
 async function canLeaveWorkbench() { return editorPanel.value === 'source' || !workbench.value || await workbench.value.canLeave() }
 async function canLeaveSource() {
+  if (metadataUploading.value) return false
   if (!dialog.value) return true
   if (saving.value || !await canLeaveWorkbench()) return false
   if (!formDirty.value) return true
@@ -201,6 +218,9 @@ async function returnToProfiles(profileId = workbenchProfileId.value) {
 }
 async function save(startScan = !editing.value && !importMode.value) {
   if (saving.value) return
+  const importing = !editing.value && draft.type === 'WEBDAV' && importMode.value, file = importFile.value
+  if (importing && !file) { formError.value = '请先选择导出的 ZIP 资料包'; return }
+  if (importing) { startScan = false; draft.autoExtractEmbedded = false; draft.scanEnabled = false }
   if (!draft.location.trim()) { formError.value = draft.type === 'LOCAL' ? '请选择歌曲文件夹' : '请填写 WebDAV 目录地址'; return }
   if (profilesLoading.value || profilesError.value || !selectedProfile.value) { formError.value = '请选择有效的解析方案，或重新加载方案列表'; return }
   if (draft.scanEnabled && draft.scanCron.trim().split(/\s+/).length !== 5) { formError.value = '请输入五段 cron：分 时 日 月 周'; return }
@@ -217,10 +237,13 @@ async function save(startScan = !editing.value && !importMode.value) {
     const profileChanged = editing.value && editing.value.parserProfileId !== draft.parserProfileId
     const saved = await media.save({ startScan, ...(!editing.value && draft.type === 'WEBDAV' ? { autoExtractEmbedded: !importMode.value && draft.autoExtractEmbedded } : {}), name: draft.name.trim() || (draft.type === 'LOCAL' ? draft.location.split(/[\\/]/).filter(Boolean).pop() || '本地歌曲' : 'WebDAV 歌曲').slice(0, 100), type: draft.type, location: draft.location, parserProfileId: draft.parserProfileId,
       ...(draft.type === 'LOCAL' ? { useForLxDownloads: draft.useForLxDownloads } : {}),
-      ...(draft.scanEnabled || editing.value?.scanEnabled || editing.value?.scanCron ? { scanEnabled: draft.scanEnabled, scanCron: draft.scanCron.trim() } : {}),
+      ...(importing ? { scanEnabled: false } : draft.scanEnabled || editing.value?.scanEnabled || editing.value?.scanCron ? { scanEnabled: draft.scanEnabled, scanCron: draft.scanCron.trim() } : {}),
       ...(draft.type === 'WEBDAV' ? { username: draft.username,
         password: clearPassword.value ? '' : draft.password || (editing.value ? undefined : '') } : {}) }, editing.value?.id)
-    dialog.value = false; draft.password = ''; ElMessage.success(startScan ? '已保存，后台将自动扫描入库，可以离开页面' : profileChanged ? '已保存解析方案，请重新扫描以更新文件名识别结果' : '媒体库配置已保存'); await load(); if (saved && importMode.value) metadataSource.value = saved
+    if (!active) return
+    dialog.value = false; draft.password = ''; ElMessage.success(importing ? '媒体库已保存，接下来上传资料包并核对路径' : startScan ? '已保存，后台将自动扫描入库，可以离开页面' : profileChanged ? '已保存解析方案，请重新扫描以更新文件名识别结果' : '媒体库配置已保存')
+    if (saved && importing) { metadataImportFile.value = file; metadataSource.value = saved }
+    await load(false, !importing)
   } catch (e) { formError.value = e instanceof Error ? e.message : '保存失败' }
   finally { saving.value = false }
 }
@@ -267,7 +290,7 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
             <div class="source-title"><h2>{{ row.name }}</h2><ElTag v-if="row.useForLxDownloads" type="success" effect="plain">下载保存位置</ElTag><ElTag type="info" effect="plain">{{ row.type === 'LOCAL' ? '本地目录' : 'WebDAV' }}</ElTag></div>
             <p class="source-location">{{ displayLocation(row) }}</p>
             <ElButton class="source-profile-link" text :disabled="profilesLoading" @click="showRecognition(row)">文件名识别：{{ profilesLoading ? '读取中…' : profileName(row.parserProfileId) }} →</ElButton>
-            <p v-if="summaries[row.id]?.quality" class="panel-description">已入库 {{ summaries[row.id]!.quality!.total.toLocaleString() }} 首 · {{ summaries[row.id]!.quality!.identityComplete.toLocaleString() }} 首有歌名和歌手<br>正在完善 {{ (summaries[row.id]!.counts.RUNNING ?? 0) + (summaries[row.id]!.counts.QUEUED ?? 0) }} · 信息不足 {{ summaries[row.id]!.quality!.informationMissing }} · 待核验路径 {{ summaries[row.id]!.quality!.pendingVerification }} · 媒体待处理 {{ summaries[row.id]!.quality!.mediaIssues }}</p>
+            <p v-if="summaries[row.id]?.quality" class="panel-description">已入库 {{ (summaries[row.id]!.quality!.songs ?? summaries[row.id]!.quality!.total).toLocaleString() }} 首 · {{ summaries[row.id]!.quality!.variants ?? summaries[row.id]!.quality!.total }} 个版本 · {{ summaries[row.id]!.quality!.files ?? summaries[row.id]!.quality!.total }} 个文件 · {{ summaries[row.id]!.quality!.identityComplete.toLocaleString() }} 首有歌名和歌手<br>正在完善 {{ (summaries[row.id]!.counts.RUNNING ?? 0) + (summaries[row.id]!.counts.QUEUED ?? 0) }} · 信息不足 {{ summaries[row.id]!.quality!.informationMissing }} · 待核验路径 {{ summaries[row.id]!.quality!.pendingVerification }} · 媒体待处理 {{ summaries[row.id]!.quality!.mediaIssues }}</p>
             <p v-if="ingestActive(row.id)" class="panel-description" role="status">{{ ingests[row.id]?.state === 'QUEUED' ? '已保存，等待后台扫描入库' : '正在后台扫描入库，可以离开页面' }}</p>
             <p v-if="ingests[row.id]?.error" class="scan-error">{{ ingests[row.id]?.error }}</p>
             <div v-if="tasks[row.id]" class="scan-progress" aria-live="polite">
@@ -294,15 +317,15 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
       <ElButton v-if="moreSources" :loading="loading" @click="load(true)">显示更多位置</ElButton>
     </section>
     <p class="feature-note">本地目录优先读取音频与视频内嵌标签，缺失信息用文件名补充；WebDAV 可启用后台内嵌元数据提取，同路径复用缓存。扫描不会修改原文件，不代表已验证可播放。</p>
-    <WebDavMetadataDialog v-if="metadataSource" :source="metadataSource" :import-job-id="typeof route.query.import === 'string' ? route.query.import : undefined" @songs="showSongs(metadataSource!); metadataSource = null" @close="metadataSource = null" @updated="reloadMetadataSource" />
-    <ElDialog v-model="dialog" :title="editorPanel === 'source' ? (editing ? '编辑媒体库' : importMode ? '导入资料包 · 绑定自己的 WebDAV' : '添加媒体库') : `${editing?.name || draft.name || '新来源'} · ${editorPanel === 'profiles' ? '文件名识别' : '自定义规则'}`" :width="editorPanel === 'source' ? 'min(560px, calc(100vw - 32px))' : 'min(1120px, calc(100vw - 32px))'" class="media-dialog" :class="{ 'source-workbench': editorPanel !== 'source' }" :close-on-click-modal="false" :close-on-press-escape="!saving" :show-close="!saving" :before-close="closeSource" @closed="closed">
+    <WebDavMetadataDialog v-if="metadataSource" :source="metadataSource" :initial-import-file="metadataImportFile" :import-job-id="typeof route.query.import === 'string' ? route.query.import : undefined" @uploading="metadataUploading = $event" @file-consumed="metadataImportFile = undefined" @songs="showSongs(metadataSource!); metadataSource = null" @close="metadataSource = null; metadataImportFile = undefined" @updated="reloadMetadataSource" />
+    <ElDialog v-model="dialog" :title="editorPanel === 'source' ? (editing ? '编辑媒体库' : importMode ? '导入资料包 · 绑定自己的媒体目录' : '添加媒体库') : `${editing?.name || draft.name || '新来源'} · ${editorPanel === 'profiles' ? '文件名识别' : '自定义规则'}`" :width="editorPanel === 'source' ? 'min(560px, calc(100vw - 32px))' : 'min(1120px, calc(100vw - 32px))'" class="media-dialog" :class="{ 'source-workbench': editorPanel !== 'source' }" :close-on-click-modal="false" :close-on-press-escape="!saving" :show-close="!saving" :before-close="closeSource" @closed="closed">
       <template v-if="editorPanel !== 'source'">
         <div class="source-workbench-context"><ElButton ref="editorBack" @click="editorPanel === 'rules' ? returnToProfiles() : returnToSource()">{{ editorPanel === 'rules' ? '← 返回识别方案' : '← 返回来源设置' }}</ElButton><p>来源草稿已保留，选好方案后再保存来源。</p></div>
         <FilenameProfilesView v-if="editorPanel === 'profiles'" ref="workbench" embedded :profile-id="workbenchProfileId" @use-profile="returnToSource" @rules="showRules" />
         <FilenameParserView v-else ref="workbench" embedded @profile="returnToProfiles" />
       </template>
       <ElForm v-else label-position="top" @submit.prevent="save()">
-        <div v-if="!editing && !importMode" class="source-types" aria-label="位置类型"><ElButton :type="draft.type === 'LOCAL' ? 'primary' : 'default'" :disabled="saving" @click="changeType('LOCAL')">本地目录</ElButton><ElButton :type="draft.type === 'WEBDAV' ? 'primary' : 'default'" :disabled="saving" @click="changeType('WEBDAV')">WebDAV</ElButton></div>
+        <div v-if="!editing" class="source-types" aria-label="位置类型"><ElButton :type="draft.type === 'LOCAL' ? 'primary' : 'default'" :disabled="saving" @click="changeType('LOCAL')">本地目录</ElButton><ElButton :type="draft.type === 'WEBDAV' ? 'primary' : 'default'" :disabled="saving" @click="changeType('WEBDAV')">WebDAV</ElButton></div>
         <template v-if="draft.type === 'LOCAL'">
           <ElFormItem label="歌曲文件夹" required><div class="folder-selection"><span>{{ draft.location || '尚未选择文件夹' }}</span><ElButton :disabled="saving" @click="chooseFolder">选择文件夹</ElButton></div></ElFormItem>
           <ElFormItem><ElCheckbox v-model="draft.useForLxDownloads" :disabled="saving">用于保存洛雪下载</ElCheckbox><p class="profile-help">仅能指定一个本地媒体库。启用后检查实际写入权限，下载完成自动加入曲库。有未完成任务时不能修改保存位置。</p></ElFormItem>
@@ -315,8 +338,14 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
           <ElCheckbox v-if="editing?.passwordConfigured" v-model="clearPassword" :disabled="saving" @change="draft.password = ''">清除已保存密码</ElCheckbox>
           <p class="muted">凭据仅加密保存在服务端，不会回显。修改地址或账号时需重新填写密码或明确清除。建议使用 HTTPS。OpenList 地址填写 /dav/ 加挂载目录，账号需开启 WebDAV 读取权限；扫描列目录并索引文件名；可按需开启文件内信息读取。目录连接成功不代表媒体可播放。</p>
         </template>
-        <ElCheckbox v-if="!editing && !importMode && draft.type === 'WEBDAV'" v-model="draft.autoExtractEmbedded" :disabled="saving">自动读取文件内的歌曲信息</ElCheckbox>
-        <p v-if="importMode" class="profile-help">保存后先上传资料包并预览路径，不会自动全量扫描或提取。资料保存后在后台核验媒体。</p>
+        <ElFormItem v-if="!editing && draft.type === 'WEBDAV'" label="入库方式" class="source-import">
+          <ElCheckbox v-model="importMode" :disabled="saving" @change="changeImportMode">从已导出的资料包入库</ElCheckbox>
+          <template v-if="importMode">
+            <div class="source-package"><label class="package-choice" :class="{ disabled: saving }">{{ importFile ? '更换资料包' : '选择资料包' }}<input type="file" accept=".zip,application/zip" aria-label="新媒体库资料包" :disabled="saving" @change="chooseImportFile"></label><span v-if="importFile" class="package-name">{{ importFile.name }}</span></div>
+            <p class="profile-help">填写自己的 WebDAV 媒体根目录，选择导出的完整 ZIP。保存后上传资料包，核对路径并确认导入；不会自动扫描或读取媒体内容。资料保存后只核验目录和文件大小。</p>
+          </template>
+          <ElCheckbox v-else v-model="draft.autoExtractEmbedded" :disabled="saving">自动读取文件内的歌曲信息</ElCheckbox>
+        </ElFormItem>
         <p v-if="editing?.type === 'WEBDAV'" class="profile-help">迁移媒体目录并保留已整理资料，请从“完善信息 → 高级选项 → 重新绑定自己的媒体目录”操作。</p>
         <ElFormItem label="名称（可选）"><ElInput v-model="draft.name" placeholder="留空使用文件夹名称" maxlength="100" :disabled="saving" /></ElFormItem>
         <ElFormItem label="文件名识别" for="source-parser-profile" required class="profile-field">
@@ -329,12 +358,12 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
           <p class="profile-help">{{ draft.type === 'LOCAL' ? '优先读取文件内的歌曲信息，缺失时按此方案从文件名补充。' : '扫描时按此方案从文件名提取歌名和歌手。' }}可在此试验命名格式，或进入高级配置编写自定义规则。</p>
         </ElFormItem>
         <details :open="advanced" class="source-advanced" @toggle="advanced = ($event.target as HTMLDetailsElement).open"><summary>更多设置 <span>定时扫描</span></summary>
-        <ElFormItem label="定时扫描"><ElCheckbox v-model="draft.scanEnabled" :disabled="saving">启用定时扫描</ElCheckbox></ElFormItem>
+        <ElFormItem label="定时扫描"><ElCheckbox v-model="draft.scanEnabled" :disabled="saving || (!editing && importMode)">启用定时扫描</ElCheckbox><p v-if="!editing && importMode" class="profile-help">导入资料时关闭定时扫描。导入完成后，可在编辑媒体库时开启。</p></ElFormItem>
         <ElFormItem v-if="draft.scanEnabled" label="Cron 表达式" required><ElInput v-model="draft.scanCron" aria-label="扫描 Cron 表达式" placeholder="0 3 * * *" maxlength="120" :disabled="saving" /><p class="profile-help">标准五段：分 时 日 月 周。例：0 3 * * * 每天 03:00；*/30 * * * * 每半小时。时区：Asia/Shanghai。同一来源扫描中跳过，停机期间不逐次补跑。</p></ElFormItem>
         </details>
         <ElAlert v-if="profilesError" :title="profilesError" type="error" :closable="false"><ElButton text @click="loadProfiles">重新加载解析方案</ElButton></ElAlert>
         <ElAlert v-if="formError" :title="formError" type="error" :closable="false" show-icon />
-        <div class="dialog-actions"><ElButton :disabled="saving" @click="closeSource()">取消</ElButton><ElButton v-if="!editing && !importMode" :disabled="saving || profilesLoading || !!profilesError || !selectedProfile" @click="save(false)">仅保存</ElButton><ElButton type="primary" native-type="submit" :loading="saving" :disabled="profilesLoading || !!profilesError || !selectedProfile">{{ editing ? '保存修改' : importMode ? '保存并选择资料包' : '保存并扫描' }}</ElButton></div>
+        <div class="dialog-actions"><ElButton :disabled="saving" @click="closeSource()">取消</ElButton><ElButton v-if="!editing && !importMode" :disabled="saving || profilesLoading || !!profilesError || !selectedProfile" @click="save(false)">仅保存</ElButton><ElButton type="primary" native-type="submit" :loading="saving" :disabled="profilesLoading || !!profilesError || !selectedProfile">{{ editing ? '保存修改' : importMode ? '保存并导入资料包' : '保存并扫描' }}</ElButton></div>
       </ElForm>
     </ElDialog>
 
@@ -369,6 +398,13 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
 .profile-field {
   margin-top: 22px;
 }
+.source-package{display:flex;align-items:center;flex-wrap:wrap;gap:10px;width:100%;margin-top:8px}
+.package-choice{position:relative;display:inline-flex;padding:7px 12px;border:1px solid var(--sv-border-subtle);border-radius:6px;cursor:pointer;overflow:hidden}
+.package-choice input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.package-choice:focus-within{outline:2px solid var(--sv-accent-primary);outline-offset:2px}
+.package-choice.disabled{opacity:.5;cursor:default}
+.package-name{overflow-wrap:anywhere;min-width:0}
+.source-import :deep(.el-form-item__content){align-items:flex-start;flex-direction:column}
 .source-profile-selection { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; width: 100%; }
 .source-profile-selection .profile-select { flex: 1; min-width: 180px; width: auto; }
 .source-profile-selection .el-button { margin-left: 0; }

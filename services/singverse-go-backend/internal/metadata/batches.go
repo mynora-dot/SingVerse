@@ -527,7 +527,7 @@ func (s *Service) ProcessNext(ctx context.Context) error {
 				if e == nil && confirmed(latest) {
 					state, message = "MANUAL_APPLIED", "查询期间歌曲已确认，保留已有元数据"
 				} else {
-					_, e = s.applyLocked(ctx, tx, text(w.song["id"]), ApplyInput{candidates[0].ID, allFields}, w.fp)
+					_, e = s.applyLocked(ctx, tx, text(w.song["id"]), ApplyInput{candidates[0].ID, allFields}, w.fp, true)
 					if e == nil {
 						state, message = "AUTO_APPLIED", nil
 					} else if code(e) < 500 {

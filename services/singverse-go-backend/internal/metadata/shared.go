@@ -2,6 +2,9 @@ package metadata
 
 import (
 	"context"
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/metastandard"
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/metastore"
+	"strconv"
 	"strings"
 
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/store"
@@ -77,7 +80,7 @@ func (s *Service) mergeShared(ctx context.Context, tx store.DBTX, id string, sna
 	differences := []string{}
 	applied := metaOf(song)
 	protected := func(f string) bool {
-		return applied != nil && contains(applied.Fields, f) && applied.Origins[f].Kind != "SHARED"
+		return applied != nil && contains(applied.Fields, f) && contains([]string{"MANUAL", "UPLOAD", "PLATFORM", "DOWNLOAD"}, applied.Origins[f].Kind)
 	}
 	for _, f := range []string{"title", "artists", "album", "releaseDate"} {
 		v := incoming[f]
@@ -173,12 +176,18 @@ func (s *Service) mergeShared(ctx context.Context, tx store.DBTX, id string, sna
 	}
 	// Bootstrap an imported resource to avoid automatically extracting the same
 	// cloud media again. Existing local FILE results and their identities survive.
-	_, cfg, e := s.ensureSource(ctx, tx, text(song["sourceId"]), true)
-	if e != nil {
-		return "", nil, e
+	source, err := s.row(ctx, tx, "source", map[string]any{"id": song["sourceId"]})
+	if err != nil {
+		return "", nil, err
 	}
-	if _, e = s.exec(ctx, tx, "dav-bootstrap", map[string]any{"sourceId": song["sourceId"], "binding": cfg["binding"], "songId": id}); e != nil {
-		return "", nil, e
+	if text(source["source_type"]) == "WEBDAV" {
+		_, cfg, e := s.ensureSource(ctx, tx, text(song["sourceId"]), true)
+		if e != nil {
+			return "", nil, e
+		}
+		if _, e = s.exec(ctx, tx, "dav-bootstrap", map[string]any{"sourceId": song["sourceId"], "binding": cfg["binding"], "songId": id}); e != nil {
+			return "", nil, e
+		}
 	}
 	if len(rows) == 0 {
 		if _, e = s.exec(ctx, tx, "shared-markImported", args); e != nil {
@@ -186,6 +195,15 @@ func (s *Service) mergeShared(ctx context.Context, tx store.DBTX, id string, sna
 		}
 	}
 	if _, e = s.exec(ctx, tx, "shared-fromScan", args); e != nil {
+		return "", nil, e
+	}
+	if snapshot["documents"] != nil {
+		diff, err := s.applyV4Documents(ctx, tx, id, snapshot, collection, revision)
+		if err != nil {
+			return "", nil, err
+		}
+		differences = append(differences, diff...)
+	} else if e = s.applySharedFormal(ctx, tx, id, snapshot, collection, revision); e != nil {
 		return "", nil, e
 	}
 	if changed {
@@ -202,6 +220,97 @@ func (s *Service) mergeShared(ctx context.Context, tx store.DBTX, id string, sna
 	return "UNCHANGED", differences, nil
 }
 
+func (s *Service) applySharedFormal(ctx context.Context, tx store.DBTX, id string, snapshot map[string]any, collection string, revision int64) error {
+	if e := s.library.SyncMetadata(ctx, tx, id); e != nil {
+		return e
+	}
+	song, variant, e := s.library.FormalIDs(ctx, tx, id)
+	if e != nil {
+		return e
+	}
+	o := metastandard.Origin{Kind: "SHARED", CollectionID: collection, Revision: strconv.FormatInt(max(revision, 1), 10)}
+	// Old unversioned v2 files have no update identity. A package-specific key
+	// is evidence only; it never enrolls the receiver into a shared series.
+	key := ""
+	if collection == "" {
+		key = "SHARED:legacy:" + hash(encode(snapshot))[:32]
+	}
+	songFields := map[string]any{}
+	tags, _ := snapshot["tags"].(map[string]any)
+	for _, f := range []string{"title", "artists", "album", "releaseDate"} {
+		if sharedPresent(tags[f]) {
+			songFields[f] = tags[f]
+		}
+	}
+	if sharedPresent(snapshot["aliases"]) {
+		songFields["aliases"] = snapshot["aliases"]
+	}
+	if n := number(snapshot["referenceDurationMs"]); n > 0 {
+		songFields["referenceDurationMs"] = n
+	}
+	cover := text(snapshot["coverRef"])
+	if cover == "" {
+		cover = text(snapshot["cover"])
+	}
+	if cover != "" {
+		data, e := s.SharedCover(cover)
+		if e != nil {
+			return e
+		}
+		c, e := validateCover(data)
+		if e != nil {
+			return e
+		}
+		a, e := s.library.Formal().PutAsset(ctx, tx, data, c.MIME)
+		if e != nil {
+			return e
+		}
+		if e = s.library.Formal().Alias(ctx, tx, cover, a.ID); e != nil {
+			return e
+		}
+		songFields["cover"] = metastandard.AssetRef{AssetID: a.ID}
+	}
+	// Legacy packages admitted wider text and technical shapes. Retain their
+	// original snapshot, but do not make invalid fields formal or block startup.
+	for name, value := range songFields {
+		if metastandard.ValidateField("SONG", name, value) != nil {
+			delete(songFields, name)
+		}
+	}
+	if len(songFields) > 0 {
+		if _, _, e = s.library.Formal().Observe(ctx, tx, song, metastore.Evidence{Key: key, Origin: o, Revision: o.Revision, Fields: songFields}); e != nil {
+			return e
+		}
+	}
+	variantFields := map[string]any{}
+	if lyrics, ok := snapshot["lyrics"].(map[string]any); ok && len(lyrics) > 0 && metastandard.ValidateField("VARIANT", "lyrics", lyrics) == nil {
+		a, e := s.library.Formal().PutAsset(ctx, tx, []byte(encode(lyrics)), "application/json")
+		if e != nil {
+			return e
+		}
+		variantFields["lyrics"] = lyrics
+		variantFields["lyricsAsset"] = metastandard.AssetRef{AssetID: a.ID}
+	}
+	if len(variantFields) > 0 {
+		if _, _, e = s.library.Formal().Observe(ctx, tx, variant, metastore.Evidence{Key: key, Origin: o, Revision: o.Revision, Fields: variantFields}); e != nil {
+			return e
+		}
+	}
+	if technical, ok := snapshot["technical"].(map[string]any); ok && len(technical) > 0 {
+		fields := map[string]any{"observation": metastandard.NormalizeObservation(technical)}
+		if d := decimal(technical["duration"]); d > 0 && d <= 604800 {
+			fields["durationMs"] = int64(d * 1000)
+		}
+		if metastandard.ValidateField("MEDIA", "observation", fields["observation"]) != nil {
+			delete(fields, "observation")
+		}
+		if _, _, e = s.library.Formal().Observe(ctx, tx, id, metastore.Evidence{Key: key, Origin: o, Revision: o.Revision, Fields: fields}); e != nil {
+			return e
+		}
+	}
+	return nil
+}
+
 func (s *Service) sharedSnapshot(ctx context.Context, tx store.DBTX, id string) (map[string]any, error) {
 	rows, e := s.rows(ctx, tx, "shared-read", map[string]any{"songId": id})
 	if e != nil {
@@ -215,6 +324,11 @@ func (s *Service) sharedSnapshot(ctx context.Context, tx store.DBTX, id string) 
 }
 
 func sharedIdentity(doc map[string]any) (string, int64, error) {
+	if number(doc["version"]) == 4 {
+		if revision, ok := doc["collectionRevision"].(string); !ok || !metastandard.ValidRevision(revision) {
+			return "", 0, bad("v4 修订号必须为字符串")
+		}
+	}
 	if number(doc["version"]) == 2 {
 		return "", 0, nil
 	}
@@ -227,6 +341,11 @@ func sharedIdentity(doc map[string]any) (string, int64, error) {
 }
 
 func (s *Service) checkSharedBaseline(ctx context.Context, tx store.DBTX, source string, doc map[string]any) error {
+	if number(doc["version"]) == 4 && text(doc["contentDigest"]) != "" {
+		if e := s.library.Formal().CheckPackage(ctx, tx, text(doc["collectionId"]), text(doc["collectionRevision"]), text(doc["contentDigest"])); e != nil {
+			return e
+		}
+	}
 	collection, rev, e := sharedIdentity(doc)
 	if e != nil {
 		return e
@@ -263,6 +382,9 @@ func (s *Service) saveSharedBaseline(ctx context.Context, tx store.DBTX, source 
 // normalizeSharedAssets keeps only validated content-addressed references in
 // persistent import entries, rather than duplicating a cover for every song.
 func (s *Service) normalizeSharedAssets(doc map[string]any) error {
+	if number(doc["version"]) == 4 {
+		return s.installV4Resources(s.ctx, doc)
+	}
 	if raw := doc["assets"]; raw != nil {
 		assets, ok := raw.(map[string]any)
 		if !ok {

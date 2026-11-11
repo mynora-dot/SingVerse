@@ -5,7 +5,8 @@ export interface ExternalTrack {
   durationMs: number | null; releaseDate: string | null; aliases: string[]; coverUrl: string | null
   availability: string; fetchedAt: string
 }
-export interface AppliedMetadata { track: Omit<ExternalTrack, 'provider' | 'externalId' | 'title'> & { provider: MusicProvider | null; externalId: string | null; title: string | null }; fields: string[]; appliedAt: string; stale: boolean; origins: Record<string, { provider: MusicProvider | null; externalId: string | null; appliedAt: string; kind?: string }> }
+export interface FormalLyrics { text?: string; timing: string; language?: string; lines?: { text: string; time: number }[] }
+export interface AppliedMetadata { songId?: string; revision?: string; fieldStates?: Record<string, import('../song-management/api/formal').FormalState>; media?: { durationMs?: number | null; observation?: Record<string, unknown> | null }; variant?: { lyrics?: FormalLyrics | null; lyricsAsset?: { assetId: string } | null; kind?: string | null; languages?: string[] | null; timelineDurationMs?: number | null }; track: Omit<ExternalTrack, 'provider' | 'externalId' | 'title'> & { provider: MusicProvider | null; externalId: string | null; title: string | null }; fields: string[]; appliedAt: string; stale: boolean; origins: Record<string, { provider: MusicProvider | null; externalId: string | null; appliedAt: string; kind?: string }> }
 export interface MetadataCandidate { id: string; track: ExternalTrack; score: number }
 export interface SearchResult { candidates: MetadataCandidate[]; errors: { provider: MusicProvider; message: string }[] }
 export interface MetadataItem { id: string; songId: string; title: string | null; artists: string[]; status: string; candidates: MetadataCandidate[]; error: string | null; updatedAt: string; confidence?: 'HIGH' | 'LOW' | 'NONE'; coverAvailable?: boolean; sourceId?: string | null; relativePath?: string | null }

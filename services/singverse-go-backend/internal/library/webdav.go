@@ -335,8 +335,11 @@ func (s *Service) traverse(work scanWork) error {
 				if !supports(filename) {
 					t.SkippedFiles++
 				} else {
-					id := songID(work.source.ID, relative)
-					if !seen[id] {
+					id, e := s.indexIdentity(ctx, s.db, work.source.ID, relative)
+					if e != nil {
+						return e
+					}
+					if !seen[relative] {
 						if t.TotalSongs >= 100000 {
 							return bad("WebDAV 单来源超过 10 万首媒体文件，请拆分来源")
 						}
@@ -352,7 +355,7 @@ func (s *Service) traverse(work scanWork) error {
 						if parsed.Result.NeedsReview {
 							t.NeedsReviewSongs++
 						}
-						seen[id] = true
+						seen[relative] = true
 						t.TotalSongs++
 						batch = append(batch, song)
 					}

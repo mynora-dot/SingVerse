@@ -34,6 +34,6 @@ Vite本地提供 `/admin/` 和 `/party/` 两入口，仅将 `/api` 代理到Go�
 
 Go 复用同一 dist 与协议，静态与真实 HTTP 检查见 `make web-check`、`make docker-check`。当前根路径或/admin挂载支持不代表任意路径前缀、WebSocket、NAS部署或微信真机验收完成。
 
-分类封面上传 `/api/v1/classification/tags/{id}/cover` 与已有歌曲封面上传一起使用Nginx专用3MiB请求上限，其余API仍保留16KiB默认上限。Go继续限制单文件2,000,000字节及图片格式/尺寸，客户端不能依靠代理上限绕过校验。`make docker-check` 用大于16KiB的无效图片验证代理实际转发到Go且不写数据。
+正式资料的创建、修改与关联 JSON 使用专用 16 MiB 上限；`POST /api/v1/metadata/assets` 接受不超过 32 MiB 的原始附件。歌曲封面 multipart 上传 `/api/v1/metadata/songs/{id}/covers/upload` 的代理上限为 33 MiB，Go 继续限制原图本身不超过 32 MiB。分类封面、歌手图片和 TV 横幅沿用专用 3 MiB 代理上限及各自文件校验，其余 API 默认仍为 16 KiB。`make nginx-media-check` 使用隔离容器验证原图、歌词请求和超限拒绝；`make docker-check` 用大于 16 KiB 的无效图片验证代理实际转发到 Go 且不写数据。
 
 HLS 播放的 MSE MediaSource 和 hls.js worker 需要 `media-src 'self' blob:` 与 `worker-src 'self' blob:`；网络仍仅 `connect-src 'self'`。转码清单/分片及兼容版本代理关闭缓冲和磁盘缓存，并保留原始媒体 Range 行为。

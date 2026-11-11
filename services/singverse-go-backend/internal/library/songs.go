@@ -46,7 +46,7 @@ func (s *Service) LibrarySongs(ctx context.Context, db store.DBTX) ([]map[string
 	if db == nil {
 		db = s.db
 	}
-	rows, e := db.QueryxContext(ctx, s.q["song-columns"])
+	rows, e := db.QueryxContext(ctx, s.q["song-columns"]+" WHERE song.location_state='PRESENT' AND COALESCE(formal_song.suppressed,0)=0 AND COALESCE(formal_variant.suppressed,0)=0 AND COALESCE(formal_media.suppressed,0)=0")
 	if e != nil {
 		return nil, e
 	}

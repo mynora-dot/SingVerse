@@ -130,6 +130,10 @@ func New(db *sqlx.DB, dialect string, cfg config.Config, cipher Cipher, libraryS
 	s.prefetchIDs = map[string]string{}
 	s.prefetchFetch = map[string]context.CancelFunc{}
 	s.discoveryRound = uuid()
+	if err := s.bootstrapFormalAudio(ctx); err != nil {
+		cancel()
+		return nil, err
+	}
 	s.recoverCache(ctx)
 	s.run()
 	return s, nil

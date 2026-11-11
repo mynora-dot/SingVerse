@@ -52,7 +52,7 @@ async function uploadFile(event: Event) {
   const input = event.target as HTMLInputElement, file = input.files?.[0]; input.value = ''
   if (!file) return
   error.value = ''
-  if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 2_000_000) { error.value = '请选择 2 MB 以内的 JPEG 或 PNG'; return }
+  if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 32 * 1024 * 1024) { error.value = '请选择 32 MiB 以内的 JPEG 或 PNG'; return }
   const token = ++generation; uploadAbort?.abort(); uploadAbort = new AbortController(); uploading.value = true; progress.value = 0
   try {
     const asset = await singleReview.upload(props.songId, props.fingerprint, file, value => { if (token === generation) progress.value = value }, uploadAbort.signal)
@@ -78,7 +78,7 @@ onBeforeUnmount(() => { generation++; uploadAbort?.abort() })
     <p v-if="loading" role="status" class="cover-help">正在查询真实平台封面…</p><p v-else-if="!choices.length" class="cover-help">平台未提供封面候选，可修改关键词、切换平台或上传本地图片。</p>
     <p v-if="failedChoices" role="status" class="cover-failure">部分图片加载失败，候选信息仍可核对。<ElButton text @click="retryImages">重试封面</ElButton></p>
     <div class="cover-grid"><button v-for="item in choices" :key="item.id" type="button" :aria-pressed="selectedKey === `${item.kind}:${item.id}`" :class="{ chosen: selectedKey === `${item.kind}:${item.id}` }" @click="selected = item"><MetadataCover :src="item.url" alt="候选封面" :retry-key="retryKey" @failed="failedChoices = true" /><span>{{ item.label }}</span><small>{{ quality === 'ORIGINAL' ? '原图' : '高清' }}</small></button></div>
-    <div class="upload-row"><input ref="fileInput" type="file" accept="image/jpeg,image/png" aria-label="上传本地封面文件" class="file-input" @change="uploadFile" /><ElButton :loading="uploading" :disabled="loading" @click="fileInput?.click()">{{ upload ? '更换本地图片' : '上传本地图片' }}</ElButton><ElTag v-if="upload" type="info">已上传，尚未应用 · {{ upload.width }} × {{ upload.height }}</ElTag><small>本地上传：JPEG / PNG，2 MB 以内。</small></div>
+    <div class="upload-row"><input ref="fileInput" type="file" accept="image/jpeg,image/png" aria-label="上传本地封面文件" class="file-input" @change="uploadFile" /><ElButton :loading="uploading" :disabled="loading" @click="fileInput?.click()">{{ upload ? '更换本地图片' : '上传本地图片' }}</ElButton><ElTag v-if="upload" type="info">已上传，尚未应用 · {{ upload.width }} × {{ upload.height }}</ElTag><small>本地上传：JPEG / PNG，32 MiB 以内。</small></div>
     <ElProgress v-if="uploading" :percentage="progress" /><p v-if="uploading" role="status" class="cover-help">{{ progress === 100 ? '文件已传输，服务器正在校验图片…' : '正在上传文件…' }}</p>
     <template #footer><ElButton @click="close">取消选择</ElButton><ElButton type="primary" :disabled="!selected || loading || uploading || previewFailed" @click="selectCover">使用此封面</ElButton></template>
   </ElDialog>

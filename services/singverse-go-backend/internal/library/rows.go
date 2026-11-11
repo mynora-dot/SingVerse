@@ -32,6 +32,10 @@ func (r sourceRecord) model() Source {
 }
 
 type songRecord struct {
+	FormalSong             *string `db:"formal_song"`
+	FormalVariant          *string `db:"formal_variant"`
+	FormalMedia            *string `db:"formal_media"`
+	LocationState          string  `db:"location_state"`
 	ID                     string  `db:"id"`
 	SourceID               string  `db:"source_id"`
 	SourceName             string  `db:"source_name"`
@@ -72,6 +76,9 @@ func (r songRecord) model() (Song, error) {
 		ParserProfileID: r.ParserProfileID, ParserRevision: r.ParserRevision, SelectedRuleID: r.SelectedRuleID,
 		pathHash: r.PathHash, embedded: r.Embedded, etag: r.ETag, MediaVerification: r.Verification,
 	}
+	if r.LocationState != "" && r.LocationState != "PRESENT" {
+		song.MediaVerification = &r.LocationState
+	}
 	if err := json.Unmarshal([]byte(r.Result), &song.Result); err != nil {
 		return song, err
 	}
@@ -94,6 +101,9 @@ func (r songRecord) model() (Song, error) {
 	song.Metadata, err = effectiveMetadata(song, r.Track, r.Fields, r.Applied, r.Origins, r.Fingerprint, r.Remote, r.OverrideSource, r.OverrideArtists, r.Download, r.DownloadAt)
 	if err == nil {
 		song.Metadata, err = sharedMetadata(song, song.Metadata, r.Shared)
+	}
+	if err == nil && r.FormalSong != nil {
+		song.Metadata, err = formalProjection(r.FormalSong, r.FormalVariant, r.FormalMedia)
 	}
 	return song, err
 }

@@ -47,7 +47,7 @@ func newTestService(t *testing.T) (*Service, *gin.Engine) {
 			t.Fatalf("%s: %v", file, e)
 		}
 	}
-	s, e := New(db, "sqlite", config.Config{}, testCipher{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s, e := New(db, "sqlite", config.Config{MetadataPath: t.TempDir(), MetadataCachePath: t.TempDir()}, testCipher{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if e != nil {
 		t.Fatal(e)
 	}

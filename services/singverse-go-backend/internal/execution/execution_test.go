@@ -117,6 +117,9 @@ func executionFixtureDB(t *testing.T, node string, db *sqlx.DB, dialect string, 
 	if _, err = db.Exec("INSERT INTO media_song(id,source_id,relative_path,path_hash,file_size,modified_at,scanned_at,parser_profile_id,parser_revision,result_json) VALUES(?,?,'歌曲.mp4',?,?,?,?,'default',1,?)", f.song, f.source, hash("歌曲.mp4"), len(f.content), info.ModTime().UTC().Format(time.RFC3339Nano), stamp, `{"title":"歌曲","artists":["歌手"],"status":"MATCHED"}`); err != nil {
 		t.Fatal(err)
 	}
+	if err = store.WithinTx(t.Context(), db, func(tx store.DBTX) error { return lib.SyncMetadata(t.Context(), tx, f.song) }); err != nil {
+		t.Fatal(err)
+	}
 	return f
 }
 func requireErrorStatus(t *testing.T, err error, status int) {

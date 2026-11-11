@@ -1,0 +1,1 @@
+SELECT t.cover_revision FROM metadata_attachment_task t JOIN metadata_document m ON m.id=t.media_id JOIN metadata_document v ON v.id=m.parent_id WHERE t.status='PENDING' AND t.local_decision=1 AND (m.id=? OR m.parent_id=? OR v.parent_id=?) ORDER BY t.updated_at DESC LIMIT 1

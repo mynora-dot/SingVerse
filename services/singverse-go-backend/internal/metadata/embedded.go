@@ -5,9 +5,9 @@ import (
 	"context"
 	"encoding/base64"
 	"github.com/gin-gonic/gin"
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/metastandard"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/store"
 	"image"
-	"image/png"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -426,7 +426,7 @@ func (s *Service) SharedCover(key string) ([]byte, error) {
 	return cover.Bytes, nil
 }
 func (s *Service) InstallSharedCover(encoded string) (string, error) {
-	if len(encoded) > 2_666_668 {
+	if len(encoded) > (remoteCoverLimit+2)/3*4 {
 		return "", bad("共享封面超过限制")
 	}
 	b, e := base64.StdEncoding.DecodeString(encoded)
@@ -445,15 +445,7 @@ func (s *Service) portableCover(b []byte) (string, error) {
 	if _, e := validateCover(b); e != nil {
 		return "", e
 	}
-	img, _, e := image.Decode(bytes.NewReader(b))
-	if e != nil {
-		return "", bad("共享封面无效")
-	}
-	var out bytes.Buffer
-	if e = png.Encode(&out, img); e != nil || out.Len() > 2_000_000 {
-		return "", bad("共享封面超过限制")
-	}
-	return s.storeAsset(out.Bytes(), ".image")
+	return s.storeAsset(b, ".image")
 }
 
 func validateSnapshot(v map[string]any) error {
@@ -564,6 +556,9 @@ func (s *Service) Install(ctx context.Context, tx store.DBTX, id string, snapsho
 	if _, e = s.exec(ctx, tx, "dav-applyTags", a); e != nil {
 		return e
 	}
+	if e = s.applySharedFormal(ctx, tx, id, snapshot, "", 0); e != nil {
+		return e
+	}
 	return s.Touch(ctx, tx, id)
 }
 
@@ -646,12 +641,7 @@ func (s *Service) Snapshot(ctx context.Context, tx store.DBTX, id string) (map[s
 			out["aliases"] = applied.Track.Aliases
 		}
 		if contains(applied.Fields, "durationMs") && applied.Track.DurationMs != nil {
-			tech, _ := out["technical"].(map[string]any)
-			if tech == nil {
-				tech = map[string]any{}
-				out["technical"] = tech
-			}
-			tech["duration"] = float64(*applied.Track.DurationMs) / 1000
+			out["referenceDurationMs"] = *applied.Track.DurationMs
 		}
 		if contains(applied.Fields, "cover") && applied.Track.CoverURL != nil {
 			raw := *applied.Track.CoverURL
@@ -660,10 +650,18 @@ func (s *Service) Snapshot(ctx context.Context, tx store.DBTX, id string) (map[s
 			var coverErr error
 			if strings.HasPrefix(raw, "asset:") {
 				assetID := strings.TrimPrefix(raw, "asset:")
-				if !uuidPattern.MatchString(assetID) {
+				if metastandard.SHA256.MatchString(assetID) {
+					_, data, err := s.library.Formal().ReadAsset(ctx, tx, assetID)
+					coverErr = err
+					if err == nil {
+						cover, coverErr = validateCover(data)
+					}
+				} else if !uuidPattern.MatchString(assetID) {
 					return nil, bad("封面资源标识无效")
 				}
-				cover, coverErr = s.uploadedCover(assetID)
+				if !metastandard.SHA256.MatchString(assetID) {
+					cover, coverErr = s.uploadedCover(assetID)
+				}
 			} else if strings.HasPrefix(raw, "embedded:") {
 				coverErr = nil
 				if _, ok := out["cover"]; !ok {
@@ -692,12 +690,18 @@ func (s *Service) Snapshot(ctx context.Context, tx store.DBTX, id string) (map[s
 					}
 					out["cover"] = key
 					coverage["cover"] = "PRESENT"
+					if e = s.projectFormalSnapshot(ctx, tx, id, out); e != nil {
+						return nil, e
+					}
 					return out, nil
 				}
 				coverage["cover"] = "UNKNOWN"
 				delete(out, "cover")
 			}
 		}
+	}
+	if e = s.projectFormalSnapshot(ctx, tx, id, out); e != nil {
+		return nil, e
 	}
 	return out, nil
 }

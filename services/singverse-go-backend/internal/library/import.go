@@ -15,6 +15,10 @@ func SupportsMedia(relative string) bool { return supports(relative) }
 // ImportSong inserts a portable relative identity under the caller's transaction.
 // Existing songs and retained remote tombstones are preserved.
 func (s *Service) ImportSong(ctx context.Context, tx store.DBTX, sourceID, relative string, size *int64) (string, bool, error) {
+	return s.ImportPortableSong(ctx, tx, sourceID, relative, size, "")
+}
+
+func (s *Service) ImportPortableSong(ctx context.Context, tx store.DBTX, sourceID, relative string, size *int64, preferredID string) (string, bool, error) {
 	if relative == "" || len([]rune(relative)) > 2048 || strings.HasPrefix(relative, "/") || strings.ContainsAny(relative, "\\:") || controls(relative) || !supports(relative) || size != nil && *size < 0 {
 		return "", false, bad("索引包路径或大小无效")
 	}
@@ -30,13 +34,38 @@ func (s *Service) ImportSong(ctx context.Context, tx store.DBTX, sourceID, relat
 	if e != nil {
 		return "", false, e
 	}
-	if src.Type != "WEBDAV" {
+	if src.Type != "WEBDAV" && src.Type != "LOCAL" {
 		return "", false, bad("仅支持 WebDAV 来源导入")
 	}
-	id := songID(sourceID, relative)
+	id, e := s.indexIdentity(ctx, tx, sourceID, relative)
+	if e != nil {
+		return "", false, e
+	}
+	var pathID string
+	pathErr := tx.QueryRowContext(ctx, s.q["song-path-identity"], sourceID, hash(relative), sourceID, hash(relative)).Scan(&pathID)
+	if preferredID != "" {
+		if !validID.MatchString(preferredID) {
+			return "", false, bad("媒体标识无效")
+		}
+		var owner string
+		ownerErr := tx.QueryRowContext(ctx, s.q["song-id-source"], preferredID).Scan(&owner)
+		if ownerErr == nil && owner == sourceID && pathErr == nil && pathID != preferredID {
+			return "", false, conflict("共享媒体标识与已占用路径冲突，请调整目录映射")
+		}
+		if errors.Is(pathErr, sql.ErrNoRows) && (errors.Is(ownerErr, sql.ErrNoRows) || ownerErr == nil && owner == sourceID) {
+			id = preferredID
+		} else if ownerErr != nil && !errors.Is(ownerErr, sql.ErrNoRows) {
+			return "", false, ownerErr
+		}
+	}
 	var existing string
 	e = tx.QueryRowContext(ctx, s.q["song-import-existing"], id, id).Scan(&existing)
 	if e == nil {
+		if preferredID == id && errors.Is(pathErr, sql.ErrNoRows) {
+			if _, e = tx.ExecContext(ctx, s.q["song-import-relocate"], relative, hash(relative), id, sourceID); e != nil {
+				return "", false, e
+			}
+		}
 		return id, false, nil
 	}
 	if !errors.Is(e, sql.ErrNoRows) {

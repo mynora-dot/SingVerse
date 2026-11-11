@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/metastore"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/config"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/httpx"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/store"
@@ -22,6 +23,7 @@ import (
 var queryFiles embed.FS
 
 type Service struct {
+	formal         *metastore.Store
 	db             *sqlx.DB
 	dialect        string
 	cfg            config.Config
@@ -71,6 +73,11 @@ func New(db *sqlx.DB, dialect string, cfg config.Config, cipher Cipher, log *slo
 		log = slog.Default()
 	}
 	s := &Service{db: db, dialect: dialect, cfg: cfg, cipher: cipher, log: log, q: q, running: map[string]bool{}, tasks: map[string]context.CancelFunc{}, ctx: ctx, cancel: cancel, queue: make(chan scanWork, 32), client: &http.Client{Transport: &http.Transport{Proxy: nil, ResponseHeaderTimeout: 15 * time.Second, IdleConnTimeout: 30 * time.Second}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	s.formal, err = metastore.New(cfg.MetadataPath)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
 	err = store.WithinTx(ctx, db, func(tx store.DBTX) error {
 		for _, name := range []string{"scan-recover", "scan-clear-abandoned", "scan-clear-abandoned-dirs", "ingest-recover"} {
 			args := []any{}
@@ -87,6 +94,10 @@ func New(db *sqlx.DB, dialect string, cfg config.Config, cipher Cipher, log *slo
 		cancel()
 		return nil, err
 	}
+	if err = s.bootstrapFormal(ctx); err != nil {
+		cancel()
+		return nil, err
+	}
 	for i := 0; i < 2; i++ {
 		s.wg.Add(1)
 		go s.worker()
@@ -95,6 +106,8 @@ func New(db *sqlx.DB, dialect string, cfg config.Config, cipher Cipher, log *slo
 	go s.schedule()
 	s.wg.Add(1)
 	go s.ingestLoop()
+	s.wg.Add(1)
+	go s.verifyLocationLoop()
 	return s, nil
 }
 func (s *Service) Close() error {
@@ -117,6 +130,7 @@ func (s *Service) Close() error {
 	}
 }
 func (s *Service) Register(g *gin.RouterGroup) {
+	s.registerFormal(g)
 	g.GET("/media-sources/local-directories", s.directories)
 	g.GET("/media-sources", s.listSources)
 	g.POST("/media-sources", s.createSource)
@@ -221,6 +235,9 @@ func (s *Service) SetIndexed(fn func(context.Context, store.DBTX, string) error)
 	s.hookMu.Unlock()
 }
 func (s *Service) indexChanged(ctx context.Context, tx store.DBTX, source string) error {
+	if err := s.SyncSourceMetadata(ctx, tx, source); err != nil {
+		return err
+	}
 	s.hookMu.RLock()
 	fn := s.indexed
 	s.hookMu.RUnlock()

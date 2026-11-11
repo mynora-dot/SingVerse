@@ -81,6 +81,9 @@ func (s *Service) ServeOriginalGuard(ctx context.Context, w http.ResponseWriter,
 	if e != nil {
 		return e
 	}
+	if song.MediaVerification != nil && *song.MediaVerification != "PRESENT" {
+		return conflict("媒体路径尚未核验通过，请先检查来源中的文件状态")
+	}
 	src, e := s.findSource(ctx, s.db, song.SourceID)
 	if e != nil {
 		return e

@@ -49,7 +49,7 @@
 
 ## 歌曲元数据刮削
 
-新增 `/api/v1/metadata` 下的设置、单曲搜索/应用、批次创建/查询/暂停/续跑/终止、明细重试/审核，以及候选/已确认封面代理。批次创建可在 `all=true` 时提供 `sourceId`，仅处理该媒体来源。新安装默认启用网易云、QQ、酷狗、酷我和汽水五个平台，自动写入默认关闭；升级保留已保存的配置。管理端入口为“设置 → 音乐平台”，单曲搜索只产生候选；所有操作需要管理员会话，非 GET 操作需要 CSRF。`MediaSong.metadata` 为可空的独立确认覆盖层，失效时不可使用其值覆盖原始 `result`。批次完成与审核完成分开，最新批次不存在返回 204。字段、枚举、分页及路径以 JSON 契约为准，详细限制见[元数据刮削](../../docs/metadata-scraping.md)。
+新增 `/api/v1/metadata` 下的设置、单曲搜索/应用、批次创建/查询/暂停/续跑/终止、明细重试/审核，以及候选/已确认封面代理。批次创建可在 `all=true` 时提供 `sourceId`，仅处理该媒体来源。新安装默认启用网易云、QQ、酷狗、酷我和汽水五个平台，自动写入默认关闭；升级保留已保存的配置。管理端入口为“设置 → 音乐平台”，单曲搜索只产生候选；所有操作需要管理员会话，非 GET 操作需要 CSRF。`MediaSong.metadata` 是当前正式资料的兼容投影；人工字段不会因文件指纹变化整体失效，`result` 中的原始标签不覆盖正式字段。批次完成与审核完成分开，最新批次不存在返回 204。字段、枚举、分页及路径以 JSON 契约为准，详细限制见[元数据刮削](../../docs/metadata-scraping.md)。
 
 歌曲位置页面改用卡片；来源列表 API 保留名称/地址、类型、方案筛选和分页，歌曲列表继续使用搜索与分页表格。查询使用 ID 分页后延迟关联和筛选排序联合索引。深分页成本与包含搜索边界见[列表查询说明](../../docs/library-search.md)。
 
@@ -93,7 +93,7 @@ WebDAV 使用保存的地址和加密凭据在服务端发起 GET/HEAD，转发 
 
 管理员专用 `/api/v1/ai` 提供厂商目录、多模型/搜索服务 CRUD、显式连接与结构化测试、默认搜索和功能绑定。密钥只写不读，服务与绑定使用 revision 并发保护，引用中的服务不能删除或停用。原分类配置接口保留兼容适配；边界与通用搜索响应见 [AI 设置](../../docs/ai-settings.md)，字段以 `singverse.openapi.json` 为准。
 
-本地和 WebDAV 标签沿用歌曲 API 元数据结构，字段来源 kind=FILE 表示音视频内嵌标签优先值；读取通过以下短期授权回源协议执行。
+本地和 WebDAV 标签沿用歌曲 API 元数据结构，字段来源 kind=FILE 表示音视频内嵌标签证据，不能覆盖本机确认字段；读取通过以下短期授权回源协议执行。
 
 计算服务使用 POST /internal/v1/media/remote-tags，所有本地／WebDAV 标签请求均携带 reference、callbackOrigin、filename、size；Go 提供短期授权 Range 回源。转码、音轨任务同样使用引用和回调地址，禁止传本地路径；原 /internal/v1/media/tags 已移除。连接测试增加 /internal/v1/callback/check 及 Go 的短期 /api/v1/internal/compute-callback/{id}。详见 compute-internal.openapi.json；前端不访问计算节点。
 
@@ -217,9 +217,20 @@ SEPARATE 与批量请求新增可选 separationProfile（DSP_FAST/AI_CLEAN/LEGAC
 
 Nginx 为上述两个批量写入接口单独允许 128 KiB 请求，以容纳 1000 位歌手；其他 JSON 请求默认上限不变，Go 仍逐项校验范围、标识与修订号。
 
-歌曲元数据平台现为 `NETEASE|QQ|KUGOU|KUWO|QISHUI`，设置与搜索最多 5 个，默认配置不变。候选封面 GET 可传 `quality=ORIGINAL|HIGH`，单曲确认可传 `coverQuality`，均默认原图；服务端只从已有候选推导 CDN 版本，确认结果保存所选版本，不接收外部 URL。平台原图不再经过 2 MB / 4096 像素门槛，保留源字节，网络与缓存读取上限 32 MiB、20 秒；上传限制保持独立。图片加载失败与平台未提供封面分别处理。
+歌曲元数据平台现为 `NETEASE|QQ|KUGOU|KUWO|QISHUI`，设置与搜索最多 5 个，默认配置不变。候选封面 GET 可传 `quality=ORIGINAL|HIGH`，单曲确认可传 `coverQuality`，均默认原图；服务端只从已有候选推导 CDN 版本，确认结果保存所选版本，不接收外部 URL。平台原图保留源字节，网络与缓存读取上限 32 MiB、20 秒；正式资源与封面上传也使用 32 MiB 上限，展示缩略图单独生成。图片加载失败与平台未提供封面分别处理。
 
 
 ## 媒体资料导入与来源入库
 
-来源创建可选 `startScan` 和 WebDAV 的 `autoExtractEmbedded`；省略时保持旧客户端只保存的行为。后台导入使用 `embedded-metadata/import-jobs` 上传、预览、映射、确认、查询、取消与重试，返回 lower camelCase 的 `MediaImportJob`；上传完成后由服务端续跑。`rebind` 保留歌曲身份与本地订正，单独重新核验媒体。共享 v3 稳定系列和版本支持已有歌曲合并，v2 仍可导入；默认完整 ZIP，增量要求匹配基线，旧版本拒绝，删除提示不自动应用。详细状态、路径规则、限额及兼容边界见[媒体库说明](../../docs/media-library.md#媒体入库资料合并与分享2026-11-10)。
+来源创建可选 `startScan` 和 WebDAV 的 `autoExtractEmbedded`；省略时保持旧客户端只保存的行为。后台导入使用 `embedded-metadata/import-jobs` 上传、预览、映射、确认、查询、取消与重试，返回 lower camelCase 的 `MediaImportJob`；上传完成后由服务端续跑。`rebind` 保留歌曲身份与本地订正，单独重新核验媒体。默认共享 v4 使用稳定系列、版本与正式对象，兼容 v2/v3 导入；默认完整 ZIP，增量要求匹配基线，旧版本拒绝，删除提示不自动应用。详细状态、路径规则、限额及兼容边界见[媒体库说明](../../docs/media-library.md#媒体入库资料合并与分享2026-11-10)。
+
+
+## Metadata Schema 1.0 与正式资料接口（2026-11-11）
+
+公开规范见 [contracts/metadata](../metadata/README.md)。`GET /api/v1/songs` 按歌曲分页；`GET /songs/{songId}` 与 `GET /metadata/entities/{entityId}` 返回当前文档、分页子对象、独立的保存和媒体状态。`GET /metadata/statistics` 用关系和索引列聚合，不重复解析全库 JSON。
+
+`POST /metadata/entities` 创建稳定 UUID 对象；`PATCH /metadata/entities/{entityId}` 使用字符串 expectedRevision、UUID requestId 和 SET/CLEAR/RESET 操作。相同值也可明确确认；空值不能冒充 CLEAR。`association`、`split`、`location`、`replacement`、`visibility` 分别处理关联、拆分、接收方位置、确认内容替换和本机屏蔽。所有写入均需管理员会话、同源和 CSRF，重复请求返回回执，修订冲突返回 409。
+
+`POST /metadata/assets` 以原始二进制保存附件（32 MiB 上限）；`GET /metadata/assets/{sha256}` 读取持久资源。先完成持久保存才允许正式引用；封面或歌词原文的类型必须与引用字段相符。`GET /metadata/entities/{mediaId}/lyrics` 读取版本正式歌词或本机歌词原文，不需要回源媒体或 compute。
+
+旧 `/media-songs`、审核、封面、播放歌词 API 使用正式资料适配层。默认分享升级 v4，兼容 v2/v3 导入；资料语义版本 1.0 与容器版本 4 独立演进，详见[v4 格式](../metadata/package-v4.md)。包内不含私有根目录和凭据，接收方绑定自己的 LOCAL/WEBDAV 来源。接口字段及错误响应已录入 `singverse.openapi.json`。

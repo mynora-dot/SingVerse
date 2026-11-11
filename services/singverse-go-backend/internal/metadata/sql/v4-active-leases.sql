@@ -1,0 +1,1 @@
+DELETE FROM metadata_asset_reference WHERE (owner_type='EXPORT' AND NOT EXISTS(SELECT 1 FROM webdav_share_job j WHERE j.id=metadata_asset_reference.owner_id)) OR (owner_type='IMPORT' AND expires_at IS NULL AND NOT EXISTS(SELECT 1 FROM media_import_job j WHERE j.id=metadata_asset_reference.owner_id))

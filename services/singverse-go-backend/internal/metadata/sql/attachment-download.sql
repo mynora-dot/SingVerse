@@ -1,0 +1,1 @@
+SELECT download.track_json FROM lx_download_asset download JOIN media_song song ON song.id=download.song_id AND song.file_size=download.file_size AND song.modified_at=download.modified_at WHERE download.song_id=@{songId} ORDER BY download.created_at DESC LIMIT 1

@@ -1,0 +1,1 @@
+INSERT INTO metadata_asset_reference(owner_type,owner_id,asset_id,expires_at) SELECT 'EXPORT',@{owner},@{asset},NULL WHERE NOT EXISTS(SELECT 1 FROM metadata_asset_reference WHERE owner_type='EXPORT' AND owner_id=@{owner} AND asset_id=@{asset})

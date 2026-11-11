@@ -233,13 +233,36 @@ func mergeTrack(values map[string]any, base Track) Track {
 	}
 	return t
 }
-func (s *Service) saveApplied(ctx context.Context, tx store.DBTX, song map[string]any, a Applied) error {
+func (s *Service) saveApplied(ctx context.Context, tx store.DBTX, song map[string]any, a Applied, selected []string, automatic bool) error {
 	args := map[string]any{"songId": song["id"], "sourceId": song["sourceId"], "fingerprint": fingerprint(song), "track": encode(a.Track), "fields": encode(a.Fields), "origins": encode(a.Origins), "now": a.AppliedAt}
 	if _, e := s.exec(ctx, tx, "meta-deleteApplied", args); e != nil {
 		return e
 	}
 	if _, e := s.exec(ctx, tx, "meta-insertApplied", args); e != nil {
 		return e
+	}
+	originValues := map[string]any{}
+	if e := decode(encode(a.Origins), &originValues); e != nil {
+		return e
+	}
+	formalValues := map[string]any{}
+	allValues := trackValues(a.Track)
+	for _, f := range selected {
+		formalValues[f] = allValues[f]
+	}
+	var formalErr error
+	if automatic {
+		formalErr = s.library.ObserveFormal(ctx, tx, text(song["id"]), formalValues, originValues)
+	} else {
+		formalErr = s.library.ApplyFormal(ctx, tx, text(song["id"]), formalValues, originValues)
+	}
+	if formalErr != nil {
+		return formalErr
+	}
+	if contains(selected, "cover") && a.Track.CoverURL != nil {
+		if e := s.enqueueAttachment(ctx, tx, text(song["id"]), *a.Track.CoverURL, a.Origins["cover"], automatic); e != nil {
+			return e
+		}
 	}
 	if e := s.Touch(ctx, tx, text(song["id"])); e != nil {
 		return e
@@ -252,7 +275,8 @@ func (s *Service) saveApplied(ctx context.Context, tx store.DBTX, song map[strin
 	}
 	return nil
 }
-func (s *Service) applyLocked(ctx context.Context, tx store.DBTX, id string, in ApplyInput, expected string) (Applied, error) {
+func (s *Service) applyLocked(ctx context.Context, tx store.DBTX, id string, in ApplyInput, expected string, auto ...bool) (Applied, error) {
+	automatic := len(auto) > 0 && auto[0]
 	if _, e := s.settings(ctx, tx, true); e != nil {
 		return Applied{}, e
 	}
@@ -286,27 +310,30 @@ func (s *Service) applyLocked(ctx context.Context, tx store.DBTX, id string, in 
 			origins[k] = v
 		}
 	}
-	written := 0
+	written := []string{}
 	at := now()
 	for _, f := range fields {
 		if !present(from[f]) {
 			continue
 		}
-		if origins[f].Kind == "FILE" {
-			continue
+		if automatic {
+			state := pathValue(song, "metadata", "fieldStates", f, "decision")
+			if state == "SET" || state == "CLEAR" || origins[f].Kind == "MANUAL" || origins[f].Kind == "UPLOAD" {
+				continue
+			}
 		}
 		values[f] = from[f]
 		origins[f] = Origin{t.Provider, t.ExternalID, at, "PLATFORM"}
 		if !contains(all, f) {
 			all = append(all, f)
 		}
-		written++
+		written = append(written, f)
 	}
-	if written == 0 {
-		return Applied{}, bad("候选没有可写入字段，文件内嵌标签优先，原元数据未修改")
+	if len(written) == 0 {
+		return Applied{}, bad("候选没有可采用字段，已保留本机确认的资料")
 	}
 	out := Applied{Track: mergeTrack(values, t), Fields: all, AppliedAt: at, Origins: origins}
-	return out, s.saveApplied(ctx, tx, song, out)
+	return out, s.saveApplied(ctx, tx, song, out, written, automatic)
 }
 func (s *Service) applyHTTP(c *gin.Context) {
 	var in ApplyInput
@@ -336,7 +363,7 @@ func confirmed(song map[string]any) bool {
 		return false
 	}
 	for _, f := range a.Fields {
-		if a.Origins[f].Kind != "FILE" {
+		if a.Origins[f].Kind != "FILE" && a.Origins[f].Kind != "FILENAME" && a.Origins[f].Kind != "UNKNOWN" {
 			return true
 		}
 	}
@@ -345,6 +372,9 @@ func confirmed(song map[string]any) bool {
 
 // Touch records durable derived-file work in the caller's transaction.
 func (s *Service) Touch(ctx context.Context, tx store.DBTX, id string) error {
+	if e := s.library.SyncMetadata(ctx, tx, id); e != nil {
+		return e
+	}
 	a := map[string]any{"songId": id}
 	if _, e := s.exec(ctx, tx, "files-touch", a); e != nil {
 		return e
@@ -355,6 +385,9 @@ func (s *Service) Touch(ctx context.Context, tx store.DBTX, id string) error {
 
 // TouchPath records derived-file work for a source-relative artist correction.
 func (s *Service) TouchPath(ctx context.Context, tx store.DBTX, source, path string) error {
+	if e := s.library.SyncSourceMetadata(ctx, tx, source); e != nil {
+		return e
+	}
 	args := map[string]any{"source": source, "path": path}
 	if _, e := s.exec(ctx, tx, "files-touchPath", args); e != nil {
 		return e
@@ -365,6 +398,9 @@ func (s *Service) TouchPath(ctx context.Context, tx store.DBTX, source, path str
 
 // TouchSource registers each published source snapshot in the publication transaction.
 func (s *Service) TouchSource(ctx context.Context, tx store.DBTX, source string) error {
+	if e := s.library.SyncSourceMetadata(ctx, tx, source); e != nil {
+		return e
+	}
 	args := map[string]any{"sourceId": source}
 	if _, e := s.exec(ctx, tx, "files-touchSource", args); e != nil {
 		return e

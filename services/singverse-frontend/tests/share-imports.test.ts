@@ -57,3 +57,17 @@ it('从任务中心恢复指定任务，差异显示保留的本地字段与连�
   await button('重试未通过的核验').trigger('click'); await flushPromises()
   expect(shareImports.action).toHaveBeenCalledWith('mine', 'job', 'retry')
 })
+it('开始上传后忽略迟到的旧任务查询，保留新资料包的路径预览', async () => {
+  let old!: (value: ShareImportJob) => void
+  vi.mocked(shareImports.latest).mockReturnValue(new Promise(resolve => { old = resolve }))
+  vi.mocked(shareImports.upload).mockResolvedValue(job('PARSING'))
+  vi.mocked(shareImports.get).mockResolvedValue(job('PREVIEW'))
+  wrapper = mount(ShareImportPanel, { props: { source } }); await flushPromises()
+  const input = wrapper.get('input[type="file"]')
+  Object.defineProperty(input.element, 'files', { value: [new File(['zip'], 'new.zip')] })
+  await input.trigger('change'); await flushPromises()
+  old({ ...job('SUCCEEDED'), id: 'older-job' }); await flushPromises()
+  expect(button('确认导入资料')).toBeDefined()
+  expect(wrapper.text()).toContain('请核对自己的媒体目录')
+  expect(wrapper.text()).not.toContain('资料处理结束')
+})

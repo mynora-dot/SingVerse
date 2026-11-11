@@ -306,6 +306,9 @@ func (s *Service) advanceAudio(ctx context.Context, row map[string]any) error {
 				_ = os.Remove(s.audioPath(row))
 				return fail(409, "源媒体已变化")
 			}
+			if e = s.saveFormalProbe(ctx, tx, songID, result); e != nil {
+				return e
+			}
 			if oneOf(str(row, "kind"), "FAST", "ANALYZE") {
 				if e = s.applySuggestion(ctx, tx, songID, str(row, "fingerprint"), result, false); e != nil {
 					return e
@@ -654,6 +657,9 @@ func (s *Service) observeAudio(ctx context.Context, songID string, media map[str
 		}
 		result := map[string]any{"duration": media["duration"], "streams": audio}
 		if _, err = s.exec(ctx, tx, "audio-update-job", map[string]any{"id": id, "state": "SUCCEEDED", "result": encoded(result), "error": "", "now": stamp}); err != nil {
+			return err
+		}
+		if err = s.saveFormalProbe(ctx, tx, songID, media); err != nil {
 			return err
 		}
 		if err = s.verifyImported(ctx, tx, songID, fp, result); err != nil {

@@ -1,6 +1,6 @@
 import { authRequest } from '../../../core/auth/api'
 export interface EmbeddedSummary {
-  quality?: { total: number; identityComplete: number; informationMissing: number; pendingVerification: number; mediaIssues: number }
+  quality?: { songs?: number; variants?: number; files?: number; total: number; identityComplete: number; informationMissing: number; pendingVerification: number; mediaIssues: number }
   files?: { pending: number; failed: number; attachments?: number; directory: string }
   remoteReady?: boolean; nodeStatus?: string; nodeMessage?: string
   enabled: boolean; paused: boolean; accessGroup: string; privateOrigins: string[]

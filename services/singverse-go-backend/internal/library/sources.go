@@ -395,7 +395,13 @@ func (s *Service) deleteSource(c *gin.Context) {
 	c.Status(204)
 }
 func (s *Service) clearSource(ctx context.Context, tx store.DBTX, id string) error {
-	for _, name := range []string{"source-clear-import-entries", "source-clear-imports", "source-clear-shared", "source-clear-shared-baseline", "source-clear-share-series", "source-clear-ingests", "source-clear-metadata", "source-clear-assignments", "source-clear-classification", "source-clear-artists", "source-clear-overrides", "source-clear-dav-tasks", "source-clear-webdav", "source-clear-dav-config", "song-delete-source"} {
+	if e := s.formal.DetachSource(ctx, tx, id); e != nil {
+		return e
+	}
+	if _, e := tx.ExecContext(ctx, s.q["song-unbind"], id); e != nil {
+		return e
+	}
+	for _, name := range []string{"source-clear-import-entries", "source-clear-imports", "source-clear-ingests", "source-clear-dav-tasks", "source-clear-dav-config"} {
 		if _, e := tx.ExecContext(ctx, s.q[name], id); e != nil {
 			return e
 		}

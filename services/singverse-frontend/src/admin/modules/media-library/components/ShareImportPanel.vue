@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElAlert, ElButton, ElInput, ElProgress } from 'element-plus'
-import { shareImports, mediaVerification, type ShareImportJob, type ImportDifference } from '../api/shareImports'
+import { shareImports, mediaVerification, validateSharePackage, type ShareImportJob, type ImportDifference } from '../api/shareImports'
 import type { MediaSource } from '../types'
 
-const props = defineProps<{ source: MediaSource; jobId?: string }>()
-const emit = defineEmits<{ updated: []; uploading: [value: boolean] }>()
+const props = defineProps<{ source: MediaSource; jobId?: string; initialFile?: File }>()
+const emit = defineEmits<{ updated: []; uploading: [value: boolean]; active: [value: boolean]; fileConsumed: [] }>()
 const job = ref<ShareImportJob>(), error = ref(''), busy = ref(false), uploading = ref(false)
+const pendingFile = ref<File>()
 const remove = ref(''), add = ref(''), differences = ref<ImportDifference[]>([])
 const cursor = ref(0), more = ref(false), showingDifferences = ref(false)
 let timer: ReturnType<typeof setTimeout> | undefined, controller: AbortController | undefined, generation = 0
 const working = computed(() => ['PARSING', 'QUEUED', 'RUNNING', 'VERIFYING', 'PREVIEW'].includes(job.value?.state ?? ''))
+watch(() => uploading.value || working.value, value => emit('active', value), { immediate: true })
 const stage = computed(() => ({ PARSING: '正在解析资料包', PREVIEW: '请核对自己的媒体目录', QUEUED: '等待导入', RUNNING: '正在保存资料', VERIFYING: '资料已保存，正在核对媒体路径', SUCCEEDED: '资料处理结束', FAILED: '处理暂未完成', CANCELLED: '已取消，已完成的资料保留' }[job.value?.state ?? ''] ?? ''))
 const progress = computed(() => job.value?.phase === 'VERIFYING' ? job.value.verifiedCount : job.value?.processedCount ?? 0)
 const percent = computed(() => Math.min(100, Math.round(progress.value * 100 / Math.max(1, job.value?.totalCount ?? 0))))
@@ -31,19 +33,30 @@ async function load(initial = false) {
   } catch (e) { if (token === generation) error.value = e instanceof Error ? e.message : '读取导入任务失败' }
   finally { if (token === generation) { clearTimeout(timer); if (job.value?.id && working.value && job.value.state !== 'PREVIEW') timer = setTimeout(() => void load(), 2000) } }
 }
-watch([() => props.source.id, () => props.jobId], () => { generation++; clearTimeout(timer); job.value = undefined; differences.value = []; showingDifferences.value = false; void load(true) }, { immediate: true })
+watch([() => props.source.id, () => props.jobId], () => {
+  generation++; controller?.abort(); clearTimeout(timer); uploading.value = false; emit('uploading', false)
+  job.value = undefined; pendingFile.value = undefined; differences.value = []; showingDifferences.value = false
+  if (props.initialFile) { void upload(props.initialFile); emit('fileConsumed') }
+  else void load(true)
+}, { immediate: true })
 async function choose(event: Event) {
   const input = event.target as HTMLInputElement, file = input.files?.[0]; input.value = ''
-  if (!file || uploading.value || working.value) return
-  const token = generation
-  uploading.value = true; emit('uploading', true); error.value = ''; controller = new AbortController()
+  if (file) await upload(file)
+}
+async function upload(file: File) {
+  if (uploading.value || working.value) return
+  try { validateSharePackage(file) }
+  catch (e) { error.value = e instanceof Error ? e.message : '无法读取资料包'; return }
+  const token = ++generation, uploadController = new AbortController()
+  clearTimeout(timer); controller = uploadController; pendingFile.value = file
+  uploading.value = true; emit('uploading', true); error.value = ''
   try {
-    const value = await shareImports.upload(props.source.id, file, controller.signal)
+    const value = await shareImports.upload(props.source.id, file, uploadController.signal)
     if (token !== generation) return
-    accept(value); remove.value = ''; add.value = ''; differences.value = []; showingDifferences.value = false
+    accept(value); pendingFile.value = undefined; remove.value = ''; add.value = ''; differences.value = []; showingDifferences.value = false
     clearTimeout(timer); void load()
-  } catch (e) { if (token === generation) error.value = controller.signal.aborted ? '上传已取消，可以重新选择资料包' : e instanceof Error ? e.message : '上传失败' }
-  finally { uploading.value = false; emit('uploading', false) }
+  } catch (e) { if (token === generation) error.value = uploadController.signal.aborted ? '上传已取消，可以重试或重新选择资料包' : e instanceof Error ? e.message : '上传失败' }
+  finally { if (token === generation) { uploading.value = false; emit('uploading', false); controller = undefined } }
 }
 async function action(value: 'apply' | 'cancel' | 'retry') {
   if (!job.value?.id || busy.value) return
@@ -82,8 +95,9 @@ onBeforeUnmount(() => { generation++; controller?.abort(); clearTimeout(timer); 
     <p>先将媒体转存或挂载到自己的 OpenList，再选择收到的完整 ZIP。已有歌曲会补充资料，本地订正会保留。</p>
     <p class="root">自己的媒体根目录：{{ source.location }}</p>
     <label class="file-choice" :class="{ disabled: uploading || working }">选择资料包<input type="file" accept=".zip,application/zip" aria-label="选择资料包" :disabled="uploading || working" @change="choose"></label>
-    <div v-if="uploading" role="status"><ElProgress :percentage="0" indeterminate /><p>正在上传，请保持页面打开。上传完成后可关闭页面，后台会继续处理。</p><ElButton @click="controller?.abort()">取消上传</ElButton></div>
+    <div v-if="uploading" role="status"><ElProgress :percentage="0" indeterminate /><p>正在上传 {{ pendingFile?.name }}，请保持页面打开。上传完成后可关闭页面，后台会继续处理。</p><ElButton @click="controller?.abort()">取消上传</ElButton></div>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
+    <div v-if="pendingFile && !uploading && !working"><p>媒体库已保存，无需重新新建。可重试上传 {{ pendingFile.name }}，或选择其他资料包。</p><ElButton @click="upload(pendingFile!)">重试上传资料包</ElButton></div>
     <div v-if="job?.id" class="job" aria-live="polite">
       <strong>{{ stage }}</strong><p v-if="job.deletionCount">共享方提示移除了 {{ job.deletionCount }} 首歌曲，仅供核对，本机资料会保留。</p>
       <p v-if="job.error">{{ job.error }}</p>

@@ -41,7 +41,7 @@ func (s *Service) importDocument(ctx context.Context, sourceID string, document 
 	if e != nil {
 		return nil, absent(e, "媒体来源不存在")
 	}
-	if text(source["source_type"]) != "WEBDAV" {
+	if text(source["source_type"]) != "WEBDAV" && text(source["source_type"]) != "LOCAL" {
 		return nil, bad("请选择 WebDAV 媒体库导入")
 	}
 	binding := hash(text(source["location"]))
@@ -51,6 +51,11 @@ func (s *Service) importDocument(ctx context.Context, sourceID string, document 
 	}
 	if e = s.checkSharedBaseline(ctx, s.db, sourceID, document); e != nil {
 		return nil, e
+	}
+	if number(document["version"]) == 4 {
+		if e = s.normalizeSharedAssets(document); e != nil {
+			return nil, e
+		}
 	}
 	entries := array(document["entries"])
 	seen := map[string]bool{}
@@ -127,6 +132,9 @@ func (s *Service) importDocument(ctx context.Context, sourceID string, document 
 			if hash(text(source["location"])) != binding {
 				return conflict("导入期间来源根目录已变化")
 			}
+			if text(source["source_type"]) == "LOCAL" {
+				return nil
+			}
 			return s.prepare(ctx, tx, sourceID, true)
 		}
 		return nil
@@ -176,7 +184,7 @@ func (s *Service) importDocument(ctx context.Context, sourceID string, document 
 			if e != nil {
 				return e
 			}
-			if text(source["source_type"]) != "WEBDAV" || hash(text(source["location"])) != binding {
+			if (text(source["source_type"]) != "WEBDAV" && text(source["source_type"]) != "LOCAL") || hash(text(source["location"])) != binding {
 				return conflict("导入期间来源根目录已变化")
 			}
 			imported, skipped := number(current["imported"]), number(current["skipped"])
@@ -186,7 +194,11 @@ func (s *Service) importDocument(ctx context.Context, sourceID string, document 
 				if e != nil {
 					return e
 				}
-				id, added, e := s.library.ImportSong(ctx, tx, sourceID, text(item["path"]), size)
+				preferred, e := s.preferredMedia(ctx, tx, sourceID, collection, item["metadata"].(map[string]any))
+				if e != nil {
+					return e
+				}
+				id, added, e := s.library.ImportPortableSong(ctx, tx, sourceID, text(item["path"]), size, preferred)
 				if e != nil {
 					return e
 				}

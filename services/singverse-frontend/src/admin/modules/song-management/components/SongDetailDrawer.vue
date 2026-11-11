@@ -5,6 +5,7 @@ import { ElButton, ElDrawer, ElTag } from 'element-plus'
 import { VideoPlay, EditPen } from '@element-plus/icons-vue'
 import SongCover from './SongCover.vue'
 import EmbeddedMetadataPanel from '../../media-library/components/EmbeddedMetadataPanel.vue'
+import type { FormalLyrics } from '../../metadata/types'
 import type { EmbeddedDetail } from '../../media-library/api/embeddedMetadata'
 import { songTitle, songArtists } from '../../metadata/utils'
 import type { Tag } from '../../classification/types'
@@ -16,12 +17,17 @@ import { rolesSummary } from '../../audio-processing/presentation'
 const props = withDefaults(defineProps<{ song: MediaSong | null; visible: boolean; tags?: Tag[] }>(), { tags: () => [] })
 const emit = defineEmits<{ close: []; play: []; edit: []; classify: [] }>()
 const embedded = ref<EmbeddedDetail>(), coverFailed = ref(false)
+const assetLyrics = ref<FormalLyrics | null>(), lyricsError = ref(false)
 const roles = ref<AudioRoles>(), rolesError = ref(false)
 let rolesTurn = 0
 watch(() => [props.song?.id, props.visible], async () => {
-  embedded.value = undefined; coverFailed.value = false; roles.value = undefined; rolesError.value = false
+  assetLyrics.value = undefined; lyricsError.value = false; embedded.value = undefined; coverFailed.value = false; roles.value = undefined; rolesError.value = false
   const turn = ++rolesTurn, id = props.song?.id
   if (!id || !props.visible) return
+  const variant = props.song?.metadata?.variant
+  if (variant?.lyricsAsset && !Object.hasOwn(variant, 'lyrics')) {
+    void authRequest<{ lyrics: FormalLyrics | null }>(`/api/v1/metadata/entities/${encodeURIComponent(id)}/lyrics`).then(value => { if (turn === rolesTurn) assetLyrics.value = value.lyrics }).catch(() => { if (turn === rolesTurn) lyricsError.value = true })
+  }
   try { const value = await authRequest<AudioRoles>(`${songRoles(id)}/audio-roles`); if (turn === rolesTurn) roles.value = value }
   catch { if (turn === rolesTurn) rolesError.value = true }
 }, { immediate: true })
@@ -29,7 +35,7 @@ const audio = computed(() => rolesSummary(roles.value))
 const artwork = computed(() => {
   const song = props.song
   if (!song) return ''
-  if (song.metadata && !song.metadata.stale && song.metadata.fields.includes('cover') && song.metadata.track.coverUrl) return `/api/v1/metadata/songs/${encodeURIComponent(song.id)}/cover`
+  if (song.metadata && !song.metadata.stale && song.metadata.fields.includes('cover')) return song.metadata.track.coverUrl ? `/api/v1/metadata/songs/${encodeURIComponent(song.id)}/cover?variant=thumbnail` : ''
   return embedded.value?.result?.cover ? `/api/v1/media-songs/${encodeURIComponent(song.id)}/embedded-metadata/cover` : ''
 })
 watch(artwork, () => { coverFailed.value = false })
@@ -38,17 +44,23 @@ const album = computed(() => {
   return typeof value === 'string' && !['未知专辑', 'Unknown Album'].includes(value) ? value : ''
 })
 const duration = computed(() => {
-  if (props.song && platformDuration(props.song)) return platformDuration(props.song)
-  const seconds = Number(embedded.value?.result?.technical?.duration)
+  const actual = props.song?.metadata?.media?.durationMs
+  const seconds = actual ? actual / 1000 : Number(embedded.value?.result?.technical?.duration)
   return Number.isFinite(seconds) && seconds > 0 ? `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}` : ''
 })
+const lyricData = computed(() => {
+  const variant = props.song?.metadata?.variant
+  if (variant && Object.hasOwn(variant, 'lyrics')) return variant.lyrics
+  if (variant && Object.hasOwn(variant, 'lyricsAsset')) return assetLyrics.value
+  return embedded.value?.result?.lyrics
+})
 const lyrics = computed(() => {
-  const value = embedded.value?.result?.lyrics
+  const value = lyricData.value
   if (!value) return ''
   if (value.lines?.length) return value.lines.map(line => line.text).join('\n').trim()
-  return value.text.replace(/^\[(?:ti|ar|al|by|offset|length):.*\]\s*$/gmi, '').replace(/\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]/g, '').trim()
+  return (value.text ?? '').replace(/^\[(?:ti|ar|al|by|offset|length):.*\]\s*$/gmi, '').replace(/\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]/g, '').trim()
 })
-const syncedLyrics = computed(() => ['milliseconds', 'lrc', 'mpeg-frames'].includes(embedded.value?.result?.lyrics?.timing ?? ''))
+const syncedLyrics = computed(() => ['milliseconds', 'lrc', 'mpeg-frames'].includes(lyricData.value?.timing ?? ''))
 const classifications = computed(() => props.song ? songTags(props.song, props.tags) : [])
 const facts = computed(() => {
   const song = props.song
@@ -75,13 +87,13 @@ const origin = computed(() => {
           <img v-if="artwork && !coverFailed" :src="artwork" :alt="songTitle(song) + '的封面'" decoding="async" @error="coverFailed = true">
           <SongCover v-else :song="song" fallback-only />
         </div>
-        <div class="song-heading"><h2>{{ songTitle(song) }}</h2><p class="song-artists">{{ songArtists(song).join('、') || '未知歌手' }}</p><p v-if="album" class="song-album">{{ album }}</p><div class="song-quick-facts"><span>{{ fileFormat(song) }}</span><span v-if="duration">{{ duration }}</span><span :title="'媒体库：' + song.sourceName">{{ song.sourceName }}</span><span v-if="needsSongReview(song)" class="review-status">待核对</span></div></div>
+        <div class="song-heading"><h2>{{ songTitle(song) }}</h2><p class="song-artists">{{ songArtists(song).join('、') || '未知歌手' }}</p><p v-if="album" class="song-album">{{ album }}</p><div class="song-quick-facts"><span>{{ fileFormat(song) }}</span><span v-if="duration" title="媒体实际时长">{{ duration }}</span><span v-if="platformDuration(song)" title="曲目参考时长，不作为播放时间轴">曲目参考 {{ platformDuration(song) }}</span><span :title="'媒体库：' + song.sourceName">{{ song.sourceName }}</span><span v-if="needsSongReview(song)" class="review-status">待核对</span></div></div>
         <div class="song-primary-actions"><ElButton type="primary" :icon="VideoPlay" @click="emit('play')">播放</ElButton><ElButton :icon="EditPen" @click="emit('edit')">{{ needsSongReview(song) ? '核对信息' : '编辑信息' }}</ElButton></div>
       </section>
-      <p v-if="song.metadata?.stale" class="song-notice" role="status">文件已变化，歌曲信息需要重新核对。</p><p v-else-if="sharedIdentity(song)" class="song-notice">来自共享曲库，核对后可保存自己的订正。</p>
+      <p v-if="song.metadata?.stale" class="song-notice" role="status">媒体属性需要重新核验，已保存的歌曲资料会保留。</p><p v-else-if="sharedIdentity(song)" class="song-notice">来自共享曲库，核对后可保存自己的订正。</p>
       <dl v-if="facts.length" class="song-facts"><div v-for="fact in facts" :key="fact.label"><dt>{{ fact.label }}</dt><dd>{{ fact.value }}</dd></div></dl>
       <section class="classification-section audio-summary" aria-label="原唱与伴奏"><div class="section-heading"><h3>原唱与伴奏</h3><RouterLink :to="{ path: '/library/audio-processing', query: { song: song.id } }" @click="emit('close')">{{ audio.tone === 'warning' ? '去处理' : '管理音轨' }}</RouterLink></div><p v-if="rolesError" class="classification-empty">暂时无法读取音轨信息</p><p v-else class="audio-status"><ElTag :type="audio.tone" effect="light" round size="small">{{ audio.tag }}</ElTag><span>{{ audio.title }}</span></p></section>
-      <section class="lyrics-card" aria-label="歌曲歌词"><div class="section-heading"><h3>歌词</h3><span v-if="lyrics && syncedLyrics" class="section-caption">同步歌词</span></div><div v-if="lyrics" class="lyrics-content" tabindex="0" aria-label="歌词内容"><p>{{ lyrics }}</p></div><p v-else class="lyrics-empty">暂无可显示的歌词</p></section>
+      <section class="lyrics-card" aria-label="歌曲歌词"><div class="section-heading"><h3>歌词</h3><span v-if="lyrics && syncedLyrics" class="section-caption">同步歌词</span></div><div v-if="lyrics" class="lyrics-content" tabindex="0" aria-label="歌词内容"><p>{{ lyrics }}</p></div><p v-else class="lyrics-empty">{{ lyricsError ? '本机歌词资源暂时无法读取' : '暂无可显示的歌词' }}</p></section>
       <section class="classification-section" aria-label="歌曲分类"><div class="section-heading"><h3>分类标签</h3><ElButton text @click="emit('classify')">编辑标签</ElButton></div><div v-if="classifications.length" class="song-tag-list"><span v-for="tag in classifications" :key="tag.dimension + tag.id" class="song-tag" :class="{ inactive: !tag.active }" :title="tag.dimension + (tag.locked ? ' · 已锁定' : '')">{{ tag.name }}</span></div><p v-else class="classification-empty">还没有分类标签</p></section>
       <details class="file-details"><summary>文件与技术信息</summary><div class="file-details-content"><p class="file-path">{{ song.relativePath }}</p><dl class="file-facts"><div><dt>文件大小</dt><dd>{{ fileSize(song.fileSize) }}</dd></div><div><dt>信息来源</dt><dd>{{ origin }}</dd></div><div><dt>修改时间</dt><dd>{{ displayTime(song.modifiedAt) }}</dd></div><div><dt>扫描时间</dt><dd>{{ displayTime(song.scannedAt) }}</dd></div><div><dt>整理状态</dt><dd>{{ songReviewLabel(song) }}</dd></div><div><dt>原始解析</dt><dd>{{ song.result.needsReview ? '文件名待核对' : '文件名完整' }}</dd></div></dl>
       <EmbeddedMetadataPanel :key="song.id" :song-id="visible ? song.id : null" compact @loaded="embedded = $event" /></div></details>

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "1.0",
+  "id": "2f0ba825-b0f7-49f8-9d8d-d14a5e24c002",
+  "type": "WORK",
+  "revision": "1",
+  "fields": {
+    "title": "示例作品"
+  },
+  "states": {
+    "title": {
+      "origin": {
+        "kind": "MANUAL"
+      },
+      "decision": "SET",
+      "status": "PRESENT",
+      "revision": "1"
+    }
+  }
+}
