@@ -12,7 +12,7 @@ for program in ("go", "ffmpeg", "ffprobe"):
     if shutil.which(program) is None:
         raise SystemExit(f"Required real integration program unavailable: {program}")
 
-env = dict(os.environ, GOTOOLCHAIN="go1.27.3",
+env = dict(os.environ, GOTOOLCHAIN="go1.27.4",
            GOMODCACHE=str(ROOT / ".tools/go-mod-cache"),
            GOCACHE=str(ROOT / ".tools/go-build-cache"),
            GOPATH=str(ROOT / ".tools/go"),

@@ -92,7 +92,7 @@ onBeforeUnmount(() => { generation++; uploadAbort?.abort() })
 .cover-quality { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; font-size: 12px; }
 .cover-quality > div { display: flex; border: 1px solid var(--sv-border-default); padding: 3px; border-radius: 8px; gap: 4px; }
 .cover-quality button { border: 0; border-radius: 5px; background: transparent; color: var(--sv-text-secondary); padding: 6px 14px; cursor: pointer; font: inherit; }
-.cover-quality button[aria-pressed=true] { background: var(--sv-accent-primary); color: var(--sv-text-inverse); }
+.cover-quality button[aria-pressed=true] { background: var(--sv-accent-primary); color: var(--sv-on-accent); }
 .cover-quality > small { color: var(--sv-text-secondary); }
 .cover-search { margin: 18px 0; }
 .cover-query { display: flex; gap: 10px; margin-top: 8px; }

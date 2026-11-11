@@ -9407,6 +9407,406 @@
         }
       }
     },
+    "/api/v1/admin/overview": {
+      "get": {
+        "tags": [
+          "Admin overview"
+        ],
+        "summary": "Read-only administrator home aggregation",
+        "operationId": "getAdminOverview",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success. Each section is collected independently; a failing section is null and recorded in errors. Recent songs and playlists are empty arrays when none exist.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Always no-store."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "library": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "totalSongs": {
+                          "type": "integer"
+                        },
+                        "reviewSongs": {
+                          "type": "integer"
+                        },
+                        "formalSongs": {
+                          "type": "integer"
+                        },
+                        "formalVariants": {
+                          "type": "integer"
+                        },
+                        "formalMedia": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "totalSongs",
+                        "reviewSongs",
+                        "formalSongs",
+                        "formalVariants",
+                        "formalMedia"
+                      ]
+                    },
+                    "sources": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "total": {
+                          "type": "integer"
+                        },
+                        "failedTotal": {
+                          "type": "integer"
+                        },
+                        "neverScanned": {
+                          "type": "integer"
+                        },
+                        "failed": {
+                          "type": "array",
+                          "maxItems": 5,
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "lastScanError": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name",
+                              "lastScanError"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "total",
+                        "failedTotal",
+                        "neverScanned",
+                        "failed"
+                      ]
+                    },
+                    "review": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "metadataBatch": {
+                          "oneOf": [
+                            {
+                              "$ref": "#/components/schemas/MetadataBatch"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "classification": {
+                          "type": "object",
+                          "properties": {
+                            "activeTasks": {
+                              "type": "integer"
+                            },
+                            "reviewItems": {
+                              "type": "integer"
+                            },
+                            "latestTaskId": {
+                              "type": "string",
+                              "description": "Newest classification task id; empty string when none exists."
+                            }
+                          },
+                          "required": [
+                            "activeTasks",
+                            "reviewItems",
+                            "latestTaskId"
+                          ]
+                        },
+                        "missingFeedbackPending": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "metadataBatch",
+                        "classification",
+                        "missingFeedbackPending"
+                      ]
+                    },
+                    "tv": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "activeDevices": {
+                          "type": "integer"
+                        },
+                        "pending": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "activeDevices",
+                        "pending"
+                      ]
+                    },
+                    "tasks": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "activeTotal": {
+                          "type": "integer"
+                        },
+                        "counts": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "integer"
+                          }
+                        },
+                        "items": {
+                          "type": "array",
+                          "maxItems": 3,
+                          "items": {
+                            "$ref": "#/components/schemas/BackgroundTask"
+                          }
+                        },
+                        "observedAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "activeTotal",
+                        "counts",
+                        "items",
+                        "observedAt"
+                      ]
+                    },
+                    "recentSongs": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "maxItems": 6,
+                      "items": {
+                        "$ref": "#/components/schemas/MediaSong"
+                      }
+                    },
+                    "playback30d": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "totalPlays": {
+                          "type": "integer"
+                        },
+                        "effectivePlays": {
+                          "type": "integer"
+                        },
+                        "playedSongs": {
+                          "type": "integer"
+                        },
+                        "playedMs": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "totalPlays",
+                        "effectivePlays",
+                        "playedSongs",
+                        "playedMs"
+                      ]
+                    },
+                    "cache": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "usageBytes": {
+                          "type": "integer"
+                        },
+                        "entryCount": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "usageBytes",
+                        "entryCount"
+                      ]
+                    },
+                    "readiness": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "compute": {
+                          "type": "object",
+                          "properties": {
+                            "configured": {
+                              "type": "boolean"
+                            },
+                            "mode": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "configured",
+                            "mode"
+                          ]
+                        },
+                        "ai": {
+                          "type": "object",
+                          "properties": {
+                            "configured": {
+                              "type": "boolean"
+                            },
+                            "enabledFeatures": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "required": [
+                            "configured",
+                            "enabledFeatures"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "compute",
+                        "ai"
+                      ]
+                    },
+                    "playlists": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "maxItems": 3,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "count"
+                        ]
+                      }
+                    },
+                    "observedAt": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Section name to human-readable message, present only for sections that failed to collect."
+                    }
+                  },
+                  "required": [
+                    "library",
+                    "sources",
+                    "review",
+                    "tv",
+                    "tasks",
+                    "recentSongs",
+                    "playback30d",
+                    "cache",
+                    "readiness",
+                    "playlists",
+                    "observedAt",
+                    "errors"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed or expired",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin or CSRF rejected",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Database entirely unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "description": "Requires existing administrator Cookie session. Device and participant bearer tokens are rejected. Read-only aggregation of index counts and small row reads; each section is bounded by its own timeout and never streams a full-table search. Response is always no-store.",
+        "parameters": []
+      }
+    },
     "/api/v1/admin/tv-devices": {
       "get": {
         "tags": [

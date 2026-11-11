@@ -20,7 +20,7 @@ vi.mock('../src/admin/modules/classification/api/classification')
 vi.mock('../src/admin/modules/metadata/api/metadata')
 vi.mock('../src/admin/modules/metadata/api/single-review')
 
-const routes = [{ path: '/library/songs/files', component: SongsView, name: 'Songs', meta: { activeMenu: '/library/songs' } }]
+const routes = [{ path: '/library/songs', component: SongsView, name: 'Songs', meta: { activeMenu: '/library/songs' } }]
 
 function song(id = 'song-1', opts: { sourceId?: string; needsReview?: boolean } = {}): MediaSong {
   const result: RulePreview['result'] = {
@@ -72,7 +72,7 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
   let wrapper: VueWrapper, router: Router
   beforeEach(async () => {
     router = createRouter({ history: createMemoryHistory(), routes })
-    await router.push('/library/songs/files')
+    await router.push('/library/songs')
     vi.mocked(metadata.settings).mockResolvedValue({ enabled: false, providers: [], autoApply: false, threshold: 0.9 })
     vi.mocked(classification.tags).mockResolvedValue([])
     vi.mocked(songs.sources).mockResolvedValue([])
@@ -128,7 +128,7 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
   it('重置筛选同时清除搜索、来源、标签和快捷条件，并返回第一页', async () => {
     await router.replace('/library/songs?q=晴天&sourceId=source-1&status=REVIEW&unclassified=true&tagIds=tag-1&page=2&size=50'); await flushPromises()
     await wrapper.find('.filter-reset').trigger('click'); await flushPromises()
-    expect(router.currentRoute.value.query).toEqual({ size: '50' })
+    expect(router.currentRoute.value.query).toEqual({ size: '50', lens: 'songs' })
     expect(songs.list).toHaveBeenLastCalledWith({ sourceId: '', q: '', status: 'ALL', page: 0, size: 50 })
     expect((wrapper.find('input[aria-label="搜索歌曲"]').element as HTMLInputElement).value).toBe('')
     expect(wrapper.find('.filter-reset').exists()).toBe(false)
@@ -322,11 +322,11 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
     expect(songs.list).toHaveBeenCalledTimes(before)
     await wrapper.get('input[aria-label="搜索歌曲"]').setValue('订正后的歌名')
     await wrapper.get('.filters-row button').trigger('click'); await flushPromises()
-    expect(router.currentRoute.value.query).toEqual({ search: '订正后的歌名' })
+    expect(router.currentRoute.value.query).toEqual({ search: '订正后的歌名', lens: 'songs' })
     expect(songs.list).toHaveBeenLastCalledWith(expect.objectContaining({ search: '订正后的歌名', q: '', page: 0 }))
     await wrapper.get('select[aria-label="歌曲搜索范围"]').setValue('path')
     await wrapper.get('.filters-row button').trigger('click'); await flushPromises()
-    expect(router.currentRoute.value.query).toEqual({ q: '订正后的歌名' })
+    expect(router.currentRoute.value.query).toEqual({ q: '订正后的歌名', lens: 'songs' })
     expect(songs.list).toHaveBeenLastCalledWith(expect.objectContaining({ q: '订正后的歌名', page: 0 }))
   })
   it('封面和列表共享本页选择，翻页后不会误操作上一页', async () => {

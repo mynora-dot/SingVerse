@@ -12,3 +12,6 @@
 UI/UX 任务统一使用 `ui-ux-pro-max`。针对本项目必须明确使用 Flutter 技术栈，并遵守仓库现有的 Riverpod、业务层/服务层边界、主题 token 和组件体系；该技能的网页、CSS、Tailwind 或其他技术栈建议不能直接替代 Flutter 实现规则。
 
 仓库根目录的 `skills/` 是项目资料目录；具体能否被 Codex 自动发现取决于运行环境的技能发现配置，必要时直接指定相应 `SKILL.md`。
+
+| Web/UI cleanup and visual quality | `unslop` |
+| Product and graphic design workflows | `huashu-design` |

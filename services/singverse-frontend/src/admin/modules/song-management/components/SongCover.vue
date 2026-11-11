@@ -5,7 +5,7 @@ import { songTitle } from '../../metadata/utils'
 const props = defineProps<{ song: MediaSong; fallbackOnly?: boolean }>()
 const failed = ref(false)
 const palette = computed(() => {
-  const colors = [['#b9c9b0','#536b53'],['#d8bba0','#89513e'],['#bdc9cf','#516778'],['#d6cba7','#85713f'],['#c4b8c5','#70596b']]
+  const colors = [['#e7dcc3','#8a6d3b'],['#e3d3c3','#8c5a3c'],['#dfe0d0','#6f7350'],['#e9d9c8','#9c6b45'],['#e0d4d0','#7d5a52']]
   return colors[Array.from(props.song.id).reduce((n, c) => n + c.charCodeAt(0), 0) % colors.length]!
 })
 const artwork = computed(() => {

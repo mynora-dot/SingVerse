@@ -136,8 +136,8 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
 }
 
 .cover {
-  --sleeve-paper: #dce3cf;
-  --sleeve-ink: #536b53;
+  --sleeve-paper: var(--sv-surface-3);
+  --sleeve-ink: var(--sv-accent-primary);
   position: relative;
   isolation: isolate;
   aspect-ratio: 1.2;
@@ -161,13 +161,13 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
 }
 
 .card:nth-child(3n+2) .cover {
-  --sleeve-paper: #ead3b6;
-  --sleeve-ink: #a56c4f
+  --sleeve-paper: var(--sv-accent-highlight-soft);
+  --sleeve-ink: var(--sv-terracotta)
 }
 
 .card:nth-child(3n+3) .cover {
-  --sleeve-paper: #cfdde0;
-  --sleeve-ink: #63767d
+  --sleeve-paper: var(--sv-semantic-info-soft);
+  --sleeve-ink: var(--sv-semantic-info)
 }
 
 .cover img {

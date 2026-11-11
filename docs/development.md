@@ -1,6 +1,8 @@
 # 开发与验证
 
-业务主服务位于 `services/singverse-go-backend/`，使用 Go 1.27.3、Gin、`database/sql + sqlx` 与嵌入 SQL。前端仍为独立 Vue/Vite 工程，计算执行仍为 Python。Go 依赖由 `go.mod`/`go.sum` 锁定；工具和缓存留在仓库 `.tools/`，不改全局环境。Android 的 JDK/Gradle 要求与业务服务独立。
+业务主服务位于 `services/singverse-go-backend/`，使用 Go 1.27.4、Gin、`database/sql + sqlx` 与嵌入 SQL。前端仍为独立 Vue/Vite 工程，计算执行仍为 Python。Go 依赖由 `go.mod`/`go.sum` 锁定；工具和缓存留在仓库 `.tools/`，不改全局环境。Android 的 JDK/Gradle 要求与业务服务独立。
+
+Go 1.27.4 修复标准库公告 GO-2026-6859；本地脚本、CI 和 Docker 构建保持同一补丁版本，避免旧工具链使 `govulncheck` 门禁失败。
 
 ## 本地启动
 

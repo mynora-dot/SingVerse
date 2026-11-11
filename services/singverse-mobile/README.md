@@ -4,6 +4,8 @@ Flutter 3.47.5 / Dart 3.13.4，Android application ID `com.mynora.singverse.mobi
 
 ## 开发与构建
 
+播放器视觉改版提供独立的 [HTML 双方案预览](design-preview/README.md)，直接打开 `design-preview/index.html` 即可评审深色、浅色及 MV/纯音频/横屏布局。设计稿使用本地示例数据，尚未替换正式 Flutter 页面。
+
 APK 启动图标统一使用[项目 Logo](../../assets/branding/README.md)：传统图标位于 `android/app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/`，Android 8+ 使用 `mipmap-anydpi-v26/ic_launcher.xml` 的独立透明前景与深色背景，圆形图标指向同一资源。正常 debug/release 构建自动包含工程内图标资源，无需额外生成步骤。
 
 ```sh

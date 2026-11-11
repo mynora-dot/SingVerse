@@ -40,13 +40,15 @@ class InternalAuth:
         except FileExistsError:
             pass
 
-    def _token(self) -> str:
+    def _token(self, *, required=False) -> str:
         if self.token_file is None:
             return ''
         try:
             with self.token_file.open() as source:
                 return source.read(257).strip()
-        except (OSError, UnicodeError):
+        except (OSError, UnicodeError) as error:
+            if required:
+                raise ComputeError(503, 'Node credential file unavailable') from error
             return ''
 
     @property
@@ -54,6 +56,6 @@ class InternalAuth:
         return 32 <= len(self._token()) <= 256
 
     def authorize(self, authorization: str):
-        token = self._token()
+        token = self._token(required=True)
         if not 32 <= len(token) <= 256 or not hmac.compare_digest(authorization.encode('utf-8'), ('Bearer ' + token).encode('utf-8')):
             raise ComputeError(401, 'Unauthorized')

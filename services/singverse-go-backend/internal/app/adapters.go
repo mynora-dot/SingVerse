@@ -8,17 +8,35 @@ import (
 	"image"
 	"time"
 
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/ai"
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/background"
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/catalog"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/compute"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/downloads"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/execution"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/feedback"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/library"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/metadata"
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/overview"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/party"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/store"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/playback"
 	_ "golang.org/x/image/webp"
 )
+
+// The overview aggregator depends on narrow read-only interfaces. Each domain
+// service already implements its interface; these adapters make the boundary
+// explicit at the composition root, mirroring the playbackSongReader pattern.
+func overviewLibrary(media *library.Service) overview.LibraryReader       { return media }
+func overviewMetadata(tags *metadata.Service) overview.MetadataReader     { return tags }
+func overviewCatalog(curation *catalog.Service) overview.CatalogReader    { return curation }
+func overviewDevices(devices *party.Service) overview.PartyReader         { return devices }
+func overviewTasks(tasks *background.Service) overview.BackgroundReader   { return tasks }
+func overviewActivity(activity *playback.Service) overview.PlaybackReader { return activity }
+func overviewCache(processing *execution.Service) overview.CacheReader    { return processing }
+func overviewCompute(node *compute.Service) overview.ComputeReader        { return node }
+func overviewModels(models *ai.Service) overview.AIReader                 { return models }
+func overviewFeedback(missing *feedback.Service) overview.FeedbackReader  { return missing }
 
 func playbackSongReader(media *library.Service) playback.SongReader {
 	return func(ctx context.Context, tx store.DBTX, id string) (map[string]any, error) {

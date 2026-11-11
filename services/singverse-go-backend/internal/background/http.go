@@ -101,16 +101,10 @@ func (s *Service) listHTTP(c *gin.Context) {
 	items := []doc{}
 	var count int64
 	e = store.WithinTx(c.Request.Context(), s.db, func(tx store.DBTX) error {
-		rows, e := s.rows(c.Request.Context(), tx, "list", filter)
+		var e error
+		items, e = s.listItems(c.Request.Context(), tx, filter)
 		if e != nil {
 			return e
-		}
-		for _, r := range rows {
-			v, e := s.view(c.Request.Context(), tx, r, false)
-			if e != nil {
-				return e
-			}
-			items = append(items, v)
 		}
 		q, a, e := s.statement("count", filter)
 		if e != nil {

@@ -82,7 +82,7 @@ onMounted(load)
     <template v-if="settings">
       <section class="sv-panel tv-preview-panel">
         <div class="tv-section-title"><div><h2>首页预览</h2><p>即时预览当前草稿，保存后同步至电视</p></div><span>电视主视觉 · 居中裁切</span></div>
-        <div class="tv-hero-preview" :style="activeBanner ? { backgroundImage: `linear-gradient(90deg, #0b1321ed, #0b132130), url('${activeBanner.imagePath}?v=${activeBanner.version}')` } : {}">
+        <div class="tv-hero-preview" :style="activeBanner ? { backgroundImage: `linear-gradient(90deg, rgb(32 26 18 / 93%), rgb(32 26 18 / 19%)), url('${activeBanner.imagePath}?v=${activeBanner.version}')` } : {}">
           <span class="tv-wordmark">SingVerse</span><small>你的私人音乐现场</small><h3>{{ settings.headline }}</h3><p>{{ settings.subtitle }}</p><span class="tv-fake-button">浏览曲库</span>
           <div v-if="enabledBanners.length" class="tv-preview-pages" aria-label="预览封面选择"><button v-for="(banner, index) in enabledBanners" :key="banner.id" :class="{ active: index === selected % enabledBanners.length }" :aria-label="`预览${banner.label}`" @click="selected = index">{{ index + 1 }}</button></div>
           <span v-else class="tv-preview-note">未启用自定义封面 · 电视使用曲库封面或统一占位</span>
@@ -169,10 +169,10 @@ onMounted(load)
   position: relative;
   border-radius: 18px;
   padding: 28px 40px;
-  background: radial-gradient(ellipse at 80% 20%, #354054, #0b1321 65%);
+  background: radial-gradient(ellipse at 80% 20%, var(--sv-accent-muted), var(--sv-media-stage) 65%);
   background-size: cover;
   background-position: center;
-  color: #f3eee6;
+  color: var(--sv-text-inverse);
   overflow: hidden
 }
 
@@ -186,7 +186,7 @@ onMounted(load)
 .tv-hero-preview>small {
   font-size: 12px;
   letter-spacing: 3px;
-  color: #d2c3aa
+  color: rgb(255 253 247 / 72%)
 }
 
 .tv-hero-preview h3 {
@@ -200,7 +200,7 @@ onMounted(load)
 
 .tv-hero-preview p {
   font-size: 15px;
-  color: #c2c8d3;
+  color: rgb(255 253 247 / 78%);
   margin: 12px 0;
   max-width: 70%;
   overflow: hidden;
@@ -210,8 +210,8 @@ onMounted(load)
 
 .tv-fake-button {
   display: inline-block;
-  color: #11151e;
-  background: #f3eee6;
+  color: var(--sv-media-stage);
+  background: var(--sv-text-inverse);
   border-radius: 8px;
   padding: 10px 20px;
   font-size: 13px
@@ -226,9 +226,9 @@ onMounted(load)
 }
 
 .tv-preview-pages button {
-  border: 1px solid #ffffff35;
-  background: #131d2d;
-  color: #fff;
+  border: 1px solid rgb(255 255 255 / 21%);
+  background: rgb(255 253 247 / 10%);
+  color: var(--sv-text-inverse);
   border-radius: 50%;
   width: 28px;
   height: 28px;
@@ -236,8 +236,8 @@ onMounted(load)
 }
 
 .tv-preview-pages button.active {
-  background: #f3eee6;
-  color: #111
+  background: var(--sv-text-inverse);
+  color: var(--sv-media-stage)
 }
 
 .tv-preview-note {
@@ -245,7 +245,7 @@ onMounted(load)
   right: 28px;
   bottom: 28px;
   font-size: 12px;
-  color: #9ea4b3
+  color: rgb(255 253 247 / 60%)
 }
 
 .tv-form>label {
@@ -286,7 +286,7 @@ onMounted(load)
   aspect-ratio: 16/9;
   object-fit: cover;
   border-radius: 9px;
-  background: #171b24
+  background: var(--sv-media-stage)
 }
 
 .tv-banner-label {

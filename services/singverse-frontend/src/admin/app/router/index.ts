@@ -45,5 +45,5 @@ router.beforeEach(async (to) => {
 })
 
 router.afterEach((to) => {
-  document.title = `${String(to.meta.title)} · SingVerse 管理中心`
+  document.title = `${String(to.meta.title)} · SingVerse 家庭音乐中心`
 })

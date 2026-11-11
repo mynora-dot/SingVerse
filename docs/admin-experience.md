@@ -1,66 +1,132 @@
-# 家庭音乐资料室：网页管理端
+# 家庭音乐中心：网页管理端
 
-网页为手机、TV 和亲友点歌准备内容。网页中的试听与播放用于核对媒体、音轨、伴奏和兼容性。产品不把浏览器变成新的 K 歌客户端；助手沿用现有形象与展示能力，不提供尚未实现的对话或工具调用。
+网页为手机、TV 和亲友点歌准备内容，是普通用户「管理歌曲、整理内容、准备伴奏、连接设备、配置服务」的日常入口。真实点歌与演唱发生在手机、TV 与亲友 H5；网页中的试听与播放用于核对媒体、音轨、伴奏和兼容性。产品不把浏览器变成新的 K 歌客户端；助手沿用现有形象与展示能力，不提供尚未实现的对话或工具调用。
+
+## 信息架构与导航
+
+主导航五项用普通用户词汇：**首页 · 曲库 · 加歌 · 整理 · 客厅**；顶栏右侧为任务中心（活跃数徽章）与设置两个 utility 入口。手机导航面板列出全部入口。二级导航只展示当前工作区，技术细节折叠进「高级 / 技术信息」。**全部页面路径保持兼容**，名称与组织改变；旧深链按下方规则解析。
+
+| 导航 | 子入口（路径全部沿用） |
+|---|---|
+| 首页 `#/overview` | 曲库脉搏 · 正在处理 · 接下来做什么 · 快捷入口 · 亲友票根卡 |
+| 曲库 `#/library/songs` | 歌曲 `#/library/songs` · 歌手 `#/library/artists` · 歌单 `#/library/playlists` · 分类标签 `#/library/classification` |
+| 加歌 `#/library/media` | 歌曲来源 `#/library/media` · 下载歌曲 `#/library/downloads` · 文件名识别 `#/library/media/recognition` |
+| 整理 `#/library/songs/metadata` | 歌曲信息 `#/library/songs/metadata` · 原唱与伴奏 `#/library/audio-processing` · 待审核 `#/library/review` |
+| 客厅 `#/system/tv-devices` | 电视连接 `#/system/tv-devices` · 电视首页 `#/system/tv-settings` · 播放与热门 `#/library/playback-history` · 缺歌心愿 `#/library/missing-feedback` |
+| utility | 任务中心 `#/system/tasks`（活跃徽章，30s 轮询 size=1，隐藏暂停、未登录不轮询）· 设置 `#/system/parameters` |
+| 设置组 | 账号与安全 · 音乐平台 `#/system/music-platforms` · 存储与缓存 `#/library/cache` · 计算与模型 `#/system/compute` · AI 与助手 `#/system/ai` · 服务状态 `#/system` |
+
+`#/library/review` 是新别名，渲染歌曲信息工作台并预置 REVIEW 过滤。`#/library/media/recognition(/rules)` 独立高亮「文件名识别」；旧 `#/library/filename-parser(-profiles)` 重定向保留 query 与 hash。
+
+### 统一歌曲页与透镜
+
+`#/library/songs` 是统一歌曲工作台，按 query 判定透镜：
+
+| URL 形态 | 透镜 |
+|---|---|
+| 无 query | 歌曲（封面浏览 / 密集列表） |
+| `lens=songs` / `lens=formal` | 显式指定 |
+| 仅 `search/sourceId/page`（无 lens、无文件专属参数） | 重定向补 `lens=formal`，保留旧正式列表深链语义 |
+| 含 `q/status/tagIds/unclassified/size/detailSongId/reviewSongId` | 歌曲透镜（消费首页与后端 TRANSCODE 深链） |
+| `#/library/songs/files?<任意>` | 重定向补 `lens=songs`，保留全部 query 与 hash |
+
+歌曲透镜写入恒带 `lens=songs`，资料透镜恒带 `lens=formal`；切换保留 `search/sourceId/page`，切向资料丢弃文件专属参数。后端 `relatedPath` 的 TRANSCODE 深链 `?detailSongId=` 与人工核对 `?reviewSongId&returnBatch` 均由歌曲透镜消费。
 
 ## 入口与功能对应
 
-主导航为概览、曲库、添加与整理、电视与反馈。设置与任务在顶栏右侧；手机的全部导航列出所有入口。二级导航只展示当前工作区。页面路径保持兼容，名称与组织可以改变。
-
-| 原有功能 | 新入口 / 兼容路径 | 使用流程与范围 |
+| 原有功能 | 入口 / 兼容路径 | 使用流程与范围 |
 |---|---|---|
-| 概览、服务健康 | 概览 `#/overview` | 最近入库、歌单、真实汇总、待办、后台活动、亲友入口；各块独立失败与重试 |
-| 歌曲查询、来源 / 分类 / 识别状态、分页 | 曲库 → 全部歌曲 `#/library/songs` | 封面浏览与列表整理切换；默认歌名 / 歌手搜索，旧文件路径查询保留；手机的更多筛选可展开并显示已选数量 |
-| 多选、批量整理 | 全部歌曲 → 批量操作 | **仅本页**；切换浏览方式保留勾选，翻页 / 查询清空；范围在操作栏说明 |
+| 首页、服务健康 | 首页 `#/overview` | 真实汇总、最近入库封面墙、歌单、待办 inbox、后台活动、亲友入口；各块独立失败与重试 |
+| 歌曲查询、来源 / 分类 / 识别状态、分页 | 曲库 → 歌曲 `#/library/songs` | 封面浏览与列表整理切换；默认歌名 / 歌手 / 路径搜索（服务端 `search`），旧文件路径 `q` 保留；更多筛选可展开并显示已选数量 |
+| 多选、批量整理 | 歌曲 → 批量操作 | **仅本页**；切换浏览方式保留勾选，翻页 / 查询清空；范围在操作栏说明 |
 | 歌曲详情、封面、歌词、文件与信息状态 | 点击歌曲 → 详情抽屉 | 有效身份与主操作优先；文件、解析及标签提取在技术信息展开 |
-| 歌手、关联歌曲、图片候选 / 上传 | 曲库 → 歌手 `#/library/artists` | 署名自动聚合；按男歌手 / 女歌手 / 组合整理，跨页批量选平台获取封面与标注类型；进入详情确认候选、上传图片或订正歌曲 |
-| 共享歌单、选歌、排序 | 曲库 → 共享歌单 `#/library/playlists` | 创建 / 编辑、跨页选歌、上下移动、保存；删除保留歌曲文件 |
-| AI 歌单建议 | 歌单编辑 → AI 帮我选歌 | 从真实候选生成建议 → 预览 → 明确采用到草稿 → 保存；无模型仍可手工选歌 |
-| 本地目录、WebDAV、文件夹选择 | 添加与整理 → 歌曲来源 `#/library/media` | 添加来源 → 选目录 / 填地址 → 保存 → 扫描 → 查看来源歌曲 |
+| 歌手、关联歌曲、图片候选 / 上传 | 曲库 → 歌手 `#/library/artists` | 署名自动聚合；按男 / 女 / 组合整理，跨页批量取封面与标注类型；详情确认候选、上传图片或订正歌曲 |
+| 共享歌单、选歌、排序 | 曲库 → 歌单 `#/library/playlists` | 创建 / 编辑、跨页选歌、上下移动、保存；删除保留歌曲文件 |
+| AI 歌单建议 | 歌单编辑 → AI 帮我选歌 | 真实候选生成建议 → 预览 → 明确采用到草稿 → 保存；无模型仍可手工选歌 |
+| 本地目录、WebDAV、文件夹选择 | 加歌 → 歌曲来源 `#/library/media` | 添加来源 → 选目录 / 填地址 → 保存 → 扫描 → 查看来源歌曲 |
 | 扫描、定时扫描、解析方案 | 歌曲来源卡片 / 来源编辑表单 | 本地与 WebDAV 扫描保留原语义，WebDAV 后台任务可恢复；凭据不回显 |
-| 文件名格式与方案 | 歌曲来源 → 文件名识别 `#/library/media/recognition` | 输入样例 → 挑选格式 → 保存方案；排序 / 启停 / 高级格式逐步展开 |
-| 自定义模板 / 正则 | 歌曲来源 → 文件名识别 → 高级配置 → 自定义规则 `#/library/media/recognition/rules` | 编译校验、引用检查、版本冲突与草稿保护保留 |
-| 下载音源、搜索、公开歌单 / 专辑预览 | 添加与整理 → 下载歌曲 `#/library/downloads` | 音源与本地位置就绪 → 搜索 / 读取链接 → 选择已读取歌曲 → 确认位置与音质 → 后台下载 |
+| 文件名格式与方案 | 加歌 → 文件名识别 `#/library/media/recognition` | 输入样例 → 挑选格式 → 保存方案；排序 / 启停 / 高级格式逐步展开 |
+| 自定义模板 / 正则 | 文件名识别 → 高级配置 → 自定义规则 `#/library/media/recognition/rules` | 编译校验、引用检查、版本冲突与草稿保护保留 |
+| 下载音源、搜索、公开歌单 / 专辑预览 | 加歌 → 下载歌曲 `#/library/downloads` | 音源与本地位置就绪 → 搜索 / 读取链接 → 选择已读取歌曲 → 确认位置与音质 → 后台下载 |
 | 下载记录、取消、重试 | 下载歌曲 → 下载记录 | 后台继续运行；隐藏 / 离页停止轮询，重进读取真实状态 |
 | 手工信息、平台匹配、封面上传与字段比较 | 歌曲 → 编辑信息 / 核对歌曲信息 | 候选、当前有效值、手工草稿分开；只提交勾选且有效的变更，确认前不应用 |
-| 批量匹配与审核 | 添加与整理 → 歌曲信息 `#/library/songs/metadata` | 查看平台摘要 → 选择已选歌曲或来源范围 → 批次 → 逐曲核对；保留已明确开启的自动应用策略 |
-| 音乐平台、自动应用与请求间隔 | 设置 → 音乐平台 `#/system/music-platforms` | 五个平台直接可见，新安装全部开启；高级阈值与请求间隔逐步展开。管理平台直达并保留返回位置，失败和离页保护草稿；保存暂停活动匹配批次 |
+| 批量匹配与审核 | 整理 → 歌曲信息 `#/library/songs/metadata` | 平台摘要 → 选择歌曲或来源范围 → 批次 → 逐曲核对；保留已明确开启的自动应用策略 |
+| 待审核队列 | 整理 → 待审核 `#/library/review` | 预置 REVIEW 过滤的歌曲信息工作台 |
+| 音乐平台、自动应用与请求间隔 | 设置 → 音乐平台 `#/system/music-platforms` | 五平台直接可见，新安装全部开启；高级阈值与请求间隔逐步展开；直达并保留返回位置，失败和离页保护草稿 |
 | 文件内嵌标签、索引导入 / 分享 | 来源卡片与歌曲详情 → 文件与技术信息 | 保留本地 / WebDAV 原有索引、提取任务及来源区别；原文件只读 |
-| 分类词表、人工分类 | 添加与整理 → 分类与标签 `#/library/classification` / 歌曲标签编辑 | 词表维护与歌曲分配分开；人工确认 / 锁定语义保留 |
-| AI 分类、审核、撤回 | 分类与标签 → 开始分类 / 分类记录 | 选歌或全库 → 范围确认 → 后台建议 → 审核保存；可查看变更并撤回 |
-| 音轨读取、快速 / 深度分析、人工角色、指定试听 | 添加与整理 → 原唱与伴奏 `#/library/audio-processing` | 检查已有音轨 → 试听核对 → 标记原唱 / 伴奏；指定歌曲 `?song=` 兼容 |
-| 单曲 / 批量伴奏、方案与成果 | 原唱与伴奏 → 歌曲 / 处理记录 | 明确选择范围 → 试片段 / 处理方案 → 确认 → 后台整曲生成 → 成果版本试听 |
+| 分类词表、人工分类 | 曲库 → 分类标签 `#/library/classification` / 歌曲标签编辑 | 词表维护与歌曲分配分开；人工确认 / 锁定语义保留 |
+| AI 分类、审核、撤回 | 分类标签 → 开始分类 / 分类记录 | 选歌或全库 → 范围确认 → 后台建议 → 审核保存；可查看变更并撤回 |
+| 音轨读取、快速 / 深度分析、人工角色、指定试听 | 整理 → 原唱与伴奏 `#/library/audio-processing` | 检查音轨 → 试听核对 → 标记原唱 / 伴奏；`?song=` 兼容，`tab=setup` 重定向 `#/system/compute#audio-models` |
+| 单曲 / 批量伴奏、方案与成果 | 原唱与伴奏 → 歌曲 / 处理记录 | 明确范围 → 试片段 / 方案 → 确认 → 后台整曲生成 → 成果版本试听 |
 | 原片、HLS、兼容播放、离线版本 | 歌曲 → 播放 / 播放设置 | 保留原播放器与授权编排；关闭、切歌、音轨切换释放资源并保持必要播放位置 |
-| 电视申请、六位码、批准 / 拒绝 / 撤销 | 电视与反馈 → 连接电视 `#/system/tv-devices` | 扫码仅定位并预填对应申请；核对设备与六位码后明确批准；授权不冒充在线 |
-| 电视封面、文案、轮播、预览 | 电视与反馈 → 电视首页 `#/system/tv-settings` | 草稿即时预览 → 保存；图片上传单独保存，排序 / 开关需确认保存 |
-| 热门、实际播放、单曲历史 | 电视与反馈 → 播放与热门 `#/library/playback-history` | 按时间 / 关键词查询，单曲抽屉展示全时段历史；不把入队次数当作实际播放 |
-| 缺歌登记与处理 | 电视与反馈 → 缺歌心愿 `#/library/missing-feedback` | 登记 → 跟进处理状态 → 链接补齐；保留原有状态与操作 |
+| 电视申请、六位码、批准 / 拒绝 / 撤销 | 客厅 → 电视连接 `#/system/tv-devices` | 扫码仅定位并预填对应申请；核对设备与六位码后明确批准；已授权不冒充在线 |
+| 电视封面、文案、轮播、预览 | 客厅 → 电视首页 `#/system/tv-settings` | 草稿即时预览 → 保存；图片上传单独保存，排序 / 开关需确认保存 |
+| 热门、实际播放、单曲历史 | 客厅 → 播放与热门 `#/library/playback-history` | 按时间 / 关键词查询，单曲抽屉展示全时段历史；不把入队次数当作实际播放 |
+| 缺歌登记与处理 | 客厅 → 缺歌心愿 `#/library/missing-feedback` | 登记 → 跟进处理状态 → 链接补齐；保留原有状态与操作 |
 | 任务批次、明细、进度、业务跳转 | 顶栏任务 `#/system/tasks`、`#/system/tasks/:id` | 未完成优先，区分整批与扫描自身；未知进度不填百分比；具体操作回到关联业务页 |
 | 容量、策略、固定歌曲、清理 | 设置 → 存储与缓存 `#/library/cache` | 容量概况 → 策略 → 固定歌曲 / 缓存明细；保留播放中、近期播放、固定与租约保护及清理确认 |
 | 计算连接、发现、硬件、模型 | 设置 → 计算与模型 `#/system/compute` | 连接状态 → 局域网发现 / 手工连接 → 测试与保存 → 视频硬件 / 音频模型；未连接仍可管理曲库 |
-| AI 服务、功能绑定、助手形象 | 设置 → AI 与助手 `#/system/ai` | 模型 / 搜索服务 → 功能绑定；助手设置沿用已有路径与能力，密钥只保留配置状态 |
+| AI 服务、功能绑定、助手形象 | 设置 → AI 与助手 `#/system/ai` | 模型 / 搜索服务 → 功能绑定；助手沿用已有路径与展示能力，密钥只保留配置状态 |
 | 账号、密码、MFA、服务状态 | 设置 → 账号与安全 / 服务状态 | 身份验证与恢复流程保留；页面提供当前访问入口与真实健康检查 |
-| 亲友 H5 | 页脚或全部导航 → `/party/` | 保留独立入口、Bearer 会话、样式与扫码点歌行为；不加载管理端主题 |
+| 亲友 H5 | 首页票根卡或全部导航 → `/party/` | 保留独立入口、Bearer 会话、样式与扫码点歌行为；不加载管理端主题 |
 
 ## 视觉与组件
 
-以纸面、唱片与家庭收藏为视觉线索：暖白背景、深绿文字与操作、陶土细节。歌曲使用真实封面；缺图使用明确标注的唱片纹理占位，不代替实际封面。歌手使用真实图片与单字占位，歌单沿用真实封面来源。排版、内容比例与导航结构共同建立媒体软件体验。
+视觉方向「家庭 Hi-Fi · 唱片馆」，默认主题**靛蓝电波（Indigo Airwave）**：冷调靛蓝纸底、深夜蓝舞台、电光靛蓝主色、品红强调，无衬线展示标题。另提供五套可切换主题（见下「主题系统」），共用同一套令牌名与纯 CSS 质感：唱片纹 / 票根撕线 / 纸纹 grain、大标题大数字（tabular-nums）、充足留白、圆角克制有层级。**令牌名全部沿用、只改值**，旧 scoped 样式随 `data-theme` 自动换色；硬编码 hex 已逐模块清理为令牌或 `color-mix`。装饰性插画（深色播放器舞台、助手吉祥物、封面 id-hash 占位调色板、封面编辑器深色预览、电视首页 hero）保留其固有配色，不随主题翻转。
 
-管理主题按令牌、Element Plus、原生控件、共用业务布局、应用外壳、登录拆分。`PageHeader`、`TaskGuide`、`SongCover` 与既有危险确认组件复用。复杂配置保持信息密度；技术参数放在对应配置或展开区。桌面保留表格内部横向滚动，平板与手机调整列数、表单和审核布局。所有主操作使用按钮 / 链接，焦点可见，导航面板限制键盘范围并恢复焦点，尊重减少动态效果偏好。
+默认靛蓝电波令牌（`tokens.css` 的 `:root`，`color-scheme: light`）：
+
+| 令牌 | 值 |
+|---|---|
+| `--sv-surface-0..4` | `#eef1f8` / `#f5f7fc` / `#ffffff` / `#e3e8f4` / `#d3dbef` |
+| `--sv-media-stage` | `#141a33` 深夜蓝舞台 |
+| `--sv-accent-primary / -muted / -soft` | 电光靛蓝 `#2743c7` / `#1b2f93` / `#dde3fb` |
+| `--sv-terracotta` / `--sv-accent-highlight(-soft)` | 品红 `#e6399b` / `#fbe1ef` |
+| `--sv-on-accent / --sv-on-highlight` | 主色 / 强调填充上的文字 `#ffffff`（深色主题按对比改深色） |
+| `--sv-semantic-ok / warn / danger / info` | `#1f9d6b` / `#d98a12` / `#d23b4e` / `#2743c7`（各带 -soft） |
+| `--sv-text-primary / secondary / tertiary / inverse` | `#181d33` / `#4c5470` / `#7b82a0` / `#ffffff` |
+| `--sv-border-subtle / default / strong` | `#dde2f0` / `#c5cde6` / `#a6b0d4` |
+| `--sv-scrim / --sv-groove-ink` | 遮罩 `rgb(20 26 51 / 42%)` / 唱片纹墨 `rgb(20 26 51 / 7%)` |
+| `--sv-font-serif` | `'Iowan Old Style','Palatino Linotype','Songti SC','Noto Serif CJK SC','STSong','SimSun',serif` |
+| `--sv-font-editorial` | 展示字体；靛蓝/石墨用 `var(--sv-font-sans)`，松绿/柿红/青瓷/午夜用 `var(--sv-font-serif)` |
+| 圆角 / 顶栏 | sm 4 / md 8 / lg 14；`--sv-topbar-height: 72px` |
+| 质感 | `--sv-grain` 纸纹、`--sv-record-groove` 唱片纹（用 `--sv-groove-ink`） |
+
+约 40 个 `--el-*` 映射随 sv 值更新，primary light 阶梯用 `color-mix(in srgb, var(--sv-accent-primary), white N%)` 按当前主色重算，`--el-text-color-disabled` 跟随三级文字。管理样式按令牌、主题覆盖、Element Plus、原生控件、共用业务布局、应用外壳、登录拆分。共享组件 `PageShell / PageHeader / StatusBadge / EmptyState / FilterBar / BatchBar / StatBlock / ThemeSwitcher` 与既有 `SongCover / TaskGuide` 危险确认复用。主流程不用原生 `<select>`（版本选择器为 ElSelect）。桌面保留表格内部横向滚动，平板与手机调整列数、表单和审核布局。所有主操作使用按钮 / 链接，焦点可见，导航面板限制键盘范围并恢复焦点，尊重减少动态效果偏好。
+
+### 主题系统
+
+六套主题共用令牌名，仅以 `:root[data-theme=…]` 覆盖值；默认靛蓝写在 `tokens.css` 的 `:root`，其余五套在 `themes.css`。切换只改 `document.documentElement.dataset.theme`，不重写组件样式。
+
+| 主题 | id | 明暗 | 展示字体 | 主色 / 强调 |
+|---|---|---|---|---|
+| 靛蓝电波（默认） | `indigo` | 浅色 | 无衬线 | 电光靛蓝 `#2743c7` / 品红 `#e6399b` |
+| 冷调松绿 | `pine` | 浅色 | 衬线 | 松绿 `#16584a` / 柿红 `#e2582f` |
+| 柿红剧场 | `vermilion` | 浅色 | 衬线 | 柿红 `#d83a2b` / 青碧 `#1f7a6d` |
+| 青瓷茶室 | `celadon` | 浅色 | 衬线 | 青瓷 `#3a6b5a` / 陶土 `#c86b4a` |
+| 午夜聆听 | `midnight` | 深色 | 衬线 | 珊瑚 `#ff7a66` / 青碧 `#4fd1c5` |
+| 石墨霓虹 | `graphite` | 深色 | 无衬线 | 酸绿 `#a3e635` / 品红 `#ec4899` |
+
+深色主题（午夜/石墨）设 `color-scheme: dark` 与深色阴影；其主色为高亮浅色，`--sv-on-accent / --sv-on-highlight` 相应改为深色文字，保证主按钮、分页激活、任务徽章、英雄链接、唱片标签、歌手派生标签与封面画质开关的对比度。
+
+切换入口 `ThemeSwitcher.vue` 复用 `use-theme` composable（模块级单例 `currentTheme`）：顶栏为 `ElDropdown`（画笔图标，`trigger=click`，六个色板行含中文名 / 英文 / 描述 / 浅深标记 / 当前勾选），≤650px 隐藏；移动导航面板内为两列六卡网格（`aria-pressed`）。`main.ts` 挂载前调用 `initTheme()` 先读 `localStorage['singverse.admin.theme']` 再应用，避免首屏闪烁；`setTheme()` 同步 dataset / ref / localStorage，非法或缺失值回退默认靛蓝，隐私模式读写失败均降级不报错。选择仅存于本浏览器，不写业务库、不同步账号；亲友 H5 不加载管理主题。
 
 | 状态 | 呈现与下一步 |
 |---|---|
 | 尚未准备 | 空曲库、缺节点、无 AI 分别说明原因并提供对应入口；不阻止不依赖该能力的功能 |
-| 处理中 | 显示真实阶段 / 已知数量；后台任务可离页，前端轮询按原业务规则停止 |
+| 处理中 | 显示真实阶段 / 已知数量；未知进度显示「整体进度暂不可用」，后台任务可离页，前端轮询按原业务规则停止 |
 | 需要确认 | 候选、草稿、当前值、过期结果有区别；明确确认字段或建议后再应用 |
 | 完成 | 使用服务端结果确认更新项、保留项与成果版本，完成不等于全部已审核 |
-| 失败 / 部分失败 | 保留输入、上次可用结果与重试标识；局部错误不让整页空白 |
+| 失败 / 部分失败 | 保留输入、上次可用结果与重试标识；首页按 section 降级，局部错误不让整页空白 |
 | 冲突 / 未保存 | 原有版本检查与草稿确认保留；歌单增加导航和浏览器关闭提醒 |
 
 ## 接口与验证边界
 
-初次管理端重设计扩展 `GET /api/v1/media-songs?search=`；旧 `q` 的文件路径含义不变。新搜索在 Go 使用与展示一致的有效信息投影，和原有 SQL 筛选处于同一事务，先过滤计数再返回页。排序沿用 `scannedAt DESC, id ASC`，特殊字符按字面匹配。流式仅保留当前页，不向浏览器传全库；大曲库仍有线性投影成本，后续如需索引需另行设计迁移与失效更新，不在本次引入。OpenAPI 与 SQLite / MySQL 业务测试同步覆盖。
+歌曲搜索沿用 `GET /api/v1/media-songs?search=`：在 Go 使用与展示一致的有效信息投影（路径 + 有效歌名 + 有效歌手，stale=false 的 song_metadata 覆盖 result_json），和原有 SQL 筛选处于同一事务，先过滤计数再返回页；排序 `scannedAt DESC, id ASC`，特殊字符按字面匹配，流式仅保留当前页。旧 `q` 的文件路径含义不变，作为高级「仅文件路径」筛选。
 
-首页复用既有分页接口，不新增汇总服务。移动 / TV / compute 源码不变，不新增云端依赖。浏览器、合成媒体及本机数据库检查不代替 NAS、微信和 TV 真机。
+首页新增只读聚合端点 `GET /api/v1/admin/overview`（operationId `getAdminOverview`，sessionCookie，`no-store`）：注册在管理端 Cookie/CSRF 边界之后，TV/party Bearer → 401 problem+json。每块独立采集（~5s 超时），失败置 null 并写入 `errors` map；数据库全挂 → 503 problem+json。section 含 `library / sources / review / tv / tasks / recentSongs / playback30d / cache / readiness / playlists`，`recentSongs` 与 `/media-songs` 投影完全一致，`tasks` 与 `/background-tasks` 一致（未知进度 null）。聚合优先复用各域已导出方法，仅缺口处加薄封装，不复制 SQL，无迁移。首页 mount/手动刷新调 1 次聚合；10s 任务轮询仍只打 `/background-tasks?view=ACTIVE&size=3`，全局徽章 30s size=1，聚合不进轮询。OpenAPI 与 SQLite/MySQL 业务测试同步覆盖；不动冻结迁移基线。
+
+移动 / TV / compute 源码不变，亲友 H5 零改动，不新增云端依赖。浏览器、合成媒体及本机数据库检查不代替 NAS、微信和 TV 真机。
 
 ## 2026-11-10 实际验证
 
@@ -127,3 +193,17 @@
 SQLite/MySQL 增量迁移仅修改未使用的安装种子，使新安装默认启用五个平台，自动应用默认关闭；不覆盖已有保存的配置。本机部署已读取确认网易云、QQ、酷狗、酷我、汽水均已开启，原有自动应用、阈值和请求间隔保留。
 
 本轮 `make frontend-check`、54 个文件共 472 项 Vitest、`make web-check`、`make go-backend-test`、`make db-fresh-check` 和 `make db-mysql-check` 全部通过；Go 漏洞扫描无发现。Chrome 在 1440×900、768×1024、390×844 完成 20 项检查，覆盖设置、草稿、批次、单曲、根路径与亲友 H5；未发现文档横向溢出或 JS 错误。两镜像已更新为 `platform-settings-20261110-arm64`，106 个公开资源与完整 Go 嵌入资源一致，两个容器健康，保留数据卷、只读媒体及旧镜像。未执行 NAS、微信、实体 TV 或其他架构验收。
+
+## 暖光唱片馆重设计（2026-11-11）
+
+管理端从任务型后台推倒重做为个人媒体软件：主导航「首页 / 曲库 / 加歌 / 整理 / 客厅」加顶栏「任务中心」（活跃数徽章，30s 轮询 size=1，隐藏暂停、未登录不轮询）与「设置」组，普通用户词汇、技术细节折叠，全部既有路由路径与深链保留（详见上文信息架构、透镜判定与入口对照表）。视觉「暖光唱片馆」：暖米纸底、深松绿主色、柿红强调、中文衬线展示标题与唱片纹/票根/纸纹纯 CSS 质感；令牌名沿用只改值，约 40 个 `--el-*` 映射同步，样式文件彻底重写。首页不对称杂志网格（曲库脉搏真实数字 + 最近入库封面墙 + 正在处理 + 待办 inbox + 快捷入口 + 亲友票根卡），空曲库/无节点/未配 AI 均有完整引导态。
+
+统一歌曲页 `/library/songs` 按透镜渲染歌曲（SongsView）或歌曲资料·高级（FormalSongsView），旧正式深链补 `lens=formal`、`/library/songs/files` 补 `lens=songs` 并保留 query+hash，非空 query 恒带 lens；后端 relatedPath 与单曲审核深链全部承接。新增只读聚合端点 `GET /api/v1/admin/overview`（各 section 可空 + `errors` map 按块降级，DB 全挂 503，约 5s 超时，no-store，TV/party Bearer 401），首页 mount/手动刷新调 1 次，10s 任务轮询仍独立打 `/background-tasks?view=ACTIVE&size=3`，聚合不进轮询。歌曲查询沿用既有服务端 `search`（分页前计数排序），旧 `q` 保留为高级仅文件路径筛选。电视授权仅预填、核对后明确批准，已授权与实时在线分别表达；助手仅呈现已有配置，不包装未实现能力。产品名改为「家庭音乐中心」，docker 标题断言同步；亲友 H5 源码、样式、入口零改动。
+
+本轮 `make frontend-check`（双入口 1912 模块）、`npm --prefix services/singverse-frontend test`（59 文件 508 项 0 跳过）、`make web-check` 通过；Go gofmt/vet/staticcheck 与 `go test -race ./...`（23 包）通过，`govulncheck` 命中既有标准库公告 GO-2026-6859（`net/http`@go1.27.3→go1.27.4，调用链均在既有代码、新增 overview 无命中），按约束未升级工具链未跳过门禁；`make db-fresh-check`（102 表 78 索引）、`make db-sqlite-check` 通过，`make db-mysql-check`/`make docker-check` 因本机无 Docker 未运行。真实隔离后端冒烟确认聚合端点 200/no-store/契约形状与 TV Bearer 401。无头 Chrome 在 1440×900、768×1024、390×844 完成 59 项页面检查（登录、23 管理路由、亲友 H5），无横向溢出、无 JS 运行时异常；5 条控制台网络状态日志（1×401 未登录会话探测、4×503 隔离环境无计算节点的真实健康返回）均被页面优雅处理。亲友 H5 渲染原有独立设计，双入口回归保持。截图基于空曲库隔离环境（各页空态与引导），含数据交互由 508 项行为测试覆盖；未更新业务容器、未迁移真实曲库，未执行 NAS/微信/实体 TV/手机/其他架构验收。过程与限制见[验证记录](verification.md)。
+
+## 主题系统：靛蓝电波默认 + 五套可切换（2026-11-11）
+
+按用户选择把默认主题从「暖光唱片馆」暖松绿改为**靛蓝电波**，并将松绿/柿红/青瓷/午夜/石墨做成可切换主题（令牌与切换机制见上「视觉与组件 · 主题系统」）。`tokens.css` 的 `:root` 重写为靛蓝默认值并新增 `--sv-on-accent / --sv-on-highlight / --sv-scrim / --sv-groove-ink / --sv-font-serif`，`--sv-font-editorial` 改为按主题取 sans/serif；新增 `themes.css` 五套 `:root[data-theme=…]` 覆盖块（午夜/石墨为深色，含 `color-scheme: dark` 与深色阴影）。新增 `use-theme.ts`（单例 `currentTheme`、`initTheme` 挂载前读 localStorage、`setTheme` 持久化、非法值回退靛蓝）与 `ThemeSwitcher.vue`（顶栏 ElDropdown + 移动面板两列网格），接入 `AdminLayout` 顶栏与移动导航；`main.ts` 启动即 `initTheme()`。逐模块把硬编码 chrome 颜色（主按钮/分页激活/任务徽章/遮罩/加载罩/英雄链接/唱片标签/歌手派生标签/封面画质开关/批量栏文字）改为令牌或 `color-mix`，深色主题对比度由 on-accent/on-highlight 保证；装饰插画固有配色保留。亲友 H5、Flutter、TV、compute 与前端 API 层零改动。
+
+本轮 `npm --prefix services/singverse-frontend test` 全量通过（60 文件、516 项、0 跳过，含新增 `theme.test.ts` 8 项）；`make frontend-check` 类型检查与双入口生产构建通过，dist 管理 CSS 含 5 个 `data-theme` 块与靛蓝 `#2743c7`；`make web-check` 通过（TestHostingContract、TestIdentityBoundariesAndFrontend）。无头 Chrome 对真实隔离后端（127.0.0.1:18099，全新 SQLite）完成登录与六主题切换截图：顶栏下拉六色板、石墨/午夜深色页面、歌曲页深色控件对比正确，刷新后石墨偏好恢复；移动面板「外观主题」两列六卡网格滚动可见、点选青瓷生效并持久化，1440 与 390 视口均无文档横向溢出、无 JS 运行时异常。选择仅存本浏览器 localStorage，不写业务库。未更新运行中的业务容器、未迁移真实曲库、未操作媒体原件；未执行 NAS/微信/实体 TV/手机/其他架构验收。过程与限制见[验证记录](verification.md)。

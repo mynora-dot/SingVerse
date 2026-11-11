@@ -87,6 +87,16 @@ class AudioRuntimeProfileTest(unittest.TestCase):
 
 @unittest.skipUnless(importlib.util.find_spec('torch'), 'Optional audio runtime required')
 class NativeAudioAdapterTest(unittest.TestCase):
+    def test_mps_device_matches_the_concrete_tensor_device_index(self):
+        import torch
+        from singverse_compute.infrastructure.rocm_audio import _device
+        with patch('singverse_compute.infrastructure.rocm_audio.audio_runtime_profile', return_value='legacy'), \
+                patch('torch.backends.mps.is_available', return_value=True):
+            device = _device('mps')
+        self.assertEqual(device.type, 'mps')
+        self.assertEqual(device.index, 0)
+        self.assertEqual(device, torch.device('mps:0'))
+
     def model(self):
         import torch
         class Model(torch.nn.Module):

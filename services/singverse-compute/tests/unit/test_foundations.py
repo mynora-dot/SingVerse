@@ -31,6 +31,25 @@ class FoundationTest(unittest.TestCase):
             with self.assertRaises(ComputeError): auth.authorize('Bearer wrong')
             with self.assertRaises(ComputeError): auth.authorize('Bearer 无效凭据')
 
+    def test_unreadable_token_is_unavailable_instead_of_auth_mismatch(self):
+        auth = InternalAuth(Path('/private/fixture/token'))
+        for error in (PermissionError('private filesystem detail'), FileNotFoundError('private filesystem detail'),
+                      UnicodeDecodeError('utf-8', b'\xff', 0, 1, 'invalid credential encoding')):
+            with self.subTest(error=type(error).__name__), patch.object(Path, 'open', side_effect=error):
+                self.assertFalse(auth.available)
+                with self.assertRaises(ComputeError) as raised:
+                    auth.authorize('Bearer ' + 'a' * 64)
+                self.assertEqual(raised.exception.status, 503)
+                self.assertEqual(raised.exception.message, 'Node credential file unavailable')
+
+    def test_readable_token_with_wrong_credential_remains_unauthorized(self):
+        with tempfile.TemporaryDirectory() as folder:
+            auth = InternalAuth(Path(folder) / 'token')
+            auth.initialize()
+            with self.assertRaises(ComputeError) as raised:
+                auth.authorize('Bearer ' + 'wrong' * 13)
+            self.assertEqual(raised.exception.status, 401)
+
     def test_remote_reader_failure_releases_instance_capacity(self):
         from types import SimpleNamespace
         from singverse_compute.bootstrap import create_app

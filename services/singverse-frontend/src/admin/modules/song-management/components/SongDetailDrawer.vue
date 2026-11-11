@@ -116,7 +116,7 @@ const origin = computed(() => {
   overflow: hidden;
   border-radius: 14px;
   background: var(--sv-accent-soft);
-  box-shadow: 0 8px 24px rgb(26 66 54 / 9%)
+  box-shadow: 0 8px 24px rgb(36 31 23 / 10%)
 }
 
 .song-artwork img {

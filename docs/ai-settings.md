@@ -1,6 +1,6 @@
 # AI 配置中心
 
-AI 与助手是管理员配置入口，不包含分类任务、审核或助手聊天。入口位于设置；歌曲分类位于添加与整理。内部页签分别为 `/system/ai/models`、`/system/ai/search`、`/system/ai/features`，`/system/ai` 默认进入模型服务。
+AI 与助手是管理员配置入口，不包含分类任务、审核或助手聊天。入口位于设置；歌曲分类位于曲库。内部页签分别为 `/system/ai/models`、`/system/ai/search`、`/system/ai/features`，`/system/ai` 默认进入模型服务。
 
 ## 模型与搜索服务
 

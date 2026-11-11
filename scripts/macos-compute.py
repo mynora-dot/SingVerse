@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run the Mac GPU node in the current user's launchd domain, with Docker's existing token."""
 import argparse
+import json
 import os
 from pathlib import Path
 import platform
@@ -8,11 +9,35 @@ import plistlib
 import subprocess
 import tempfile
 import time
-from urllib.request import urlopen
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / 'data/macos-compute'
 LABEL = 'com.mynora.singverse.compute.macos'
+NODE_ORIGIN = 'http://127.0.0.1:18090'
+
+
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def check_node(token_file, timeout=5):
+    try:
+        token = token_file.read_text(encoding='ascii').strip()
+    except (OSError, UnicodeError) as error:
+        raise ValueError('Cannot read the native compute credential file') from error
+    if not 32 <= len(token) <= 256 or any(not 33 <= ord(char) <= 126 for char in token):
+        raise ValueError('Invalid native compute credential file')
+    request = Request(NODE_ORIGIN + '/internal/v1/status', headers={'Authorization': 'Bearer ' + token})
+    # A local readiness check must never send credentials to a proxy or redirect.
+    with build_opener(ProxyHandler({}), NoRedirect()).open(request, timeout=timeout) as response:
+        body = response.read(65537)
+        if len(body) > 65536:
+            raise ValueError('Native compute status exceeded limit')
+        value = json.loads(body)
+        if response.status != 200 or not isinstance(value, dict) or value.get('service') != 'singverse-compute' or value.get('apiVersion') != '1':
+            raise ValueError('Native compute returned an incompatible status')
 
 
 def audio_environment(model_repo, memory_mib):
@@ -90,8 +115,10 @@ def main():
         if str(ROOT).encode() not in active.stdout:
             raise SystemExit('Another checkout owns this launchd label; preserve it and stop it explicitly first')
         if args.action == 'start':
-            with urlopen('http://127.0.0.1:18090/health', timeout=5) as response:
-                assert response.status == 200
+            try:
+                check_node(RUNTIME / 'token')
+            except (OSError, ValueError):
+                raise SystemExit('Mac compute is running but authenticated status failed; check credential file access and run scripts/macos-compute.py restart') from None
             login_agent(True)
             print('Mac compute already running')
             return
@@ -149,13 +176,12 @@ def main():
     bootstrap(domain, target)
     for _ in range(120):
         try:
-            with urlopen('http://127.0.0.1:18090/health', timeout=1) as response:
-                if response.status == 200:
-                    print('Mac compute ready on loopback port 18090 (VideoToolbox; installed audio models are qualified automatically in background)')
-                    return
-        except OSError:
+            check_node(RUNTIME / 'token', timeout=1)
+            print('Mac compute ready on loopback port 18090 (VideoToolbox; installed audio models are qualified automatically in background)')
+            return
+        except (OSError, ValueError):
             time.sleep(.25)
-    raise SystemExit('Mac node did not become healthy; inspect the private runtime logs')
+    raise SystemExit('Mac node did not pass authenticated status; check credential file access and the private runtime logs')
 
 
 if __name__ == '__main__':

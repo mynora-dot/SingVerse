@@ -187,6 +187,33 @@ func TestAutomaticAndCallbackOriginPrecedence(t *testing.T) {
 		t.Fatal(got, err)
 	}
 }
+
+func TestProbeDistinguishesNodeUnavailableFromRejectedCredentials(t *testing.T) {
+	s, _, _ := newFixture(t, config.Config{})
+	for _, status := range []int{401, 403, 503} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(status)
+				_, _ = w.Write([]byte("private filesystem detail " + fixtureToken))
+			}))
+			defer node.Close()
+			check, err := s.Probe(context.Background(), &Connection{Origin: node.URL, Token: fixtureToken})
+			want := "AUTH_FAILED"
+			if status == 503 {
+				want = "UNAVAILABLE"
+				if !strings.Contains(check.Message, "凭据文件挂载及读取权限") {
+					t.Fatal("missing node credential diagnostics", check.Message)
+				}
+			}
+			if err != nil || check.Status != want || len(check.Capabilities) != 0 {
+				t.Fatal(check, err)
+			}
+			if strings.Contains(check.Message, fixtureToken) || strings.Contains(check.Message, "private filesystem detail") {
+				t.Fatal("upstream diagnostics escaped probe")
+			}
+		})
+	}
+}
 func TestValidationBoundaries(t *testing.T) {
 	for _, v := range []string{"file:///etc/passwd", "http://user:pass@localhost", "http://localhost/a", "http://localhost?", "http://localhost#", "http://localhost:0", "http://localhost:65536", "http://[fe80::1%25eth0]"} {
 		if _, err := origin(v); err == nil {

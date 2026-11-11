@@ -445,7 +445,7 @@ main>.el-alert {
   height: 230px;
   margin: var(--sv-space-5) auto;
   padding: 12px;
-  background: #fff;
+  background: var(--sv-surface-2);
   border: 1px solid var(--sv-border-default);
   border-radius: var(--sv-radius-md);
 }
@@ -615,7 +615,7 @@ main>.el-alert {
 
 .format-choice.applied {
   background: var(--sv-accent-soft);
-  border-color: #adcbb6;
+  border-color: var(--sv-accent-primary);
 }
 
 .format-choice.usable {

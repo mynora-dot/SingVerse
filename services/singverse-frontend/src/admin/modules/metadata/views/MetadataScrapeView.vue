@@ -15,7 +15,7 @@ const route = useRoute(), router = useRouter()
 const config = ref<MetadataSettings>({ enabled: false, providers: [], autoApply: false, threshold: .95, minIntervalSeconds: 3, maxIntervalSeconds: 8 })
 const saved = ref(false), busy = ref(false), loading = ref(false), refreshing = ref(false)
 const error = ref(''), progressError = ref(''), lastRefresh = ref('')
-const batch = ref<MetadataBatch | null>(null), page = ref(1), filter = ref(''), reviewItem = ref<MetadataItem | null>(null)
+const batch = ref<MetadataBatch | null>(null), page = ref(1), filter = ref(route.meta.review ? 'REVIEW' : ''), reviewItem = ref<MetadataItem | null>(null)
 const keyword = ref(''), appliedKeyword = ref(''), sort = ref('DEFAULT')
 const sourceId = ref(''), sources = ref<MediaSource[]>([]), sourcesLoading = ref(false), sourcesError = ref('')
 const selectedIds = computed(() => typeof route.query.songIds === 'string' ? [...new Set(route.query.songIds.split(',').filter(Boolean))] : [])
@@ -63,7 +63,7 @@ async function load() {
   if (!active || token !== loadGeneration) return
   if (settings.status === 'fulfilled') { config.value = settings.value; saved.value = true }
   else { saved.value = false; error.value = settings.reason instanceof Error ? settings.reason.message : '设置读取失败' }
-  if (latest.status === 'fulfilled') { batch.value = latest.value ?? null; if (latest.value) accept(latest.value) }
+  if (latest.status === 'fulfilled') { batch.value = latest.value ?? null; if (latest.value) { accept(latest.value); if (filter.value) void refreshBatch() } }
   else progressError.value = latest.reason instanceof Error ? latest.reason.message : '读取批次失败'
   loading.value = false; schedule()
 }
@@ -113,10 +113,11 @@ async function selectStatus(status: string) { filter.value = status; await chang
 async function searchItems() { appliedKeyword.value = keyword.value.trim(); await changeFilter() }
 function openReview(item: MetadataItem) { reviewItem.value = item; clearTimeout(timer) }
 function closeReview() { reviewItem.value = null; schedule() }
-async function manual(item: MetadataItem) { await router.push({ path: '/library/songs', query: { reviewSongId: item.songId, returnBatch: batch.value!.id } }) }
+async function manual(item: MetadataItem) { await router.push({ path: '/library/songs', query: { lens: 'songs', reviewSongId: item.songId, returnBatch: batch.value!.id } }) }
 async function reason(item: MetadataItem) { await ElMessageBox.alert(item.error || (item.status === 'SKIPPED_EXISTING' ? '已有确认元数据且文件未变化，本批次保留原结果。' : item.status === 'AUTO_APPLIED' ? '本批次已按自动写入条件完成应用。具体当前字段可在歌曲详情查看。' : '该项已确认或在查询期间获得确认，已有元数据保留。具体字段可在歌曲详情查看。'), item.status === 'FAILED' ? '失败原因' : '处理结果', { confirmButtonText: '知道了' }).catch(() => {}) }
 onMounted(() => { void load(); void loadSources() })
-watch(() => route.query.batch, id => { if (typeof id === 'string' && id !== batch.value?.id) { page.value = 1; filter.value = ''; appliedKeyword.value = ''; keyword.value = ''; void load() } })
+watch(() => route.query.batch, id => { if (typeof id === 'string' && id !== batch.value?.id) { page.value = 1; filter.value = route.meta.review ? 'REVIEW' : ''; appliedKeyword.value = ''; keyword.value = ''; void load() } })
+watch(() => route.meta.review, review => { filter.value = review ? 'REVIEW' : ''; page.value = 1; if (batch.value) void refreshBatch() })
 onBeforeUnmount(() => { active = false; generation++; loadGeneration++; clearTimeout(timer) })
 </script>
 

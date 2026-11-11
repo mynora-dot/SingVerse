@@ -51,7 +51,9 @@ def _device(backend):
         if backend == 'mps':
             if not torch.backends.mps.is_available():
                 raise RuntimeError('Apple MPS is unavailable')
-            return torch.device('mps')
+            # Tensor devices resolve the default MPS index to 0. Keep the
+            # explicit device identical for parameter and forward placement checks.
+            return torch.device('mps:0')
         if backend in ('cuda', 'rocm'):
             if not torch.cuda.is_available() or (backend == 'rocm') != bool(torch.version.hip):
                 raise RuntimeError('Requested GPU runtime is unavailable or mismatched')

@@ -14,6 +14,7 @@ import (
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/feedback"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/library"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/metadata"
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/overview"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/party"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/config"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/playback"
@@ -34,6 +35,7 @@ type applicationServices struct {
 	processing   *execution.Service
 	downloads    *downloads.Service
 	missingSongs *feedback.Service
+	overview     *overview.Service
 }
 
 func (a *Application) initializeServices(cfg config.Config, db *sqlx.DB, logger *slog.Logger) (*applicationServices, error) {
@@ -122,6 +124,20 @@ func (a *Application) initializeServices(cfg config.Config, db *sqlx.DB, logger 
 	if err != nil {
 		return nil, err
 	}
+	overviewService := overview.New(overview.Dependencies{
+		DB:         db,
+		Library:    overviewLibrary(media),
+		Metadata:   overviewMetadata(tags),
+		Catalog:    overviewCatalog(curation),
+		Party:      overviewDevices(devices),
+		Background: overviewTasks(tasks),
+		Playback:   overviewActivity(activity),
+		Cache:      overviewCache(processing),
+		Compute:    overviewCompute(node),
+		AI:         overviewModels(models),
+		Feedback:   overviewFeedback(missingSongs),
+		Log:        logger,
+	})
 	return &applicationServices{
 		accounts:     accounts,
 		media:        media,
@@ -135,5 +151,6 @@ func (a *Application) initializeServices(cfg config.Config, db *sqlx.DB, logger 
 		processing:   processing,
 		downloads:    downloadManager,
 		missingSongs: missingSongs,
+		overview:     overviewService,
 	}, nil
 }

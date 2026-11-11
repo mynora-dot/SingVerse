@@ -43,7 +43,7 @@ func TestIdentityBoundariesAndFrontend(t *testing.T) {
 	for _, tc := range []struct {
 		method, path string
 		status       int
-	}{{"GET", "/api/health", 200}, {"GET", "/", 200}, {"GET", "/admin/", 200}, {"GET", "/party/", 200}, {"GET", "/api/v1/server-info", 200}, {"GET", "/api/v1/artists/artwork-platforms", 401}, {"GET", "/api/v1/artists/artwork-batches/latest", 401}, {"POST", "/api/v1/artists/artwork-batches", 403}, {"POST", "/api/v1/artists/categories", 403}, {"GET", "/api/v1/media-sources", 401}, {"GET", "/api/v1/mobile/library/songs", 401}, {"GET", "/api/v1/tv/library/songs", 401}, {"GET", "/api/v1/party/library/songs", 401}, {"GET", "/api/v1/internal/compute-callback/unknown", 401}, {"POST", "/api/v1/auth/login", 403}} {
+	}{{"GET", "/api/health", 200}, {"GET", "/", 200}, {"GET", "/admin/", 200}, {"GET", "/party/", 200}, {"GET", "/api/v1/server-info", 200}, {"GET", "/api/v1/artists/artwork-platforms", 401}, {"GET", "/api/v1/artists/artwork-batches/latest", 401}, {"POST", "/api/v1/artists/artwork-batches", 403}, {"POST", "/api/v1/artists/categories", 403}, {"GET", "/api/v1/media-sources", 401}, {"GET", "/api/v1/admin/overview", 401}, {"GET", "/api/v1/mobile/library/songs", 401}, {"GET", "/api/v1/tv/library/songs", 401}, {"GET", "/api/v1/party/library/songs", 401}, {"GET", "/api/v1/internal/compute-callback/unknown", 401}, {"POST", "/api/v1/auth/login", 403}} {
 		t.Run(tc.method+tc.path, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(tc.method, "http://localhost"+tc.path, strings.NewReader(`{}`))
@@ -126,5 +126,37 @@ func TestAdministratorCookieCannotBecomeDevice(t *testing.T) {
 		if err := json.Unmarshal(w.Body.Bytes(), &problem); err != nil || problem["status"] != float64(404) || problem["instance"] != "/api/v1/__missing_contract_resource__" {
 			t.Fatal(method, problem, err)
 		}
+	}
+}
+
+// TestAdminOverviewIdentityBoundary proves the admin home aggregation stays
+// behind the administrator Cookie/CSRF boundary: valid TV and party Bearer
+// tokens are rejected with 401 problem+json, while an authenticated
+// administrator Cookie reaches the endpoint.
+func TestAdminOverviewIdentityBoundary(t *testing.T) {
+	a := application(t)
+	c := newBusinessClient(t, a)
+	c.call("POST", "/api/v1/auth/login", map[string]any{"username": "admin", "password": "admin"}, "", 200)
+	device := c.call("POST", "/api/v1/device-authorizations", map[string]any{"name": "总览电视"}, "", 200)
+	authorizationID := stringField(device, "id")
+	c.call("POST", "/api/v1/admin/device-authorizations/"+authorizationID+"/approve", map[string]any{"code": device["code"]}, "", 200)
+	grant := c.call("POST", "/api/v1/device-authorizations/"+authorizationID+"/poll", map[string]any{"pollSecret": device["pollSecret"]}, "", 200)
+	tvToken := stringField(grant, "token")
+	session := c.call("POST", "/api/v1/tv/sessions", map[string]any{}, tvToken, 200)
+	sessionID := stringField(session, "id")
+	invite := c.call("POST", "/api/v1/tv/sessions/"+sessionID+"/invitations", map[string]any{}, tvToken, 200)
+	guest := c.call("POST", "/api/v1/party/join", map[string]any{"invitation": invite["invitation"], "name": "亲友"}, "", 200)
+	partyToken := stringField(guest, "token")
+
+	// A client without the administrator cookie jar carries only the device or
+	// party Bearer token, exactly like a real TV or H5 client.
+	unprivileged := &businessClient{t: t, origin: c.origin, client: &http.Client{}}
+	for _, bearer := range []string{tvToken, partyToken} {
+		unprivileged.call("GET", "/api/v1/admin/overview", nil, bearer, 401)
+	}
+	// The authenticated administrator reaches the aggregation endpoint.
+	overview := c.call("GET", "/api/v1/admin/overview", nil, "", 200)
+	if _, ok := overview["errors"]; !ok {
+		t.Fatal("overview response missing errors map", overview)
 	}
 }

@@ -1,6 +1,6 @@
 # SingVerse Go 业务服务
 
-Go 1.27.3 / Gin / `database/sql + sqlx`。主服务负责授权、曲库、任务、TV/亲友队列与唯一业务数据库写入；Python 负责媒体探测、转解码和模型执行。完整 Vue 管理页与亲友 H5 嵌入二进制，生产无需 JVM、Node 或 Go 编译器。版本由根 `VERSION` 注入，依赖由 `go.mod`/`go.sum` 锁定。检查工具固定为 staticcheck `0.8.2` 与 govulncheck `1.9.0`，安装到仓库 `.tools/`，不修改全局 Go 环境。
+Go 1.27.4 / Gin / `database/sql + sqlx`。主服务负责授权、曲库、任务、TV/亲友队列与唯一业务数据库写入；Python 负责媒体探测、转解码和模型执行。完整 Vue 管理页与亲友 H5 嵌入二进制，生产无需 JVM、Node 或 Go 编译器。版本由根 `VERSION` 注入，依赖由 `go.mod`/`go.sum` 锁定。检查工具固定为 staticcheck `0.8.2` 与 govulncheck `1.9.0`，安装到仓库 `.tools/`，不修改全局 Go 环境。
 
 ## 构建与运行
 

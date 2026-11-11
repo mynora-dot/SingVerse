@@ -85,7 +85,7 @@ for authorized, expected in [(False,401),(True,422)]:
     return opener.open(Request(urljoin(base + "/", path), method=method, headers=headers,
                                data=json.dumps(data).encode() if data is not None else None), timeout=10)
 
-  for path, expected in [("/", "NAS 管理中心"), ("/admin/", "NAS 管理中心"),
+  for path, expected in [("/", "家庭音乐中心"), ("/admin/", "家庭音乐中心"),
                          ("/party/", "SingVerse · 一起点歌")]:
     with request(path) as response:
       assert response.status == 200

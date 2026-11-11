@@ -1,11 +1,12 @@
 <script setup lang="ts">
-/** 管理端统一页面标题：标题与说明在左，页面级操作在右，窄屏自动换行。 */
-defineProps<{ title: string; description?: string }>()
+/** 管理端统一页面标题：可选眉题 + 标题与说明在左，页面级操作在右，窄屏自动换行。 */
+defineProps<{ title: string; description?: string; eyebrow?: string }>()
 </script>
 
 <template>
   <header class="page-heading sv-page-header">
     <div class="sv-page-header-copy">
+      <p v-if="eyebrow" class="eyebrow sv-page-eyebrow">{{ eyebrow }}</p>
       <h1>{{ title }}</h1>
       <p v-if="description || $slots.description" class="page-description"><slot name="description">{{ description }}</slot></p>
     </div>

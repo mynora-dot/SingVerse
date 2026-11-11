@@ -68,6 +68,7 @@ function openDetail(song: MediaSong) { detailSong.value = song }
 function openReview(song: MediaSong) { detailSong.value = null; scraping.value = song }
 
 const filtered = computed(() => !!route.query.sourceId || !!route.query.q || !!route.query.search || (typeof route.query.status === 'string' && route.query.status !== 'ALL') || !!route.query.tagIds || route.query.unclassified === 'true')
+const returnBatch = computed(() => (typeof route.query.returnBatch === 'string' ? route.query.returnBatch : ''))
 
 // 统计
 const reviewCount = computed(() => items.value.filter(needsSongReview).length)
@@ -113,9 +114,17 @@ async function apply(nextPage = 1) {
   if (unclassified.value) query.unclassified = 'true'
   if (pageSize.value !== 20) query.size = String(pageSize.value)
   if (nextPage > 1) query.page = String(nextPage)
-  const target = router.resolve({ path: '/library/songs/files', query })
+  if (Object.keys(query).length) query.lens = 'songs'
+  const target = router.resolve({ path: '/library/songs', query })
   if (target.fullPath === route.fullPath) { page.value = nextPage; await load() }
   else await router.replace(target.fullPath)
+}
+function openFormalLens() {
+  const query: Record<string, string> = { lens: 'formal' }
+  if (searchMode.value === 'identity' && keyword.value.trim()) query.search = keyword.value.trim()
+  if (sourceId.value) query.sourceId = sourceId.value
+  if (page.value > 1) query.page = String(page.value)
+  void router.replace({ path: '/library/songs', query })
 }
 async function reset() {
   sourceId.value = ''; keyword.value = ''; status.value = 'ALL'; tagIds.value = []; unclassified.value = false; await apply()
@@ -141,11 +150,17 @@ onBeforeUnmount(() => { active = false; generation++ })
     <PageHeader title="你的每一首好歌" description="收藏、整理，为下一次开唱做好准备。试听用来检查歌曲与播放效果。">
       <template #actions>
         <div class="page-actions">
+          <ElButton text @click="openFormalLens">歌曲资料 · 高级</ElButton>
           <ElButton text :icon="EditPen" @click="router.push('/library/songs/metadata')">整理元数据</ElButton>
           <ElButton type="primary" :icon="Plus" @click="router.push('/library/media')">添加歌曲</ElButton>
         </div>
       </template>
     </PageHeader>
+
+    <div v-if="returnBatch" class="return-batch-bar" role="status">
+      <span>正在处理批次中的单曲，核对后可返回批次继续。</span>
+      <ElButton text type="primary" @click="router.push({ path: '/library/songs/metadata', query: { batch: returnBatch } })">返回批次</ElButton>
+    </div>
 
     <!-- 筛选与搜索 -->
     <ElCard shadow="never" class="filters-card" aria-label="歌曲搜索与筛选">
@@ -453,7 +468,7 @@ onBeforeUnmount(() => { active = false; generation++ })
 }
 
 .view-switch button[aria-pressed=true] {
-  background: white;
+  background: var(--sv-surface-2);
   color: var(--sv-accent-primary);
   box-shadow: var(--sv-shadow-sm)
 }
@@ -517,19 +532,38 @@ onBeforeUnmount(() => { active = false; generation++ })
 
 .batch-toolbar {
   position: sticky;
-  top: 80px;
-  z-index: 10;
+  top: calc(var(--sv-topbar-height) + 8px);
+  z-index: 15;
   display: flex;
   gap: 12px;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  padding: 14px 18px;
+  padding: 14px 20px;
   margin-bottom: 18px;
   background: var(--sv-accent-soft);
   border: 1px solid var(--sv-border-default);
-  border-radius: 10px;
+  border-radius: var(--sv-radius-lg);
   box-shadow: var(--sv-shadow-md)
+}
+
+.return-batch-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  margin-bottom: 18px;
+  font-size: 12px;
+  color: var(--sv-text-secondary);
+  background: var(--sv-surface-3);
+  border: 1px solid var(--sv-border-subtle);
+  border-radius: var(--sv-radius-md)
+}
+
+.return-batch-bar :deep(.el-button) {
+  margin: 0
 }
 
 .batch-info,
@@ -613,7 +647,7 @@ onBeforeUnmount(() => { active = false; generation++ })
   }
 
   .batch-toolbar {
-    top: 68px
+    top: calc(var(--sv-topbar-height) + 8px)
   }
 
   .songs-toolbar {

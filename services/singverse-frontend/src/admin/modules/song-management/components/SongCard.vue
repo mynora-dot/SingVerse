@@ -83,7 +83,7 @@ const emit = defineEmits<{ click: []; play: []; edit: []; select: [song: MediaSo
   border-radius: 50%;
   background: #fff;
   color: var(--sv-accent-primary);
-  box-shadow: 0 3px 12px #18281f25;
+  box-shadow: 0 3px 12px rgb(36 31 23 / 18%);
   cursor: pointer;
   font-size: 22px
 }
@@ -119,7 +119,7 @@ const emit = defineEmits<{ click: []; play: []; edit: []; select: [song: MediaSo
   left: 10px;
   bottom: 12px;
   padding: 1px 5px;
-  background: #1f3329b8;
+  background: rgb(32 26 18 / 72%);
   color: white;
   border-radius: 4px;
   font-size: 10px

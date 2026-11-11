@@ -192,16 +192,10 @@ func (s *Service) details(ctx context.Context, db store.DBTX, id, filter string,
 	if e != nil {
 		return nil, e
 	}
-	counts, e := s.rows(ctx, db, "meta-counts", map[string]any{"batchId": id})
+	t, e := s.tally(ctx, db, id, row)
 	if e != nil {
 		return nil, e
 	}
-	count := map[string]int64{}
-	for _, r := range counts {
-		count[text(r["status"])] = number(r["amount"])
-	}
-	pending, processing, review, applied, failed, skipped := count["PENDING"], count["PROCESSING"], count["REVIEW"], count["AUTO_APPLIED"]+count["MANUAL_APPLIED"], count["FAILED"], number(row["skipped_existing"])
-	processable := pending + processing + review + applied + failed
 	args := map[string]any{"batchId": id, "status": nullable(filter), "keyword": pattern, "sort": sort, "limit": size, "offset": int64(page) * int64(size)}
 	rows, e := s.rows(ctx, db, "meta-viewItems", args)
 	if e != nil {
@@ -237,7 +231,63 @@ func (s *Service) details(ctx context.Context, db store.DBTX, id, filter string,
 	if e != nil {
 		return nil, e
 	}
-	return map[string]any{"id": id, "mode": row["mode"], "status": row["status"], "total": processable + skipped, "completed": review + applied + failed + skipped, "pending": pending, "processing": processing, "review": review, "applied": applied, "failed": failed, "skippedExisting": skipped, "autoApply": boolean(row["auto_apply"]), "threshold": threshold, "createdAt": row["created_at"], "updatedAt": row["updated_at"], "items": items, "page": page, "size": size, "totalElements": number(total["count"]), "processableTotal": processable, "legacySkipped": max(int64(0), skipped-count["SKIPPED_EXISTING"]), "observedAt": now()}, nil
+	return map[string]any{"id": id, "mode": row["mode"], "status": row["status"], "total": t.total, "completed": t.completed, "pending": t.pending, "processing": t.processing, "review": t.review, "applied": t.applied, "failed": t.failed, "skippedExisting": t.skipped, "autoApply": boolean(row["auto_apply"]), "threshold": threshold, "createdAt": row["created_at"], "updatedAt": row["updated_at"], "items": items, "page": page, "size": size, "totalElements": number(total["count"]), "processableTotal": t.processable, "legacySkipped": t.legacySkipped, "observedAt": now()}, nil
+}
+
+// batchTally holds the shared status aggregation for a metadata batch.
+type batchTally struct {
+	pending, processing, review, applied, failed, skipped int64
+	processable, total, completed, legacySkipped          int64
+	count                                                 map[string]int64
+}
+
+// tally aggregates item statuses for one batch, shared by details and the
+// admin overview so the review/completed/total semantics stay identical.
+func (s *Service) tally(ctx context.Context, db store.DBTX, id string, row map[string]any) (batchTally, error) {
+	counts, e := s.rows(ctx, db, "meta-counts", map[string]any{"batchId": id})
+	if e != nil {
+		return batchTally{}, e
+	}
+	count := map[string]int64{}
+	for _, r := range counts {
+		count[text(r["status"])] = number(r["amount"])
+	}
+	t := batchTally{
+		pending:    count["PENDING"],
+		processing: count["PROCESSING"],
+		review:     count["REVIEW"],
+		applied:    count["AUTO_APPLIED"] + count["MANUAL_APPLIED"],
+		failed:     count["FAILED"],
+		skipped:    number(row["skipped_existing"]),
+		count:      count,
+	}
+	t.processable = t.pending + t.processing + t.review + t.applied + t.failed
+	t.total = t.processable + t.skipped
+	t.completed = t.review + t.applied + t.failed + t.skipped
+	t.legacySkipped = max(int64(0), t.skipped-count["SKIPPED_EXISTING"])
+	return t, nil
+}
+
+// LatestBatchSummary returns the newest metadata batch's review tally without
+// item rows, or nil when no batch exists.
+func (s *Service) LatestBatchSummary(ctx context.Context) (map[string]any, error) {
+	rows, e := s.rows(ctx, s.db, "meta-latest", nil)
+	if e != nil {
+		return nil, e
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	id := text(rows[0]["id"])
+	row, e := s.batchRow(ctx, s.db, id)
+	if e != nil {
+		return nil, e
+	}
+	t, e := s.tally(ctx, s.db, id, row)
+	if e != nil {
+		return nil, e
+	}
+	return map[string]any{"id": id, "status": row["status"], "review": t.review, "completed": t.completed, "total": t.total}, nil
 }
 func stringsFromJSON(v any) []string { out := []string{}; _ = decode(v, &out); return out }
 func (s *Service) latestHTTP(c *gin.Context) {

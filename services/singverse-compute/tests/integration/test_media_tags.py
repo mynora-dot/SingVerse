@@ -80,3 +80,29 @@ class TagServiceTest(unittest.TestCase):
             value=json.load(response)
             self.assertEqual(value['service'],'singverse-compute')
             self.assertIn('media-remote-tags',value['capabilities'])
+
+    def test_missing_credential_file_reports_unavailable_and_recovers(self):
+        token_file = self.app.state.settings.token_file
+        backup = token_file.with_suffix('.saved')
+        token_file.rename(backup)
+        try:
+            # Both dependency-based GET auth and the pre-JSON POST boundary must
+            # report a node failure without echoing credentials or file paths.
+            for path, body in [('/internal/v1/status', None), ('/internal/v1/media/remote-tags', b'invalid-json')]:
+                with self.subTest(path=path), self.assertRaises(HTTPError) as raised:
+                    urlopen(Request(self.base + path, data=body,
+                                    headers={'Authorization': 'Bearer ' + self.token}), timeout=5)
+                with raised.exception as response:
+                    self.assertEqual(response.status, 503)
+                    self.assertEqual(response.headers.get_content_type(), 'application/problem+json')
+                    value = json.load(response)
+                    self.assertEqual(value['title'], 'Node credential file unavailable')
+                    self.assertNotIn(self.token, json.dumps(value))
+                    self.assertNotIn(str(token_file), json.dumps(value))
+            with urlopen(self.base + '/health', timeout=5) as response:
+                self.assertEqual(json.load(response), {'status': 'UP'})
+        finally:
+            backup.rename(token_file)
+        with urlopen(Request(self.base + '/internal/v1/status',
+                             headers={'Authorization': 'Bearer ' + self.token}), timeout=5) as response:
+            self.assertEqual(response.status, 200)

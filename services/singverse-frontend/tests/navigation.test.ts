@@ -37,12 +37,12 @@ it('窄屏全部导航切页后关闭，Escape 恢复焦点并限制键盘范围
 })
 it('精简主导航与当前分区提供全部现有管理功能', async () => {
   await router.push('/library/songs'); const wrapper = mount(App, { global: { plugins: [router] } }); await flushPromises()
-  expect(wrapper.findAll('.primary-navigation a').map(a => a.text())).toEqual(['概览','曲库','添加与整理','电视与反馈'])
-  expect(wrapper.findAll('.section-navigation a').map(a => a.text())).toEqual(['全部歌曲','歌手','共享歌单'])
-  const expected = ['/library/songs','/library/artists','/library/playlists','/library/media','/library/downloads','/library/songs/metadata','/library/audio-processing','/library/classification','/system/tv-devices','/system/tv-settings','/library/playback-history','/library/missing-feedback','/system/parameters','/system/music-platforms','/library/cache','/system/compute','/system/ai','/system']
+  expect(wrapper.findAll('.primary-navigation a').map(a => a.text())).toEqual(['首页','曲库','加歌','整理','客厅'])
+  expect(wrapper.findAll('.section-navigation a').map(a => a.text())).toEqual(['歌曲','歌手','歌单','分类标签'])
+  const expected = ['/library/songs','/library/artists','/library/playlists','/library/classification','/library/media','/library/downloads','/library/media/recognition','/library/songs/metadata','/library/audio-processing','/library/review','/system/tv-devices','/system/tv-settings','/library/playback-history','/library/missing-feedback','/system/parameters','/system/music-platforms','/library/cache','/system/compute','/system/ai','/system']
   expect(navigationGroups.flatMap(g => g.children.map(e => e.path)).sort()).toEqual(expected.sort())
   await wrapper.get('.mobile-nav-toggle').trigger('click')
-  expect(wrapper.get('#admin-navigation').text()).toContain('账号与安全'); expect(wrapper.get('#admin-navigation').text()).toContain('分类与标签')
+  expect(wrapper.get('#admin-navigation').text()).toContain('账号与安全'); expect(wrapper.get('#admin-navigation').text()).toContain('分类标签')
   wrapper.unmount()
 })
 it('设置子路由与任务批次深链接高亮所属入口', async () => {
@@ -59,12 +59,12 @@ it('旧方案和规则链接归入歌曲来源并保留指定方案、查询与�
   expect(router.currentRoute.value.path).toBe('/library/media/recognition')
   expect(router.currentRoute.value.query).toEqual({ profile: 'chosen', source: 'existing' })
   expect(router.currentRoute.value.hash).toBe('#preview')
-  expect(router.currentRoute.value.meta.activeMenu).toBe('/library/media')
+  expect(router.currentRoute.value.meta.activeMenu).toBe('/library/media/recognition')
   await router.push('/library/filename-parser?profile=chosen')
   expect(router.currentRoute.value.path).toBe('/library/media/recognition/rules')
   expect(router.currentRoute.value.query.profile).toBe('chosen')
-  expect(navigationContext(router.currentRoute.value.path).entry?.label).toBe('歌曲来源')
-  expect(navigationContext('/library/filename-parser-profiles').entry?.label).toBe('歌曲来源')
+  expect(navigationContext(router.currentRoute.value.path).entry?.label).toBe('文件名识别')
+  expect(navigationContext('/library/filename-parser-profiles').entry?.label).toBe('文件名识别')
 })
 
 it('音乐平台在设置中直接可达并高亮，显示真实五平台配置', async () => {
@@ -81,5 +81,15 @@ it('音乐平台在设置中直接可达并高亮，显示真实五平台配置'
   expect(wrapper.get('h1').text()).toBe('音乐平台')
   expect(wrapper.findAll('.platform-options input[type="checkbox"]')).toHaveLength(5)
   expect(wrapper.text()).toContain('已开启 5 个平台')
+  wrapper.unmount()
+})
+
+it('顶栏全局搜索跳转到歌曲工作区并携带搜索词与透镜', async () => {
+  await router.push('/overview')
+  const wrapper = mount(App, { global: { plugins: [router] } }); await flushPromises()
+  await wrapper.get('.search-input').setValue('周杰伦')
+  await wrapper.get('.masthead-search').trigger('submit'); await flushPromises()
+  expect(router.currentRoute.value.path).toBe('/library/songs')
+  expect(router.currentRoute.value.query).toEqual({ lens: 'songs', search: '周杰伦' })
   wrapper.unmount()
 })

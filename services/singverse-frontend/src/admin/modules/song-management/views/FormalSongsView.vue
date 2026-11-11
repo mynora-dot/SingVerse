@@ -36,12 +36,19 @@ async function load() {
   finally { if (active && token === generation) loading.value = false }
 }
 async function apply(nextPage = 1) {
-  const query: Record<string, string> = {}
+  const query: Record<string, string> = { lens: 'formal' }
   if (search.value.trim()) query.search = search.value.trim()
   if (sourceId.value) query.sourceId = sourceId.value
   if (nextPage > 1) query.page = String(nextPage)
   const target = router.resolve({ path: '/library/songs', query })
   if (target.fullPath === route.fullPath) { page.value = nextPage; await load() } else await router.replace(target.fullPath)
+}
+function openFilesLens() {
+  const query: Record<string, string> = { lens: 'songs' }
+  if (search.value.trim()) query.search = search.value.trim()
+  if (sourceId.value) query.sourceId = sourceId.value
+  if (page.value > 1) query.page = String(page.value)
+  void router.replace({ path: '/library/songs', query })
 }
 watch(() => route.query, query => { search.value = typeof query.search === 'string' ? query.search : ''; sourceId.value = typeof query.sourceId === 'string' ? query.sourceId : ''; page.value = Math.max(1, Number(query.page) || 1); void load() }, { immediate: true })
 void songs.sources().then(value => { if (active) sources.value = value }).catch(() => { if (active) error.value = '媒体来源读取失败，请刷新重试' })
@@ -79,7 +86,7 @@ onBeforeUnmount(() => { active = false; generation++; detailGeneration++; varian
 <template>
   <section class="formal-library">
     <PageHeader title="歌曲与版本" description="歌曲资料保存在本机。每次演绎与剪辑单独管理版本，同一版本可以关联多个编码文件。">
-      <template #actions><ElButton @click="router.push({ path: '/library/songs/files', query: route.query })">按文件管理与筛选</ElButton><ElButton type="primary" @click="router.push('/library/media')">添加或导入歌曲</ElButton></template>
+      <template #actions><ElButton @click="openFilesLens">按文件管理与筛选</ElButton><ElButton type="primary" @click="router.push('/library/media')">添加或导入歌曲</ElButton></template>
     </PageHeader>
     <p class="counts" aria-live="polite">全库 {{ counts.SONG ?? '—' }} 首歌曲 · {{ counts.VARIANT ?? '—' }} 个版本 · {{ counts.MEDIA ?? '—' }} 个媒体文件</p>
     <ElCard shadow="never"><div class="filters"><ElInput v-model="search" aria-label="搜索正式歌曲资料" placeholder="搜索歌名、演唱者或别名" maxlength="200" clearable @keyup.enter="apply()" /><ElSelect v-model="sourceId" aria-label="媒体来源" clearable placeholder="全部来源" @change="apply()"><ElOption v-for="source in sources" :key="source.id" :value="source.id" :label="source.name" /></ElSelect><ElButton type="primary" :loading="loading" @click="apply()">搜索</ElButton></div></ElCard>
@@ -95,14 +102,14 @@ onBeforeUnmount(() => { active = false; generation++; detailGeneration++; varian
         <p>{{ formalArtists(detail.document) }} · 文字资料已保存</p>
         <p v-if="detail.saveStatus?.attachmentsPending">{{ detail.saveStatus.attachmentsPending }} 项封面正在保存；已有原图继续可用。</p><p v-if="detail.saveStatus?.derivativesPending">{{ detail.saveStatus.derivativesPending }} 项衍生文件等待生成，不影响已保存资料。</p>
         <ElAlert v-if="detailError" type="error" :title="detailError" :closable="false" />
-        <div class="version-toolbar"><select :value="variant?.document.id ?? ''" aria-label="选择媒体版本" @change="event => openVariant((event.target as HTMLSelectElement).value)"><option disabled value="">选择媒体版本</option><option v-for="item in variants" :key="item.id" :value="item.id">{{ formalTitle(item) }} · {{ item.fields.kind || '待确认类型' }}</option></select><ElButton @click="adding = true">新增版本</ElButton><ElButton v-if="variant" @click="editing = variant.document">订正版本资料</ElButton></div>
+        <div class="version-toolbar"><ElSelect :model-value="variant?.document.id ?? ''" aria-label="选择媒体版本" placeholder="选择媒体版本" class="version-select" @change="id => openVariant(id)"><ElOption v-for="item in variants" :key="item.id" :value="item.id" :label="formalTitle(item) + ' · ' + (item.fields.kind || '待确认类型')" /></ElSelect><ElButton @click="adding = true">新增版本</ElButton><ElButton v-if="variant" @click="editing = variant.document">订正版本资料</ElButton></div>
         <ElPagination v-if="(detail.childrenPage?.totalElements ?? 0)>20" :current-page="(detail.childrenPage?.page ?? 0)+1" :page-size="20" :total="detail.childrenPage?.totalElements ?? 0" layout="prev, pager, next" @current-change="page => openSong(detail!.document.id,page-1)" />
         <p>歌词和时间轴属于当前版本；实际时长与音轨属于具体媒体文件。关联前请确认演绎与剪辑一致。</p>
         <ElEmpty v-if="variant && !media.length" description="这个版本尚未关联媒体文件" />
         <ElCard v-for="file in media" :key="file.id" shadow="never" class="media-card">
           <strong class="file-path">{{ location(file.id)?.relative_path || '媒体位置待绑定' }}</strong><p>{{ sourceName(location(file.id)?.source_id ?? null) }} · <ElTag>{{ stateLabel(file.id) }}</ElTag></p>
           <p v-if="file.fields.durationMs">实际媒体时长 {{ Number(file.fields.durationMs) / 1000 }} 秒<span v-if="detail.document.fields.referenceDurationMs"> · 曲目参考时长 {{ Number(detail.document.fields.referenceDurationMs) / 1000 }} 秒</span></p>
-          <div class="actions"><ElButton :disabled="location(file.id)?.state !== 'PRESENT'" @click="preview(file)">试听检查</ElButton><ElButton @click="router.push({ path: '/library/songs/files', query: { reviewSongId: file.id } })">完善信息与封面</ElButton><ElButton @click="bind(file)">重新绑定位置</ElButton><ElButton :disabled="busy" @click="beginMove(file)">关联其他版本</ElButton><ElButton :disabled="busy" @click="replaceMedia(file)">文件内容已替换</ElButton><ElButton :disabled="busy" @click="split(file)">拆为新版本</ElButton></div>
+          <div class="actions"><ElButton :disabled="location(file.id)?.state !== 'PRESENT'" @click="preview(file)">试听检查</ElButton><ElButton @click="router.push({ path: '/library/songs', query: { lens: 'songs', reviewSongId: file.id } })">完善信息与封面</ElButton><ElButton @click="bind(file)">重新绑定位置</ElButton><ElButton :disabled="busy" @click="beginMove(file)">关联其他版本</ElButton><ElButton :disabled="busy" @click="replaceMedia(file)">文件内容已替换</ElButton><ElButton :disabled="busy" @click="split(file)">拆为新版本</ElButton></div>
         </ElCard>
         <ElPagination v-if="(variant?.childrenPage?.totalElements ?? 0)>20" :current-page="(variant?.childrenPage?.page ?? 0)+1" :page-size="20" :total="variant?.childrenPage?.totalElements ?? 0" layout="prev, pager, next" @current-change="page => openVariant(variant!.document.id,page-1)" />
       </template>
@@ -117,5 +124,5 @@ onBeforeUnmount(() => { active = false; generation++; detailGeneration++; varian
 </template>
 
 <style scoped>
-.formal-library { display: grid; gap: 20px; }.counts { margin: 0; color: var(--sv-text-secondary); }.filters,.song-row,.actions,.version-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }.filters .el-input { flex: 1; min-width: 180px; }.filters .el-select { width: 220px; }.song-list { display: grid; gap: 12px; }.song-row { justify-content: space-between; }.song-row h3 { margin: 0 0 8px; }.song-row p { margin: 0 0 8px; }.song-row small,p { color: var(--sv-text-secondary); }.version-toolbar { margin: 20px 0; }.version-toolbar select { min-width: 260px; flex: 1; min-height: 32px; padding: 0 10px; border: 1px solid var(--sv-border-subtle); border-radius: 4px; color: var(--sv-text-primary); background: var(--sv-surface-1); font: inherit; }.media-card { margin: 16px 0; }.file-path { overflow-wrap: anywhere; }pre { white-space: pre-wrap; overflow-wrap: anywhere; }.el-dialog .el-input,.el-dialog .el-select { margin: 8px 0; width: 100%; }@media(max-width: 650px) { .song-row { align-items: start; }.filters .el-select { width: 100%; }.actions { gap: 8px; }.actions .el-button { margin: 0; } }
+.formal-library { display: grid; gap: 20px; }.counts { margin: 0; color: var(--sv-text-secondary); }.filters,.song-row,.actions,.version-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }.filters .el-input { flex: 1; min-width: 180px; }.filters .el-select { width: 220px; }.song-list { display: grid; gap: 12px; }.song-row { justify-content: space-between; }.song-row h3 { margin: 0 0 8px; }.song-row p { margin: 0 0 8px; }.song-row small,p { color: var(--sv-text-secondary); }.version-toolbar { margin: 20px 0; }.version-toolbar .version-select { min-width: 260px; flex: 1; }.media-card { margin: 16px 0; }.file-path { overflow-wrap: anywhere; }pre { white-space: pre-wrap; overflow-wrap: anywhere; }.el-dialog .el-input,.el-dialog .el-select { margin: 8px 0; width: 100%; }@media(max-width: 650px) { .song-row { align-items: start; }.filters .el-select { width: 100%; }.actions { gap: 8px; }.actions .el-button { margin: 0; } }
 </style>

@@ -12,7 +12,7 @@
   flex-direction: column;
   justify-content: space-between;
   padding: 48px 9%;
-  background: #e7ecdf;
+  background: var(--sv-surface-3);
 }
 
 .login-brand {
@@ -112,7 +112,7 @@
   width: 230px;
   aspect-ratio: 1;
   border-radius: 50%;
-  background: repeating-radial-gradient(circle at center, #2d4438 0 1px, #233b2f 2px 4px);
+  background: repeating-radial-gradient(circle at center, var(--sv-accent-primary) 0 1px, var(--sv-accent-muted) 2px 4px);
   position: absolute;
   right: -75px;
   bottom: 90px;
@@ -125,8 +125,8 @@
   position: absolute;
   inset: 34%;
   border-radius: 50%;
-  background: #c47c55;
-  border: 22px solid #d0a075;
+  background: var(--sv-terracotta);
+  border: 22px solid var(--sv-border-strong);
 }
 
 .login-record::after {
@@ -137,7 +137,7 @@
   top: calc(50% - 4px);
   left: calc(50% - 4px);
   border-radius: 50%;
-  background: #e7ecdf;
+  background: var(--sv-surface-3);
 }
 
 .waveform {

@@ -131,7 +131,7 @@ SQLite默认，MySQL 由显式驱动配置选择，切换不迁移数据；Pytho
 
 计算节点开发入口见[开发指南](development.md)与[节点README](../services/singverse-compute/README.md)；产品体验见[原型说明](prototype/README.md)中的AD10、AD24、AD26与AD27，不新增页面。
 
-媒体来源配置由 Go `/api/v1/media-sources` 管理并唯一写入业务库，前端增加“曲库 → 媒体库管理”。当前本地目录读取校验不调用 Python，WebDAV 保存时仅加密保存配置，手动后台扫描时由 Go 使用 PROPFIND 列目录；本地及 WebDAV 文件名索引由 Go 实现，WebDAV 使用数据库暂存与内部有界执行器，不下载视频；播放队列与重计算由独立业务模块编排，详见[媒体库管理](media-library.md)。
+媒体来源配置由 Go `/api/v1/media-sources` 管理并唯一写入业务库，前端入口为“加歌 → 歌曲来源”。当前本地目录读取校验不调用 Python，WebDAV 保存时仅加密保存配置，手动后台扫描时由 Go 使用 PROPFIND 列目录；本地及 WebDAV 文件名索引由 Go 实现，WebDAV 使用数据库暂存与内部有界执行器，不下载视频；播放队列与重计算由独立业务模块编排，详见[媒体库管理](media-library.md)。
 
 文件名规则引擎保持 Go 内部纯逻辑边界，通过不可变规则集执行模板/RE2 完整匹配；管理端 `#/library/filename-parser` 通过受保护 API 配置和预览，规则配置由 Go 保存于单例配置表。规则内核不访问数据库/网络，原单参数解析接口不读取管理配置。未命中不自动猜测，身份核验不在规则内核中；本地目录扫描由媒体来源服务编排，见[规则说明](filename-rules.md)。
 

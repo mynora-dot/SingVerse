@@ -90,6 +90,41 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Node credential file unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "title": "Type",
+                      "default": "about:blank"
+                    },
+                    "title": {
+                      "type": "string",
+                      "title": "Title"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "title": "Status"
+                    },
+                    "instance": {
+                      "type": "string",
+                      "title": "Instance"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "title",
+                    "status",
+                    "instance"
+                  ],
+                  "title": "Problem"
+                }
+              }
+            }
           }
         },
         "security": [

@@ -35,7 +35,7 @@ try:
         raise SystemExit("Isolated MySQL did not become ready")
     state = json.loads(docker("inspect", name).stdout)[0]
     port = state["NetworkSettings"]["Ports"]["3306/tcp"][0]["HostPort"]
-    env = dict(os.environ, GOTOOLCHAIN="go1.27.3",
+    env = dict(os.environ, GOTOOLCHAIN="go1.27.4",
                GOMODCACHE=str(ROOT / ".tools/go-mod-cache"),
                GOCACHE=str(ROOT / ".tools/go-build-cache"),
                GOPATH=str(ROOT / ".tools/go"),

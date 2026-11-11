@@ -16,11 +16,13 @@
 .el-button--primary:not(.is-link):not(.is-text):not(.is-plain):not(.is-disabled) {
   background: var(--sv-accent-primary);
   border-color: var(--sv-accent-primary);
+  color: var(--sv-on-accent);
 }
 
 .el-button--primary:not(.is-link):not(.is-text):not(.is-plain):not(.is-disabled):hover {
   background: var(--sv-accent-muted);
   border-color: var(--sv-accent-muted);
+  color: var(--sv-on-accent);
 }
 
 .el-button--primary.is-link:hover,
@@ -119,7 +121,7 @@
 
 .el-pagination .el-pager li.is-active {
   background: var(--sv-accent-primary);
-  color: white;
+  color: var(--sv-on-accent);
 }
 
 .el-pagination__jump {
@@ -150,8 +152,7 @@
 }
 
 .el-dialog__title {
-  font-size: 19px;
-  font-weight: 600;
+  font: 600 19px var(--sv-font-editorial);
 }
 
 .el-dialog__headerbtn {
@@ -189,12 +190,12 @@
 }
 
 .el-overlay {
-  background-color: rgb(28 44 34 / 34%);
+  background-color: var(--sv-scrim);
   backdrop-filter: blur(3px);
 }
 
 .el-loading-mask {
-  background: rgb(251 251 247 / 85%);
+  background: color-mix(in srgb, var(--sv-surface-1) 85%, transparent);
 }
 
 .el-message-box {
@@ -210,8 +211,7 @@
 }
 
 .el-message-box__title {
-  font-size: 19px;
-  font-weight: 600;
+  font: 600 19px var(--sv-font-editorial);
 }
 
 .el-message-box__content {
@@ -242,7 +242,7 @@
 .el-message-box.discard-message-box .discard-continue.el-button {
   background: var(--sv-accent-primary);
   border-color: var(--sv-accent-primary);
-  color: white;
+  color: var(--sv-on-accent);
 }
 
 .el-empty {

@@ -1,0 +1,194 @@
+/* 可切换主题：默认靛蓝电波在 tokens.css 的 :root；此处以 :root[data-theme=...] 覆盖其余五套。
+   令牌名与默认一致，--el-* 映射通过 var() 自动跟随；切换只改 documentElement.dataset.theme。
+   暗色主题（midnight/graphite）额外覆盖 color-scheme、阴影与强调色上的文字色，保证对比度。 */
+
+/* 冷调松绿 Porcelain Pine —— 浅色 · 衬线展示体 */
+:root[data-theme='pine'] {
+  color-scheme: light;
+  --sv-surface-0: #eef1ee;
+  --sv-surface-1: #f5f7f4;
+  --sv-surface-2: #ffffff;
+  --sv-surface-3: #e4e9e4;
+  --sv-surface-4: #d6ddd6;
+  --sv-media-stage: #14201b;
+  --sv-accent-primary: #16584a;
+  --sv-accent-muted: #0e3f35;
+  --sv-accent-soft: #dcebe4;
+  --sv-terracotta: #e2582f;
+  --sv-accent-highlight: #e2582f;
+  --sv-accent-highlight-soft: #fbe9e2;
+  --sv-on-accent: #ffffff;
+  --sv-on-highlight: #ffffff;
+  --sv-semantic-ok: #2f7d5b;
+  --sv-semantic-ok-soft: #e2f0e8;
+  --sv-semantic-warn: #c07a12;
+  --sv-semantic-warn-soft: #f7ecd6;
+  --sv-semantic-danger: #c23b32;
+  --sv-semantic-danger-soft: #f8e6e3;
+  --sv-semantic-info: #2f6aa0;
+  --sv-semantic-info-soft: #e5eef6;
+  --sv-text-primary: #1c2420;
+  --sv-text-secondary: #4f5b54;
+  --sv-text-tertiary: #7c877f;
+  --sv-text-inverse: #ffffff;
+  --sv-border-subtle: #dde4dd;
+  --sv-border-default: #c6d0c6;
+  --sv-border-strong: #a7b3a7;
+  --sv-scrim: rgb(20 32 27 / 42%);
+  --sv-groove-ink: rgb(20 32 27 / 7%);
+  --sv-font-editorial: var(--sv-font-serif);
+}
+
+/* 午夜聆听 Midnight Listening —— 深色 · 衬线展示体 */
+:root[data-theme='midnight'] {
+  color-scheme: dark;
+  --sv-surface-0: #15171c;
+  --sv-surface-1: #1c1f26;
+  --sv-surface-2: #232730;
+  --sv-surface-3: #2c313c;
+  --sv-surface-4: #363c49;
+  --sv-media-stage: #0e1014;
+  --sv-accent-primary: #ff7a66;
+  --sv-accent-muted: #e2583f;
+  --sv-accent-soft: #33221f;
+  --sv-terracotta: #4fd1c5;
+  --sv-accent-highlight: #4fd1c5;
+  --sv-accent-highlight-soft: #16302c;
+  --sv-on-accent: #2a1109;
+  --sv-on-highlight: #0e1014;
+  --sv-semantic-ok: #4ade80;
+  --sv-semantic-ok-soft: #16301f;
+  --sv-semantic-warn: #fbbf24;
+  --sv-semantic-warn-soft: #332a12;
+  --sv-semantic-danger: #f87171;
+  --sv-semantic-danger-soft: #331c1c;
+  --sv-semantic-info: #60a5fa;
+  --sv-semantic-info-soft: #1a2740;
+  --sv-text-primary: #f2efe9;
+  --sv-text-secondary: #b9bcc4;
+  --sv-text-tertiary: #82868f;
+  --sv-text-inverse: #f2efe9;
+  --sv-border-subtle: #2c313c;
+  --sv-border-default: #3a4150;
+  --sv-border-strong: #4a5262;
+  --sv-scrim: rgb(0 0 0 / 58%);
+  --sv-groove-ink: rgb(255 255 255 / 6%);
+  --sv-shadow-sm: 0 2px 6px rgb(0 0 0 / 40%);
+  --sv-shadow-md: 0 10px 34px rgb(0 0 0 / 50%);
+  --sv-shadow-lg: 0 24px 80px rgb(0 0 0 / 65%);
+  --sv-font-editorial: var(--sv-font-serif);
+}
+
+/* 柿红剧场 Vermilion Stage —— 浅色 · 衬线展示体 */
+:root[data-theme='vermilion'] {
+  color-scheme: light;
+  --sv-surface-0: #f6f4f2;
+  --sv-surface-1: #fbf9f7;
+  --sv-surface-2: #ffffff;
+  --sv-surface-3: #efe9e4;
+  --sv-surface-4: #e3dad2;
+  --sv-media-stage: #241413;
+  --sv-accent-primary: #d83a2b;
+  --sv-accent-muted: #b32a1d;
+  --sv-accent-soft: #fbe3df;
+  --sv-terracotta: #1f7a6d;
+  --sv-accent-highlight: #1f7a6d;
+  --sv-accent-highlight-soft: #dcefe9;
+  --sv-on-accent: #ffffff;
+  --sv-on-highlight: #ffffff;
+  --sv-semantic-ok: #2f7d5b;
+  --sv-semantic-ok-soft: #e2f0e8;
+  --sv-semantic-warn: #c07a12;
+  --sv-semantic-warn-soft: #f7ecd6;
+  --sv-semantic-danger: #b23a32;
+  --sv-semantic-danger-soft: #f8e6e3;
+  --sv-semantic-info: #2f6aa0;
+  --sv-semantic-info-soft: #e5eef6;
+  --sv-text-primary: #241a17;
+  --sv-text-secondary: #5c4f49;
+  --sv-text-tertiary: #8a7d76;
+  --sv-text-inverse: #ffffff;
+  --sv-border-subtle: #e7ddd6;
+  --sv-border-default: #d6c8bf;
+  --sv-border-strong: #b3a49b;
+  --sv-scrim: rgb(36 20 19 / 42%);
+  --sv-groove-ink: rgb(36 20 19 / 7%);
+  --sv-font-editorial: var(--sv-font-serif);
+}
+
+/* 青瓷茶室 Celadon Room —— 浅色 · 衬线展示体 */
+:root[data-theme='celadon'] {
+  color-scheme: light;
+  --sv-surface-0: #e9efe9;
+  --sv-surface-1: #f1f5f0;
+  --sv-surface-2: #fbfdfa;
+  --sv-surface-3: #dde6dc;
+  --sv-surface-4: #cdd9cc;
+  --sv-media-stage: #1b241f;
+  --sv-accent-primary: #3a6b5a;
+  --sv-accent-muted: #2a5145;
+  --sv-accent-soft: #d8e6dd;
+  --sv-terracotta: #c86b4a;
+  --sv-accent-highlight: #c86b4a;
+  --sv-accent-highlight-soft: #f6e6dd;
+  --sv-on-accent: #ffffff;
+  --sv-on-highlight: #ffffff;
+  --sv-semantic-ok: #3a7d5f;
+  --sv-semantic-ok-soft: #e0efe6;
+  --sv-semantic-warn: #b9821f;
+  --sv-semantic-warn-soft: #f5ecd7;
+  --sv-semantic-danger: #bb4a3f;
+  --sv-semantic-danger-soft: #f7e7e3;
+  --sv-semantic-info: #3f6f93;
+  --sv-semantic-info-soft: #e6eef4;
+  --sv-text-primary: #20281f;
+  --sv-text-secondary: #515b4d;
+  --sv-text-tertiary: #7e877a;
+  --sv-text-inverse: #fbfdfa;
+  --sv-border-subtle: #d8e2d6;
+  --sv-border-default: #c2d0bf;
+  --sv-border-strong: #a3b39f;
+  --sv-scrim: rgb(27 36 31 / 42%);
+  --sv-groove-ink: rgb(27 36 31 / 7%);
+  --sv-font-editorial: var(--sv-font-serif);
+}
+
+/* 石墨霓虹 Graphite Neon —— 深色 · 无衬线展示体 */
+:root[data-theme='graphite'] {
+  color-scheme: dark;
+  --sv-surface-0: #121417;
+  --sv-surface-1: #181b20;
+  --sv-surface-2: #1f232a;
+  --sv-surface-3: #272c34;
+  --sv-surface-4: #313742;
+  --sv-media-stage: #0b0d10;
+  --sv-accent-primary: #a3e635;
+  --sv-accent-muted: #84cc16;
+  --sv-accent-soft: #232d12;
+  --sv-terracotta: #ec4899;
+  --sv-accent-highlight: #ec4899;
+  --sv-accent-highlight-soft: #331a29;
+  --sv-on-accent: #14170a;
+  --sv-on-highlight: #ffffff;
+  --sv-semantic-ok: #4ade80;
+  --sv-semantic-ok-soft: #16301f;
+  --sv-semantic-warn: #fbbf24;
+  --sv-semantic-warn-soft: #332a12;
+  --sv-semantic-danger: #fb7185;
+  --sv-semantic-danger-soft: #331c20;
+  --sv-semantic-info: #38bdf8;
+  --sv-semantic-info-soft: #13293a;
+  --sv-text-primary: #f4f6f8;
+  --sv-text-secondary: #b6bcc6;
+  --sv-text-tertiary: #7e8590;
+  --sv-text-inverse: #f4f6f8;
+  --sv-border-subtle: #272c34;
+  --sv-border-default: #353c47;
+  --sv-border-strong: #464e5c;
+  --sv-scrim: rgb(0 0 0 / 60%);
+  --sv-groove-ink: rgb(255 255 255 / 6%);
+  --sv-shadow-sm: 0 2px 6px rgb(0 0 0 / 40%);
+  --sv-shadow-md: 0 10px 34px rgb(0 0 0 / 50%);
+  --sv-shadow-lg: 0 24px 80px rgb(0 0 0 / 65%);
+  --sv-font-editorial: var(--sv-font-sans);
+}

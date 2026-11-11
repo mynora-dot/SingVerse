@@ -396,19 +396,19 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   aspect-ratio:1;
   border-radius:10px;
   overflow:hidden;
-  background:#d4dccb;
+  background:var(--sv-surface-3);
 }
 
 .artist-card:nth-child(4n+2) .artist-banner {
-  background:#dfcdba;
+  background:var(--sv-accent-highlight-soft);
 }
 
 .artist-card:nth-child(4n+3) .artist-banner {
-  background:#cbd8db;
+  background:var(--sv-semantic-info-soft);
 }
 
 .artist-card:nth-child(4n+4) .artist-banner {
-  background:#dfd6cf;
+  background:var(--sv-surface-4);
 }
 
 .artist-open {
@@ -419,7 +419,7 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   padding:0;
   border:0;
   background:none;
-  color:#456251;
+  color:var(--sv-accent-primary);
   cursor:pointer;
   overflow:hidden;
 }
@@ -451,16 +451,16 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   left:10px;
   top:10px;
   padding:8px;
-  background:#fffef3ed;
+  background:color-mix(in srgb, var(--sv-surface-2) 93%, transparent);
   display:grid;
   place-items:center;
-  border:1px solid #ffffffbb;
+  border:1px solid color-mix(in srgb, var(--sv-surface-2) 73%, transparent);
   border-radius:7px;
   cursor:pointer;
 }
 
 .artist-select.checked {
-  background:#f1f5ea;
+  background:var(--sv-accent-soft);
 }
 
 .artist-type {
@@ -469,8 +469,8 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   bottom:10px;
   padding:5px 9px;
   border-radius:5px;
-  background:#fafaf3f2;
-  color:#475e50;
+  background:color-mix(in srgb, var(--sv-surface-2) 95%, transparent);
+  color:var(--sv-accent-primary);
   font-size:11px;
   line-height:1.5;
   pointer-events:none;
@@ -478,18 +478,18 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
 }
 
 .artist-type.female {
-  color:#804d3d;
-  background:#fff6eef5;
+  color:var(--sv-text-secondary);
+  background:var(--sv-accent-highlight-soft);
 }
 
 .artist-type.group {
-  color:#375b70;
-  background:#eff7fcf5;
+  color:var(--sv-semantic-info);
+  background:var(--sv-semantic-info-soft);
 }
 
 .artist-type.unknown,.artist-type.person {
-  color:#626961;
-  background:#f4f3edf2;
+  color:var(--sv-text-secondary);
+  background:var(--sv-surface-3);
 }
 
 .artist-card-info {
@@ -541,15 +541,15 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   flex:0 0 5px;
   margin-top:6px;
   border-radius:50%;
-  background:#7f917d;
+  background:var(--sv-text-tertiary);
 }
 
 .artist-card-info>.attention {
-  color:#92632b;
+  color:var(--sv-semantic-warn);
 }
 
 .attention .state-dot {
-  background:#a5732d;
+  background:var(--sv-semantic-warn);
 }
 
 .artists-pagination {
@@ -639,8 +639,8 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   overflow:hidden;
   display:grid;
   place-items:center;
-  background:#d4dccb;
-  color:#60755b;
+  background:var(--sv-surface-3);
+  color:var(--sv-text-secondary);
   padding:0;
   cursor:pointer;
   font-size:48px;
@@ -648,7 +648,7 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
 
 .artist-images button.background {
   aspect-ratio:auto;
-  background:#ccd7d5;
+  background:var(--sv-surface-4);
 }
 
 .artist-images img {
@@ -668,8 +668,8 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   position:absolute;
   inset:auto 0 0;
   padding:16px 8px;
-  background:linear-gradient(transparent,#15271dd9);
-  color:#fff;
+  background:linear-gradient(transparent,rgb(32 26 18 / 85%));
+  color:var(--sv-text-inverse);
   text-align:center;
   font-size:12px;
 }
@@ -680,8 +680,8 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   right:12px;
   padding:5px 8px;
   font-size:10px;
-  color:#fff;
-  background:#284332b0;
+  color:var(--sv-on-accent);
+  background:color-mix(in srgb, var(--sv-accent-primary) 82%, transparent);
   border-radius:4px;
   font-style:normal;
 }

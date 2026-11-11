@@ -45,7 +45,7 @@ it('歌曲、版本、文件分别计数，待核验文件不能试听', async (
  const media: FormalDocument = { ...doc, id: '33333333-3333-4333-8333-333333333333', type: 'MEDIA', parentId: variant.id, fields: { durationMs: 123000 }, states: {} }
  vi.mocked(formalLibrary.statistics).mockResolvedValue({ SONG: 1, VARIANT: 2, MEDIA: 3 }); vi.mocked(formalLibrary.list).mockResolvedValue({ items: [doc], totalElements: 1 })
  vi.mocked(formalLibrary.detail).mockImplementation(async id => id === doc.id ? { document: doc, children: [variant], childrenPage: { page: 0, size: 20, totalElements: 21 } } : { document: variant, children: [media], locations: [{ id: 'loc', media_id: media.id, source_id: null, relative_path: '中文 空格.mkv', state: 'PENDING' }] })
- const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/library/songs', component: FormalSongsView }] }); await router.push('/library/songs'); await router.isReady()
+ const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/library/songs', component: FormalSongsView }] }); await router.push('/library/songs?lens=formal'); await router.isReady()
  wrapper = mount(FormalSongsView, { attachTo: document.body, global: { plugins: [ElementPlus, router], stubs: { SongVideoDialog: true } } }); await flushPromises()
  expect(document.body.textContent).toContain('1 首歌曲 · 2 个版本 · 3 个媒体文件'); await button('查看版本与文件').trigger('click'); await flushPromises()
  expect(formalLibrary.detail).toHaveBeenCalledWith(doc.id, 0); expect(formalLibrary.detail).toHaveBeenCalledWith(variant.id, 0)

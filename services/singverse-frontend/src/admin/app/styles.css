@@ -1,4 +1,5 @@
 @import './styles/tokens.css';
+@import './styles/themes.css';
 @import './styles/element.css';
 @import './styles/controls.css';
 @import './styles/workflows.css';
@@ -20,7 +21,8 @@ body {
   min-width: 320px;
   font: var(--sv-font-body)/var(--sv-leading-base) var(--sv-font-sans);
   color: var(--sv-text-primary);
-  background: var(--sv-surface-0);
+  background-color: var(--sv-surface-0);
+  background-image: var(--sv-grain);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -37,10 +39,11 @@ figure {
 }
 
 h1 {
+  font-family: var(--sv-font-editorial);
   font-size: var(--sv-font-h1);
-  font-weight: 650;
-  line-height: 1.4;
-  letter-spacing: -.6px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -.3px;
 }
 
 h2 {
@@ -85,6 +88,28 @@ button {
   touch-action: manipulation;
 }
 
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sv-border-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--sv-border-default);
+  border-radius: var(--sv-radius-full);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--sv-border-strong);
+  background-clip: padding-box;
+}
+
 code,
 pre {
   font-family: var(--sv-font-mono);
@@ -102,6 +127,10 @@ pre {
 .sv-page-header-copy {
   flex: 1 1 320px;
   min-width: 0;
+}
+
+.sv-page-eyebrow {
+  margin-bottom: 8px;
 }
 
 .page-description {
@@ -234,6 +263,10 @@ pre {
 
 .sv-status-dot.busy {
   background: var(--sv-accent-primary);
+}
+
+.sv-status-dot.info {
+  background: var(--sv-semantic-info);
 }
 
 .feature-note {

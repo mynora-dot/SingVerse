@@ -217,6 +217,9 @@ func (s *Service) Probe(ctx context.Context, connection *Connection) (Check, err
 	if status == 401 || status == 403 {
 		return result("AUTH_FAILED", "连接到了节点，但认证凭据不匹配", nil), nil
 	}
+	if status == 503 {
+		return result("UNAVAILABLE", "计算节点暂不可用，请检查节点服务、凭据文件挂载及读取权限", nil), nil
+	}
 	if status != 200 {
 		return result("UNAVAILABLE", "节点未就绪或版本不支持认证状态检查", nil), nil
 	}

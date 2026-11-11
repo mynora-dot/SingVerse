@@ -12,13 +12,13 @@ WebDAV 原片按需分块缓存，完整成功的音视频解码结果也由 Go 
 
 ## 技术栈与目录
 
-管理端「添加与整理 → 下载歌曲」支持自备洛雪音源、五平台歌曲搜索及公开歌单/专辑读取。先将一个可写本地媒体库指定为下载保存位置，再导入并启用音源；后台下载完成自动入库，支持取消、重试与重启恢复，基础下载无需 compute。使用方法、Docker `/downloads` 挂载及边界见[歌曲下载](docs/lx-downloads.md)。
+管理端「加歌 → 下载歌曲」支持自备洛雪音源、五平台歌曲搜索及公开歌单/专辑读取。先将一个可写本地媒体库指定为下载保存位置，再导入并启用音源；后台下载完成自动入库，支持取消、重试与重启恢复，基础下载无需 compute。使用方法、Docker `/downloads` 挂载及边界见[歌曲下载](docs/lx-downloads.md)。
 
 | 部分 | 技术 | 位置 |
 |---|---|---|
 | 手机App | Flutter 3.47.5 / Dart 3.13.4，Android优先 | `services/singverse-mobile` |
 | 电视 | Kotlin 2.1.20 / Compose / TV Material 1.0.0 / Gradle 8.11.1 | `services/singverse-tv` |
-| 业务主服务 | Go 1.27.3 / Gin / database/sql + sqlx / 显式嵌入 SQL | `services/singverse-go-backend` |
+| 业务主服务 | Go 1.27.4 / Gin / database/sql + sqlx / 显式嵌入 SQL | `services/singverse-go-backend` |
 | 计算节点 | Python 3.12+ / FastAPI 0.121.3 / Uvicorn 0.38.0；媒体探测、转码及可选音轨分析/伴奏分离 | `services/singverse-compute` |
 | 网页前端 | Vue 3 / TypeScript / Vite / Element Plus 管理端 + Vue 亲友点歌页，同一工程构建 | `services/singverse-frontend` |
 | 数据库 | 默认SQLite，MySQL保留可选连接验证 | `infra/docker/compose/compose.yaml`仅开发MySQL |
@@ -73,7 +73,7 @@ make docker-down
 
 ## 环境与命令
 
-业务开发安装 Go 1.27.3、Node.js 22.19+ 和 Python 3.12+。Flutter/TV 另需 Flutter、JDK21、Android SDK35/36及对应工具；JDK只用于Android工程。Node依赖由npm锁定，Go依赖由go.mod/go.sum锁定，Gradle使用Wrapper；MySQL验证需要Docker/Compose。Flutter Android当前minSdk24；TV当前minSdk23，研究中的Android5/API21目标尚待后续实现和实机验证。
+业务开发安装 Go 1.27.4、Node.js 22.19+ 和 Python 3.12+。Flutter/TV 另需 Flutter、JDK21、Android SDK35/36及对应工具；JDK只用于Android工程。Node依赖由npm锁定，Go依赖由go.mod/go.sum锁定，Gradle使用Wrapper；MySQL验证需要Docker/Compose。Flutter Android当前minSdk24；TV当前minSdk23，研究中的Android5/API21目标尚待后续实现和实机验证。
 
 ```sh
 make help
@@ -227,7 +227,7 @@ Mac 原唱／伴奏使用原生 CPU 或 MPS：显式执行 `make compute-audio-s
 
 模型需显式安装；扫描快速分类使用 `make compute-setup compute-fast-audio-setup`，深度识别/伴奏生成另用 `make compute-audio-setup`，设置本地模型路径并重启 compute。Mac 使用原生启动器的 `restart` 加载新代码。固定版本、Compose 可选部署、资源预算和真实模型冒烟命令见 [计算节点 README](services/singverse-compute/README.md#原唱识别与伴奏分离)。真实歌曲效果与手机/TV/NAS 同步尚需验收，不能以合成音冒烟替代。
 
-伴奏管理入口：**添加与整理 → 原唱与伴奏**，分“歌曲 / 生成任务”。可按状态快速找出待标记原唱、可生成伴奏等歌曲，跨页/全部筛选结果批量生成；选择快照在后台每 200 首准备，显示准备进度，完成后确认开始，支持准备取消及失败重试。歌曲列表使用可失效的后台轻量索引，首次准备会提示并自动重试；持久任务支持进度查看、停止及重试；“设置 → 计算与模型”统一管理连接、实际硬件、CPU 自动降级及模型下载/导入和试跑。部署CPU、NVIDIA CUDA、AMD ROCm及Mac MPS的方式和当前Intel GPU/RKNN限制见计算节点README；实际只有一个计算节点，不做多节点分配。
+伴奏管理入口：**整理 → 原唱与伴奏**，分“歌曲 / 生成任务”。可按状态快速找出待标记原唱、可生成伴奏等歌曲，跨页/全部筛选结果批量生成；选择快照在后台每 200 首准备，显示准备进度，完成后确认开始，支持准备取消及失败重试。歌曲列表使用可失效的后台轻量索引，首次准备会提示并自动重试；持久任务支持进度查看、停止及重试；“设置 → 计算与模型”统一管理连接、实际硬件、CPU 自动降级及模型下载/导入和试跑。部署CPU、NVIDIA CUDA、AMD ROCm及Mac MPS的方式和当前Intel GPU/RKNN限制见计算节点README；实际只有一个计算节点，不做多节点分配。
 
 计算节点现提供 CPU（amd64/arm64）、CUDA、ROCm、OpenVINO 镜像构建目标及正式 release 发布工作流；模型独立下载／离线导入。部署选择见 [compute 说明](services/singverse-compute/README.md)。GPU 和设备效果必须单独验收，RKNN 尚无合格模型。
 

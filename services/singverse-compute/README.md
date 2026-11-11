@@ -6,7 +6,7 @@ Python 3.12+ / FastAPI。所有 FFmpeg/ffprobe 执行都由本工程处理，Go 
 
 ## 运行与验证
 
-首次 `make compute-setup PYTHON=python3.12`，依赖使用本工程 `.venv` 与 `requirements.lock`。本地运行 `make compute-run` 默认只监听127.0.0.1:8090；需安装FFmpeg以提供标签能力。业务后端使用 Go 1.27.3，从仓库根执行 `make go-backend-build` 构建、`make go-backend-run` 运行，完整前端dist嵌入二进制；生产无需JVM。`make compute-check`执行随机端口HTTP、真实生成音视频、超时/输出限制测试；`make go-compute-check` 执行真实 Go/Python/FFmpeg 隔离回源往返，`make backend-check` 组合 Go、Python 检查和该联动测试。实际结果及限制见[本次 Go 验证记录](../../docs/go-migration-verification.md)。
+首次 `make compute-setup PYTHON=python3.12`，依赖使用本工程 `.venv` 与 `requirements.lock`。本地运行 `make compute-run` 默认只监听127.0.0.1:8090；需安装FFmpeg以提供标签能力。业务后端使用 Go 1.27.4，从仓库根执行 `make go-backend-build` 构建、`make go-backend-run` 运行，完整前端dist嵌入二进制；生产无需JVM。`make compute-check`执行随机端口HTTP、真实生成音视频、超时/输出限制测试；`make go-compute-check` 执行真实 Go/Python/FFmpeg 隔离回源往返，`make backend-check` 组合 Go、Python 检查和该联动测试。实际结果及限制见[本次 Go 验证记录](../../docs/go-migration-verification.md)。
 
 `python -m singverse_compute --host 127.0.0.1 --port 8090`启动。配置：
 
@@ -14,6 +14,8 @@ Python 3.12+ / FastAPI。所有 FFmpeg/ffprobe 执行都由本工程处理，Go 
 - `COMPUTE_AUTH_TOKEN_FILE`：内部Bearer凭据文件。CLI首次启动以0600生成随机凭据；Go仅只读挂载该文件，禁止提交或输出内容。没有有效凭据或ffprobe时不声明标签能力。
 - `COMPUTE_LAN_PAIRING_ENABLED`：默认 `true`，允许受限局域网内由 Go 服务端发现和首次配对；设置 `false` 关闭配对，已配置的内部 Bearer 调用继续生效。没有有效凭据文件时不能配对。
 - Go用 `COMPUTE_NODE_URL` 与 `COMPUTE_AUTH_TOKEN_FILE` 连接。Go不启动Python或FFmpeg子进程，节点离线/失败回退文件名，不影响主服务健康。
+
+同一 Docker 网络只保证节点地址可达，内部调用仍需 Bearer 认证。凭据文件可读但密钥不匹配时返回 401；文件丢失、权限拒绝或编码错误时返回 503，管理端提示检查节点服务、凭据挂载和读取权限。此时 `/health` 仍可能为 UP，不能据此判断认证正常。
 
 应用 Compose 仅给 Go 挂载媒体卷；compute 只挂载内部凭据、模型和缓存卷，不发布端口。跨主机计算节点同样无需共享文件系统；保留认证、TLS／受限网络。Go 镜像不含 Python／FFmpeg。
 
@@ -201,6 +203,10 @@ services/singverse-compute/.venv/bin/python scripts/macos-compute.py restart
 ```
 
 启动器将固定模型目录 `.tools/demucs-htdemucs` 传入节点，默认音频预算 4096MiB；内存较紧张时可显式 `restart --audio-memory-mib 2048`，后续重启保留预算。本机 M2 的 8／60 秒验收使用 2048MiB；这不是任意歌曲的内存保证。模型安装仍是显式操作，网页也可下载或导入。进入“设备与服务 → 性能节点配置”，对 CPU 和 MPS 分别试跑；自动选择优先使用通过验证的 MPS。升级代码或运行环境后重新试跑。
+
+此覆盖配置的 `host.docker.internal:18090` 指向 Mac 原生进程，Go 的认证卷与本机 `data/macos-compute/token` 是两份文件，由启动器核对一致。macOS 后台进程若失去项目目录的文件访问权限，即使两份文件内容相同也会认证失败；旧版节点会误报为密钥不匹配。可先用上面的 `restart` 命令重新加载；持续失败时检查原生进程对项目目录和凭据文件的系统访问权限，保留现有认证卷及密钥。启动器的 `start` 和重启等待均检查带认证的 `/internal/v1/status` 与节点身份，通过后才报告就绪；不会仅以 `/health` 判定成功。
+
+CPU 与 MPS 都提示 `Available RAM is below the configured audio process budget` 时，表示节点检测到的可用内存低于配置预算，尚未开始模型推理；模型已安装不代表能通过资源检查。可根据实际余量使用 `restart --audio-memory-mib 2048` 调整本机预算并重新试跑；预算同时约束子进程内存，不能保证任意长度歌曲都能完成。MPS 常驻推理显式使用 `mps:0`，与实际参数及张量的设备索引一致，保留每次 forward 的严格设备校验。
 
 `mps_audio.py` 仅对超长一维卷积及转置卷积进行分块，按原始 stride／padding／dilation 保留感受野，转置卷积累加重叠贡献并只加一次偏置。没有缩短模型片段、变更权重或开启 PyTorch CPU 回退。频谱处理仍由 Demucs 在 CPU 完成，任务记录 `mps+cpu-stft`。原生节点忙碌及 RAM 暂时不足返回可重试状态，Go 保留后续批量成员排队。
 
