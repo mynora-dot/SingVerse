@@ -11,10 +11,10 @@
 | `services/singverse-tv/` | Kotlin/Compose TV，遥控交互与真实播放 |
 | `contracts/` | OpenAPI、前端托管、认证、缓存、后台任务等语言无关契约 |
 | `database/migrations/{sqlite,mysql}/` | dbmate 初始化和增量迁移 |
-| `infra/docker/compose/` | 默认 Go 应用、独立计算、硬件覆盖、开发 MySQL 及明确旧回退入口 |
-| `infra/docker/build/` | Go Dockerfile、构建忽略规则、Nginx 和计算镜像矩阵 |
-| `infra/deploy/` | 业务/计算节点部署包模板 |
-| `scripts/` | 构建、检查、固定工具安装与部署包生成 |
+| `infra/docker/compose/` | 默认 Go 应用、独立计算、硬件覆盖、开发 MySQL ，镜像基础配置与源码构建覆盖分开 |
+| `infra/docker/build/` | 业务与 compute Dockerfile、固定运行库资源及构建忽略规则 |
+| `infra/docker/` | Docker 专用配置检查、隔离验收及运维说明 |
+| `scripts/` | 本机构建、检查、固定工具安装及媒体模型工具；Go 环境统一复用 `go-env.sh` |
 | `docs/` | 当前说明与带日期的历史验证；原型/research 不代表已交付功能 |
 
 ## Go 内部结构
@@ -46,6 +46,6 @@ services/singverse-go-backend/
 
 前端构建产物仍为 `services/singverse-frontend/dist`，`prepare-go-assets.py` 将完整产物复制到被忽略的 `internal/web/dist` 供嵌入；源码不依赖服务端模板。Docker 构建也从同一前端阶段复制完整 dist，生产不运行 Node。
 
-Makefile 和 CI 保留根及 `.github/workflows/` 标准位置。当前后端检查为 `singverse-go-backend`、`singverse-backend` 与 `singverse-docker`，Java 源码和 Maven 检查工作流已退休。所有新增容器资源放 `infra/`，不散放服务目录。现有 compute Dockerfile/专用资源保持原路径；移动与 TV 的包名、application ID 和 Wrapper 不因业务语言替换变化。
+Makefile 和 CI 保留根及 `.github/workflows/` 标准位置。当前后端检查为 `singverse-go-backend`、`singverse-backend` 与 `singverse-docker`，Java 源码和 Maven 检查工作流已退休。所有新增容器资源放 `infra/`，不散放服务目录。compute Dockerfile/专用资源也统一归入 infra；移动与 TV 的包名、application ID 和 Wrapper 不因业务语言替换变化。
 
-旧 Java 目录可能仍保留被忽略的本地数据与配置，不再包含受控工程；旧路径只在历史验证或明确镜像回退说明中保留。不会为了路径调整重置账号、覆盖配置或删除数据卷，详见 [切换与回退](go-migration.md)。
+旧 Java 目录可能仍保留被忽略的本地数据与配置，不再包含受控工程；旧路径只在历史验证说明中保留。不会为了路径调整重置账号、覆盖配置或删除数据卷，详见 [切换与回退](go-migration.md)。

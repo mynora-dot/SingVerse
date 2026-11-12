@@ -62,7 +62,7 @@ it('WebDAV 地址在卡片中显示解码后的中文，编辑时保留原地址
 it('本地目录表单独立于远端认证，保存后刷新真实列表', async () => {
   wrapper = mount(MediaLibraryView, { global: { plugins: [router], stubs: { teleport: true } } })
   await flushPromises()
-  await button('添加媒体库').trigger('click')
+  await button('添加来源').trigger('click')
   await flushPromises()
   const form = wrapper.findComponent(ElDialog)
   expect(form.text()).toContain('歌曲文件夹')
@@ -96,7 +96,7 @@ it('列表失败提供重试，保存失败保留表单并显示原因', async (
   expect(wrapper.text()).toContain('读取失败')
   await button('重试').trigger('click')
   await flushPromises()
-  await button('添加媒体库').trigger('click'); await flushPromises(); await button('WebDAV').trigger('click')
+  await button('添加来源').trigger('click'); await flushPromises(); await button('WebDAV').trigger('click')
   await flushPromises()
   const form = wrapper.findComponent(ElDialog)
   const inputs = form.findAllComponents(ElInput)
@@ -113,7 +113,7 @@ it('本地与 WebDAV 都保存所选完整方案，编辑可回显方案', async
   wrapper = mount(MediaLibraryView, { global: { plugins: [router], stubs: { teleport: true } } })
   await flushPromises()
   for (const [label, location] of [['LOCAL', '/media/songs'], ['WEBDAV', 'https://nas.example.invalid/dav/']]) {
-    await button('添加媒体库').trigger('click'); await flushPromises()
+    await button('添加来源').trigger('click'); await flushPromises()
     if (label === 'WEBDAV') await button('WebDAV').trigger('click'); await flushPromises()
     const form = wrapper.findComponent(ElDialog)
     const inputs = form.findAllComponents(ElInput)
@@ -133,7 +133,7 @@ it('方案加载失败时禁止保存，重新加载后可继续编辑', async (
   wrapper = mount(MediaLibraryView, { global: { plugins: [router], stubs: { teleport: true } } })
   await flushPromises()
   vi.mocked(parserProfiles.load).mockRejectedValueOnce(new Error('方案读取失败'))
-  await button('添加媒体库').trigger('click'); await flushPromises()
+  await button('添加来源').trigger('click'); await flushPromises()
   expect(wrapper.findComponent(ElDialog).text()).toContain('方案读取失败')
   expect(button('保存并扫描').attributes('disabled')).toBeDefined()
   await button('重新加载解析方案').trigger('click'); await flushPromises()
@@ -225,7 +225,7 @@ it('少量位置使用卡片且不显示筛选与分页表格', async () => {
 })
 it('添加来源支持五段 cron 配置，六段表达式阻止提交', async () => {
   wrapper = mount(MediaLibraryView, { global: { plugins: [router], stubs: { teleport: true } } })
-  await flushPromises(); await button('添加媒体库').trigger('click'); await flushPromises()
+  await flushPromises(); await button('添加来源').trigger('click'); await flushPromises()
   const dialog = wrapper.findComponent(ElDialog)
   const inputs = dialog.findAllComponents(ElInput)
   await inputs[0]!.setValue('定时歌曲'); await selectFolder()
@@ -246,7 +246,7 @@ async function selectFolder() {
 }
 it('在来源内试验和选择方案，明确使用后再保存来源，WebDAV 输入全程保留', async () => {
   wrapper = mount({ template: '<RouterView />' }, { global: { plugins: [router], stubs: { teleport: true } } }); await flushPromises()
-  await button('添加媒体库').trigger('click'); await flushPromises(); await button('WebDAV').trigger('click'); await flushPromises()
+  await button('添加来源').trigger('click'); await flushPromises(); await button('WebDAV').trigger('click'); await flushPromises()
   const form = wrapper.findComponent(ElDialog)
   await form.get('input[placeholder="https://nas.example/dav/歌曲目录/"]').setValue('https://nas.example.invalid/dav/')
   await form.get('input[autocomplete="off"]').setValue('reader')
@@ -271,7 +271,7 @@ it('在来源内试验和选择方案，明确使用后再保存来源，WebDAV 
 it('识别方案草稿在返回来源或关闭时受保护，拒绝放弃会留在原编辑位置', async () => {
   vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel')
   wrapper = mount({ template: '<RouterView />' }, { global: { plugins: [router], stubs: { teleport: true } } }); await flushPromises()
-  await button('添加媒体库').trigger('click'); await flushPromises()
+  await button('添加来源').trigger('click'); await flushPromises()
   await button('试验与调整').trigger('click'); await flushPromises()
   await vi.waitFor(() => expect(wrapper.find('input[aria-label="方案名称"]').exists()).toBe(true))
   await wrapper.get('input[aria-label="方案名称"]').setValue('未保存的识别方案')
@@ -288,7 +288,7 @@ it('识别方案草稿在返回来源或关闭时受保护，拒绝放弃会留�
 })
 it('自定义规则在来源工作区内打开，返回时刷新方案且保留来源草稿', async () => {
   wrapper = mount({ template: '<RouterView />' }, { global: { plugins: [router], stubs: { teleport: true } } }); await flushPromises()
-  await button('添加媒体库').trigger('click'); await flushPromises()
+  await button('添加来源').trigger('click'); await flushPromises()
   await wrapper.get('input[placeholder="留空使用文件夹名称"]').setValue('还在编辑的来源')
   await button('试验与调整').trigger('click'); await flushPromises()
   await vi.waitFor(() => expect(wrapper.find('.profiles-advanced > summary').exists()).toBe(true))
@@ -307,7 +307,7 @@ it('自定义规则在来源工作区内打开，返回时刷新方案且保留�
 it('来源自身的未保存修改在取消、离开和刷新时受到保护', async () => {
   vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel')
   wrapper = mount({ template: '<RouterView />' }, { global: { plugins: [router], stubs: { teleport: true } } }); await flushPromises()
-  await button('添加媒体库').trigger('click'); await flushPromises()
+  await button('添加来源').trigger('click'); await flushPromises()
   await wrapper.get('input[placeholder="留空使用文件夹名称"]').setValue('未保存的来源')
   await button('取消').trigger('click'); await flushPromises()
   expect(wrapper.findComponent(ElDialog).props('modelValue')).toBe(true)
@@ -321,7 +321,7 @@ it('下载位置标记可见，更换绑定明确确认原目录和新目录', a
   vi.mocked(lx.status).mockResolvedValue({ target: { id: 'old', path: '/old-downloads' } } as never)
   vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never)
   wrapper = mount(MediaLibraryView, { global: { plugins: [router], stubs: { teleport: true } } }); await flushPromises()
-  await button('添加媒体库').trigger('click'); await flushPromises(); await selectFolder()
+  await button('添加来源').trigger('click'); await flushPromises(); await selectFolder()
   const form = wrapper.findComponent(ElDialog)
   await form.get('input[type="checkbox"]').setValue(true)
   await form.get('form').trigger('submit'); await flushPromises()
@@ -340,7 +340,7 @@ it('编辑已绑定本地媒体库保留下载用途并显示卡片标记', asyn
 })
 it('目录加载失败禁止选择，重试后可浏览与自动命名', async () => {
   wrapper = mount(MediaLibraryView, { global: { plugins: [router], stubs: { teleport: true } } }); await flushPromises()
-  await button('添加媒体库').trigger('click'); await flushPromises()
+  await button('添加来源').trigger('click'); await flushPromises()
   vi.mocked(media.directories).mockRejectedValueOnce(new Error('目录不可读'))
   await button('选择文件夹').trigger('click'); await flushPromises()
   expect(wrapper.text()).toContain('目录不可读')

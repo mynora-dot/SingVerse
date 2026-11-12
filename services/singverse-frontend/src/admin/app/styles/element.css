@@ -1,16 +1,16 @@
 /* 组件主题与交互状态在此统一；模块内只保留业务布局。 */
 .el-button {
-  min-height: 38px;
-  padding: 9px 16px;
+  min-height: 40px;
+  padding: 8px 16px;
   font-size: 13px;
-  font-weight: 550;
-  border-radius: 7px;
+  font-weight: 500;
+  border-radius: 8px;
 }
 
 .el-button.is-link,
 .el-button.is-text {
-  min-height: 30px;
-  padding: 6px 8px;
+  min-height: 32px;
+  padding: 8px 8px;
 }
 
 .el-button--primary:not(.is-link):not(.is-text):not(.is-plain):not(.is-disabled) {
@@ -44,15 +44,15 @@
 
 .el-input__wrapper,
 .el-select__wrapper {
-  min-height: 38px;
+  min-height: 40px;
   background: var(--sv-surface-2);
-  border-radius: 7px;
+  border-radius: 8px;
 }
 
 .el-textarea__inner {
-  padding: 10px 12px;
+  padding: 12px 12px;
   line-height: 1.8;
-  border-radius: 7px;
+  border-radius: 8px;
 }
 
 .el-input__wrapper.is-focus,
@@ -64,12 +64,12 @@
 .el-form-item__label {
   font-size: 13px;
   color: var(--sv-text-secondary);
-  font-weight: 550;
+  font-weight: 500;
 }
 
 .el-alert {
-  padding: 14px 18px;
-  border-radius: 10px;
+  padding: 16px 20px;
+  border-radius: 8px;
   border: 1px solid var(--sv-border-subtle);
 }
 
@@ -97,17 +97,17 @@
 }
 
 .el-table th.el-table__cell {
-  font-weight: 550;
+  font-weight: 500;
   font-size: 12px;
 }
 
 .el-table td.el-table__cell {
-  padding: 14px 0;
+  padding: 16px 0;
 }
 
 .el-pagination {
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   row-gap: 12px;
   max-width: 100%;
   --el-pagination-hover-color: var(--sv-accent-primary);
@@ -115,7 +115,7 @@
 
 .el-pagination button,
 .el-pagination .el-pager li {
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
 }
 
@@ -125,7 +125,7 @@
 }
 
 .el-pagination__jump {
-  margin-left: 6px;
+  margin-left: 8px;
 }
 
 .el-pagination__total {
@@ -133,7 +133,7 @@
 }
 
 .el-tag {
-  border-radius: 5px;
+  border-radius: 8px;
   font-weight: 500;
 }
 
@@ -141,13 +141,13 @@
   max-width: calc(100vw - 32px);
   margin-top: 5vh;
   padding: 0;
-  border-radius: 18px;
+  border-radius: 16px;
   box-shadow: var(--sv-shadow-lg);
   border: 1px solid var(--sv-border-subtle);
 }
 
 .el-dialog__header {
-  padding: 22px 28px;
+  padding: 24px 28px;
   border-bottom: 1px solid var(--sv-border-subtle);
 }
 
@@ -161,7 +161,7 @@
 }
 
 .el-dialog__body {
-  padding: 26px 28px;
+  padding: 28px 28px;
   font-size: 14px;
   color: var(--sv-text-primary);
   overflow-wrap: anywhere;
@@ -177,12 +177,12 @@
 
 .el-drawer__header {
   margin-bottom: 0;
-  padding: 22px 26px;
+  padding: 24px 28px;
   border-bottom: 1px solid var(--sv-border-subtle);
 }
 
 .el-drawer__body {
-  padding: 26px;
+  padding: 28px;
 }
 
 .el-drawer__title {
@@ -191,7 +191,6 @@
 
 .el-overlay {
   background-color: var(--sv-scrim);
-  backdrop-filter: blur(3px);
 }
 
 .el-loading-mask {
@@ -200,14 +199,14 @@
 
 .el-message-box {
   width: min(460px, calc(100vw - 32px));
-  padding: 26px;
+  padding: 28px;
   border: 1px solid var(--sv-border-subtle);
   border-radius: 16px;
   box-shadow: var(--sv-shadow-lg);
 }
 
 .el-message-box__header {
-  padding-bottom: 18px;
+  padding-bottom: 20px;
 }
 
 .el-message-box__title {
@@ -265,15 +264,16 @@
 
 @media(max-width:768px) {
   .el-button {
-    min-height: 40px;
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .el-card {
-    --el-card-padding: 18px;
+    --el-card-padding: 20px;
   }
 
   .el-card__header {
-    padding: 18px;
+    padding: 20px;
   }
 
   .el-dialog {
@@ -307,6 +307,89 @@
 
   .el-input__wrapper,
   .el-select__wrapper {
-    min-height: 42px;
+    min-height: 44px;
   }
 }
+
+/* 表头、悬停、已选、焦点分别表达；不使用醒目的整表描边。 */
+.el-table .el-table__row.current-row > td.el-table__cell,
+.el-table .el-table__row.is-selected > td.el-table__cell { background: var(--sv-accent-soft); }
+.el-table .el-table__row:focus-within > td.el-table__cell { box-shadow: inset 0 -2px var(--sv-accent-primary); }
+.el-table__body-wrapper { scrollbar-gutter: stable; }
+.el-checkbox { --el-checkbox-checked-text-color: var(--sv-text-primary); }
+.el-switch { --el-switch-off-color: var(--sv-border-strong); }
+.el-button--small { min-height: 32px; }
+.el-button.is-disabled, .el-button.is-disabled:hover { color: var(--sv-text-tertiary); background: var(--sv-surface-3); border-color: var(--sv-border-subtle); }
+@media(max-width:768px) {
+  .el-button--small, .el-button.is-link, .el-button.is-text { min-height: 44px; }
+  .el-checkbox { min-height: 44px; }
+  .el-radio, .el-switch { min-width: 44px; min-height: 44px; }
+  .el-radio-button__inner { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; }
+  :root .el-pagination .btn-prev, :root .el-pagination .btn-next, :root .el-pagination .el-pager li { min-width: 44px; min-height: 44px; }
+  .el-dialog__headerbtn { width: 44px; height: 44px; top: 8px; right: 8px; }
+}
+
+/* 浅色强调底在深色主题上使用深色字，包括 plain 悬停与勾选标记。 */
+.el-button--primary.is-plain {
+  --el-button-hover-text-color: var(--sv-on-accent);
+  --el-button-active-text-color: var(--sv-on-accent);
+}
+.el-checkbox { --el-checkbox-checked-icon-color: var(--sv-on-accent); }
+:root .el-radio-button { --el-radio-button-checked-text-color: var(--sv-on-accent); }
+
+.el-button--success {
+  --el-button-hover-link-text-color: var(--sv-semantic-ok);
+}
+.el-button--success:not(.is-link):not(.is-text) {
+  --el-button-hover-bg-color: var(--sv-semantic-ok);
+  --el-button-active-bg-color: var(--sv-semantic-ok);
+  --el-button-hover-border-color: var(--sv-semantic-ok);
+  --el-button-active-border-color: var(--sv-semantic-ok);
+  --el-button-hover-text-color: var(--sv-on-accent);
+  --el-button-active-text-color: var(--sv-on-accent);
+}
+.el-button--success:not(.is-link):not(.is-text):not(.is-plain) {
+  --el-button-text-color: var(--sv-on-accent);
+}
+
+.el-button--warning {
+  --el-button-hover-link-text-color: var(--sv-semantic-warn);
+}
+.el-button--warning:not(.is-link):not(.is-text) {
+  --el-button-hover-bg-color: var(--sv-semantic-warn);
+  --el-button-active-bg-color: var(--sv-semantic-warn);
+  --el-button-hover-border-color: var(--sv-semantic-warn);
+  --el-button-active-border-color: var(--sv-semantic-warn);
+  --el-button-hover-text-color: var(--sv-on-accent);
+  --el-button-active-text-color: var(--sv-on-accent);
+}
+.el-button--warning:not(.is-link):not(.is-text):not(.is-plain) {
+  --el-button-text-color: var(--sv-on-accent);
+}
+
+.el-button--danger {
+  --el-button-hover-link-text-color: var(--sv-semantic-danger);
+}
+.el-button--danger:not(.is-link):not(.is-text) {
+  --el-button-hover-bg-color: var(--sv-semantic-danger);
+  --el-button-active-bg-color: var(--sv-semantic-danger);
+  --el-button-hover-border-color: var(--sv-semantic-danger);
+  --el-button-active-border-color: var(--sv-semantic-danger);
+  --el-button-hover-text-color: var(--sv-on-accent);
+  --el-button-active-text-color: var(--sv-on-accent);
+}
+.el-button--danger:not(.is-link):not(.is-text):not(.is-plain) {
+  --el-button-text-color: var(--sv-on-accent);
+}
+
+.el-button--info { --el-button-hover-link-text-color: var(--sv-text-secondary); }
+.el-button--info:not(.is-link):not(.is-text) {
+  --el-button-hover-bg-color: var(--sv-text-secondary);
+  --el-button-active-bg-color: var(--sv-text-secondary);
+  --el-button-hover-border-color: var(--sv-text-secondary);
+  --el-button-active-border-color: var(--sv-text-secondary);
+  --el-button-hover-text-color: var(--sv-on-accent);
+  --el-button-active-text-color: var(--sv-on-accent);
+}
+.el-button--info:not(.is-link):not(.is-text):not(.is-plain) { --el-button-text-color: var(--sv-on-accent); }
+:root .el-tag.el-tag--dark { --el-tag-text-color: var(--sv-on-accent); }

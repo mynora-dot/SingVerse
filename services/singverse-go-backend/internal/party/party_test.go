@@ -390,6 +390,10 @@ func TestBannerUploadAndAuthorizedImageRoundTrip(t *testing.T) {
 	f := newPartyFixture(t)
 	device, _ := f.device(t)
 	settings := want(t, f.request(t, "GET", "/api/v1/admin/tv-settings", nil, "", true, false), 200)
+	for _, value := range array(settings, "banners") {
+		banner := value.(map[string]any)
+		settings = want(t, f.request(t, "DELETE", "/api/v1/admin/tv-settings/banners/"+str(banner, "id")+"?revision="+strconv.FormatInt(number(settings, "revision"), 10), nil, "", true, true), 200)
+	}
 	img := image.NewNRGBA(image.Rect(0, 0, 3, 2))
 	img.Set(1, 1, color.NRGBA{R: 200, G: 50, B: 20, A: 255})
 	var source bytes.Buffer

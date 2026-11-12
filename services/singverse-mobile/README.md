@@ -1,10 +1,16 @@
 # SingVerse 手机端
 
-Flutter 3.47.5 / Dart 3.13.4，Android application ID `com.mynora.singverse.mobile`，minSdk 沿用 Flutter 模板当前的 24。日常页面采用蓝色强调、紧凑列表与清晰分隔，普通歌名约 15 逻辑像素、辅助文字约 12–13 逻辑像素，支持浅色、深色及跟随系统主题，系统大字号时自然重排。提供 NAS 选歌、练唱、麦克风录音、混音回听及本机作品；媒体画面使用暗色舞台。标准与长辈模式都保留同位置的“点歌、常唱、作品”三个主导航，长辈模式使用独立的大字简化布局。扫码电视单独加载 NAS 的现有 `/party/` H5。
+Flutter 3.47.5 / Dart 3.13.4，Android application ID `com.mynora.singverse.mobile`，minSdk 沿用 Flutter 模板当前的 24。日常页面采用蓝色强调、紧凑列表与清晰分隔，普通歌名约 14–15 逻辑像素、辅助文字约 12–13 逻辑像素，支持浅色、深色及跟随系统主题，系统大字号时自然重排。提供 NAS 选歌、练唱、麦克风录音、混音回听及本机作品；MV 画面和横屏使用暗色舞台，竖屏控制与歌词跟随主题。标准与长辈模式都保留同位置的“点歌、常唱、作品”三个主导航，长辈模式使用独立的大字简化布局。扫码电视单独加载 NAS 的现有 `/party/` H5。
 
 ## 开发与构建
 
-播放器视觉改版提供独立的 [HTML 双方案预览](design-preview/README.md)，直接打开 `design-preview/index.html` 即可评审深色、浅色及 MV/纯音频/横屏布局。设计稿使用本地示例数据，尚未替换正式 Flutter 页面。
+正式 Flutter 播放器已按审校方向及后续真机反馈调整：当前歌词用蓝色强调，原唱/伴奏采用无外框、无填色的文字切换，选中项用蓝字及 20×2 逻辑像素下划线表示。竖屏底部依次固定进度、居中播放和居中胶囊录音，媒体与练唱工具在上方滚动。普通播放按钮为 56，大字与长辈模式使用整行文字播放按钮；录音与播放间隔 16、页面左右边距 20。录音按钮最小宽度为普通 160、长辈 184，并随文字自然增长，操作高度至少 48/56；浅中性底与细边框、18 号红色轮廓麦克风配中性标签，倒数或录音期间保留取消/结束语义，录音状态使用珊瑚红。重唱与调音、选段、更多位于同一工具行。选段的起止括号在歌词与进度上使用相同样式，不改变原有选段、播放或录音命令。
+
+播放器标准歌词按逻辑宽度分级：小于 375 时当前句 18、其他句 15，常规宽度为 20/16；长辈模式保持 32/23。横屏 MV 的单句歌词使用标准 20、长辈 26，系统文字缩放继续有效。歌词可点击行的目标至少为普通 48、长辈 56；能完整显示的当前句按实际文字高度居中，超长句从句首显示。原唱和伴奏始终展示，各自仅在播放就绪、未倒数或录音且具有对应映射时启用；不可用项灰显并提供 Tooltip，仍可通过“更多”进入音轨设置。
+
+视觉审校结合仓库内的 [unslop](../../skills/unslop/SKILL.md)（Damir Sokolovsky / @heydamir，CC BY 4.0）与 [huashu-design](../../skills/huashu-design/SKILL.md)，沿用现有品牌色、系统字体与 Material 图标。点歌与常唱以歌曲封面、列表为主，作品回听突出真实波形，设置与 NAS 连接按状态和表单分组；普通浏览和辅助操作使用中性色，蓝色用于选择、当前播放和主要操作。歌手、分类、家庭歌单、扫码以及迷你播放器沿用同一间距与控件规则，标准大字和长辈模式的歌曲操作可以换行。
+
+标准模式在逻辑宽度小于 375 时使用紧凑字号：页面标题 `headlineSmall` 从 22 调整为 20，`titleMedium` 及普通歌名从 15 调整为 14；正文 `bodyMedium` 仍为 14、辅助文字仍为 12，其他少量大标题和标签相应收紧。主主题、扫码暗主题及播放器明暗主题使用同一规则，宽度达到 375 后恢复常规字号。长辈模式保持独立字号，48/56 逻辑像素的操作目标及系统文字缩放保持有效，不用缩小点击区域换取密度。
 
 APK 启动图标统一使用[项目 Logo](../../assets/branding/README.md)：传统图标位于 `android/app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/`，Android 8+ 使用 `mipmap-anydpi-v26/ic_launcher.xml` 的独立透明前景与深色背景，圆形图标指向同一资源。正常 debug/release 构建自动包含工程内图标资源，无需额外生成步骤。
 
@@ -68,6 +74,12 @@ Android 原生 `NasTransport` 统一执行 API 与图片请求，以 Android Key
 `PlaybackInstrumentedTest` 在独立 `.e2e` 包内启动真实播放服务和 Media3，使用 loopback HTTP、自制 WAV/不支持内容检查准备查询间隔、慢取消不阻塞切歌、切歌中断旧协商、一次兼容重试、真实暂停/跳转不增加播放时长与整曲循环新实例，以及录唱重启后仍采集独立伴奏的 PCM（220Hz 原媒体与 660Hz 伴奏区分）。它不访问实际 NAS。可指定独立设备运行：`cd android && ORG_GRADLE_PROJECT_singverseE2e=true ANDROID_SERIAL=<测试设备> ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.mynora.singverse.mobile.PlaybackInstrumentedTest`。真实 WebDAV 网络、厂商解码器、蓝牙和手机声学同步仍需设备验收。
 
 受控界面预览可在手机工程执行 `flutter --no-version-check test test/mobile_redesign_test.dart --plain-name 'capture redesign reference screens with controlled fixtures' --dart-define=CAPTURE_UI=true`，输出根目录 `tmp/mobile清晰舞台预览/`。测试使用随测试保存的开源 CJK 字形子集及自绘 PNG，包含有图、无图、明暗和长辈界面；字体不随应用打包，不需要本机苹果字体路径。此类组件截图使用受控数据及原生视频占位，不能作为真实 NAS、麦克风或设备播放验收。
+
+本轮播放器的独立截图命令为 `flutter --no-version-check test test/mobile_redesign_test.dart --plain-name 'capture refined player screens with controlled fixtures' --dart-define=CAPTURE_PLAYER_UI=true`，输出根目录 `tmp/mobile-player-unslop/`；覆盖明暗音频、竖屏 MV、横屏、320×568 大字长辈模式、无图无歌词及选段。截图来自正式 Flutter 组件，视频仍是原生视图占位。
+
+其余页面的独立截图命令为 `flutter --no-version-check test test/mobile_redesign_test.dart --plain-name 'capture refined app screens with controlled fixtures' --dart-define=CAPTURE_APP_UI=true --dart-define=UI_ROUND=round-3`，输出根目录 `tmp/mobile-ui-unslop/round-3/`；包含点歌明暗、常唱、作品、回听、声音调整、设置、NAS 状态与登录、长辈及 320×568 的 1.8 倍大字。布局测试还覆盖 390×844、844×390 和地址编辑时的键盘、焦点与播放状态；该轮受控组件检查没有覆盖实机相机扫码、麦克风或真实 NAS。
+
+上一轮常规参考截图使用 390×844 逻辑画布和测试 CJK 字体子集，未展示真实设备状态栏及当前播放迷你条，不能视为真机等比效果。实际字号与首屏容量需要结合设备的逻辑尺寸、安全区、系统字体和当前播放状态判断；物理分辨率相同或截图缩放比例相同，也不保证显示效果相同。本轮已按真实设备的 `physicalSize`、DPR 和安全区补充回归；真机热重载及截图结果单独记录，不以组件测试代替。
 
 播放排错：曲库正常但“准备播放”返回 422 时，先确认已安装修正设备类型上报的新 APK。手机使用内部契约的 `family=android`，不是界面端名称 `android-mobile`；原生测试会对照 OpenAPI 校验该字段。更新 App 不要求为此重建 NAS 服务。
 

@@ -1,51 +1,55 @@
 import { ref } from 'vue'
 
-export type ThemeScheme = 'light' | 'dark'
+export type ThemeId = 'light' | 'dark'
+export type ThemeScheme = ThemeId
 
 export interface ThemeMeta {
-  id: string
+  id: ThemeId
   label: string
-  en: string
   scheme: ThemeScheme
   description: string
-  swatches: [string, string, string]
 }
 
-/** 六套管理端主题；靛蓝电波为默认，其余可在顶栏切换。令牌定义见 styles/tokens.css 与 styles/themes.css。 */
+/** 管理端仅提供明暗两种外观，亲友 H5 不引用这些主题。 */
 export const THEMES: ThemeMeta[] = [
-  { id: 'indigo', label: '靛蓝电波', en: 'Indigo Airwave', scheme: 'light', description: '电光靛蓝与品红，冷静而明亮', swatches: ['#2743c7', '#e6399b', '#eef1f8'] },
-  { id: 'pine', label: '冷调松绿', en: 'Porcelain Pine', scheme: 'light', description: '瓷白配松绿，沉稳内敛', swatches: ['#16584a', '#e2582f', '#eef1ee'] },
-  { id: 'vermilion', label: '柿红剧场', en: 'Vermilion Stage', scheme: 'light', description: '柿红与青碧，热烈有戏剧感', swatches: ['#d83a2b', '#1f7a6d', '#f6f4f2'] },
-  { id: 'celadon', label: '青瓷茶室', en: 'Celadon Room', scheme: 'light', description: '青瓷与陶土，温润安静', swatches: ['#3a6b5a', '#c86b4a', '#e9efe9'] },
-  { id: 'midnight', label: '午夜聆听', en: 'Midnight Listening', scheme: 'dark', description: '深夜底色，珊瑚与青碧点缀', swatches: ['#ff7a66', '#4fd1c5', '#15171c'] },
-  { id: 'graphite', label: '石墨霓虹', en: 'Graphite Neon', scheme: 'dark', description: '石墨霓虹，酸绿与品红高对比', swatches: ['#a3e635', '#ec4899', '#121417'] },
+  { id: 'light', label: '浅色', scheme: 'light', description: '白色面板与品牌蓝' },
+  { id: 'dark', label: '深色', scheme: 'dark', description: '石墨面板与浅蓝强调' },
 ]
 
-export const DEFAULT_THEME = 'indigo'
+export const DEFAULT_THEME: ThemeId = 'light'
 const STORAGE_KEY = 'singverse.admin.theme'
-const themeIds = new Set(THEMES.map(theme => theme.id))
-const currentTheme = ref(DEFAULT_THEME)
-
-function normalize(id: string | null | undefined): string {
-  return id && themeIds.has(id) ? id : DEFAULT_THEME
+const currentTheme = ref<ThemeId>(DEFAULT_THEME)
+const legacyThemes: Record<string, ThemeId> = {
+  indigo: 'light', pine: 'light', vermilion: 'light', celadon: 'light',
+  midnight: 'dark', graphite: 'dark',
 }
 
-function apply(id: string | null | undefined) {
+function normalize(id: string | null | undefined): ThemeId {
+  if (id === 'light' || id === 'dark') return id
+  return id && Object.hasOwn(legacyThemes, id) ? legacyThemes[id]! : DEFAULT_THEME
+}
+
+function apply(id: string | null | undefined): ThemeId {
   const theme = normalize(id)
   currentTheme.value = theme
   document.documentElement.dataset.theme = theme
+  return theme
 }
 
-/** 启动时读取本地偏好并应用，避免首屏闪烁；非法或缺失值回退到默认靛蓝。 */
+function persist(theme: ThemeId) {
+  try { localStorage.setItem(STORAGE_KEY, theme) } catch { /* 存储不可用时仍保留本次选择。 */ }
+}
+
+/** 挂载前同步应用偏好；旧主题按明暗迁移，非法值回退浅色。 */
 export function initTheme() {
   let stored: string | null = null
-  try { stored = localStorage.getItem(STORAGE_KEY) } catch { /* 隐私模式等读取失败时用默认主题。 */ }
-  apply(stored)
+  try { stored = localStorage.getItem(STORAGE_KEY) } catch { /* 读取失败时采用默认浅色。 */ }
+  const theme = apply(stored)
+  if (stored !== theme) persist(theme)
 }
 
 export function setTheme(id: string) {
-  apply(id)
-  try { localStorage.setItem(STORAGE_KEY, currentTheme.value) } catch { /* 写入失败不影响本次切换。 */ }
+  persist(apply(id))
 }
 
 export function useTheme() {

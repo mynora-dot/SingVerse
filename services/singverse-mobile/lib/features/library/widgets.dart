@@ -56,7 +56,7 @@ class _ArtworkState extends State<Artwork> {
 
   @override
   Widget build(BuildContext context) => ClipRRect(
-    borderRadius: BorderRadius.circular(widget.round ? widget.size : 11),
+    borderRadius: BorderRadius.circular(widget.round ? widget.size : 12),
     child: SizedBox(
       width: widget.size,
       height: widget.size,
@@ -124,20 +124,23 @@ class SongRow extends StatelessWidget {
       }
     }
 
+    final scheme = Theme.of(context).colorScheme;
+    final playing =
+        state.workId.isEmpty && state.isPlaying && state.current?.id == song.id;
+    final favoriteLabel = state.isFavorite(song) ? '已收藏' : '收藏';
+    final favoriteTooltip = state.isFavorite(song)
+        ? '取消收藏 ${song.title}'
+        : '收藏 ${song.title}';
+    final favoriteIcon = state.isFavorite(song)
+        ? Icons.favorite_rounded
+        : Icons.favorite_border_rounded;
+    final favoriteColor = state.isFavorite(song)
+        ? scheme.primary
+        : scheme.onSurfaceVariant;
     final favorite = IconButton(
-      tooltip: state.isFavorite(song)
-          ? '取消收藏 ${song.title}'
-          : '收藏 ${song.title}',
+      tooltip: favoriteTooltip,
       onPressed: () => uiTask(context, () => state.favorite(song)),
-      icon: Icon(
-        state.isFavorite(song)
-            ? Icons.favorite_rounded
-            : Icons.favorite_border_rounded,
-        color: state.isFavorite(song)
-            ? Theme.of(context).colorScheme.primary
-            : Theme.of(context).colorScheme.onSurfaceVariant,
-        size: 19,
-      ),
+      icon: Icon(favoriteIcon, color: favoriteColor, size: 20),
     );
     if (state.senior) {
       return DecoratedBox(
@@ -164,34 +167,44 @@ class SongRow extends StatelessWidget {
                     revision: song.data['revision']?.toString(),
                     size: 64,
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           song.title,
-                          style: Theme.of(context).textTheme.titleLarge,
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(
+                                color: playing ? scheme.primary : null,
+                              ),
                         ),
                         const SizedBox(height: 4),
-                        Text(song.artist.isEmpty ? '歌手未知' : song.artist),
+                        Text(
+                          song.artist.isEmpty ? '歌手未知' : song.artist,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: scheme.onSurfaceVariant),
+                        ),
                       ],
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
               LayoutBuilder(
                 builder: (context, constraints) {
                   final favoriteButton = OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: favoriteColor,
+                      backgroundColor: Colors.transparent,
+                      side: BorderSide(
+                        color: scheme.onSurface.withValues(alpha: .10),
+                      ),
+                    ),
                     onPressed: () =>
                         uiTask(context, () => state.favorite(song)),
-                    icon: Icon(
-                      state.isFavorite(song)
-                          ? Icons.favorite_rounded
-                          : Icons.favorite_border_rounded,
-                    ),
-                    label: Text(state.isFavorite(song) ? '已收藏' : '收藏'),
+                    icon: Icon(favoriteIcon, size: 20),
+                    label: Text(favoriteLabel),
                   );
                   final startButton = FilledButton.icon(
                     onPressed: open,
@@ -229,68 +242,116 @@ class SongRow extends StatelessWidget {
       child: InkWell(
         onTap: open,
         child: Container(
-          constraints: const BoxConstraints(minHeight: 64),
+          constraints: const BoxConstraints(minHeight: 72),
           decoration: BoxDecoration(
             border: Border(
               bottom: BorderSide(
-                color: Theme.of(context).colorScheme.outlineVariant,
-                width: .6,
+                color: scheme.onSurface.withValues(alpha: .08),
+                width: .5,
               ),
             ),
           ),
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Row(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Artwork(
-                state: state,
-                path: song.cover,
-                label: song.title,
-                revision: song.data['revision']?.toString(),
-                size: 44,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      song.title,
-                      maxLines: enlarged ? null : 2,
-                      overflow: enlarged ? null : TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        height: 1.35,
+              Row(
+                children: [
+                  Artwork(
+                    state: state,
+                    path: song.cover,
+                    label: song.title,
+                    revision: song.data['revision']?.toString(),
+                    size: 48,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          song.title,
+                          maxLines: enlarged ? null : 2,
+                          overflow: enlarged ? null : TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyLarge
+                              ?.copyWith(
+                                fontWeight: FontWeight.w500,
+                                height: 1.35,
+                                color: playing
+                                    ? scheme.primary
+                                    : scheme.onSurface,
+                              ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          [
+                            song.artist.isEmpty ? '歌手未知' : song.artist,
+                            if (song.data['version'] != null &&
+                                song.data['version'] != 'UNKNOWN')
+                              song.version,
+                          ].join(' · '),
+                          maxLines: enlarged ? null : 1,
+                          overflow: enlarged ? null : TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                fontSize: 12,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (!enlarged) ...[
+                    favorite,
+                    IconButton(
+                      tooltip: '开始练唱 ${song.title}',
+                      onPressed: open,
+                      icon: Icon(
+                        Icons.play_arrow_rounded,
+                        size: 20,
+                        color: playing
+                            ? scheme.primary
+                            : scheme.onSurfaceVariant,
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      [
-                        song.artist.isEmpty ? '歌手未知' : song.artist,
-                        if (song.data['version'] != null &&
-                            song.data['version'] != 'UNKNOWN')
-                          song.version,
-                      ].join(' · '),
-                      maxLines: enlarged ? null : 1,
-                      overflow: enlarged ? null : TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        fontSize: 12,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ],
+                ],
+              ),
+              if (enlarged) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  alignment: WrapAlignment.end,
+                  children: [
+                    Tooltip(
+                      message: favoriteTooltip,
+                      child: TextButton.icon(
+                        style: TextButton.styleFrom(
+                          foregroundColor: favoriteColor,
+                        ),
+                        onPressed: () =>
+                            uiTask(context, () => state.favorite(song)),
+                        icon: Icon(favoriteIcon, size: 20),
+                        label: Text(favoriteLabel),
+                      ),
+                    ),
+                    Tooltip(
+                      message: '开始练唱 ${song.title}',
+                      child: TextButton.icon(
+                        style: TextButton.styleFrom(
+                          foregroundColor: scheme.onSurfaceVariant,
+                        ),
+                        onPressed: open,
+                        icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                        label: const Text('开始练唱'),
                       ),
                     ),
                   ],
                 ),
-              ),
-              favorite,
-              IconButton(
-                tooltip: '开始练唱 ${song.title}',
-                onPressed: open,
-                icon: Icon(
-                  Icons.play_arrow_rounded,
-                  size: 19,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
+              ],
             ],
           ),
         ),

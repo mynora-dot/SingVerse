@@ -9,8 +9,13 @@ const berry = Color(0xFF3159D9);
 const coral = Color(0xFFFF5F6D);
 const ink = Color(0xFF1C1C1E);
 
-ThemeData singVerseTheme(Brightness brightness, {bool senior = false}) {
+ThemeData singVerseTheme(
+  Brightness brightness, {
+  bool senior = false,
+  bool compact = false,
+}) {
   final dark = brightness == Brightness.dark;
+  final compactText = !senior && compact;
   final scheme = ColorScheme.fromSeed(seedColor: berry, brightness: brightness)
       .copyWith(
         primary: dark ? const Color(0xFF8CA9FF) : berry,
@@ -25,7 +30,7 @@ ThemeData singVerseTheme(Brightness brightness, {bool senior = false}) {
         onSurface: dark ? const Color(0xFFF7F7F9) : ink,
         onSurfaceVariant: dark
             ? const Color(0xFFBEBEC4)
-            : const Color(0xFF6E6E73),
+            : const Color(0xFF66666B),
         secondaryContainer: dark
             ? const Color(0xFF2C2C2E)
             : const Color(0xFFECECF0),
@@ -37,44 +42,49 @@ ThemeData singVerseTheme(Brightness brightness, {bool senior = false}) {
         error: dark ? coral : const Color(0xFFC81E3C),
         onError: dark ? const Color(0xFF3B0712) : Colors.white,
       );
-  final background = dark ? Colors.black : const Color(0xFFF7F7F9);
+  final background = dark ? const Color(0xFF14161B) : const Color(0xFFFAFAFC);
   final target = senior ? 56.0 : 48.0;
   final typography = Typography.material2021();
   final textTheme = (dark ? typography.white : typography.black)
       .merge(
         TextTheme(
           headlineLarge: TextStyle(
-            fontSize: senior ? 32 : 30,
+            fontSize: senior ? 32 : (compactText ? 28 : 30),
             height: 1.18,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -.3,
+            fontWeight: FontWeight.w600,
           ),
           headlineSmall: TextStyle(
-            fontSize: senior ? 26 : 22,
+            fontSize: senior ? 26 : (compactText ? 20 : 22),
             height: 1.24,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -.15,
+            fontWeight: FontWeight.w600,
           ),
           titleLarge: TextStyle(
-            fontSize: senior ? 23 : 16,
+            fontSize: senior ? 23 : (compactText ? 15 : 16),
             height: 1.28,
             fontWeight: FontWeight.w600,
           ),
           titleMedium: TextStyle(
-            fontSize: senior ? 20 : 15,
+            fontSize: senior ? 20 : (compactText ? 14 : 15),
             height: 1.3,
             fontWeight: FontWeight.w600,
           ),
-          bodyLarge: TextStyle(fontSize: senior ? 21 : 15, height: 1.4),
+          bodyLarge: TextStyle(
+            fontSize: senior ? 21 : (compactText ? 14 : 15),
+            height: 1.4,
+          ),
           bodyMedium: TextStyle(fontSize: senior ? 19 : 14, height: 1.4),
-          bodySmall: TextStyle(fontSize: senior ? 17 : 12, height: 1.4),
+          bodySmall: TextStyle(
+            fontSize: senior ? 17 : 12,
+            height: 1.4,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
           labelLarge: TextStyle(
-            fontSize: senior ? 19 : 15,
+            fontSize: senior ? 19 : (compactText ? 14 : 15),
             height: 1.25,
             fontWeight: FontWeight.w600,
           ),
           labelMedium: TextStyle(
-            fontSize: senior ? 17 : 13,
+            fontSize: senior ? 17 : (compactText ? 12 : 13),
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -87,7 +97,7 @@ ThemeData singVerseTheme(Brightness brightness, {bool senior = false}) {
     scaffoldBackgroundColor: background,
     textTheme: textTheme,
     visualDensity: VisualDensity.standard,
-    splashFactory: InkSparkle.splashFactory,
+    splashFactory: InkRipple.splashFactory,
     appBarTheme: AppBarTheme(
       backgroundColor: background,
       surfaceTintColor: Colors.transparent,
@@ -106,7 +116,7 @@ ThemeData singVerseTheme(Brightness brightness, {bool senior = false}) {
       elevation: 0,
       color: scheme.surface,
       margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),
     dividerTheme: DividerThemeData(
       color: scheme.outlineVariant,
@@ -114,7 +124,7 @@ ThemeData singVerseTheme(Brightness brightness, {bool senior = false}) {
       thickness: .5,
     ),
     listTileTheme: ListTileThemeData(
-      minVerticalPadding: senior ? 16 : 9,
+      minVerticalPadding: senior ? 16 : 12,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
       iconColor: scheme.onSurfaceVariant,
       titleTextStyle: textTheme.titleMedium,
@@ -129,20 +139,20 @@ ThemeData singVerseTheme(Brightness brightness, {bool senior = false}) {
       prefixIconColor: scheme.onSurfaceVariant,
       suffixIconColor: scheme.onSurfaceVariant,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(color: scheme.primary, width: 1.4),
       ),
       contentPadding: EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: senior ? 18 : 10,
+        horizontal: 16,
+        vertical: senior ? 20 : 12,
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
@@ -156,9 +166,10 @@ ThemeData singVerseTheme(Brightness brightness, {bool senior = false}) {
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         minimumSize: Size(target, target),
-        padding: const EdgeInsets.symmetric(horizontal: 18),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
         textStyle: textTheme.labelLarge,
         backgroundColor: scheme.secondaryContainer,
+        foregroundColor: scheme.onSurface,
         side: BorderSide.none,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
@@ -167,6 +178,7 @@ ThemeData singVerseTheme(Brightness brightness, {bool senior = false}) {
       style: TextButton.styleFrom(
         minimumSize: Size(target, target),
         textStyle: textTheme.labelLarge,
+        foregroundColor: scheme.onSurfaceVariant,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     ),
@@ -174,7 +186,7 @@ ThemeData singVerseTheme(Brightness brightness, {bool senior = false}) {
       style: IconButton.styleFrom(minimumSize: Size(target, target)),
     ),
     chipTheme: ChipThemeData(
-      padding: EdgeInsets.symmetric(horizontal: 10, vertical: senior ? 12 : 7),
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: senior ? 12 : 8),
       labelStyle: textTheme.labelLarge,
       side: BorderSide.none,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -198,13 +210,13 @@ ThemeData singVerseTheme(Brightness brightness, {bool senior = false}) {
       surfaceTintColor: Colors.transparent,
       showDragHandle: !senior,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
     ),
     dialogTheme: DialogThemeData(
       backgroundColor: scheme.surface,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       titleTextStyle: textTheme.titleLarge,
       contentTextStyle: textTheme.bodyMedium,
     ),
@@ -245,7 +257,10 @@ class SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     children: [
       Expanded(
-        child: Text(text, style: Theme.of(context).textTheme.titleLarge),
+        child: Semantics(
+          header: true,
+          child: Text(text, style: Theme.of(context).textTheme.titleLarge),
+        ),
       ),
       ?trailing,
     ],
@@ -286,9 +301,9 @@ class Glass extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final surface = DecoratedBox(
       decoration: BoxDecoration(
-        color: scheme.surface.withValues(alpha: solid ? 1 : .94),
+        color: scheme.surface.withValues(alpha: solid ? 1 : .98),
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .8)),
+        border: Border.all(color: scheme.onSurface.withValues(alpha: .08)),
       ),
       child: Material(type: MaterialType.transparency, child: child),
     );
@@ -297,7 +312,7 @@ class Glass extends StatelessWidget {
       child: solid
           ? surface
           : BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+              filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
               child: surface,
             ),
     );

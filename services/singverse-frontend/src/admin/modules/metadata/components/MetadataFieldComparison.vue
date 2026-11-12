@@ -38,7 +38,7 @@ table {
 th,
 td {
   text-align: left;
-  padding: 10px 8px;
+  padding: 12px 8px;
   border-bottom: 1px solid var(--sv-border-subtle);
   vertical-align: middle;
   overflow-wrap: anywhere;
@@ -66,7 +66,7 @@ th:last-child {
 
 :deep(.el-checkbox__label) {
   font-size: 12px;
-  padding-left: 6px;
+  padding-left: 8px;
 }
 
 td {
@@ -100,8 +100,8 @@ td {
   tbody tr {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 10px 16px;
-    padding: 14px 0;
+    gap: 12px 16px;
+    padding: 16px 0;
     border-bottom: 1px solid var(--sv-border-subtle);
   }
 
@@ -126,9 +126,9 @@ td {
   td[data-label]::before {
     content: attr(data-label);
     display: block;
-    margin-bottom: 5px;
+    margin-bottom: 4px;
     color: var(--sv-text-tertiary);
-    font-size: 10px;
+    font-size: 12px;
   }
 }
 </style>

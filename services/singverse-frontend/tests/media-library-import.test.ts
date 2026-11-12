@@ -48,7 +48,7 @@ afterEach(() => { wrapper?.unmount(); document.body.innerHTML = ''; vi.restoreAl
 const button = (text: string) => wrapper.findAll('button').find(item => item.text() === text)!
 const checkbox = (text: string) => wrapper.findAll('label.el-checkbox').find(item => item.text() === text)!.get('input')
 async function openWebDAV(fromPackage = false) {
-  await button(fromPackage ? '导入资料包' : '添加媒体库').trigger('click'); await flushPromises()
+  await button(fromPackage ? '导入资料包' : '添加来源').trigger('click'); await flushPromises()
   if (!fromPackage) { await button('WebDAV').trigger('click'); await flushPromises() }
   await wrapper.get('input[placeholder="https://nas.example/dav/歌曲目录/"]').setValue(source.location)
 }

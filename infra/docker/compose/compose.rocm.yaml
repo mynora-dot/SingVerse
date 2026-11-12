@@ -1,0 +1,14 @@
+services:
+  singverse-compute:
+    environment:
+      COMPUTE_HARDWARE_BACKEND: '${COMPUTE_HARDWARE_BACKEND:-auto}'
+      COMPUTE_HARDWARE_DEVICE: '${COMPUTE_HARDWARE_DEVICE:-/dev/dri/renderD128}'
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - '${COMPUTE_RENDER_GID:?Set the numeric render group ID}'
+      - '${COMPUTE_VIDEO_GID:?Set the numeric video group ID}'
+    shm_size: 256m
+    ulimits:
+      memlock: {soft: -1, hard: -1}

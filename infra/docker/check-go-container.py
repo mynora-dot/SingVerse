@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Accept real Go/Nginx images using only disposable containers and networking.
+"""Accept real Go images using only disposable containers and networking.
 
 Each invocation creates its own network, fresh container filesystems and a
 loopback-only random HTTP port. It never opens an existing deployment or volume.
-Run once per backend/frontend image pair to verify each actual CPU architecture.
+Run once per business image to verify each actual CPU architecture.
 """
 import argparse
 from importlib import util
@@ -43,7 +43,6 @@ class IsolatedContainers:
         prefix = "singverse-go-check-" + self.run[:12]
         self.network = prefix + "-network"
         self.backend = prefix + "-backend"
-        self.frontend = prefix + "-frontend"
 
     def owned(self, kind, name):
         field = ".Config.Labels" if kind == "container" else ".Labels"
@@ -53,7 +52,7 @@ class IsolatedContainers:
 
     def close(self):
         errors = []
-        for name in (self.frontend, self.backend):
+        for name in (self.backend,):
             if self.owned("container", name):
                 result = docker("rm", "--force", "--volumes", name, check=False)
                 if result.returncode:
@@ -78,6 +77,14 @@ def image(reference):
     return value
 
 
+def endpoint(resources):
+    details = json.loads(docker("inspect", resources.backend).stdout)[0]
+    published = details["NetworkSettings"]["Ports"].get("8080/tcp")
+    if not published or len(published) != 1 or published[0]["HostIp"] != "127.0.0.1":
+        raise AssertionError("isolated business service must publish one loopback-only HTTP port")
+    return "http://127.0.0.1:" + published[0]["HostPort"]
+
+
 def wait_ready(module, base, resources, timeout=90):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -87,12 +94,12 @@ def wait_ready(module, base, resources, timeout=90):
                 return
         except (AssertionError, OSError, ValueError):
             pass
-        for name in (resources.backend, resources.frontend):
+        for name in (resources.backend,):
             state = json.loads(docker("inspect", name).stdout)[0]["State"]
             if not state.get("Running"):
                 raise AssertionError("owned delivery container exited before becoming ready")
         time.sleep(.2)
-    raise AssertionError("isolated Nginx/Go deployment did not become ready")
+    raise AssertionError("isolated Go deployment did not become ready")
 
 
 def runtime_only(name):
@@ -141,7 +148,7 @@ def participant_audio_authorization(admin):
 
 
 def run(args):
-    backend, frontend = image(args.backend_image), image(args.frontend_image)
+    backend = image(args.backend_image)
     module = contract_module()
     resources = IsolatedContainers()
     try:
@@ -172,18 +179,10 @@ def run(args):
             flags += ["--env", key + "=" + value]
         docker("create", "--name", resources.backend, "--label", LABEL + "=" + resources.run,
                "--network", resources.network, "--network-alias", "singverse-go-backend",
-               "--platform", "linux/" + backend["Architecture"],
+               "--publish", "127.0.0.1::8080", "--platform", "linux/" + backend["Architecture"],
                *flags, backend["Id"])
         docker("start", resources.backend)
-        docker("create", "--name", resources.frontend, "--label", LABEL + "=" + resources.run,
-               "--network", resources.network, "--publish", "127.0.0.1::80",
-               "--platform", "linux/" + frontend["Architecture"], frontend["Id"])
-        docker("start", resources.frontend)
-        details = json.loads(docker("inspect", resources.frontend).stdout)[0]
-        published = details["NetworkSettings"]["Ports"].get("80/tcp")
-        if not published or len(published) != 1 or published[0]["HostIp"] != "127.0.0.1":
-            raise AssertionError("isolated frontend must publish one loopback-only HTTP port")
-        base = "http://127.0.0.1:" + published[0]["HostPort"]
+        base = endpoint(resources)
         wait_ready(module, base, resources)
 
         # Execute the complete shared contract before making any persistent edits.
@@ -211,6 +210,18 @@ def run(args):
         admin.check(module.Browser(base).call("GET", "/api/health").json() == {"status": "UP"},
                     "business health depends on an optional unavailable compute node")
 
+        # Exercise actual media HTTP behavior without proxy-specific fixtures.
+        docker("exec", resources.backend, "sh", "-c", "mkdir -p /data/check-media; printf 0123456789abcdef > /data/check-media/artist-song.mkv")
+        source = admin.call("POST", "/api/v1/media-sources", {"name": "isolated media", "type": "LOCAL", "location": "/data/check-media"}, csrf=True, status=201).json()
+        admin.call("POST", "/api/v1/media-sources/" + source["id"] + "/scan", csrf=True)
+        song = admin.call("GET", "/api/v1/media-songs").json()["items"][0]
+        media_path = "/api/v1/media-songs/" + song["id"] + "/video"
+        ranged = admin.call("GET", media_path, headers={"Range": "bytes=2-5"}, status=206)
+        admin.check(ranged.raw == b"2345" and ranged.headers.get("Content-Range") == "bytes 2-5/16", "media Range mismatch")
+        head = admin.call("HEAD", media_path, headers={"Range": "bytes=1-2"}, status=206)
+        admin.check(head.raw == b"" and head.headers.get("Content-Length") == "2", "media HEAD mismatch")
+        admin.call("GET", media_path, headers={"Range": "bytes=100-"}, status=416)
+
         playlist_id = str(uuid.uuid4())
         name = "隔离交付持久化验收"
         saved = admin.call("POST", "/api/v1/playlists",
@@ -226,6 +237,8 @@ def run(args):
         key_before = docker("exec", resources.backend, "sha256sum", "/secrets/master.key").stdout
         before = json.loads(docker("inspect", resources.backend).stdout)[0]
         docker("restart", "--time", "25", resources.backend, timeout=45)
+        base = endpoint(resources)
+        admin.base = base
         wait_ready(module, base, resources)
         after = json.loads(docker("inspect", resources.backend).stdout)[0]
         admin.check(before["Id"] == after["Id"], "restart unexpectedly replaced the container filesystem")
@@ -242,7 +255,6 @@ def run(args):
         module.Browser(base).call("POST", "/api/v1/auth/login", {"username": "admin", "password": "admin"}, csrf=True, status=401)
 
         runtime_only(resources.backend)
-        runtime_only(resources.frontend)
         expected = ["62", "0"] if backend["Architecture"] == "amd64" else ["183", "0"]
         binary = "/usr/local/bin/singverse"
         machine = docker("exec", resources.backend, "od", "-An", "-t", "u1", "-j", "18", "-N", "2", binary).stdout.split()
@@ -262,13 +274,12 @@ def run(args):
                         "running process is neither the expected Go ELF nor a verified Go guest under a known emulator")
             execution_mode = interpreter_name
         result = {"result": "passed", "backendArchitecture": backend["Architecture"],
-                          "frontendArchitecture": frontend["Architecture"],
-                          "backendImageId": backend["Id"], "frontendImageId": frontend["Id"],
+                          "backendImageId": backend["Id"],
                           "executionMode": execution_mode,
                           "contractAssertions": contract["assertions"],
                           "deliveryAssertions": admin.assertions + fresh.assertions,
-                          "checks": ["real-nginx-go-images", "loopback-random-port", "optional-compute-health",
-                                     "participant-audio-authorization",
+                          "checks": ["real-go-image", "loopback-random-port", "optional-compute-health",
+                                     "participant-audio-authorization", "media-range-head",
                                      "same-container-restart", "account-session-data-key-persistence",
                                      "runtime-only-images", "running-elf-architecture"]}
     finally:
@@ -279,7 +290,6 @@ def run(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--backend-image", required=True, help="already-built Linux Go backend image")
-    parser.add_argument("--frontend-image", required=True, help="already-built Nginx frontend image")
     args = parser.parse_args()
     try:
         run(args)

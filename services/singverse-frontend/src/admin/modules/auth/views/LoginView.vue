@@ -7,7 +7,6 @@ import { authRequest, refreshAccount } from '../../../core/auth/api'
 const route = useRoute(), router = useRouter()
 const username = ref('admin')
 const password = ref(''), code = ref(''), stage = ref(false), busy = ref(false), error = ref('')
-const bars = [16, 30, 48, 25, 62, 38, 72, 30, 54, 22, 43, 66, 27, 49, 19]
 async function submit() {
   busy.value = true; error.value = ''
   try {
@@ -32,20 +31,17 @@ function restart() { stage.value = false; code.value = ''; password.value = ''; 
         <span><strong>SingVerse<span class="brand-dot">.</span></strong><small>NAS 管理中心</small></span>
       </div>
       <div>
-        <div class="login-hero"><p class="login-eyebrow">THE SOUND OF HOME</p>
-          <h2>让每一次相聚，<br />都有好歌相伴。</h2>
-          <p>自己的歌曲，熟悉的朋友。登录后整理歌曲、连接媒体库，收藏属于家人的旋律。</p>
+        <div class="login-hero">
+          <h2>家庭音乐资料室</h2>
+          <p>连接 NAS 上的歌曲，整理曲库与歌单，为客厅里的下一次欢唱做好准备</p>
         </div>
-        <div class="waveform"><i v-for="(height, index) in bars" :key="index" :style="{ height: `${height}px`, animationDelay: `${index * 0.11}s` }" /></div>
       </div>
-      <div class="login-record" />
       <p class="login-foot">家庭自托管 KTV · 数据留在你的 NAS</p>
     </aside>
     <main class="login-main">
       <section class="login-card" aria-labelledby="login-title">
-        <p class="login-eyebrow">欢迎回来 / WELCOME HOME</p>
         <h1 id="login-title">{{ stage ? '二次验证' : '登录管理中心' }}</h1>
-        <p class="muted">{{ stage ? '输入认证器动态码，或使用一枚恢复码。' : '使用你的管理员账号，打理家的音乐。' }}</p>
+        <p class="muted">{{ stage ? '输入验证器动态码，或使用一枚恢复码' : '使用管理员账号管理家庭曲库' }}</p>
         <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon />
         <ElForm label-position="top" @submit.prevent="submit">
           <ElFormItem v-if="!stage" label="账号"><ElInput v-model="username" maxlength="32" autocomplete="username" size="large" /></ElFormItem>
@@ -56,7 +52,7 @@ function restart() { stage.value = false; code.value = ''; password.value = ''; 
           </ElButton>
           <ElButton v-if="stage" link @click="restart">返回密码登录</ElButton>
         </ElForm>
-        <p class="muted login-note">忘记密码或丢失验证方式？请在部署主机上使用管理员恢复命令。</p>
+        <p class="muted login-note">忘记密码或丢失验证方式时，请在部署主机上使用管理员恢复命令</p>
       </section>
     </main>
   </div>

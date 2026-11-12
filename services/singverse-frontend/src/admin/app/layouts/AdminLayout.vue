@@ -70,14 +70,14 @@ function focusMainContent() { document.getElementById('main-content')?.focus() }
   <div class="admin-shell">
     <header class="app-masthead" :inert="navigationOpen || undefined">
       <div class="masthead-inner">
-        <RouterLink to="/overview" class="brand" aria-label="SingVerse 家庭音乐中心首页"><img class="brand-mark" src="/assets/brand/logo-mark.png" width="34" height="34" alt=""><span><strong>SingVerse<span class="brand-dot">.</span></strong><small>家的音乐，慢慢收藏</small></span></RouterLink>
+        <RouterLink to="/overview" class="brand" aria-label="SingVerse 家庭音乐中心首页"><img class="brand-mark" src="/assets/brand/logo-mark.png" width="34" height="34" alt=""><span><strong>SingVerse<span class="brand-dot">.</span></strong><small>家庭音乐资料室</small></span></RouterLink>
         <nav class="primary-navigation" aria-label="主导航">
           <RouterLink :to="overviewEntry.path" :aria-current="activePath === overviewEntry.path ? 'page' : undefined">{{ overviewEntry.label }}</RouterLink>
           <RouterLink v-for="group in primaryGroups" :key="group.id" :to="group.path" :aria-current="currentNavigation.group?.id === group.id ? 'page' : undefined">{{ group.label }}</RouterLink>
         </nav>
         <form class="masthead-search" role="search" @submit.prevent="submitSearch">
           <ElIcon class="search-icon" aria-hidden="true"><Search /></ElIcon>
-          <input v-model="searchTerm" type="search" class="search-input" placeholder="搜索歌名、歌手或路径" aria-label="搜索歌曲">
+          <input v-model="searchTerm" type="search" class="search-input" placeholder="搜索歌曲或歌手" aria-label="搜索歌曲">
         </form>
         <div class="masthead-actions">
           <RouterLink class="utility-link" :to="taskEntry.path" :aria-label="taskCount > 0 ? `任务中心，${taskCount} 个进行中` : '任务中心'" :aria-current="activePath === taskEntry.path ? 'page' : undefined"><ElIcon><Clock /></ElIcon><span class="utility-label">任务</span><span v-if="taskCount > 0" class="task-count" aria-hidden="true">{{ taskBadge }}</span></RouterLink>
@@ -95,7 +95,7 @@ function focusMainContent() { document.getElementById('main-content')?.focus() }
     </div>
     <div v-if="navigationOpen" class="navigation-dialog" role="dialog" aria-modal="true" aria-label="全部功能" @keydown="trapNavigation">
       <nav id="admin-navigation" ref="navigationList" class="navigation-sheet" aria-label="全部导航">
-        <div class="sheet-heading"><strong>你的音乐空间</strong><button type="button" aria-label="关闭导航" @click="closeNavigation"><ElIcon><Close /></ElIcon></button></div>
+        <div class="sheet-heading"><strong>全部功能</strong><button type="button" aria-label="关闭导航" @click="closeNavigation"><ElIcon><Close /></ElIcon></button></div>
         <RouterLink :to="overviewEntry.path" class="nav-item" @click="closeNavigation" :aria-current="activePath === overviewEntry.path ? 'page' : undefined"><ElIcon><component :is="overviewEntry.icon" /></ElIcon>{{ overviewEntry.label }}</RouterLink>
         <section v-for="group in navigationGroups" :key="group.id" class="nav-group" :aria-labelledby="`nav-group-${group.id}`"><h2 :id="`nav-group-${group.id}`" class="nav-group-title">{{ group.label }}</h2><ul><li v-for="entry in group.children" :key="entry.path"><RouterLink :to="entry.path" class="nav-item" @click="closeNavigation" :aria-current="activePath === entry.path ? 'page' : undefined"><ElIcon><component :is="entry.icon" /></ElIcon>{{ entry.label }}<small v-if="'advanced' in entry && entry.advanced">高级</small></RouterLink></li></ul></section>
         <ThemeSwitcher variant="sheet" />

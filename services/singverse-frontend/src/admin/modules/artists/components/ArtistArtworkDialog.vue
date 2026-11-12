@@ -96,7 +96,7 @@ onBeforeUnmount(() => { active = false; generation++ })
 
 .artwork-form {
   display:grid;
-  gap:22px;
+  gap:24px;
 }
 
 .artwork-form fieldset {
@@ -108,7 +108,7 @@ onBeforeUnmount(() => { active = false; generation++ })
 
 .artwork-form legend {
   font-size:14px;
-  font-weight:650;
+  font-weight:600;
   margin-bottom:12px;
   color:var(--sv-text-primary);
 }
@@ -116,16 +116,16 @@ onBeforeUnmount(() => { active = false; generation++ })
 .scope-options,.platform-options {
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:10px;
+  gap:12px;
 }
 
 .artwork-form label {
   display:flex;
   align-items:flex-start;
-  gap:10px;
+  gap:12px;
   border:1px solid var(--sv-border-default);
-  border-radius:10px;
-  padding:16px 14px;
+  border-radius:8px;
+  padding:16px 16px;
   cursor:pointer;
 }
 
@@ -149,7 +149,7 @@ onBeforeUnmount(() => { active = false; generation++ })
 
 .artwork-form label span {
   display:grid;
-  gap:7px;
+  gap:8px;
   min-width:0;
 }
 
@@ -170,7 +170,7 @@ onBeforeUnmount(() => { active = false; generation++ })
 
 .artwork-form em {
   font-style:normal;
-  font-size:11px;
+  font-size:12px;
   font-weight:400;
   display:block;
 }
@@ -186,7 +186,7 @@ onBeforeUnmount(() => { active = false; generation++ })
     grid-template-columns:1fr;
   }
   .artwork-form {
-    gap:18px;
+    gap:20px;
   }
   .artwork-form label {
     padding:12px;

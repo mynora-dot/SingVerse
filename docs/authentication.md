@@ -32,29 +32,18 @@ MFA使用RFC6238 TOTP：认证器扫描本地生成的二维码（或输入手�
 遗忘密码且无可用认证器/恢复码时，仅能访问部署主机恢复。停止业务主服务，执行交互命令：
 
 ```sh
-docker compose --project-directory . -f infra/docker/compose/compose.app.yaml stop singverse-go-backend
-docker compose --project-directory . -f infra/docker/compose/compose.app.yaml run --rm --no-deps singverse-go-backend --reset-admin
-docker compose --project-directory . -f infra/docker/compose/compose.app.yaml up -d --wait
+docker compose --project-directory . -f infra/docker/compose/compose.yaml stop singverse-go-backend
+docker compose --project-directory . -f infra/docker/compose/compose.yaml run --rm --no-deps singverse-go-backend --reset-admin
+docker compose --project-directory . -f infra/docker/compose/compose.yaml up -d --wait
 ```
 
 命令要求真实TTY、输入RESET确认并两次输入新密码，不接受命令参数或环境变量传密码。恢复清除MFA、待绑定状态、恢复码、限流和所有会话，不清除其他业务数据。主机原生二进制使用同一配置执行 `bin/singverse --reset-admin`。进程锁阻止同一部署在服务仍运行时恢复；跨主机运行前需保证其他写入者全部停止。恢复命令无网络接口，不提供默认密码后门。
 
 ## HTTPS公网入口
 
-默认仍为127.0.0.1:18080的HTTP本机测试。公网需要已有HTTPS反向代理终止TLS、有效证书及受控网络；域名与证书不由本次功能自动部署。
+TLS 使用外部反向代理转发到业务 HTTP 入口，不再提供内置 Nginx 或 HTTPS Compose 覆盖。保留原始 Host，在 `SINGVERSE_PUBLIC_ORIGIN` 设置实际 HTTPS 来源，并在 `SINGVERSE_TRUSTED_PROXIES` 仅配置实际外部代理地址/CIDR；不要信任任意来源。
 
-1. 外部代理将HTTPS站点转到本机127.0.0.1:18080，并保留原始Host（含非标准端口）。应用Nginx端口不得直接开放公网。
-2. 设置SINGVERSE_PUBLIC_ORIGIN为准确外部来源，例如https://ktv.example.com，不带末尾斜杠。
-3. 通过docker network inspect singverse-go-app_default查看私网IPAM，设置SINGVERSE_TRUSTED_PROXIES为实际内部Nginx地址/CIDR，不设置为任意来源。当前来源限流在多层代理模式按内层代理来源归组，账号限流仍生效；外层需另配真实客户端IP限流。
-4. 使用显式覆盖配置启动：
-
-```sh
-docker compose --project-directory . -f infra/docker/compose/compose.app.yaml -f infra/docker/compose/compose.https.yaml up -d --build --wait
-```
-
-覆盖配置保持宿主回环绑定，仅在显式HTTPS部署下让内层Nginx声明https。后端只接受可信代理且Host与配置来源一致的请求，Cookie启用Secure。外部代理需配置HSTS与TLS策略；应用忽略未受信任的转发头。需要Compose2.24.4+支持端口覆盖。
-
-公网部署后再在浏览器核对证书、Secure Cookie、CSRF、登录与MFA；本地检查不等于公网验收。TOTP不具备Passkey的抗钓鱼能力，不提供短信/邮箱找回、跨 NAS 身份。
+使用原路线和完整配置组合重新启动业务容器。后端只接受受信任代理且 Host 与配置来源一致的转发信息，HTTPS 入口启用 Secure Cookie。外部代理负责 TLS、HSTS、请求大小、流式媒体及客户端限流，应用忽略未受信任的转发头。
 
 ## 验证入口
 

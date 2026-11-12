@@ -19,7 +19,7 @@ services:
       - /your/nas/karaoke:/media/karaoke:ro
 ```
 
-合并启动：`docker compose --project-directory . -f infra/docker/compose/compose.app.yaml -f compose.media.yaml up -d --build --wait`（将上述配置保存为本地 `compose.media.yaml`，真实路径不要提交）。随后表单填 `/media/karaoke`。默认 Compose 不挂载任意宿主目录，停止时保留数据卷。
+合并启动：`docker compose --project-directory . -f infra/docker/compose/compose.yaml -f compose.media.yaml up -d --build --wait`（将上述配置保存为本地 `compose.media.yaml`，真实路径不要提交）。随后表单填 `/media/karaoke`。默认 Compose 不挂载任意宿主目录，停止时保留数据卷。
 
 ## WebDAV
 

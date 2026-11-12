@@ -27,7 +27,7 @@ class Waveform extends StatelessWidget {
   final double progress;
   @override
   Widget build(BuildContext context) => SizedBox(
-    height: 72,
+    height: 80,
     width: double.infinity,
     child: ExcludeSemantics(
       child: CustomPaint(painter: _WavePainter(values, color, progress)),
@@ -125,12 +125,15 @@ class _WorksPageState extends State<WorksPage> {
             slivers: [
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.only(top: 28, bottom: 8),
+                  padding: const EdgeInsets.only(top: 24, bottom: 8),
                   child: SectionTitle(
                     title,
                     trailing: Text(
                       '${rows.length}',
-                      style: Theme.of(context).textTheme.bodySmall,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
                     ),
                   ),
                 ),
@@ -204,8 +207,10 @@ class _WorksPageState extends State<WorksPage> {
                               search.text.isEmpty
                                   ? Icons.mic_none_rounded
                                   : Icons.search_off_rounded,
-                              size: 44,
-                              color: Theme.of(context).colorScheme.primary,
+                              size: 40,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
                             ),
                             const SizedBox(height: 16),
                             Text(
@@ -215,10 +220,15 @@ class _WorksPageState extends State<WorksPage> {
                             const SizedBox(height: 8),
                             Text(
                               search.text.isEmpty
-                                  ? '练唱时主动开始录音，草稿会自动保存在这里。'
+                                  ? '练唱时开始录音，草稿会自动保存在这里'
                                   : '试试歌曲名或作品的其他名称。',
                               textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.bodyMedium,
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
                             ),
                           ],
                         ),
@@ -227,7 +237,7 @@ class _WorksPageState extends State<WorksPage> {
                   if (works.isNotEmpty)
                     SliverToBoxAdapter(
                       child: Padding(
-                        padding: const EdgeInsets.only(top: 28),
+                        padding: const EdgeInsets.only(top: 24),
                         child: Text(
                           '仅保存在此手机 · 离线也能回听',
                           textAlign: TextAlign.center,
@@ -288,24 +298,15 @@ class _WorkRow extends StatelessWidget {
                 width: senior ? 56 : 44,
                 height: senior ? 56 : 44,
                 decoration: BoxDecoration(
-                  color: missing
-                      ? scheme.secondaryContainer
-                      : draft
-                      ? Theme.of(context).brightness == Brightness.dark
-                            ? const Color(0xFF3B2C23)
-                            : const Color(0xFFFFF0E7)
-                      : scheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(10),
+                  color: scheme.onSurface.withValues(alpha: .05),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   missing
                       ? Icons.file_present_outlined
                       : Icons.graphic_eq_rounded,
-                  color: missing
-                      ? scheme.onSurfaceVariant
-                      : draft
-                      ? const Color(0xFFB9713D)
-                      : scheme.primary,
+                  size: 20,
+                  color: scheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(width: 12),
@@ -336,6 +337,7 @@ class _WorkRow extends StatelessWidget {
                       ].join(' · '),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: missing ? scheme.error : scheme.onSurfaceVariant,
+                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
                   ],
@@ -349,7 +351,10 @@ class _WorkRow extends StatelessWidget {
               else
                 Padding(
                   padding: const EdgeInsets.only(left: 8),
-                  child: Text('回听', style: TextStyle(color: scheme.primary)),
+                  child: Text(
+                    '回听',
+                    style: TextStyle(color: scheme.onSurfaceVariant),
+                  ),
                 ),
             ],
           ),
@@ -949,7 +954,7 @@ class _ReviewPageState extends State<ReviewPage> {
                       : const Center(child: CircularProgressIndicator())
                 : ListView(
                     key: ValueKey('review-scroll:${widget.id}'),
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
                     children: [
                       Row(
                         children: [
@@ -957,7 +962,7 @@ class _ReviewPageState extends State<ReviewPage> {
                             child: Text(
                               work['name'] as String? ?? '我的演唱',
                               style: text.titleLarge?.copyWith(
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
@@ -968,7 +973,7 @@ class _ReviewPageState extends State<ReviewPage> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: 4),
                       Text(
                         '$note · ${durationLabel((work['durationMs'] as num? ?? 0).toInt())}',
                         style: text.bodySmall?.copyWith(
@@ -978,7 +983,7 @@ class _ReviewPageState extends State<ReviewPage> {
                         ),
                       ),
                       if (song != null) ...[
-                        const SizedBox(height: 18),
+                        const SizedBox(height: 16),
                         Row(
                           children: [
                             Artwork(
@@ -995,10 +1000,10 @@ class _ReviewPageState extends State<ReviewPage> {
                                   Text(
                                     song.title,
                                     style: text.bodyMedium?.copyWith(
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
-                                  const SizedBox(height: 3),
+                                  const SizedBox(height: 4),
                                   Text(
                                     '${song.artist.isEmpty ? '歌手未知' : song.artist} · 我的演唱',
                                     style: text.bodySmall?.copyWith(
@@ -1015,10 +1020,13 @@ class _ReviewPageState extends State<ReviewPage> {
                       DecoratedBox(
                         decoration: BoxDecoration(
                           color: scheme.surface,
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: scheme.onSurface.withValues(alpha: .08),
+                          ),
                         ),
                         child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 20, 16, 18),
+                          padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
                           child: Column(
                             children: [
                               Waveform(
@@ -1053,17 +1061,23 @@ class _ReviewPageState extends State<ReviewPage> {
                                     durationLabel(currentPosition.round()),
                                     style: text.bodySmall?.copyWith(
                                       color: scheme.onSurfaceVariant,
+                                      fontFeatures: const [
+                                        FontFeature.tabularFigures(),
+                                      ],
                                     ),
                                   ),
                                   Text(
                                     durationLabel(duration),
                                     style: text.bodySmall?.copyWith(
                                       color: scheme.onSurfaceVariant,
+                                      fontFeatures: const [
+                                        FontFeature.tabularFigures(),
+                                      ],
                                     ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 18),
+                              const SizedBox(height: 16),
                               Row(
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceEvenly,
@@ -1100,14 +1114,21 @@ class _ReviewPageState extends State<ReviewPage> {
                                                 'review-play',
                                               ),
                                               style: FilledButton.styleFrom(
-                                                minimumSize: Size.square(
-                                                  state.senior ? 64 : 52,
-                                                ),
+                                                minimumSize: Size.square(64),
                                                 padding: EdgeInsets.zero,
                                                 shape: const CircleBorder(),
                                                 backgroundColor:
-                                                    scheme.onSurface,
-                                                foregroundColor: scheme.surface,
+                                                    Theme.of(context)
+                                                            .brightness ==
+                                                        Brightness.dark
+                                                    ? const Color(0xFFF3F5FA)
+                                                    : scheme.primary,
+                                                foregroundColor:
+                                                    Theme.of(context)
+                                                            .brightness ==
+                                                        Brightness.dark
+                                                    ? scheme.surface
+                                                    : scheme.onPrimary,
                                               ),
                                               onPressed: canListen
                                                   ? play
@@ -1150,7 +1171,7 @@ class _ReviewPageState extends State<ReviewPage> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
                       if (missing)
                         const Notice('本机音频文件已缺失。作品信息仍保留，可从更多操作重新演唱。'),
                       if ((work['interruption'] as String? ?? '').isNotEmpty)
@@ -1165,9 +1186,9 @@ class _ReviewPageState extends State<ReviewPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  '听起来，再舒服一点',
+                                  '声音比例',
                                   style: text.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
+                                    fontWeight: FontWeight.w500,
                                   ),
                                 ),
                                 const SizedBox(height: 4),
@@ -1190,7 +1211,7 @@ class _ReviewPageState extends State<ReviewPage> {
                                     21 ||
                                 constraints.maxWidth < 310;
                             return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
                               child: stack
                                   ? Column(
                                       crossAxisAlignment:
@@ -1241,7 +1262,7 @@ class _ReviewPageState extends State<ReviewPage> {
                         ),
                       if (!saved && !missing) ...[
                         const Divider(),
-                        const SizedBox(height: 18),
+                        const SizedBox(height: 16),
                         if (dirty || !ready)
                           FilledButton(
                             onPressed: canRender
@@ -1258,7 +1279,7 @@ class _ReviewPageState extends State<ReviewPage> {
                           ),
                         const SizedBox(height: 12),
                         Text(
-                          '不急着保存，返回后仍可在作品中继续处理草稿。',
+                          '返回后仍可在作品中继续处理草稿',
                           style: text.bodySmall?.copyWith(
                             color: scheme.onSurfaceVariant,
                           ),
@@ -1266,13 +1287,13 @@ class _ReviewPageState extends State<ReviewPage> {
                       ],
                       if (saved) ...[
                         const Divider(),
-                        const SizedBox(height: 18),
+                        const SizedBox(height: 16),
                         FilledButton.icon(
                           onPressed: ready && !working ? export : null,
                           icon: const Icon(Icons.ios_share_rounded),
                           label: const Text('导出音频'),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 12),
                         Text(
                           '保存在本机，可以随时回听或导出。',
                           style: text.bodySmall?.copyWith(
@@ -1309,7 +1330,7 @@ class _ReviewPageState extends State<ReviewPage> {
                           return Row(
                             children: [
                               Expanded(child: again),
-                              const SizedBox(width: 10),
+                              const SizedBox(width: 12),
                               Expanded(child: all),
                             ],
                           );
@@ -1339,7 +1360,7 @@ class _ReviewSkip extends StatelessWidget {
     style: TextButton.styleFrom(
       foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
       minimumSize: Size(senior ? 64 : 56, senior ? 64 : 56),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
     ),
     child: Semantics(
       label: forward ? '前进 15 秒' : '后退 15 秒',

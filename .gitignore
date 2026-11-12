@@ -31,11 +31,12 @@ build/
 !/infra/docker/build/
 /infra/docker/build/*
 !/infra/docker/build/.dockerignore
-!/infra/docker/build/docker-bake.hcl
-!/infra/docker/build/go.Dockerfile
-!/infra/docker/build/go.Dockerfile.dockerignore
-!/infra/docker/build/nginx/
-!/infra/docker/build/nginx/**
+!/infra/docker/build/app.Dockerfile
+!/infra/docker/build/app.Dockerfile.dockerignore
+!/infra/docker/build/compute.Dockerfile
+!/infra/docker/build/compute.Dockerfile.dockerignore
+!/infra/docker/build/compute/
+!/infra/docker/build/compute/**
 /services/singverse-go-backend/bin/
 target/
 dist/
@@ -122,6 +123,9 @@ singverse-compute*.tar.gz
 !/docs/single-song-review.md
 !/docs/song-classification.md
 !/docs/transcoding.md
+!/docs/tv-recommendations.md
+# Unapproved design explorations, prototypes, and review screenshots remain local.
+/docs/design/
 
 # Local credentials and task/runtime state (keep placeholder .env.example files)
 *.p12

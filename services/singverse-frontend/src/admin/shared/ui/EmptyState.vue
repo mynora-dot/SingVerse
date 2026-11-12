@@ -38,8 +38,8 @@ defineProps<{ title: string; description?: string; icon?: Component }>()
 .empty-disc-label {
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   background: var(--sv-surface-2);
   border: 1px solid var(--sv-border-default);
@@ -52,7 +52,7 @@ defineProps<{ title: string; description?: string; icon?: Component }>()
 }
 
 .empty-description {
-  margin-top: 6px;
+  margin-top: 8px;
   max-width: 460px;
   font-size: 13px;
   line-height: 1.8;
@@ -60,10 +60,10 @@ defineProps<{ title: string; description?: string; icon?: Component }>()
 }
 
 .empty-action {
-  margin-top: 18px;
+  margin-top: 20px;
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
   justify-content: center;
 }
 </style>

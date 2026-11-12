@@ -27,5 +27,5 @@ async function rebind() {
   </details>
 </template>
 <style scoped>
-.rebind{margin:18px 0;font-size:13px}summary{cursor:pointer}p{color:var(--sv-text-secondary);line-height:1.7}label{display:block;margin:12px 0}label .el-input{margin-top:6px}
+.rebind{margin:20px 0;font-size:13px}summary{cursor:pointer}p{color:var(--sv-text-secondary);line-height:1.7}label{display:block;margin:12px 0}label .el-input{margin-top:8px}
 </style>

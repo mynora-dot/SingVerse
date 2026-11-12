@@ -47,6 +47,7 @@ SQLite 创建必要父目录，单连接；启动先取得部署锁并执行固�
 | 启动与关闭 | `internal/app/app.go` 管理生命周期；`services.go` 按依赖顺序创建服务并登记关闭顺序；`adapters.go` 转换跨模块回调数据 |
 | HTTP 与观测 | `internal/app/http.go` 装配路由和认证边界；`observability.go` 管理请求日志及诊断指标。Gin 在注册时固定中间件，compute grant 与 Bearer 路由先于管理员边界注册 |
 | 聚会与播放 | `internal/party/http_*.go` 按设备、邀请、会话和播放资源分组；`queue.go` 负责幂等回执、修订检查及权限分派，`session_commands.go`、`playback_commands.go` 和 `playback_events.go` 分别处理主持操作、电视指令和播放回报 |
+| TV 热歌与历史 | `internal/party/recommendations.go` 解析设备身份、所有场次与当前曲库；`internal/playback/tv.go` 负责真实播放统计及终态历史，同一事务读取。接口、有效阈值和快照边界见 [TV 热歌与演唱历史](../../docs/tv-recommendations.md) |
 | 后台任务投影 | `internal/background/projection.go` 串联读取、构建和持久化；`projection_details.go` 映射各任务类型，`projection_progress.go` 处理计数及时间，`projection_items.go` 分页同步明细和关联子任务，全程复用调用方事务 |
 | 歌手封面与分类 | `internal/catalog/artist_batch.go` 保存范围快照、幂等批次和原子分类；`artist_batch_worker.go` 复用串行取图与 generation 保护，离页或重启继续处理；平台选择与确认边界见 [歌手库说明](../../docs/artist-library.md) |
 | 媒体执行 | `internal/execution/http.go` 汇总音轨、批次、模型、转码和缓存路由，处理函数位于对应 `http_*.go`；模型导入在 `models.go`，缓存任务执行及等待在 `cache_cleanup.go` |
@@ -66,11 +67,11 @@ make backend-check        # Go + Python 检查及真实联动
 
 `internal/library` 测试覆盖来源/规则/扫描原子发布、WebDAV 范围与本地下载并发；`internal/metadata` 覆盖人工字段保护、平台/封面安全、有限回源授权、任务恢复、共享分片检查点与导入收据；歌曲元数据支持网易云、QQ、酷狗、酷我、汽水，平台封面保留原图或所选高清版本，不再受 4096 像素门槛影响（网络读取 32 MiB / 20 秒，上传与持久保存统一支持 32 MiB）。歌手图片支持网易云、QQ、酷狗、酷我、汽水和 TheAudioDB；酷狗复用元数据平台设置，酷我/汽水读取公开歌手目录，同名歧义继续确认候选，测试覆盖长 ID、歌曲核对、受限图片下载及批次确认入库。其他模块覆盖认证、TV/H5、分类、队列、AI、下载、播放、缓存及持久后台投影。具体实测与限制见 [Go 验证记录](../../docs/go-migration-verification.md)。
 
-`go-container-check` 默认检查 `singverse-go-backend:local` 与 `singverse-frontend:local`，可用 `GO_BACKEND_IMAGE`、`GO_FRONTEND_IMAGE` 指定已构建的架构镜像；不会拉取或构建镜像。恢复检查拒绝运行中部署锁和非 TTY 输入，验证口令隐藏、会话撤销、MFA 清除及业务数据/主密钥保留。
+`go-container-check` 默认检查单业务镜像 `singverse:local`，可用 `GO_BACKEND_IMAGE` 指定已构建的架构镜像；不会拉取或构建镜像。恢复检查拒绝运行中部署锁和非 TTY 输入，验证口令隐藏、会话撤销、MFA 清除及业务数据/主密钥保留。
 
 音乐平台配置在管理端“设置 → 音乐平台”，复用受管理员会话和 CSRF 保护的 `/api/v1/metadata/settings`。新安装默认开启五个平台，自动应用默认关闭；增量迁移只修改未动过的安装种子，保存过的配置保持原值。
 
-生产默认 Dockerfile 为 `infra/docker/build/go.Dockerfile`，Compose 为 `infra/docker/compose/compose.app.yaml`，项目名 `singverse-go-app` 使用全新卷。采用全新部署，不迁移旧 Java 账号或库，不允许两种实现共享写入后的数据库。旧数据保护与明确回退见 [迁移说明](../../docs/go-migration.md)。本机管理员恢复为停止服务后 `bin/singverse --reset-admin`，需真实终端，见 [认证说明](../../docs/authentication.md)。
+生产默认 Dockerfile 为 `infra/docker/build/app.Dockerfile`，Compose 为 `infra/docker/compose/compose.yaml`，项目名 `singverse-go-app` 使用全新卷。采用全新部署，不迁移旧 Java 账号或库，不允许两种实现共享写入后的数据库。旧数据保护与明确回退见 [迁移说明](../../docs/go-migration.md)。本机管理员恢复为停止服务后 `bin/singverse --reset-admin`，需真实终端，见 [认证说明](../../docs/authentication.md)。
 
 
 媒体来源新增持久化入库启动请求与资料包后台工作流：上传完成后解析、路径映射预览、确认后按字段合并并持久保存，再用接收方 WebDAV 配置核验目录和大小；无需 compute 即可导入和使用资料。默认共享 v4 使用稳定对象、系列、字符串修订和二进制原始附件，兼容 v2/v3，保护本机订正。正式附件存于 `WEBDAV_METADATA_PATH`，衍生文件独立重试，分享不再等待衍生文件。接口与完整流程见[媒体库管理](../../docs/media-library.md#媒体入库资料合并与分享2026-11-10)。

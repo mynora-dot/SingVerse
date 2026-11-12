@@ -10,7 +10,6 @@ import { media, type MediaSource, type SourceType, type ScanTask } from '../api/
 
 import WebDavMetadataDialog from '../components/WebDavMetadataDialog.vue'
 import LocalFolderPicker from '../components/LocalFolderPicker.vue'
-import SourceWorkspaceNav from '../components/SourceWorkspaceNav.vue'
 import { lx } from '../../lx-downloads/api'
 import { embeddedMetadata, type EmbeddedSummary } from '../api/embeddedMetadata'
 import { validateSharePackage } from '../api/shareImports'
@@ -276,10 +275,10 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
 
 <template>
   <div class="media-library-page management-page">
-    <PageHeader class="media-heading" title="好歌，从这里入库" description="添加后自动扫描入库，资料自动保存在本机。收到分享包时，先导入资料，再核对自己的媒体目录。">
-      <template #actions><div class="media-actions"><ElButton :icon="RefreshRight" :loading="loading" @click="load()">刷新</ElButton><ElButton @click="open('WEBDAV', undefined, true)">导入资料包</ElButton><ElButton type="primary" :icon="Plus" @click="open('LOCAL')">添加媒体库</ElButton></div></template>
+    <PageHeader class="media-heading" title="歌曲来源" description="添加后自动扫描入库，资料自动保存在本机。收到分享包时，先导入资料，再核对自己的媒体目录。">
+      <template #meta><span v-if="loaded" class="source-count" :aria-label="`已读取 ${items.length} 个歌曲来源${moreSources ? '，可继续读取' : ''}`">{{ items.length }}个</span></template>
+      <template #actions><div class="media-actions"><ElButton type="primary" :icon="Plus" @click="open('LOCAL')">添加来源</ElButton><details class="source-menu media-more"><summary aria-label="歌曲来源的更多操作" title="更多操作">⋯</summary><div><ElButton text :icon="RefreshRight" :loading="loading" @click="load()">刷新</ElButton><ElButton text @click="open('WEBDAV', undefined, true)">导入资料包</ElButton></div></details></div></template>
     </PageHeader>
-    <SourceWorkspaceNav />
     <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon class="media-error"><ElButton text @click="load()">重试</ElButton></ElAlert>
     <section v-loading="loading" class="source-cards" aria-label="媒体库">
       <ElEmpty v-if="loaded && !items.length && !error" description="添加本地目录或 WebDAV，开始整理你的歌曲。"><ElButton type="primary" @click="open('LOCAL')">添加第一个目录</ElButton></ElEmpty>
@@ -307,16 +306,15 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
             <p v-if="row.lastScanError" class="scan-error">{{ row.lastScanError }}</p>
           </div>
           <div class="source-actions">
-            <ElButton type="primary" @click="showSongs(row)">查看歌曲</ElButton>
+            <ElButton @click="showSongs(row)">查看歌曲</ElButton>
             <ElButton @click="metadataSource = row">完善信息</ElButton>
-            <ElButton @click="metadataSource = row">分享资料</ElButton>
-            <details class="source-menu"><summary :aria-label="`${row.name}的更多操作`">⋯</summary><div><ElButton text :disabled="!!scanning || ingestActive(row.id) || taskActive(tasks[row.id])" @click="scan(row)">扫描歌曲</ElButton><ElButton text @click="open(row.type, row)">编辑</ElButton><ElButton text type="danger" @click="remove(row)">移除</ElButton></div></details>
+            <details class="source-menu"><summary :aria-label="`${row.name}的更多操作`">⋯</summary><div><ElButton text @click="metadataSource = row">分享资料</ElButton><ElButton text :disabled="!!scanning || ingestActive(row.id) || taskActive(tasks[row.id])" @click="scan(row)">扫描歌曲</ElButton><ElButton text @click="open(row.type, row)">编辑</ElButton><ElButton text type="danger" @click="remove(row)">移除</ElButton></div></details>
           </div>
         </div>
       </ElCard>
       <ElButton v-if="moreSources" :loading="loading" @click="load(true)">显示更多位置</ElButton>
     </section>
-    <p class="feature-note">本地目录优先读取音频与视频内嵌标签，缺失信息用文件名补充；WebDAV 可启用后台内嵌元数据提取，同路径复用缓存。扫描不会修改原文件，不代表已验证可播放。</p>
+    <details class="media-notes"><summary>扫描与媒体说明</summary><p class="feature-note">本地目录优先读取音频与视频内嵌标签，缺失信息用文件名补充；WebDAV 可启用后台内嵌元数据提取，同路径复用缓存。扫描不会修改原文件，不代表已验证可播放。</p></details>
     <WebDavMetadataDialog v-if="metadataSource" :source="metadataSource" :initial-import-file="metadataImportFile" :import-job-id="typeof route.query.import === 'string' ? route.query.import : undefined" @uploading="metadataUploading = $event" @file-consumed="metadataImportFile = undefined" @songs="showSongs(metadataSource!); metadataSource = null" @close="metadataSource = null; metadataImportFile = undefined" @updated="reloadMetadataSource" />
     <ElDialog v-model="dialog" :title="editorPanel === 'source' ? (editing ? '编辑媒体库' : importMode ? '导入资料包 · 绑定自己的媒体目录' : '添加媒体库') : `${editing?.name || draft.name || '新来源'} · ${editorPanel === 'profiles' ? '文件名识别' : '自定义规则'}`" :width="editorPanel === 'source' ? 'min(560px, calc(100vw - 32px))' : 'min(1120px, calc(100vw - 32px))'" class="media-dialog" :class="{ 'source-workbench': editorPanel !== 'source' }" :close-on-click-modal="false" :close-on-press-escape="!saving" :show-close="!saving" :before-close="closeSource" @closed="closed">
       <template v-if="editorPanel !== 'source'">
@@ -375,7 +373,7 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
 .scan-progress {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   font-size: 12px;
   overflow-wrap: anywhere;
 }
@@ -396,19 +394,19 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
 }
 
 .profile-field {
-  margin-top: 22px;
+  margin-top: 24px;
 }
-.source-package{display:flex;align-items:center;flex-wrap:wrap;gap:10px;width:100%;margin-top:8px}
-.package-choice{position:relative;display:inline-flex;padding:7px 12px;border:1px solid var(--sv-border-subtle);border-radius:6px;cursor:pointer;overflow:hidden}
+.source-package{display:flex;align-items:center;flex-wrap:wrap;gap:12px;width:100%;margin-top:8px}
+.package-choice{position:relative;display:inline-flex;padding:8px 12px;border:1px solid var(--sv-border-subtle);border-radius:8px;cursor:pointer;overflow:hidden}
 .package-choice input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
 .package-choice:focus-within{outline:2px solid var(--sv-accent-primary);outline-offset:2px}
 .package-choice.disabled{opacity:.5;cursor:default}
 .package-name{overflow-wrap:anywhere;min-width:0}
 .source-import :deep(.el-form-item__content){align-items:flex-start;flex-direction:column}
-.source-profile-selection { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; width: 100%; }
+.source-profile-selection { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; width: 100%; }
 .source-profile-selection .profile-select { flex: 1; min-width: 180px; width: auto; }
 .source-profile-selection .el-button { margin-left: 0; }
-.source-profile-link { max-width: 100%; height: auto; margin: 0 0 8px; padding: 6px 0; color: var(--el-color-primary); font-size: 12px; text-align: left; white-space: normal; }
+.source-profile-link { max-width: 100%; height: auto; margin: 0 0 8px; padding: 8px 0; color: var(--el-color-primary); font-size: 12px; text-align: left; white-space: normal; }
 .source-profile-link :deep(span) { white-space: normal; overflow-wrap: anywhere; line-height: 1.8; }
 .media-library-page :deep(.source-workbench) { display: flex; flex-direction: column; max-height: 92dvh; margin-top: 4vh; }
 .media-library-page :deep(.source-workbench .el-dialog__header) { flex-shrink: 0; }
@@ -465,19 +463,19 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
 
 .source-content {
   display: grid;
-  grid-template-columns: 54px minmax(0, 1fr);
+  grid-template-columns: 56px minmax(0, 1fr);
   gap: 20px;
   height: 100%;
   align-items: start;
 }
 
 .source-icon {
-  background: var(--el-color-primary-light-9);
-  color: var(--el-color-primary);
+  background: var(--sv-surface-3);
+  color: var(--sv-text-secondary);
   display: grid;
   place-items: center;
-  width: 54px;
-  height: 54px;
+  width: 56px;
+  height: 56px;
   border-radius: 12px;
   font-size: 26px;
 }
@@ -496,7 +494,7 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
 
 .source-title h2 {
   margin: 0;
-  font-size: 19px;
+  font-size: 16px;
 }
 
 .source-location {
@@ -513,7 +511,12 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
 
 .source-menu summary {
   cursor: pointer;
-  padding: 5px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 4px 12px;
   border: 1px solid var(--el-border-color);
   border-radius: var(--sv-radius-sm);
   list-style: none;
@@ -527,8 +530,11 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
   position: absolute;
   right: 0;
   top: 100%;
-  z-index: 2;
+  z-index: 4;
   display: flex;
+  flex-direction: column;
+  min-width: 156px;
+  gap: 4px;
   padding: 8px;
   background: var(--el-bg-color);
   border: 1px solid var(--el-border-color);
@@ -540,13 +546,13 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding-top: 18px;
+  padding-top: 20px;
   border-top: 1px solid var(--sv-border-subtle);
   align-self: end;
 }
 
 .source-actions :deep(.el-button) {
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .source-actions .el-button {
@@ -609,16 +615,16 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
 }
 
 @media(max-width:480px) {
-  .source-workbench-context { margin-bottom: 18px; padding-bottom: 14px; }
+  .source-workbench-context { margin-bottom: 20px; padding-bottom: 16px; }
   .source-workbench-context p { display: none; }
   .source-content {
-    gap: 14px;
-    grid-template-columns: 42px minmax(0, 1fr)
+    gap: 16px;
+    grid-template-columns: 44px minmax(0, 1fr)
   }
 
   .source-icon {
-    width: 42px;
-    height: 42px;
+    width: 44px;
+    height: 44px;
     font-size: 22px
   }
 
@@ -633,5 +639,18 @@ onBeforeUnmount(() => { active = false; profileGeneration++; taskGeneration++; l
   .source-actions>.el-button:first-child {
     flex-basis: 100%
   }
+}
+.source-count { white-space: nowrap; color: var(--sv-text-secondary); font-size: 12px; font-weight: 400; }
+.media-actions { justify-content: flex-end; flex-wrap: nowrap; gap: 8px; }
+.media-more summary { border-color: transparent; font-size: 18px; }
+.source-menu > div .el-button { width: 100%; justify-content: flex-start; margin: 0; }
+.media-notes { margin-top: 16px; color: var(--sv-text-secondary); font-size: 12px; }
+.media-notes summary { display: inline-flex; align-items: center; min-height: 40px; cursor: pointer; }
+.media-notes .feature-note { margin: 4px 0 0; }
+@media(max-width:768px) {
+  .media-actions { gap: 4px; }
+  .source-menu summary, .media-notes summary { min-width: 44px; min-height: 44px; }
+  .source-menu > div .el-button, .source-actions :deep(.el-button), .source-profile-link, .source-advanced summary, .package-choice { min-height: 44px; }
+  .media-actions > .el-button { min-height: 44px; }
 }
 </style>

@@ -13,12 +13,12 @@ Docker 默认提供独立持久卷 `singverse-downloads:/downloads`，添加媒�
 ```sh
 SINGVERSE_DOWNLOAD_PATH=/absolute/path/to/downloaded-songs \
 docker compose --project-directory . --env-file .env \
-  -f infra/docker/compose/compose.app.yaml \
+  -f infra/docker/compose/compose.yaml \
   -f infra/docker/compose/compose.downloads.yaml config --quiet
 
 SINGVERSE_DOWNLOAD_PATH=/absolute/path/to/downloaded-songs \
 docker compose --project-directory . --env-file .env \
-  -f infra/docker/compose/compose.app.yaml \
+  -f infra/docker/compose/compose.yaml \
   -f infra/docker/compose/compose.downloads.yaml up -d --wait
 ```
 

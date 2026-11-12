@@ -3,7 +3,7 @@ import TaskGuide from '../../../shared/ui/TaskGuide.vue'
 import PageHeader from '../../../shared/ui/PageHeader.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElAlert, ElButton, ElCard, ElMessage, ElMessageBox, ElPagination, ElProgress } from 'element-plus'
+import { ElAlert, ElButton, ElMessage, ElMessageBox, ElPagination, ElProgress } from 'element-plus'
 import { ArrowLeft, RefreshRight } from '@element-plus/icons-vue'
 import { metadata } from '../api/metadata'
 import { media, type MediaSource } from '../../media-library/api/media'
@@ -123,289 +123,55 @@ onBeforeUnmount(() => { active = false; generation++; loadGeneration++; clearTim
 
 <template>
   <section class="metadata-page management-page">
-    <PageHeader title="把每一首歌，整理清楚" description="完善歌名、歌手与封面。可以手工编辑，也可以从音乐平台匹配信息，核对后保存。"><template #actions><ElButton :icon="ArrowLeft" @click="router.push('/library/songs')">返回全部歌曲</ElButton></template></PageHeader>
-    <TaskGuide v-if="!batch" label="歌曲信息整理流程" :steps="[{ title: '选择歌曲', description: '整理整个来源，或从曲库勾选本页歌曲。' }, { title: '获取匹配候选', description: '进度保存在后台，可离开后再回来。' }, { title: '核对后确认', description: '对比字段与封面，再决定应用哪些信息。' }]" />
+    <PageHeader :title="route.meta.review ? '待审核' : '歌曲信息'">
+      <template #actions><ElButton :icon="ArrowLeft" @click="router.push('/library/songs')">返回全部歌曲</ElButton></template>
+      <template #description>
+        <p>完善歌名、歌手与封面。可以手工编辑，也可以从音乐平台匹配信息，核对后保存。</p>
+        <TaskGuide v-if="!batch" label="歌曲信息整理流程" :steps="[{ title: '选择歌曲', description: '整理整个来源，或从曲库勾选本页歌曲。' }, { title: '获取匹配候选', description: '进度保存在后台，可离开后再回来。' }, { title: '核对后确认', description: '对比字段与封面，再决定应用哪些信息。' }]" />
+      </template>
+    </PageHeader>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon />
     <ElAlert v-if="progressError" :title="progressError" type="error" :closable="false" show-icon><ElButton text :disabled="busy" @click="batch ? refreshBatch() : load()">重新读取进度</ElButton></ElAlert>
     <div class="batch-overview" :class="{ 'has-batch': !!batch }">
-    <ElCard shadow="never" class="metadata-settings">
+    <section class="metadata-settings" aria-label="已保存的音乐平台">
       <div class="section-heading"><div><h2>音乐平台</h2><p class="config-summary">{{ saved ? settingsSummary : '正在读取平台设置…' }}</p></div><ElButton @click="router.push({ path: '/system/music-platforms', query: { returnTo: route.fullPath } })">管理平台</ElButton></div>
       <ElButton v-if="!saved && !loading" text @click="load">重新读取配置</ElButton>
-    </ElCard>
-    <ElCard shadow="never" class="batch-control">
-      <div class="section-heading"><div><h2>{{ batch ? batchNames[batch.status] : '尚未创建刮削批次' }}</h2><p class="panel-description">{{ batch ? '处理完成包含待审核，不代表已全部写入。' : '选择整个来源，或从歌曲管理勾选本页歌曲。' }}</p></div><div class="batch-actions"><ElButton v-if="batch?.status === 'RUNNING'" :disabled="busy" @click="control('pause')">暂停</ElButton><span v-if="batch?.status === 'PAUSED'" :title="!config.enabled ? '请在设置 → 音乐平台启用平台查询' : ''"><ElButton :disabled="busy || !config.enabled || !saved" @click="control('resume')">继续</ElButton></span><ElButton v-if="activeBatch" :disabled="busy" @click="cancel">终止</ElButton><ElButton v-if="batch" :icon="RefreshRight" :loading="refreshing" :disabled="busy" @click="refreshBatch">刷新进度</ElButton></div></div>
+    </section>
+    <section class="batch-control" aria-label="刮削批次">
+      <div class="batch-start"><div><label class="source-scope">刮削范围 <select v-model="sourceId" aria-label="刮削媒体来源" :disabled="sourcesLoading || busy"><option value="">全部媒体来源</option><option v-for="source in sources" :key="source.id" :value="source.id">{{ source.name }}</option></select></label><p class="panel-description">已有有效确认结果会自动跳过。</p><p v-if="sourcesError" class="panel-description" role="alert">媒体来源读取失败：{{ sourcesError }} <ElButton text @click="loadSources">重试</ElButton></p><p v-if="startReason" class="panel-description">{{ startReason }}</p></div><div><span :title="startReason"><ElButton v-if="selectedIds.length && !sourceId" :disabled="!canStart" @click="start(false)">刮削已选（{{ selectedIds.length }}）</ElButton><ElButton type="primary" :disabled="!canStartScope" :loading="busy" @click="start(true)">{{ sourceId ? '刮削所选媒体源' : '刮削全部歌曲' }}</ElButton></span></div></div>
+      <div v-if="batch" class="section-heading"><div><h2>{{ batch ? batchNames[batch.status] : '选择刮削范围' }}</h2><p class="panel-description">{{ batch ? '处理完成包含待审核，不代表已全部写入。' : '选择整个来源，或从歌曲管理勾选本页歌曲。' }}</p></div><div class="batch-actions"><ElButton v-if="batch?.status === 'RUNNING'" :disabled="busy" @click="control('pause')">暂停</ElButton><span v-if="batch?.status === 'PAUSED'" :title="!config.enabled ? '请在设置 → 音乐平台启用平台查询' : ''"><ElButton :disabled="busy || !config.enabled || !saved" @click="control('resume')">继续</ElButton></span><ElButton v-if="activeBatch" :disabled="busy" @click="cancel">终止</ElButton><ElButton v-if="batch" :icon="RefreshRight" :loading="refreshing" :disabled="busy" @click="refreshBatch">刷新进度</ElButton></div></div>
       <p v-if="loading" role="status" class="panel-description">正在读取配置与进度…</p>
       <template v-if="batch">
         <ElProgress :percentage="percentage" :status="batch.status === 'COMPLETED' ? 'success' : undefined" />
         <div class="progress-caption"><strong>已处理 {{ batch.completed }} / {{ batch.total }} 首</strong><span>其中已跳过 {{ batch.skippedExisting }} 首 · 待处理 {{ batch.pending }} 首 · 处理中 {{ batch.processing }} 首</span></div>
         <div class="batch-stats"><button v-for="stat in stats" :key="stat.status" type="button" :class="{ selected: filter === stat.status }" :disabled="busy" @click="selectStatus(stat.status)"><strong>{{ stat.value }}</strong><span>{{ stat.label }}</span></button></div>
-        <p class="count-explanation">整体总数 = 待处理 + 处理中 + 待审核 + 已应用 + 失败 + 已跳过；已处理 = 待审核 + 已应用 + 失败 + 已跳过。</p>
+        <details class="batch-explanation"><summary>进度计数说明</summary><p class="count-explanation">整体总数 = 待处理 + 处理中 + 待审核 + 已应用 + 失败 + 已跳过；已处理 = 待审核 + 已应用 + 失败 + 已跳过。</p></details>
         <p v-if="batch.status === 'CANCELLED'" class="status-notice">已终止，未处理项保留原状态供追溯，不会继续查询；已经写入的结果保留。</p>
         <p v-if="batch.status === 'PAUSED'" class="status-notice">批次已暂停，在途请求可能仍在结束；确认平台及设置后可继续。</p>
         <div class="refresh-note"><span>本批次自动写入：{{ batch.autoApply ? '开启（仍受当前全局设置限制）' : '关闭' }}</span><span v-if="lastRefresh">最近读取：{{ new Date(lastRefresh).toLocaleTimeString() }}{{ batch.status === 'RUNNING' && !reviewItem ? ' · 每 2 秒自动刷新' : '' }}</span></div>
       </template>
-      <div class="batch-start"><div><label class="source-scope">刮削范围 <select v-model="sourceId" aria-label="刮削媒体来源" :disabled="sourcesLoading || busy"><option value="">全部媒体来源</option><option v-for="source in sources" :key="source.id" :value="source.id">{{ source.name }}</option></select></label><p class="panel-description">有效确认结果自动跳过；选择媒体来源后，仅处理该来源的歌曲。重新匹配可使用单曲入口。</p><p v-if="sourcesError" class="panel-description" role="alert">媒体来源读取失败：{{ sourcesError }} <ElButton text @click="loadSources">重试</ElButton></p><p v-if="startReason" class="panel-description">{{ startReason }}</p></div><div><span :title="startReason"><ElButton v-if="selectedIds.length && !sourceId" :disabled="!canStart" @click="start(false)">刮削已选（{{ selectedIds.length }}）</ElButton><ElButton type="primary" :disabled="!canStartScope" :loading="busy" @click="start(true)">{{ sourceId ? '刮削所选媒体源' : '刮削全部歌曲' }}</ElButton></span></div></div>
-    </ElCard>
+
+    </section>
     </div>
-    <ElCard v-if="batch" shadow="never" class="batch-list-card">
+    <section v-if="batch" class="batch-list-card" aria-label="批次歌曲">
       <div class="section-heading"><h2>批次歌曲 <span class="count-badge">{{ batch.total }}</span></h2><span class="panel-description">当前筛选 {{ batch.totalElements }} 首</span></div>
       <form class="batch-filter" aria-label="批次歌曲筛选" @submit.prevent="searchItems"><label>状态 <select v-model="filter" aria-label="刮削明细状态" :disabled="busy" @change="changeFilter"><option value="">全部状态</option><option value="APPLIED">全部已应用</option><option v-for="(name, state) in itemStatusNames" :key="state" :value="state">{{ name }}</option></select></label><label class="keyword-filter">搜索 <input v-model="keyword" aria-label="搜索批次歌名或歌手" placeholder="输入原始歌名或歌手" maxlength="200" :disabled="busy" /></label><ElButton native-type="submit" :disabled="busy">查询</ElButton><label>排序 <select v-model="sort" aria-label="批次排序" :disabled="busy" @change="changeFilter"><option value="DEFAULT">批次顺序</option><option value="TITLE">原始歌名</option><option value="SCORE_DESC">相似度从高到低</option><option value="UPDATED_DESC">最近处理优先</option></select></label></form>
-      <p class="list-help">高相似度：最高分达到本批次阈值，打开审核时自动选中排序最高的候选；接近候选仍提示核对。80% 以上但低于阈值为低相似度，低于 80% 或无候选为无可信候选。审核时的自动选中只用于预览；批次自动写入开启且第一候选达到有效阈值时，会直接应用第一条。</p>
+
       <p v-if="batch.legacySkipped" class="status-notice">此历史批次有 {{ batch.legacySkipped }} 首跳过项仅保存汇总，计入整体进度；没有原始歌曲明细可供搜索和展示。</p>
       <p v-if="retryReason" class="panel-description">重新匹配 / 重试不可用：{{ retryReason }}</p>
       <BatchSongTable :batch="batch" :busy="busy" :retry-disabled-reason="retryReason" @review="openReview" @retry="retry" @manual="manual" @reason="reason" />
       <ElPagination v-if="batch.totalElements > 20" v-model:current-page="page" :total="batch.totalElements" :page-size="20" layout="total, prev, pager, next, jumper" :disabled="busy" @current-change="refreshBatch" />
-    </ElCard>
-    <p class="feature-note">进度持久化，重启后暂停。重新匹配只重新查询候选；启用自动写入的批次仍按既有安全条件处理。审核候选使用单曲工作台，确认应用后同步更新批次明细状态。</p>
+      <details class="matching-explanation"><summary>匹配与审核说明</summary><p class="list-help">高相似度：最高分达到本批次阈值，打开审核时自动选中排序最高的候选；接近候选仍提示核对。80% 以上但低于阈值为低相似度，低于 80% 或无候选为无可信候选。审核时的自动选中只用于预览；批次自动写入开启且第一候选达到有效阈值时，会直接应用第一条。</p></details>
+    </section>
+    <details class="feature-details"><summary>批次与资料保存</summary><p class="feature-note">进度持久化，重启后暂停。重新匹配只重新查询候选；启用自动写入的批次仍按既有安全条件处理。审核候选使用单曲工作台，确认应用后同步更新批次明细状态。</p></details>
     <SingleSongScrapeDialog :song-id="reviewItem?.songId ?? null" :title="reviewItem?.title ?? ''" :artists="reviewItem?.artists ?? []" :initial-candidates="reviewItem?.candidates" :batch-id="batch?.id" :item-id="reviewItem?.id" :auto-select-threshold="batch?.threshold" @close="closeReview" @applied="refreshBatch" />
   </section>
 </template>
 
 <style scoped>
-.metadata-page {
-  min-width: 0;
-}
-
-.metadata-page .page-heading {
-  margin-bottom: 16px;
-}
-
-.batch-overview {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.has-batch .batch-control {
-  order: -1;
-}
-
-.metadata-page :deep(.el-card__body) {
-  padding: 20px;
-}
-
-.metadata-page .section-heading {
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
-}
-
-.metadata-page h2 {
-  font-size: 16px;
-}
-
-.config-summary {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: var(--sv-text-secondary);
-  line-height: 1.6;
-  overflow-wrap: anywhere;
-}
-
-.metadata-settings .section-heading {
-  margin-bottom: 0;
-}
-
-.batch-filter input {
-  padding: 7px 10px;
-  color: var(--sv-text-primary);
-  background: var(--sv-surface-2);
-  border: 1px solid var(--sv-border-default);
-  border-radius: var(--sv-radius-sm);
-  font: inherit;
-}
-
-.batch-start {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-top: 14px;
-}
-
-.source-scope {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.source-scope select {
-  min-width: 180px;
-  max-width: min(320px, 60vw);
-  padding: 7px 10px;
-  color: var(--sv-text-primary);
-  background: var(--sv-surface-2);
-  border: 1px solid var(--sv-border-default);
-  border-radius: var(--sv-radius-sm);
-  font: inherit;
-}
-
-.batch-start {
-  padding-top: 12px;
-  border-top: 1px solid var(--sv-border-subtle);
-}
-
-.batch-start .panel-description {
-  margin: 3px 0;
-  font-size: 12px;
-}
-
-.progress-caption {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  flex-wrap: wrap;
-  font-size: 13px;
-  margin: 12px 0;
-}
-
-.progress-caption>span {
-  color: var(--sv-text-secondary);
-  font-size: 12px;
-}
-
-.batch-stats {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 8px;
-  margin: 12px 0;
-}
-
-.batch-stats button {
-  text-align: left;
-  padding: 10px;
-  background: var(--sv-surface-3);
-  border: 1px solid transparent;
-  border-radius: 7px;
-  color: var(--sv-text-primary);
-  cursor: pointer;
-}
-
-.batch-stats button.selected {
-  border-color: var(--el-color-primary);
-  background: var(--sv-accent-soft);
-}
-
-.batch-stats strong {
-  display: block;
-  font-size: 20px;
-}
-
-.batch-stats span {
-  display: block;
-  font-size: 12px;
-  color: var(--sv-text-secondary);
-  margin-top: 4px;
-}
-
-.count-explanation,
-.list-help,
-.refresh-note {
-  font-size: 12px;
-  color: var(--sv-text-secondary);
-  line-height: 1.7;
-  margin: 8px 0;
-}
-
-.refresh-note {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.status-notice {
-  background: var(--sv-semantic-warn-soft);
-  color: var(--sv-semantic-warn);
-  border-radius: 6px;
-  padding: 8px 10px;
-  font-size: 12px;
-  margin: 10px 0;
-  line-height: 1.6;
-}
-
-.batch-filter {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  align-items: center;
-  margin-bottom: 10px;
-  font-size: 13px;
-}
-
-.batch-filter label {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.keyword-filter {
-  flex: 1;
-  min-width: 180px;
-}
-
-.keyword-filter input {
-  flex: 1;
-  width: auto;
-  min-width: 100px;
-}
-
-.batch-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.batch-actions .el-button+.el-button {
-  margin-left: 0;
-}
-
-.batch-list-card {
-  min-width: 0;
-}
-
-.metadata-page :deep(.el-pagination) {
-  margin-top: 16px;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-@media(max-width: 850px) {
-  .batch-stats {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-
-@media(max-width: 600px) {
-  .metadata-page :deep(.el-card__body) {
-    padding: 14px;
-  }
-
-  .batch-start>div {
-    width: 100%;
-  }
-
-  .batch-filter label {
-    width: 100%;
-  }
-
-  .batch-filter select,
-  .batch-filter input {
-    min-width: 0;
-    flex: 1;
-  }
-
-  .batch-stats {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .batch-stats strong {
-    font-size: 18px;
-  }
-}
+.metadata-page{min-width:0}.batch-overview{display:grid;gap:0}.metadata-page h2{font-size:15px}.metadata-page .section-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px}.metadata-settings{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 0 16px;border-bottom:1px solid var(--sv-border-subtle)}.metadata-settings .section-heading{flex:1;margin:0}.metadata-settings .section-heading>div{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px 16px}.metadata-settings h2{margin:0;font-size:14px}.config-summary{margin:0;font-size:12px;color:var(--sv-text-secondary);line-height:1.7;overflow-wrap:anywhere}
+.batch-control{padding:16px 0 20px}.batch-start{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 20px}.batch-start>div:last-child>span{display:flex;gap:8px;flex-wrap:wrap}.batch-start .el-button{margin:0}.source-scope{display:flex;align-items:center;gap:12px;font-size:13px;font-weight:500}.source-scope select{min-height:40px;min-width:180px;max-width:min(320px,60vw);padding:8px 12px;color:var(--sv-text-primary);background:var(--sv-surface-1);border:1px solid var(--sv-border-default);border-radius:8px;font:inherit}.batch-start .panel-description{margin:4px 0;font-size:12px}.batch-actions{display:flex;gap:8px;flex-wrap:wrap}.batch-actions .el-button+.el-button{margin-left:0}.progress-caption{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:13px;margin:12px 0}.progress-caption>span{color:var(--sv-text-secondary);font-size:12px}.batch-stats{display:flex;gap:4px 8px;flex-wrap:wrap;margin:12px 0}.batch-stats button{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:4px 10px;background:transparent;border:1px solid transparent;border-radius:8px;color:var(--sv-text-secondary);font:inherit;font-size:13px;cursor:pointer}.batch-stats button.selected{background:var(--sv-accent-soft);color:var(--sv-accent-primary)}.batch-stats button:hover{background:var(--sv-surface-3)}.batch-stats strong{font-size:13px;font-weight:600;order:1}.batch-stats span{font-size:12px}.batch-explanation,.matching-explanation,.feature-details{font-size:12px;color:var(--sv-text-secondary);line-height:1.7}.batch-explanation summary,.matching-explanation summary,.feature-details summary{cursor:pointer;padding:6px 0}.count-explanation,.list-help,.refresh-note{font-size:12px;color:var(--sv-text-secondary);line-height:1.7;margin:8px 0}.refresh-note{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}.status-notice{background:var(--sv-semantic-warn-soft);color:var(--sv-semantic-warn);border-radius:8px;padding:8px 12px;font-size:12px;margin:12px 0;line-height:1.6}
+.batch-list-card{min-width:0;padding:16px 0 0;border-top:1px solid var(--sv-border-subtle)}.batch-list-card .section-heading{margin-bottom:12px}.batch-filter{display:flex;gap:8px 12px;flex-wrap:wrap;align-items:center;margin-bottom:16px;font-size:13px}.batch-filter label{display:flex;gap:8px;align-items:center}.batch-filter input,.batch-filter select{min-height:40px;padding:8px 12px;color:var(--sv-text-primary);background:var(--sv-surface-1);border:1px solid var(--sv-border-default);border-radius:8px;font:inherit;max-width:100%}.keyword-filter{flex:1;min-width:180px}.keyword-filter input{flex:1;width:auto;min-width:100px}.metadata-page :deep(.el-pagination){margin-top:16px;justify-content:flex-end;flex-wrap:wrap;gap:8px}.matching-explanation{margin-top:16px}.feature-details{padding-top:12px;margin-top:16px;border-top:1px solid var(--sv-border-subtle)}
+@media(max-width:768px){.metadata-page :deep(.el-button){min-height:44px}.batch-stats button,.batch-filter input,.batch-filter select,.source-scope select,.batch-explanation summary,.matching-explanation summary,.feature-details summary{min-height:44px}.batch-explanation summary,.matching-explanation summary,.feature-details summary{align-content:center}.metadata-settings .section-heading{align-items:flex-start}.metadata-settings .section-heading>div{display:block}.config-summary{margin-top:4px}}
+@media(max-width:600px){.batch-start>div{width:100%}.source-scope select{max-width:100%;min-width:0;flex:1}.batch-filter label{width:100%}.batch-filter select,.batch-filter input{min-width:0;flex:1}.batch-filter>button{margin-left:auto}.metadata-settings .section-heading>div{flex:1;min-width:0}.batch-control{padding-top:16px}.batch-stats{gap:4px}.batch-stats button{padding:4px 8px}.refresh-note{gap:4px}.metadata-page :deep(.el-pagination){justify-content:flex-start}}
 </style>

@@ -1,0 +1,22 @@
+# Audio NPU mapping; independent of Rockchip video MPP/RGA mapping.
+services:
+  singverse-compute:
+    devices:
+      - '${RKNPU_CARD_DEVICE:-/dev/dri/card0}:/dev/dri/card0'
+      - '${RKNPU_DEVICE:-/dev/dri/renderD129}:/dev/dri/renderD129'
+    group_add:
+      - '${RKNPU_CARD_GID:?Set the numeric NPU card group ID}'
+      - '${RKNPU_GID:?Set the numeric NPU render group ID}'
+    volumes:
+      - type: bind
+        source: '${RKNN_RUNTIME_LIBRARY:-/usr/lib/librknnrt.so}'
+        target: /usr/lib/librknnrt.so
+        read_only: true
+        bind: {create_host_path: false}
+      - /sys/firmware/devicetree/base:/run/singverse-hardware/device-tree:ro
+      - /sys/firmware/devicetree/base/compatible:/proc/device-tree/compatible:ro
+      - type: bind
+        source: '${RKNN_MODEL_PATH:?Set the existing converted model directory}'
+        target: /var/lib/singverse-models/uvr-mdxnet-9482-rknn
+        read_only: true
+        bind: {create_host_path: false}

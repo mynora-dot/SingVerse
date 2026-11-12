@@ -23,9 +23,9 @@ defineProps<{ label: string; steps: { title: string; description: string }[] }>(
 
 .task-guide li {
   display: flex;
-  gap: 14px;
+  gap: 16px;
   align-items: flex-start;
-  padding: 20px 22px;
+  padding: 20px 24px;
   min-width: 0;
 }
 
@@ -62,7 +62,7 @@ p {
 
   .task-guide li,
   .task-guide li:first-child {
-    padding: 10px 0;
+    padding: 12px 0;
     gap: 12px;
   }
 
@@ -77,7 +77,7 @@ p {
 
   p {
     margin-top: 0;
-    font-size: 11px;
+    font-size: 12px;
   }
 }
 </style>

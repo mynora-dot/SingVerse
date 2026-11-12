@@ -48,6 +48,7 @@ class TvUiFixtureActivity : ComponentActivity() {
             total = homeTotal
             homeAppearance = TvUiFixture.appearance()
             ensureInvitation()
+            run { loadHome() }
         }
         setContent { SingVerseTvTheme { TvScreen(app, focusMemory) } }
     }

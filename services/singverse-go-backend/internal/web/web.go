@@ -21,6 +21,9 @@ func Register(router *gin.Engine) {
 }
 
 func Serve(c *gin.Context, files fs.FS) {
+	// Keep the former static proxy policy when Go serves the embedded pages directly.
+	c.Header("Referrer-Policy", "same-origin")
+	c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
 	p := c.Request.URL.Path
 	if p == "/api" || strings.HasPrefix(p, "/api/") {
 		httpx.Error(c, http.StatusNotFound, "about:blank", "请求的接口不存在")

@@ -142,7 +142,7 @@ def main():
     # Copy the existing shared credential locally without printing it or changing it.
     with tempfile.TemporaryDirectory(dir=RUNTIME) as directory:
         token = Path(directory) / 'token'
-        container = subprocess.check_output(['docker', 'compose', '--project-directory', str(ROOT), '-f', str(ROOT/'infra/docker/compose/compose.app.yaml'), 'ps', '-q', 'singverse-go-backend'], text=True).strip()
+        container = subprocess.check_output(['docker', 'compose', '--project-directory', str(ROOT), '-f', str(ROOT/'infra/docker/compose/compose.yaml'), 'ps', '-q', 'singverse-go-backend'], text=True).strip()
         if not container:
             raise SystemExit('Start the Go app before copying its compute credential')
         subprocess.run(['docker', 'cp', container+':/run/singverse-compute/token', str(token)], check=True, stdout=subprocess.DEVNULL)

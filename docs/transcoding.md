@@ -16,7 +16,7 @@ Go 保留业务授权、播放决策编排、离线任务队列和唯一业务�
 
 已知可 seek 的 EVENT HLS 时间线内，手机与 TV 直接按 `原时间轴目标 - offset` 跳转，避免每次操作都重新探测和启动转码；超出当前已发布时间线才重新协商。手机录唱倒数结束后保留已合并的独立伴奏源，不能用只含主媒体的 MediaItem 重建而丢失伴奏。
 
-WebDAV 原始媒体由 Go 代理读取，要求 GET 能直接返回数据，不跟随重定向。206 的数值范围及正文长度必须与请求一致，压缩正文或忽略非零/后缀 Range 的 200 会明确失败，避免播放器下载并丢弃整段前缀造成长时间等待；零起点 200 与 HEAD 忽略 Range 仍允许。Nginx 对 TV 原件、双方生成伴奏、计算回源、HLS 和离线版本关闭响应缓冲；`make nginx-media-check` 使用隔离服务器验证阻塞剩余正文时首段仍可到达。
+WebDAV 原始媒体由 Go 代理读取，要求 GET 能直接返回数据，不跟随重定向。206 的数值范围及正文长度必须与请求一致，压缩正文或忽略非零/后缀 Range 的 200 会明确失败，避免播放器下载并丢弃整段前缀造成长时间等待；零起点 200 与 HEAD 忽略 Range 仍允许。Go 直接流式提供 TV 原件、伴奏、计算回源、HLS 和离线版本；使用外部反向代理时需关闭媒体缓冲并验证 Range、HEAD 及首段传输。
 
 ## 编解码和硬件
 
@@ -95,11 +95,11 @@ Linux 可按设备选择一个覆盖文件：
 
 ```sh
 # Intel；AMD 设置 COMPUTE_HARDWARE_BACKEND=vaapi
-COMPUTE_RENDER_GID=<render-group-id> docker compose --project-directory . -f infra/docker/compose/compose.app.yaml -f infra/docker/compose/compose.compute.dri.yaml config --quiet
+COMPUTE_RENDER_GID=<render-group-id> docker compose --project-directory . -f infra/docker/compose/compose.yaml -f infra/docker/compose/compose.dri.yaml config --quiet
 # NVIDIA：宿主预先配置 NVIDIA Container Toolkit
- docker compose --project-directory . -f infra/docker/compose/compose.app.yaml -f infra/docker/compose/compose.compute.nvidia.yaml config --quiet
+ docker compose --project-directory . -f infra/docker/compose/compose.yaml -f infra/docker/compose/compose.nvidia.yaml config --quiet
 # Rockchip：需要匹配的 BSP、MPP/RGA 和实际存在的设备节点
-COMPUTE_RENDER_GID=<device-group-id> docker compose --project-directory . -f infra/docker/compose/compose.app.yaml -f infra/docker/compose/compose.compute.rockchip.yaml config --quiet
+COMPUTE_RENDER_GID=<device-group-id> docker compose --project-directory . -f infra/docker/compose/compose.yaml -f infra/docker/compose/compose.rockchip.yaml config --quiet
 ```
 
 上述先验证配置；确认实际设备后将 `config --quiet` 换为 `up -d --build`。独立部署将主文件换成 `infra/docker/compose/compose.compute.yaml` ，无需媒体目录参数。不使用 privileged；只传递需要的设备和组。macOS VideoToolbox、Windows AMF/QSV/NVENC 使用原生节点，不通过 Docker Desktop 声称拥有原生 GPU 支持。

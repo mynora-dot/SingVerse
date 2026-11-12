@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { mount } from '@vue/test-utils'
-import { afterEach, beforeEach, expect, it } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { DEFAULT_THEME, THEMES, initTheme, setTheme, useTheme } from '../src/admin/app/composables/use-theme'
 import ThemeSwitcher from '../src/admin/shared/ui/ThemeSwitcher.vue'
 
@@ -13,74 +13,114 @@ beforeEach(() => {
   localStorage.clear()
 })
 afterEach(() => {
+  vi.restoreAllMocks()
   localStorage.clear()
   delete document.documentElement.dataset.theme
 })
 
-it('默认靛蓝电波，六套主题元数据完整且明暗分类正确', () => {
-  expect(DEFAULT_THEME).toBe('indigo')
-  expect(THEMES.map(theme => theme.id)).toEqual(['indigo', 'pine', 'vermilion', 'celadon', 'midnight', 'graphite'])
-  for (const theme of THEMES) {
-    expect(theme.label).toBeTruthy()
-    expect(theme.en).toBeTruthy()
-    expect(theme.description).toBeTruthy()
-    expect(theme.swatches).toHaveLength(3)
-    expect(['light', 'dark']).toContain(theme.scheme)
-  }
-  expect(THEMES.filter(theme => theme.scheme === 'dark').map(theme => theme.id)).toEqual(['midnight', 'graphite'])
+it('仅提供浅色与深色，默认浅色', () => {
+  expect(DEFAULT_THEME).toBe('light')
+  expect(THEMES.map(theme => [theme.id, theme.label, theme.scheme])).toEqual([
+    ['light', '浅色', 'light'], ['dark', '深色', 'dark'],
+  ])
 })
 
-it('initTheme 无存储时应用默认主题', () => {
+it('无存储时同步应用默认浅色', () => {
   initTheme()
-  expect(document.documentElement.dataset.theme).toBe('indigo')
-  expect(useTheme().currentTheme.value).toBe('indigo')
+  expect(document.documentElement.dataset.theme).toBe('light')
+  expect(useTheme().currentTheme.value).toBe('light')
 })
 
-it('initTheme 读取本地偏好并应用', () => {
-  localStorage.setItem(STORAGE_KEY, 'graphite')
+it.each(['light', 'dark'])('读取并保留 %s 偏好，重新初始化后恢复', theme => {
+  setTheme(theme)
+  delete document.documentElement.dataset.theme
+  useTheme().currentTheme.value = DEFAULT_THEME
   initTheme()
-  expect(document.documentElement.dataset.theme).toBe('graphite')
-  expect(useTheme().currentTheme.value).toBe('graphite')
+  expect(document.documentElement.dataset.theme).toBe(theme)
+  expect(useTheme().currentTheme.value).toBe(theme)
+  expect(localStorage.getItem(STORAGE_KEY)).toBe(theme)
 })
 
-it('initTheme 非法存储值回退默认', () => {
-  localStorage.setItem(STORAGE_KEY, 'not-a-theme')
+it.each([
+  ['indigo', 'light'], ['pine', 'light'], ['vermilion', 'light'], ['celadon', 'light'],
+  ['midnight', 'dark'], ['graphite', 'dark'],
+])('将旧偏好 %s 迁移并持久化为 %s', (legacy, theme) => {
+  localStorage.setItem(STORAGE_KEY, legacy)
   initTheme()
-  expect(document.documentElement.dataset.theme).toBe('indigo')
-  expect(useTheme().currentTheme.value).toBe('indigo')
+  expect(document.documentElement.dataset.theme).toBe(theme)
+  expect(useTheme().currentTheme.value).toBe(theme)
+  expect(localStorage.getItem(STORAGE_KEY)).toBe(theme)
+  initTheme()
+  expect(document.documentElement.dataset.theme).toBe(theme)
 })
 
-it('setTheme 同步 dataset、响应式状态与本地存储', () => {
-  setTheme('midnight')
-  expect(document.documentElement.dataset.theme).toBe('midnight')
-  expect(useTheme().currentTheme.value).toBe('midnight')
-  expect(localStorage.getItem(STORAGE_KEY)).toBe('midnight')
+it.each(['not-a-theme', '', 'toString', '__proto__'])('非法存储值 %s 回退浅色并规范化存储', stored => {
+  localStorage.setItem(STORAGE_KEY, stored)
+  initTheme()
+  expect(document.documentElement.dataset.theme).toBe('light')
+  expect(useTheme().currentTheme.value).toBe('light')
+  expect(localStorage.getItem(STORAGE_KEY)).toBe('light')
 })
 
-it('setTheme 非法值回退默认并持久化合法值', () => {
+it('切换同步更新 dataset、响应式状态与本地存储', () => {
+  setTheme('dark')
+  expect(document.documentElement.dataset.theme).toBe('dark')
+  expect(useTheme().currentTheme.value).toBe('dark')
+  expect(localStorage.getItem(STORAGE_KEY)).toBe('dark')
+})
+
+it('非法切换值回退默认并持久化合法值', () => {
   setTheme('bogus')
-  expect(document.documentElement.dataset.theme).toBe('indigo')
-  expect(localStorage.getItem(STORAGE_KEY)).toBe('indigo')
+  expect(document.documentElement.dataset.theme).toBe('light')
+  expect(localStorage.getItem(STORAGE_KEY)).toBe('light')
 })
 
-it('顶栏切换器渲染触发按钮并标注无障碍名称', () => {
-  const wrapper = mount(ThemeSwitcher)
-  expect(wrapper.get('.theme-trigger').attributes('aria-label')).toBe('外观主题')
-  wrapper.unmount()
+it('读取存储失败时正常应用浅色', () => {
+  setTheme('dark')
+  vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('storage unavailable') })
+  expect(initTheme).not.toThrow()
+  expect(document.documentElement.dataset.theme).toBe('light')
+  expect(useTheme().currentTheme.value).toBe('light')
 })
 
-it('移动端面板列出六套主题，点击即切换、持久化并更新选中态', async () => {
+it('迁移与切换遇到存储写入失败时仍能应用主题', () => {
+  localStorage.setItem(STORAGE_KEY, 'graphite')
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('storage unavailable') })
+  expect(initTheme).not.toThrow()
+  expect(document.documentElement.dataset.theme).toBe('dark')
+  expect(() => setTheme('light')).not.toThrow()
+  expect(document.documentElement.dataset.theme).toBe('light')
+  expect(useTheme().currentTheme.value).toBe('light')
+})
+
+it('顶栏切换器有无障碍名称，菜单仅列出明暗两个选项', async () => {
+  const wrapper = mount(ThemeSwitcher, { attachTo: document.body })
+  try {
+    expect(wrapper.get('.theme-trigger').attributes('aria-label')).toBe('外观主题')
+    await wrapper.get('.theme-trigger').trigger('click')
+    await flushPromises()
+    const options = Array.from(document.querySelectorAll<HTMLElement>('.theme-option'))
+    expect(options).toHaveLength(2)
+    expect(options.map(option => option.querySelector('strong')?.textContent)).toEqual(['浅色', '深色'])
+    options[1]!.click()
+    await flushPromises()
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('dark')
+  } finally { wrapper.unmount() }
+})
+
+it('移动面板列出两个主题，点击即切换并更新选中态', async () => {
   const wrapper = mount(ThemeSwitcher, { props: { variant: 'sheet' } })
-  const cards = wrapper.findAll('.theme-card')
-  expect(cards).toHaveLength(6)
-  expect(cards[0].classes()).toContain('is-active')
-  expect(cards[0].attributes('aria-pressed')).toBe('true')
-  await cards[4].trigger('click')
-  expect(document.documentElement.dataset.theme).toBe('midnight')
-  expect(localStorage.getItem(STORAGE_KEY)).toBe('midnight')
-  const updated = wrapper.findAll('.theme-card')
-  expect(updated[4].classes()).toContain('is-active')
-  expect(updated[4].attributes('aria-pressed')).toBe('true')
-  expect(updated[0].attributes('aria-pressed')).toBe('false')
-  wrapper.unmount()
+  try {
+    const cards = wrapper.findAll('.theme-card')
+    expect(cards).toHaveLength(2)
+    expect(cards[0].classes()).toContain('is-active')
+    expect(cards[0].attributes('aria-pressed')).toBe('true')
+    await cards[1].trigger('click')
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('dark')
+    expect(cards[1].classes()).toContain('is-active')
+    expect(cards[1].attributes('aria-pressed')).toBe('true')
+    expect(cards[0].attributes('aria-pressed')).toBe('false')
+  } finally { wrapper.unmount() }
 })

@@ -141,6 +141,42 @@ describe('歌曲管理集中展示扫描数据及详情', () => {
     expect(songs.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'REVIEW' }))
   })
 
+  it('更多操作按需展开且高级资料保留歌曲搜索、来源和页码', async () => {
+    await router.replace('/library/songs?lens=songs&search=晴天&sourceId=source-1&page=2'); await flushPromises()
+    const before = vi.mocked(songs.list).mock.calls.length
+    const toggle = wrapper.get('button[aria-label="歌曲更多操作"]')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(wrapper.find('.page-actions').text()).not.toContain('整理元数据')
+    await toggle.trigger('click'); await flushPromises()
+    await vi.waitFor(() => expect(toggle.attributes('aria-expanded')).toBe('true'))
+    expect(songs.list).toHaveBeenCalledTimes(before)
+    const advanced = [...document.querySelectorAll('.song-more-actions button')].find(el => el.textContent?.includes('歌曲资料')) as HTMLButtonElement
+    expect(advanced).toBeDefined()
+    advanced.click(); await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({ lens: 'formal', search: '晴天', sourceId: 'source-1', page: '2' })
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+  })
+
+  it('手机本页统计可从更多展开，保留当前筛选和本页选择', async () => {
+    await router.replace('/library/songs?lens=songs&status=REVIEW'); await flushPromises()
+    const batch = wrapper.findAll('button').find(button => button.text().trim() === '批量操作')!
+    await batch.trigger('click')
+    await wrapper.get('input[aria-label="选择 晴天"]').setValue(true)
+    const before = vi.mocked(songs.list).mock.calls.length
+    const more = wrapper.get('button[aria-label="歌曲更多操作"]')
+    await more.trigger('click')
+    await vi.waitFor(() => expect(more.attributes('aria-expanded')).toBe('true'))
+    const toggle = document.querySelector<HTMLButtonElement>('.mobile-summary-action')!
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(toggle.getAttribute('aria-controls')).toBe(wrapper.get('.page-summary').attributes('id'))
+    toggle.click(); await flushPromises()
+    expect(wrapper.get('.page-summary').classes()).toContain('expanded')
+    expect(wrapper.get('.page-summary').text()).toContain('仅本页')
+    expect(wrapper.get('.batch-count').text()).toContain('已选 1 首')
+    expect(songs.list).toHaveBeenCalledTimes(before)
+    expect(router.currentRoute.value.query.status).toBe('REVIEW')
+  })
+
   it('手机筛选展开保留查询状态，切换面板不会请求或改变选择范围', async () => {
     await router.replace('/library/songs?sourceId=source-1&status=REVIEW&tagIds=tag-1'); await flushPromises()
     const before = vi.mocked(songs.list).mock.calls.length

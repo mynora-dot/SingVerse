@@ -128,7 +128,7 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
   flex: 0 0 auto;
   position: relative;
   margin: 0;
-  padding: 16px 52px 14px 20px;
+  padding: 16px 52px 16px 20px;
   background: var(--sv-surface-2);
   border-bottom: 1px solid var(--sv-border-subtle);
 }
@@ -162,7 +162,7 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
 }
 
 .context-file {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--sv-text-secondary);
 }
 
@@ -173,14 +173,14 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
 }
 
 .context-file .file-path {
-  margin-top: 5px;
+  margin-top: 4px;
 }
 
 .review-body {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   min-height: 0;
   min-width: 0;
 }
@@ -198,9 +198,9 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
 .song-context {
   display: grid;
   grid-template-columns: 1.15fr 1fr;
-  gap: 18px;
-  padding: 10px 12px;
-  border-radius: 9px;
+  gap: 20px;
+  padding: 12px 12px;
+  border-radius: 8px;
   background: linear-gradient(120deg, var(--sv-accent-soft), var(--sv-surface-3));
   max-height: 24vh;
   overflow: auto;
@@ -208,7 +208,7 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
 
 .file-context {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -227,34 +227,34 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
 
 .section-caption {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   margin-bottom: 4px;
 }
 
 .song-context h3 {
   font-size: 14px;
-  margin: 0 0 3px;
+  margin: 0 0 4px;
 }
 
 .song-context p {
   color: var(--sv-text-secondary);
-  font-size: 11px;
-  margin: 3px 0;
+  font-size: 12px;
+  margin: 4px 0;
 }
 
 .file-badges {
   display: flex;
-  gap: 5px;
+  gap: 4px;
   flex-wrap: wrap;
   margin: 4px 0;
 }
 
 .file-badges span {
   background: var(--sv-accent-soft);
-  padding: 1px 5px;
+  padding: 1px 4px;
   border-radius: 4px;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--sv-text-secondary);
 }
 
@@ -265,8 +265,8 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
 .existing-context dl {
   display: grid;
   grid-template-columns: 52px minmax(0, 1fr) 52px minmax(0, 1fr);
-  gap: 6px;
-  font-size: 11px;
+  gap: 8px;
+  font-size: 12px;
   margin: 0;
 }
 
@@ -281,14 +281,14 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
 
 .stale-note {
   display: block;
-  margin-top: 6px;
+  margin-top: 8px;
   color: var(--el-color-warning);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .workspace-search {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
   min-width: 0;
 }
@@ -301,7 +301,7 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
 .platform-select {
   display: flex;
   flex-direction: column;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--sv-text-secondary);
   max-width: 46%;
 }
@@ -309,7 +309,7 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
 .platform-select>div {
   display: flex;
   flex-wrap: wrap;
-  column-gap: 10px;
+  column-gap: 12px;
 }
 
 .platform-select :deep(.el-checkbox) {
@@ -318,24 +318,24 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
 }
 
 .platform-select :deep(.el-checkbox__label) {
-  font-size: 11px;
+  font-size: 12px;
   padding-left: 4px;
 }
 
 .platform-select small {
-  font-size: 10px;
+  font-size: 12px;
 }
 
-.cover-load-notice { font-size: 11px; color: var(--sv-text-secondary); margin: 0; }
+.cover-load-notice { font-size: 12px; color: var(--sv-text-secondary); margin: 0; }
 
 .platform-notice {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
-  font-size: 11px;
-  padding: 6px 10px;
+  font-size: 12px;
+  padding: 8px 12px;
   background: var(--sv-surface-3);
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .platform-notice a {
@@ -365,7 +365,7 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   padding: 4px 0 8px;
 }
 
@@ -376,18 +376,18 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
 
 .pane-title>span,
 .comparison-title span {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--sv-text-secondary);
 }
 
 .pane-title>div {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
 .pane-title .el-button {
-  font-size: 11px;
+  font-size: 12px;
   margin: 0;
 }
 
@@ -398,24 +398,24 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  padding: 2px 4px 10px 2px;
+  padding: 2px 4px 12px 2px;
 }
 
 .candidate-scroll {
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 8px;
 }
 
 .review-candidate {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 12px 10px;
+  gap: 8px;
+  padding: 12px 12px;
   border: 1px solid var(--sv-border-subtle);
   background: var(--sv-surface-2);
-  border-radius: 9px;
+  border-radius: 8px;
   width: 100%;
   text-align: left;
   color: var(--sv-text-primary);
@@ -442,7 +442,7 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
   width: 58px;
   height: 58px;
   object-fit: cover;
-  border-radius: 7px;
+  border-radius: 8px;
   flex-shrink: 0;
 }
 
@@ -462,7 +462,7 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
 
 .candidate-info>span,
 .candidate-info small {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--sv-text-secondary);
 }
 
@@ -482,17 +482,17 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
 
 .candidate-score small {
   display: block;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--sv-text-tertiary);
   margin-top: 4px;
 }
 
 .selected-preview {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   padding: 12px;
   border: 1px solid var(--sv-border-subtle);
-  border-radius: 9px;
+  border-radius: 8px;
   align-items: flex-start;
   margin: 0 0 12px;
 }
@@ -512,13 +512,13 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
 
 .preview-copy h3 {
   font-size: 15px;
-  margin: 0 0 5px;
+  margin: 0 0 4px;
 }
 
 .preview-copy p {
-  margin: 3px 0;
+  margin: 4px 0;
   color: var(--sv-text-secondary);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .preview-score {
@@ -530,26 +530,26 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
 .preview-score small {
   display: block;
   color: var(--sv-text-tertiary);
-  font-size: 10px;
+  font-size: 12px;
   text-align: right;
 }
 
 .selection-hint,
 .overwrite-note,
 .workspace-hint {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--sv-text-secondary);
   line-height: 1.7;
   margin: 0 0 8px;
 }
 
 .overwrite-note {
-  margin: 10px 0 2px;
+  margin: 12px 0 2px;
 }
 
 .comparison-title {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
   margin: 8px 0;
   font-size: 12px;
@@ -565,9 +565,9 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
   align-items: center;
   justify-content: safe center;
   border: 1px solid var(--sv-border-subtle);
-  border-radius: 9px;
-  padding: 14px;
-  gap: 10px;
+  border-radius: 8px;
+  padding: 16px;
+  gap: 12px;
 }
 
 .workspace-state h3 {
@@ -612,7 +612,7 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
   margin: 0;
   text-align: left;
   color: var(--sv-text-secondary);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.7;
   max-width: 65%;
 }
@@ -624,8 +624,8 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
 .upload-note {
   display: block;
   color: var(--el-color-warning);
-  margin-top: 5px;
-  font-size: 11px;
+  margin-top: 4px;
+  font-size: 12px;
 }
 
 :global(.single-scrape-success.el-dialog) {
@@ -641,7 +641,7 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
   width: 100%;
   max-width: 700px;
   margin: 0 auto;
-  padding: 10px 6px;
+  padding: 12px 8px;
   text-align: center;
 }
 
@@ -653,13 +653,13 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
 
 .review-success h2 {
   font-size: 17px;
-  margin: 10px;
+  margin: 12px;
 }
 
 .review-success p {
   font-size: 12px;
   color: var(--sv-text-secondary);
-  margin: 10px 0;
+  margin: 12px 0;
 }
 
 .review-success table {
@@ -682,7 +682,7 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
   width: 64px;
   height: 64px;
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: 8px;
   margin-bottom: 4px;
 }
 
@@ -788,7 +788,7 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
 
   .workspace-footer {
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 8px;
   }
 
   .workspace-footer>div {
@@ -803,7 +803,7 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
 
   :global(.single-scrape-dialog.el-dialog > .el-dialog__body),
   :global(.single-scrape-dialog.el-dialog > .el-dialog__footer) {
-    padding: 10px 12px;
+    padding: 12px 12px;
   }
 
   .existing-context dl {
@@ -815,8 +815,8 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
   }
 
   .review-candidate {
-    padding: 10px 8px;
-    gap: 7px;
+    padding: 12px 8px;
+    gap: 8px;
   }
 
   .review-candidate>.metadata-cover {
@@ -831,6 +831,14 @@ async function apply() { resultCoverFailed.value = false; await state.apply(prop
 
   .preview-score {
     font-size: 17px;
+  }
+}
+
+@media(max-width: 768px), (pointer: coarse) {
+  .context-file summary,
+  .existing-context summary {
+    min-height: 44px;
+    padding: 12px 0;
   }
 }
 </style>

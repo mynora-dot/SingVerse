@@ -79,7 +79,7 @@ cd services/singverse-compute
 
 ## 管理端配置与独立部署
 
-“系统设置 → 性能节点配置”支持 AUTO/MANUAL/DISABLED。同套 `infra/docker/compose/compose.app.yaml` 通过已知服务名和共享凭据自动识别，无需填写。独立节点可由 Go 通过受限候选私网地址进行 HTTP 单播发现和配对，不依赖 Docker bridge 难以转发的广播或 mDNS。`GET /internal/v1/status` 使用 Bearer 认证返回身份、API 版本和实际能力；健康页可用不代表认证或媒体能力可用。
+“系统设置 → 性能节点配置”支持 AUTO/MANUAL/DISABLED。同套 `infra/docker/compose/compose.yaml` 通过已知服务名和共享凭据自动识别，无需填写。独立节点可由 Go 通过受限候选私网地址进行 HTTP 单播发现和配对，不依赖 Docker bridge 难以转发的广播或 mDNS。`GET /internal/v1/status` 使用 Bearer 认证返回身份、API 版本和实际能力；健康页可用不代表认证或媒体能力可用。
 
 独立部署示例（在目标设备的仓库根执行，媒体原件只读）：
 
@@ -160,7 +160,7 @@ make compute-fast-audio-setup
 services/singverse-compute/.venv/bin/python scripts/macos-compute.py restart
 ```
 
-复用固定 `requirements-audio.lock` 中的 Torch 2.5.1 / NumPy 1.26.4，不引入 TensorFlow 或在线推理服务；安装此目标只下载分类权重，不下载 Demucs 分离权重。现有音频运行环境已满足时，也可仅在“性能节点配置 → 伴奏模型”下载快速人声分类模型。PANNs 权重独立存放在 `COMPUTE_AUDIO_MODEL_REPO` 同级 `panns-cnn6/Cnn6_mAP=0.343.pth`，脚本默认 `.tools/panns-cnn6`；自定义目录使用 `scripts/setup-fast-audio-model.py --directory <绝对路径>`。缺少路径时需先配置模型目录；不会在扫描时自动联网安装。Docker 使用已有固定音频运行库镜像（如 `infra/docker/compose/compose.audio-cpu.yaml`），随后在网页下载快速分类模型；快速识别不要求下载 Demucs 权重或完成分离设备试跑。原生 setup 命令不能替换正在运行的容器环境。
+复用固定 `requirements-audio.lock` 中的 Torch 2.5.1 / NumPy 1.26.4，不引入 TensorFlow 或在线推理服务；安装此目标只下载分类权重，不下载 Demucs 分离权重。现有音频运行环境已满足时，也可仅在“性能节点配置 → 伴奏模型”下载快速人声分类模型。PANNs 权重独立存放在 `COMPUTE_AUDIO_MODEL_REPO` 同级 `panns-cnn6/Cnn6_mAP=0.343.pth`，脚本默认 `.tools/panns-cnn6`；自定义目录使用 `scripts/setup-fast-audio-model.py --directory <绝对路径>`。缺少路径时需先配置模型目录；不会在扫描时自动联网安装。Docker 使用已有固定音频运行库镜像（如设置 `COMPUTE_RUNTIME=cpu`），随后在网页下载快速分类模型；快速识别不要求下载 Demucs 权重或完成分离设备试跑。原生 setup 命令不能替换正在运行的容器环境。
 
 作者发行版 Zenodo 3987831，23,698,321 字节，SHA-256 `8a17541944f2623a2a0164e072ac2f915dcedca99968083cc44bfbc7eb682275`；权重 CC BY 4.0，归属 Qiuqiang Kong 等，PANNs: Large-Scale Pretrained Audio Neural Networks for Audio Pattern Recognition。网络结构适配固定修订 `d2f4b8c18eab44737fcc0de1248ae21eb43f6aa4` 的 Cnn6；MIT 归属见 `singverse_compute/infrastructure/PANNS_LICENSE.txt`。加载前检查固定体积及完整摘要，使用 `weights_only=True`，不执行上传模型代码。离线导入接受只含此 PTH 文件的根目录 ZIP，上限 32MiB；保留下载/导入/取消及原子安装规则。
 
@@ -191,11 +191,11 @@ SINGVERSE_TEST_FAST_MODEL_REPO="$PWD/.tools/demucs-htdemucs" \
 - 音频任务一次一个，CPU 线程默认按有效核心与配额自动选择（最多 8，RK3566 初值最多 2）、进程 RSS 上限 4 GiB（`COMPUTE_AUDIO_THREADS`、`COMPUTE_AUDIO_MEMORY_BYTES`），共享磁盘预算及最小空余限制，超时 2 小时。实时播放先终止音频任务，再重试获取执行容量；音频任务不能进入实时预留期间。compute被抢占任务显示 CANCELLED / REALTIME_PREEMPTED，Go记录为失败，批量页面可显式重试；默认开启的统一 CPU 自动降级仅对明确的加速后端故障重试一次，记录实际设备及原因；关闭后不切换。无效媒体、磁盘不足、取消和进程内存预算错误不重试。
 - Go 校验下载的产物后保存至自己的衍生目录，确认成功后释放 compute 副本；未收到确认的 compute 音频在后续任务回收时保留最长一天。不要把衍生目录放入原始媒体目录。
 
-Compose默认不安装音频运行环境或下载权重，但已提供持久卷 `singverse-audio-models`，默认模型目录 `/var/lib/singverse-models/htdemucs`。CPU部署使用 `infra/docker/compose/compose.audio-cpu.yaml`，叠加该覆盖文件后重建并重新创建 compute（覆盖文件已选择 CPU target 和默认 6g 容器上限）；随后从网页下载模型和试跑。原有只读模型挂载可通过override继续使用。默认2g容器不满足默认4GiB音频预算，不会因识别到CPU就启用任务。Go的 `AUDIO_DERIVED_PATH` 为持久卷 `/data/audio-roles`；原媒体卷只读。
+Compose 默认不启用计算容器或下载模型；启用后使用持久卷保存模型和设置。CPU 分离选择 `COMPUTE_RUNTIME=cpu`，按源码或镜像路线重建/拉取并启动，再从网页下载模型和试跑。容器默认 6GiB、音频进程默认 4GiB，原始媒体保持只读。
 
 ### Mac 原生伴奏节点
 
-现有 Docker 应用按根 README 的 `infra/docker/compose/compose.compute.macos.yaml` 连接本机节点；音频和 VideoToolbox 共用同一个原生进程。安装及重新加载：
+现有 Docker 应用通过 `COMPUTE_NODE_URL=http://host.docker.internal:18090` 连接本机节点，回调设置为原生节点可访问的业务地址；音频和 VideoToolbox 共用同一个原生进程。安装及重新加载：
 
 ```sh
 make compute-audio-setup
@@ -236,23 +236,7 @@ SINGVERSE_TEST_SEPARATION_APP_BINARY="$PWD/services/singverse-go-backend/bin/sin
 
 ### Linux GPU容器与设备验收
 
-- NVIDIA 3070/A3000：宿主安装兼容驱动和NVIDIA Container Toolkit，然后使用 `docker compose --project-directory . -f infra/docker/compose/compose.app.yaml -f infra/docker/compose/compose.audio-cuda.yaml build singverse-compute`，再用同样的两个配置文件启动。override安装固定CUDA运行环境并申请一张GPU，不安装宿主驱动。
-- 兼容ROCm的AMD GPU：先配置宿主驱动、`/dev/kfd`、`/dev/dri`和实际render/video组数字ID（`SINGVERSE_RENDER_GID` / `SINGVERSE_VIDEO_GID`），使用 `infra/docker/compose/compose.audio-rocm.yaml` 代替CUDA override。8845HS/255HS按节点实际GPU标识检测，不承诺集显支持，不设置伪造GPU标识。
-- Intel 8400T/N100：提供CPU路径；QSV/VA-API是编解码功能。新增独立OpenVINO适配器与Intel官方转换模型，但这两种设备仍需分别试跑及效果验收；PyTorch XPU路径明确为 `MODEL_UNSUPPORTED`。
-- RK3566：Linux ARM64 CPU路径需实际依赖安装成功和内存充足；RKNN实验适配支持本地转换模型，须安装专用运行时并完成板端试跑；见下方部署说明。不能凭板卡名称宣布NPU可用。
-- Apple M2：macOS原生CPU/MPS，Docker内不开放MPS。关闭PyTorch隐式CPU算子回退；Demucs自身的频谱变换明确在CPU执行，网络使用MPS，页面及任务标记 `mps+cpu-stft`。固定运行时的超长一维卷积通过保留重叠边界的 GPU 分块处理；其他算子不支持时仍明确失败，可选择通过试跑的CPU。
-
-CPU/CUDA/ROCm/MPS的执行选择及试跑门禁已接入；M2 原先的“Output channels > 65536”限制已通过数学等价的卷积分块解决，本机 2GiB 预算下资格试跑及 8／60 秒分离通过。Intel GPU验收、RKNN正式接入与主观音质验收尚未完成，不把硬件识别或待适配状态算作加速实现。各型号的长曲、音质、内存和速度仍须逐台验证。运行环境、内核/驱动、设备或模型版本改变后旧试跑凭据失效；可用后端才进入自动选择，默认顺序CUDA → ROCm → OpenVINO → RKNN → MPS → CPU。每个任务保存实际后端与模型版本；检查RAM、磁盘及CUDA/ROCm可用显存（至少2GiB），仍可能因模型/歌曲峰值资源不足失败。
-
-实际模型冒烟测试（只验证执行链路，合成音不是音质基准）：
-
-```sh
-SINGVERSE_TEST_AUDIO_MODEL_REPO="$PWD/.tools/demucs-htdemucs" \
-  services/singverse-compute/.venv/bin/python -m unittest discover \
-  -s services/singverse-compute/tests/integration -p test_audio_model.py -v
-```
-
-原生 CI 默认不下载模型；手动触发 `singverse-compute-native` 并启用 `audio_model_smoke` 才执行真实模型测试。其他架构与 NAS 内存/耗时仍需分别验收。
+容器仅有源码构建与预构建镜像两条路线，运行库与设备映射分开配置，见[硬件与计算节点](../../infra/docker/GPU.md)。模型、驱动及真实歌曲资格需在目标主机分别验收。
 
 ## 分设备计算镜像（CPU／CUDA／ROCm／OpenVINO）
 
@@ -272,7 +256,7 @@ CPU 镜像由 Docker 清单选择 amd64／arm64，GPU 后端需要显式选择�
 
 `rocm-native` 是独立配置，SDK 包版本为 10.0.0，实际 `torch.version.hip` 为 7.15.26333。锁文件直接固定官方 AMD 仓库的已测试文件和实测完整 SHA256；AMD 未提供这些文件的完整摘要，不能把本地计算的摘要称为厂商校验和。共享依赖从 `requirements-audio-dependencies.lock` 读取，旧配置仍固定 SymPy 1.13.1，原生配置按 Torch 要求单独固定 1.13.3。
 
-显式构建：`VERSION="$(cat VERSION)" docker buildx bake -f infra/docker/build/docker-bake.hcl rocm-native`。应用或独立 compute 的基础 Compose 后依次叠加 `infra/docker/compose/compose.audio-rocm.yaml`、`infra/docker/compose/compose.audio-rocm-native.yaml`，设置实际 render/video 组 ID，选择对应 `COMPUTE_IMAGE`。ROCm 配置包含无限 memlock 和 256MiB 共享内存，仍受容器内存和音频进程预算限制。数字 UID 使用可写的 `/tmp` HOME 和明确用户名，避免编译缓存写入 `/` 或依赖不存在的 passwd 条目。
+显式构建使用 `make compute-images COMPUTE_RUNTIME=rocm-native`，随后按统一硬件指南追加 `compose.rocm.yaml`，设置实际 render/video 组 ID。该运行库使用可写 `/tmp` HOME 和明确用户名，兼容性及资源门槛仍需真机验证。
 
 该配置通过专用适配器读取既有官方权重与 44.1kHz 双声道 PCM，保持模型原始 7.8 秒分段、0.25 重叠和 shifts=0。每次工作进程从同一已核验大小/SHA256的文件描述符加载官方 checkpoint，局部使用 `weights_only=False`，不全局修改 Torch 加载行为；音频读写使用 SoundFile，避免新 torchaudio 对额外 TorchCodec 的要求。实际模型参数和每次 forward 的输入/输出必须留在指定设备；GPU 不可用或架构不符立即失败，不在适配器内隐式转 CPU。CPU 仅接受显式选择或上层已有的、带结果标记的降级流程。
 
@@ -298,62 +282,9 @@ ROCm 6.2 的现有轮子缺少这台 gfx1103 所需的原生算子库，不能�
 
 ### 本地构建与预构建镜像
 
-RTX 3070／A3000 独立节点使用根目录 `infra/docker/compose/compose.compute.nvidia.yaml`，参数直接写在 YAML，无需 `.env`。节点默认仅绑定 `127.0.0.1:18090`；跨主机部署时改为该 GPU 主机实际的受限局域网地址，并限制入站仅业务节点可访问。宿主安装兼容 NVIDIA 驱动与 NVIDIA Container Toolkit；无需媒体目录或 Go 地址配置。
+Dockerfile 和 OpenCL 安装资源统一位于 `infra/docker/build/`。`make compute-images COMPUTE_RUNTIME=cpu` 构建单个运行库；独立节点源码路线使用 compute 基础配置加 compute-build 覆盖，镜像路线只用基础配置，详见[计算节点部署](../../infra/docker/GPU.md)。
 
-```sh
-docker compose --project-directory . -f infra/docker/compose/compose.compute.nvidia.yaml up -d --build
-docker compose --project-directory . -f infra/docker/compose/compose.compute.nvidia.yaml ps
-```
-
-此命令需在完整仓库根目录执行，构建 CUDA 镜像，不自动下载模型。首次启动自动生成并持久保存认证凭据；在管理端配置独立节点地址及凭据，再下载／导入模型并进行 CUDA 试跑。视频 NVENC 与音频 CUDA 分别验证；各设备需重新试跑及完整歌曲验收。停止使用 `docker compose --project-directory . -f infra/docker/compose/compose.compute.nvidia.yaml down`，保留命名卷。该文件与原 `infra/docker/compose/compose.compute.yaml` 使用相同项目名及卷，作为替代入口使用，不同时启动两份独立节点。
-
-从源码在实际节点构建，例如 Intel GPU 独立节点：
-
-```sh
-COMPUTE_RENDER_GID=109 \
-  docker compose --project-directory . -f infra/docker/compose/compose.compute.yaml -f infra/docker/compose/compose.audio-openvino.yaml up -d --build
-```
-
-`109` 只是示例，使用宿主 `/dev/dri/renderD128` 的实际组 ID。应用内节点把 `infra/docker/compose/compose.compute.yaml` 换成 `infra/docker/compose/compose.app.yaml`；CPU 使用 `infra/docker/compose/compose.audio-cpu.yaml`，NVIDIA 使用 `infra/docker/compose/compose.audio-cuda.yaml`，AMD 使用 `infra/docker/compose/compose.audio-rocm.yaml`。AMD 配置实际 `SINGVERSE_RENDER_GID` 与 `SINGVERSE_VIDEO_GID`。这些 override 默认容器预算 6g；音频进程默认预算 4GiB，不能把默认轻量节点的 2g 限制用于分离任务。媒体只读，模型持久卷 `singverse-audio-models` 与任务／编译缓存卷 `singverse-transcode-cache` 独立。
-
-音频运行时探测和 GPU 空闲显存查询也受 `COMPUTE_AUDIO_MEMORY_BYTES` 配置的音频进程内存上限约束（默认 4GiB），各自保留 30 秒超时，避免 ROCm 导入超过通用媒体进程默认 1GiB 上限而被误报为运行环境缺失。识别运行环境后仍须满足资源门槛并通过实际模型试跑。
-
-公开正式 release 工作流 `.github/workflows/singverse-compute-images.yml` 构建并发布 `ghcr.io/<仓库所有者>/singverse-compute:<版本>-<后端>`。版本由仓库根 `VERSION` 读取，正式 release 标签为 `v<版本>`，与 Go 业务服务保持一致；PR 和手动工作流只构建检查，发布需正式 release。仓库中有工作流不代表镜像已经在注册表发布，也不代表 GPU 已验收。
-
-使用已经发布的镜像时，设置完整固定标签并禁止本地构建：
-
-```sh
-COMPUTE_IMAGE=ghcr.io/<仓库所有者>/singverse-compute:<版本>-openvino \
-COMPUTE_RENDER_GID=109 \
-  docker compose --project-directory . -f infra/docker/compose/compose.compute.yaml -f infra/docker/compose/compose.audio-openvino.yaml pull singverse-compute
-COMPUTE_IMAGE=ghcr.io/<仓库所有者>/singverse-compute:<版本>-openvino \
-COMPUTE_RENDER_GID=109 \
-  docker compose --project-directory . -f infra/docker/compose/compose.compute.yaml -f infra/docker/compose/compose.audio-openvino.yaml up -d --no-build
-```
-
-尖括号参数必须先替换；也可把相同配置写入部署目录的 `.env`，不要把凭据写进公开文件。`infra/docker/build/docker-bake.hcl` 提供矩阵，`make compute-images` 构建全部变体。单后端本机示例：
-
-```sh
-VERSION="$(cat VERSION)" docker buildx bake -f infra/docker/build/docker-bake.hcl cpu --set cpu.platforms=linux/arm64 --load
-```
-
-NVIDIA 需要宿主驱动和 NVIDIA Container Toolkit；ROCm 需要兼容内核驱动、设备和对应运行库。OpenVINO 镜像固定用户态 OpenCL 包，不修改宿主驱动；N100 与老核显的运行库、算子和资源需求须分别试跑。镜像没有 Docker socket，不会从网页变更容器配置。
-
-仅支持单个 Compose 文件的部署工具，可以把 override 中 `singverse-compute` 的 `image`、`build.target`、`mem_limit`、`devices`、`group_add` 或 NVIDIA `deploy.resources` 合并到基础服务。例如 OpenVINO：
-
-```yaml
-services:
-  singverse-compute:
-    image: ghcr.io/<仓库所有者>/singverse-compute:<版本>-openvino
-    mem_limit: 6g
-    devices:
-      - /dev/dri/renderD128:/dev/dri/renderD128
-    group_add:
-      - '109' # 替换为实际 render 组 ID
-    # 其余环境、认证与持久卷照基础 Compose 保留；媒体使用任务回源。
-```
-
-离线镜像交付：联网设备先拉取目标架构的固定镜像，`docker save -o compute-image.tar <完整镜像标签>`，复制到目标设备后 `docker load -i compute-image.tar`，再按同一设备配置 `up -d --no-build --pull never`。导出的镜像仅适用于已拉取的架构；模型仍需单独导入。
+GHCR、Docker Hub 和阿里云统一通过 `.github/workflows/singverse-images.yml` 发布；命名空间、凭据和不可变标签规则见[镜像发布](../../infra/docker/PUBLISHING.md)。不再提供业务或计算源码 ZIP、离线镜像 ZIP，模型本身的离线导入能力仍保留。
 
 ### Intel 官方转换模型和离线包
 
@@ -416,28 +347,16 @@ python scripts/convert-rknn-audio.py \
 
 1. fnOS 所用内核必须提供与 RKNN Lite2 2.3.2 匹配的 RKNPU 驱动及 `librknnrt.so`；服务用户应有 NPU 设备权限。没有驱动时仅复制 Python 包不能启用 NPU。具体设备及固件仍须逐台验证；已检查的 RK3566/fnOS 环境见 [实测记录](VERIFICATION.rk3566-2026-11-08.md)。
 2. 执行 `make compute-setup compute-audio-rknn-setup`，将上述转换目录放到 `COMPUTE_AUDIO_MODEL_REPO` 同级的 `uvr-mdxnet-9482-rknn/`，避免运行时替换。旧 `htdemucs-rknn/` 不再读取，旧试跑资格自动失效。
-3. Docker 中将主机 `/sys/firmware/devicetree/base` 只读挂到 `/run/singverse-hardware/device-tree`（模板已包含），供板型与模型目标校验；Docker 默认可能屏蔽容器内 `/sys/firmware`，不要将目标仍设在那里。识别同时读取 `model` 和 `compatible`，支持 OEC 等产品名。沿用现有 compute 认证与缓存配置启动节点，媒体使用任务回源；默认音频预算 4GiB，内存不足会阻止任务。可选 Dockerfile `rknn` 构建阶段及设备映射配置见部署包说明，不使用特权容器。
+3. Docker 中将主机 `/sys/firmware/devicetree/base` 只读挂到 `/run/singverse-hardware/device-tree`（模板已包含），供板型与模型目标校验；Docker 默认可能屏蔽容器内 `/sys/firmware`，不要将目标仍设在那里。识别同时读取 `model` 和 `compatible`，支持 OEC 等产品名。沿用现有 compute 认证与缓存配置启动节点，媒体使用任务回源；默认音频预算 4GiB，内存不足会阻止任务。可选 Dockerfile `rknn` 构建阶段及设备映射配置见硬件指南，不使用特权容器。
 4. 刷新管理端节点，RKNN 模型应显示 `UNVERIFIED`，执行试跑后才能选择。试跑校验约 8 秒输出的时间轴与非静音，不能替代真实歌曲音质验收。网络下载和网页导入 RKNN 模型仍不支持。
 5. 首次真机测试关闭 CPU 自动降级，确认结果实际后端为 `rknn`、模型为 `uvr-mdxnet-9482-rknn`；对比 ONNX 基准的人声残留、乐器损失、声道及起止对齐，记录全曲耗时、内存峰值与模型摘要。随后测试取消、重启、实时播放抢占和 CPU 降级；降级仍需安装 Demucs 基准模型并完成 CPU 试跑。
 
 本次 RK3566 已完成转换、隔离 NPU 全曲及首块 CPU 数值对照，见 [实测记录](VERIFICATION.rk3566-2026-11-08.md)；正式服务接入、主观音质和其他 BSP/设备仍须分别验证。
 
 
-### RK3566 Compose 源码部署包
+### RK3566 Docker 部署
 
-模板位于 `infra/deploy/rk3566/`，用于打包后的根目录。默认构建 `uvr` ARM64 阶段，手动执行 ONNX CPU 基准；可选 `compose.rknn.yaml` 构建 `rknn` 阶段并映射指定 NPU 的主设备和 render 节点，仍须另行转换模型与真机验证。部署包仅包含计算节点，不包含 Go/管理端，不是离线镜像。
-
-先通过 `scripts/setup-uvr-model.py` 准备固定模型，再用项目 Python 打包：
-
-```sh
-services/singverse-compute/.venv/bin/python scripts/package-rk3566.py \
-  --model .tools/uvr-mdxnet-9482/UVR_MDXNET_9482.onnx \
-  --output /absolute/path/to/singverse-rk3566.zip
-```
-
-打包使用文件白名单，内含 Compose、配置示例、源码、锁文件、固定 ONNX、操作说明及 `SHA256SUMS`，不收集本地 `.env`、凭据、数据库或 Python 缓存。解压后按包内 README 填写 NAS 局域网 IP，执行 `docker compose --project-directory . up -d --build`；首次构建需要网络。
-
-NVIDIA 源码上传包可用 `make compute-package-nvidia` 生成，或执行 `python3 scripts/package-nvidia.py --output /tmp/SingVerse-NVIDIA.zip`。包内 `docker-compose.yaml` 固定配置、无曲库目录、无 `.env`，包含构建依赖源码和部署说明，并统一目录 755／文件 644。输出文件已存在时失败，避免覆盖正在使用的包；重新打包请指定新输出路径。
+使用统一 compute 配置，CPU 基线选择 `COMPUTE_RUNTIME=uvr`；NPU 选择 `COMPUTE_RUNTIME=rknn` 并追加 `compose.rknn.yaml`。准备匹配的 BSP、运行库、设备权限及已验证模型目录，详见[硬件指南](../../infra/docker/GPU.md)。不提供单独的板卡部署包，模型转换工具和原生部署步骤仍保留。
 
 ## 跨平台快速伴奏引擎（2026-11-09）
 

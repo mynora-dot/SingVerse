@@ -1,0 +1,14 @@
+# Matching Rockchip BSP, Jellyfin MPP/RGA support and host permissions are required.
+services:
+  singverse-compute:
+    environment:
+      COMPUTE_HARDWARE_BACKEND: rkmpp
+    devices:
+      - /dev/mpp_service:/dev/mpp_service
+      - /dev/rga:/dev/rga
+      - /dev/dma_heap:/dev/dma_heap
+      - /dev/dri/renderD128:/dev/dri/renderD128
+    group_add:
+      - '${COMPUTE_RENDER_GID:?Set the numeric render group ID}'
+    volumes:
+      - /sys/firmware/devicetree/base:/run/singverse-hardware/device-tree:ro

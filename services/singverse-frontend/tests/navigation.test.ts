@@ -20,7 +20,7 @@ it('键盘跳转主要内容不会破坏 hash 路由', async () => {
 it('未知链接提供返回空间的入口', async () => {
   await router.push('/missing-page'); const wrapper = mount(App, { global: { plugins: [router] } }); await flushPromises()
   expect(wrapper.text()).toContain('页面不存在'); await wrapper.get('.text-link').trigger('click'); await flushPromises()
-  expect(router.currentRoute.value.path).toBe('/overview'); expect(wrapper.get('h1').text()).toBe('好歌，在家相聚。'); wrapper.unmount()
+  expect(router.currentRoute.value.path).toBe('/overview'); expect(wrapper.get('h1').text()).toBe('曲库概览'); wrapper.unmount()
 })
 it('窄屏全部导航切页后关闭，Escape 恢复焦点并限制键盘范围', async () => {
   await router.push('/overview'); const wrapper = mount(App, { attachTo: document.body, global: { plugins: [router] } }); await flushPromises()

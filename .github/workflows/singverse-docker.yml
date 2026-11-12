@@ -1,54 +1,23 @@
 name: singverse-docker
 on:
   push:
-    paths: ['services/singverse-compute/**', 'services/singverse-frontend/**', 'services/singverse-go-backend/**', 'infra/docker/**', 'infra/deploy/**', '.env.example', '.gitignore', '.dockerignore', 'scripts/package-*.py', 'scripts/check-docker-app.py', 'scripts/check-nginx-media.py', 'scripts/check-auth-docker.py', 'infra/docker/check-build-context.py', 'infra/docker/check-go-container.py', 'scripts/check-backend-contract.py', '.github/workflows/singverse-docker.yml', 'Makefile', 'VERSION', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh']
+    paths: ['infra/**', '.dockerignore', '.env.example', 'Makefile', 'scripts/check-backend-contract.py', '.github/workflows/singverse-docker.yml']
   pull_request:
-    paths: ['services/singverse-compute/**', 'services/singverse-frontend/**', 'services/singverse-go-backend/**', 'infra/docker/**', 'infra/deploy/**', '.env.example', '.gitignore', '.dockerignore', 'scripts/package-*.py', 'scripts/check-docker-app.py', 'scripts/check-nginx-media.py', 'scripts/check-auth-docker.py', 'infra/docker/check-build-context.py', 'infra/docker/check-go-container.py', 'scripts/check-backend-contract.py', '.github/workflows/singverse-docker.yml', 'Makefile', 'VERSION', 'database/**', 'contracts/openapi/singverse.openapi.json', 'contracts/openapi/auth-test-vectors.json', 'scripts/setup-dbmate.sh']
+    paths: ['infra/**', '.dockerignore', '.env.example', 'Makefile', 'scripts/check-backend-contract.py', '.github/workflows/singverse-docker.yml']
   workflow_dispatch:
 permissions:
   contents: read
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 jobs:
   verify:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Validate administrator OpenAPI 3.1
-        run: |
-          python -m pip install openapi-spec-validator==0.7.2
-          python -m openapi_spec_validator contracts/openapi/singverse.openapi.json
-      - name: Validate Docker deployment matrix and build inputs
-        run: make docker-config-check
-      - name: Audit actual Docker context filtering
-        run: make docker-context-check
-      - name: Verify deployment archive inputs, permissions and digests
-        run: python -m unittest discover -s services/singverse-compute/tests/unit -p test_deployment_archive.py -v
-      - name: Verify media streams without proxy buffering
-        run: |
-          node_image="$(sed -n 's/^ARG NODE_IMAGE=//p' infra/docker/build/go.Dockerfile)"
-          nginx_image="$(sed -n 's/^ARG NGINX_IMAGE=//p' infra/docker/build/go.Dockerfile)"
-          docker pull "$node_image"
-          docker pull "$nginx_image"
-          python scripts/check-nginx-media.py --nginx-image "$nginx_image" --backend-image "$node_image"
-      - name: Build application images
-        run: make docker-build
-      - name: Verify actual Go and Nginx images in isolated containers
-        run: make go-container-check
-      - name: Start application from verified images
-        run: docker compose --project-directory . -f infra/docker/compose/compose.app.yaml up -d --no-build --wait --wait-timeout 180
-      - name: Verify public HTTP routes
-        run: make docker-check
-      - name: Verify MFA and local recovery in isolated containers
-        run: make auth-docker-check
-      - name: Container logs
-        if: failure()
-        run: docker compose --project-directory . -f infra/docker/compose/compose.app.yaml logs --tail 100
-      - name: Stop application and keep volumes
-        if: always()
-        run: make docker-down
+      - uses: docker/setup-buildx-action@v3
+      - run: make docker-config-check docker-context-check docker-test
+      - run: make docker-build
+      - run: make go-container-check auth-docker-check
+      - name: Check both deployment routes in disposable projects
+        run: python3 infra/docker/check-compose.py --backend-image singverse:local
+      - run: make compute-images COMPUTE_RUNTIME=base
+      - name: Check optional and independent compute authentication and callbacks
+        run: python3 infra/docker/check-compute-compose.py

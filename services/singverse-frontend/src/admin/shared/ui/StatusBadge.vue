@@ -11,9 +11,9 @@ withDefaults(defineProps<{ tone?: 'ok' | 'warn' | 'danger' | 'busy' | 'info' | '
 .status-badge {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   font-size: 12px;
-  font-weight: 550;
+  font-weight: 500;
   color: var(--sv-text-secondary);
   white-space: nowrap;
 }

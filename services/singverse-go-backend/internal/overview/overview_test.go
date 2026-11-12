@@ -282,9 +282,9 @@ func exerciseOverview(t *testing.T, db *sqlx.DB, dialect string, cfg config.Conf
 	f.exec(t, "DELETE FROM metadata_document")
 	at := time.Now().UTC().Format(time.RFC3339Nano)
 	for _, doc := range []struct{ id, kind string }{{"formal-song-1", "SONG"}, {"formal-song-2", "SONG"}, {"formal-variant-1", "VARIANT"}, {"formal-media-1", "MEDIA"}} {
-		f.exec(t, "INSERT INTO metadata_document(id,entity_type,revision,document_json,suppressed,updated_at) VALUES(?,?,?,'{}',0,?)", doc.id, doc.kind, "1", at)
+		f.exec(t, "INSERT INTO metadata_document(id,entity_type,revision,document_json,search_text,suppressed,updated_at) VALUES(?,?,?,'{}','',0,?)", doc.id, doc.kind, "1", at)
 	}
-	f.exec(t, "INSERT INTO metadata_document(id,entity_type,revision,document_json,suppressed,updated_at) VALUES('formal-song-hidden','SONG','1','{}',1,?)", at)
+	f.exec(t, "INSERT INTO metadata_document(id,entity_type,revision,document_json,search_text,suppressed,updated_at) VALUES('formal-song-hidden','SONG','1','{}','',1,?)", at)
 
 	// An active import task whose progress denominator is still unknown.
 	f.exec(t, "INSERT INTO media_source(id,name,source_type,location,location_hash,username,created_at,updated_at) VALUES('overview-import-source','导入来源','WEBDAV','https://example.invalid/dav/','overview-import-root','',?,?)", at, at)

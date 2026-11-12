@@ -342,9 +342,9 @@ class AudioModels:
         variant = build_info()['variant']
         profiles = []
         for backend in ('cpu', 'cuda', 'rocm', 'openvino'):
-            suffix = f' -f compose.audio-{backend}.yaml'
+            suffix = {'cuda': ' -f infra/docker/compose/compose.nvidia.yaml', 'rocm': ' -f infra/docker/compose/compose.rocm.yaml', 'rocm-native': ' -f infra/docker/compose/compose.rocm.yaml', 'openvino': ' -f infra/docker/compose/compose.dri.yaml'}.get(backend, '')
             profiles.append({'backend': backend, 'image': f'singverse-compute:<版本>-{backend}',
-                             'command': f'COMPUTE_AUDIO_RUNTIME={backend} docker compose --project-directory . -f infra/docker/compose/compose.compute.yaml{suffix} up -d --build',
+                             'command': f'COMPUTE_RUNTIME={backend} docker compose --project-directory . -f infra/docker/compose/compose.compute.yaml{suffix} up -d --no-build',
                              'included': includes_backend(backend), 'requiresRedeploy': variant not in ('native', backend)})
         return {'profiles': profiles, 'note': '在实际节点执行部署；镜像架构由Docker选择，GPU后端需显式配置。宿主驱动不由网页安装。'}
 

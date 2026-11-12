@@ -1,0 +1,12 @@
+services:
+  singverse-compute:
+    environment:
+      NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
+      COMPUTE_HARDWARE_BACKEND: '${COMPUTE_HARDWARE_BACKEND:-auto}'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

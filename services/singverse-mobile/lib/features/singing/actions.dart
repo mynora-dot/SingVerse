@@ -102,111 +102,135 @@ Future<void> openSinging(BuildContext context, AppState state, Song song) =>
       );
     });
 
-Future<void> singingSettings(BuildContext context, AppState state) =>
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (context) => ListenableBuilder(
-        listenable: state.performance,
-        builder: (context, _) => SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SheetHeader('调音'),
-              if (state.taking) const Text('录音参数已锁定，结束录音后可以调整。'),
-              const SizedBox(height: 16),
-              Text(
-                '音调  ${state.pitch > 0 ? '+' : ''}${state.pitch} 半音',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              Semantics(
-                label: '音调',
-                child: Slider(
-                  key: const ValueKey('pitch-control'),
-                  semanticFormatterCallback: (v) => '${v.round()} 半音',
-                  value: state.pitch.toDouble().clamp(-6, 6),
-                  min: -6,
-                  max: 6,
-                  divisions: 12,
-                  onChanged: state.taking
-                      ? null
-                      : (v) => uiTask(
-                          context,
-                          () => state.command('pitch', v.round()),
-                        ),
-                ),
-              ),
-              Text(
-                '速度  ${(state.speed * 100).round()}%',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              Semantics(
-                label: '速度',
-                child: Slider(
-                  key: const ValueKey('speed-control'),
-                  semanticFormatterCallback: (v) => '${(v * 100).round()}%',
-                  value: state.speed.clamp(.6, 1.2),
-                  min: .6,
-                  max: 1.2,
-                  divisions: 12,
-                  onChanged: state.taking
-                      ? null
-                      : (v) => uiTask(context, () => state.command('speed', v)),
-                ),
-              ),
-              Text(
-                '播放音量  ${(state.volume * 100).round()}%',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              Semantics(
-                label: '播放音量',
-                child: Slider(
-                  key: const ValueKey('volume-control'),
-                  semanticFormatterCallback: (v) => '${(v * 100).round()}%',
-                  value: state.volume.clamp(0, 1),
-                  onChanged: (v) =>
-                      uiTask(context, () => state.command('volume', v)),
-                ),
-              ),
-              Text(
-                '这里调整听到的声音。作品的人声和伴奏比例在回听时调整。',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Divider(),
-              const SizedBox(height: 8),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.mic_none_rounded),
-                title: const Text('麦克风试音'),
-                subtitle: const Text('检查声音是否能录到，不保存录音'),
-                onTap: state.taking
-                    ? null
-                    : () => showModalBottomSheet<void>(
-                        context: context,
-                        isScrollControlled: true,
-                        useSafeArea: true,
-                        builder: (_) => _MicrophoneTest(state: state),
-                      ),
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.headphones_rounded),
-                title: const Text('音轨与播放设置'),
-                subtitle: const Text('试听伴奏、声道、字幕和兼容播放'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => audioSettings(context, state),
-              ),
-            ],
-          ),
+class _SoundValue extends StatelessWidget {
+  const _SoundValue({required this.label, required this.value});
+  final String label, value;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Expanded(
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.bodyMedium
+              ?.copyWith(fontWeight: FontWeight.w500),
         ),
       ),
-    );
+      const SizedBox(width: 12),
+      Text(
+        value,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      ),
+    ],
+  );
+}
+
+Future<void> singingSettings(
+  BuildContext context,
+  AppState state,
+) => showModalBottomSheet<void>(
+  context: context,
+  isScrollControlled: true,
+  useSafeArea: true,
+  builder: (context) => ListenableBuilder(
+    listenable: state.performance,
+    builder: (context, _) => SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SheetHeader('调音'),
+          if (state.taking) const Text('录音参数已锁定，结束录音后可以调整。'),
+          const SizedBox(height: 16),
+          _SoundValue(
+            label: '音调',
+            value: '${state.pitch > 0 ? '+' : ''}${state.pitch} 半音',
+          ),
+          Semantics(
+            label: '音调',
+            child: Slider(
+              key: const ValueKey('pitch-control'),
+              semanticFormatterCallback: (v) => '${v.round()} 半音',
+              value: state.pitch.toDouble().clamp(-6, 6),
+              min: -6,
+              max: 6,
+              divisions: 12,
+              onChanged: state.taking
+                  ? null
+                  : (v) => uiTask(
+                      context,
+                      () => state.command('pitch', v.round()),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _SoundValue(label: '速度', value: '${(state.speed * 100).round()}%'),
+          Semantics(
+            label: '速度',
+            child: Slider(
+              key: const ValueKey('speed-control'),
+              semanticFormatterCallback: (v) => '${(v * 100).round()}%',
+              value: state.speed.clamp(.6, 1.2),
+              min: .6,
+              max: 1.2,
+              divisions: 12,
+              onChanged: state.taking
+                  ? null
+                  : (v) => uiTask(context, () => state.command('speed', v)),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _SoundValue(label: '播放音量', value: '${(state.volume * 100).round()}%'),
+          Semantics(
+            label: '播放音量',
+            child: Slider(
+              key: const ValueKey('volume-control'),
+              semanticFormatterCallback: (v) => '${(v * 100).round()}%',
+              value: state.volume.clamp(0, 1),
+              onChanged: (v) =>
+                  uiTask(context, () => state.command('volume', v)),
+            ),
+          ),
+          Text(
+            '这里调整听到的声音。作品的人声和伴奏比例在回听时调整。',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Divider(),
+          const SizedBox(height: 8),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.mic_none_rounded),
+            title: const Text('麦克风试音'),
+            subtitle: const Text('检查声音是否能录到，不保存录音'),
+            onTap: state.taking
+                ? null
+                : () => showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    useSafeArea: true,
+                    builder: (_) => _MicrophoneTest(state: state),
+                  ),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.headphones_rounded),
+            title: const Text('音轨与播放设置'),
+            subtitle: const Text('试听伴奏、声道、字幕和兼容播放'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => audioSettings(context, state),
+          ),
+        ],
+      ),
+    ),
+  ),
+);
 
 Future<void> audioSettings(
   BuildContext context,
@@ -264,7 +288,8 @@ Future<void> audioSettings(
                 selected: audio[i]['selected'] == true,
                 selectedTileColor: Theme.of(context)
                     .colorScheme
-                    .secondaryContainer,
+                    .primaryContainer,
+                selectedColor: Theme.of(context).colorScheme.primary,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -272,6 +297,7 @@ Future<void> audioSettings(
                   audio[i]['selected'] == true
                       ? Icons.check_circle_rounded
                       : Icons.circle_outlined,
+                  size: 20,
                 ),
                 title: Text('音轨 ${i + 1}'),
                 subtitle: Text(audio[i]['label'] as String? ?? '未命名音轨'),
@@ -336,7 +362,12 @@ Future<void> audioSettings(
                 ],
               ),
             const SizedBox(height: 16),
-            Text('声音输出：${state.outputRoute}'),
+            Text(
+              '声音输出：${state.outputRoute}',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
             if (state.tracks.any((t) => t['type'] == 'text')) ...[
               const SizedBox(height: 12),
               const Text('视频字幕'),

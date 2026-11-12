@@ -35,14 +35,11 @@ try:
         raise SystemExit("Isolated MySQL did not become ready")
     state = json.loads(docker("inspect", name).stdout)[0]
     port = state["NetworkSettings"]["Ports"]["3306/tcp"][0]["HostPort"]
-    env = dict(os.environ, GOTOOLCHAIN="go1.27.4",
-               GOMODCACHE=str(ROOT / ".tools/go-mod-cache"),
-               GOCACHE=str(ROOT / ".tools/go-build-cache"),
-               GOPATH=str(ROOT / ".tools/go"),
+    env = dict(os.environ,
                SINGVERSE_TEST_MYSQL_HOST="127.0.0.1",
                SINGVERSE_TEST_MYSQL_PORT=port,
                SINGVERSE_TEST_MYSQL_PASSWORD=password)
-    subprocess.run(["go", "test", "-race", "./...", "-run", "MySQL", "-count=1"],
+    subprocess.run(["sh", str(ROOT / "scripts/run-go.sh"), "test", "-race", "./...", "-run", "MySQL", "-count=1"],
                    cwd=ROOT / "services/singverse-go-backend", env=env, check=True)
 finally:
     docker("rm", "--force", name, check=False)

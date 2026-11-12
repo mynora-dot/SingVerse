@@ -1,10 +1,8 @@
-# Optional existing host directory. Only Go reads originals; compute uses authorized callbacks.
-# Apply after compose.app.yaml. WebDAV-only deployments do not need this file.
 services:
   singverse-go-backend:
     volumes:
       - type: bind
-        source: '${SINGVERSE_MEDIA_PATH:?Set SINGVERSE_MEDIA_PATH to an existing absolute media directory}'
+        source: '${SINGVERSE_MEDIA_PATH:?Set an existing absolute host directory}'
         target: /media
         read_only: true
         bind:

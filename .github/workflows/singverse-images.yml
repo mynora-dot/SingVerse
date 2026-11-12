@@ -1,0 +1,127 @@
+name: singverse-images
+on:
+  push:
+    branches: [main]
+    paths: ['infra/**', 'services/singverse-go-backend/**', 'services/singverse-frontend/**', 'services/singverse-compute/**', 'database/**', 'contracts/**', 'VERSION', '.dockerignore', '.github/workflows/singverse-images.yml']
+  pull_request:
+    paths: ['infra/**', 'services/singverse-go-backend/**', 'services/singverse-frontend/**', 'services/singverse-compute/**', 'database/**', 'contracts/**', 'VERSION', '.dockerignore', '.github/workflows/singverse-images.yml']
+  release:
+    types: [published]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - run: make docker-config-check
+      - run: python3 -m unittest discover -s infra/docker/tests -v
+      - name: Check all release destinations before building
+        if: github.event_name == 'release' && !github.event.release.prerelease
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          GHCR_NAMESPACE: ${{ vars.GHCR_NAMESPACE }}
+          DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE }}
+          ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
+          ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+        run: python3 infra/docker/release.py validate
+  build:
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        include: [{"variant": "app", "arch": "amd64", "runner": "ubuntu-24.04"}, {"variant": "app", "arch": "arm64", "runner": "ubuntu-24.04-arm"}, {"variant": "base", "arch": "amd64", "runner": "ubuntu-24.04"}, {"variant": "base", "arch": "arm64", "runner": "ubuntu-24.04-arm"}, {"variant": "cpu", "arch": "amd64", "runner": "ubuntu-24.04"}, {"variant": "cpu", "arch": "arm64", "runner": "ubuntu-24.04-arm"}, {"variant": "uvr", "arch": "amd64", "runner": "ubuntu-24.04"}, {"variant": "uvr", "arch": "arm64", "runner": "ubuntu-24.04-arm"}, {"variant": "cuda", "arch": "amd64", "runner": "ubuntu-24.04"}, {"variant": "rocm", "arch": "amd64", "runner": "ubuntu-24.04"}, {"variant": "rocm-native", "arch": "amd64", "runner": "ubuntu-24.04"}, {"variant": "openvino", "arch": "amd64", "runner": "ubuntu-24.04"}, {"variant": "rknn", "arch": "arm64", "runner": "ubuntu-24.04-arm"}]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    steps:
+      - name: Make room for accelerator runtimes and OCI exports
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build checked runtime and OCI release artifact
+        env:
+          VARIANT: ${{ matrix.variant }}
+          ARCH: ${{ matrix.arch }}
+          RELEASE: ${{ github.event_name == 'release' && !github.event.release.prerelease }}
+        run: |
+          version="$(cat VERSION)"
+          if [ "$RELEASE" = true ]; then version="${version%-SNAPSHOT}"; fi
+          file=infra/docker/build/compute.Dockerfile
+          target="$VARIANT"
+          if [ "$VARIANT" = app ]; then file=infra/docker/build/app.Dockerfile; target=singverse; fi
+          docker buildx build --file "$file" --target "$target" --platform "linux/$ARCH" \
+            --build-arg "SINGVERSE_VERSION=$version" --build-arg "SOURCE_REVISION=$GITHUB_SHA" \
+            --provenance=false --tag singverse:check \
+            --output type=docker --output type=oci,dest=/tmp/image.tar .
+      - name: Verify actual installed runtime
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          if [ "$VARIANT" = app ]; then
+            python3 infra/docker/check-go-container.py --backend-image singverse:check
+            python3 infra/docker/check-auth-docker.py --backend-image singverse:check
+          else
+            docker run --rm --network none -e "EXPECTED_VARIANT=$VARIANT" singverse:check python -c 'import os; from singverse_compute.core.build_info import build_info; assert build_info()["variant"]==os.environ["EXPECTED_VARIANT"]'
+            docker run --rm --network none singverse:check python -m pip check
+            docker run --rm --network none singverse:check /opt/singverse-audio-cpu/bin/python -m pip check
+            case "$VARIANT" in
+              cpu|cuda|rocm|rocm-native|uvr|rknn) docker run --rm --network none singverse:check python -c 'import torch,torchaudio' ;;
+              openvino) docker run --rm --network none singverse:check python -c 'import openvino,torch,torchaudio' ;;
+              base)
+                docker run --rm --network none singverse:check /opt/singverse-audio-cpu/bin/python -c 'import onnxruntime'
+                cat services/singverse-compute/tests/callback_source.py services/singverse-compute/tests/smoke/container_media_tags.py | docker run --rm --network none -i singverse:check python -
+                ;;
+            esac
+          fi
+      - name: Verify release artifact is the tested runtime
+        run: python3 infra/docker/check-oci-artifact.py /tmp/image.tar --image singverse:check
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'release' && !github.event.release.prerelease
+        with:
+          name: ${{ matrix.variant }}-${{ matrix.arch }}
+          path: /tmp/image.tar
+          compression-level: 0
+          retention-days: 3
+  publish:
+    if: github.event_name == 'release' && !github.event.release.prerelease
+    needs: [preflight, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name }}
+      GHCR_NAMESPACE: ${{ vars.GHCR_NAMESPACE }}
+      DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE }}
+      ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
+      ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
+      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+      ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - run: sudo apt-get update && sudo apt-get install -y skopeo
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Authenticate all destinations without printing credentials
+        run: |
+          printf '%s' "$GHCR_TOKEN" | skopeo login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          printf '%s' "$DOCKERHUB_TOKEN" | skopeo login docker.io --username "$DOCKERHUB_USERNAME" --password-stdin
+          printf '%s' "$ACR_PASSWORD" | skopeo login "$ACR_REGISTRY" --username "$ACR_USERNAME" --password-stdin
+      - name: Publish identical immutable artifacts, then update latest
+        run: python3 infra/docker/release.py publish --artifacts artifacts

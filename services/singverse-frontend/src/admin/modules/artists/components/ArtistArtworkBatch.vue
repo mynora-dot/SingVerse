@@ -53,7 +53,7 @@ onBeforeUnmount(() => { active = false; generation++; if (timer) clearTimeout(ti
   display:flex;
   align-items:center;
   gap:16px;
-  padding:18px 22px;
+  padding:20px 24px;
 }
 
 .batch-icon {
@@ -80,12 +80,12 @@ onBeforeUnmount(() => { active = false; generation++; if (timer) clearTimeout(ti
   font-size:12px;
   color:var(--sv-text-secondary);
   line-height:1.7;
-  margin:5px 0 0;
+  margin:4px 0 0;
 }
 
 .batch-counts {
   display:flex;
-  gap:18px;
+  gap:20px;
   font-size:12px;
   color:var(--sv-text-secondary);
 }
@@ -93,9 +93,9 @@ onBeforeUnmount(() => { active = false; generation++; if (timer) clearTimeout(ti
 .batch-counts b {
   display:block;
   font-size:18px;
-  font-weight:550;
+  font-weight:500;
   color:var(--sv-text-primary);
-  margin-bottom:3px;
+  margin-bottom:4px;
 }
 
 .artwork-batch progress {
@@ -120,7 +120,7 @@ progress::-moz-progress-bar {
 }
 
 .batch-results {
-  padding:0 22px 18px;
+  padding:0 24px 20px;
 }
 
 .batch-results ul {
@@ -132,7 +132,7 @@ progress::-moz-progress-bar {
 .batch-results li {
   display:grid;
   grid-template-columns:minmax(100px,1fr) 100px minmax(160px,2fr);
-  gap:14px;
+  gap:16px;
   align-items:center;
   padding:12px 0;
   border-top:1px solid var(--sv-border-subtle);
@@ -177,7 +177,7 @@ progress::-moz-progress-bar {
   align-items:center;
   justify-content:space-between;
   gap:12px;
-  padding:12px 22px;
+  padding:12px 24px;
   font-size:13px;
   color:var(--sv-semantic-danger);
 }
@@ -209,14 +209,21 @@ progress::-moz-progress-bar {
     padding:8px 0;
   }
   .batch-results {
-    padding:0 16px 14px;
+    padding:0 16px 16px;
   }
   .batch-results li {
     grid-template-columns:minmax(0,1fr) auto;
-    gap:5px 12px;
+    gap:4px 12px;
   }
   .batch-results li small {
     grid-column:1/-1;
+  }
+}
+
+@media(max-width:768px), (pointer:coarse) {
+  .batch-results li button {
+    min-width:44px;
+    min-height:44px;
   }
 }
 </style>

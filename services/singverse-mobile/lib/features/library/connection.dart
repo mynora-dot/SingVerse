@@ -93,19 +93,32 @@ class _ConnectionPageState extends State<ConnectionPage> {
 
   Widget detail(String label, Widget value) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 12),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
+    child: LayoutBuilder(
+      builder: (context, size) {
+        final caption = Text(
           label,
-          style: Theme.of(context).textTheme.bodySmall
+          style: Theme.of(context).textTheme.bodyMedium
               ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Align(alignment: Alignment.centerRight, child: value),
-        ),
-      ],
+        );
+        final stacked =
+            widget.state.senior ||
+            MediaQuery.textScalerOf(context).scale(16) > 22 ||
+            size.maxWidth < 280;
+        if (stacked) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [caption, const SizedBox(height: 8), value],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(width: 80, child: caption),
+            const SizedBox(width: 12),
+            Expanded(child: value),
+          ],
+        );
+      },
     ),
   );
 
@@ -115,8 +128,8 @@ class _ConnectionPageState extends State<ConnectionPage> {
     String subtitle,
     VoidCallback? action,
   ) => ListTile(
-    minTileHeight: widget.state.senior ? 84 : 66,
-    leading: Icon(icon, size: 22),
+    minTileHeight: widget.state.senior ? 88 : 72,
+    leading: Icon(icon, size: 20),
     title: Text(
       title,
       style: Theme.of(context).textTheme.bodyMedium
@@ -147,10 +160,13 @@ class _ConnectionPageState extends State<ConnectionPage> {
                   const SizedBox(height: 12),
                   Text(
                     '歌曲和歌单都从这里读取。请输入手机可以访问的 NAS 根地址。',
-                    style: Theme.of(context).textTheme.bodySmall,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 24),
                   TextField(
+                    key: const ValueKey('nas-address-field'),
                     controller: address,
                     keyboardType: TextInputType.url,
                     autocorrect: false,
@@ -161,8 +177,9 @@ class _ConnectionPageState extends State<ConnectionPage> {
                     ),
                     onSubmitted: (_) => submit(),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
                   FilledButton(
+                    key: const ValueKey('nas-submit'),
                     onPressed: state.busy || locked ? null : submit,
                     child: Text(state.busy ? '正在连接…' : '连接曲库'),
                   ),
@@ -176,26 +193,21 @@ class _ConnectionPageState extends State<ConnectionPage> {
                     ),
                 ] else ...[
                   Card(
+                    key: const ValueKey('nas-status-card'),
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 18, 16, 4),
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
                       child: Column(
                         children: [
                           Row(
                             children: [
-                              Container(
-                                padding: const EdgeInsets.all(11),
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .primaryContainer,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Icon(
-                                  Icons.dns_outlined,
-                                  color: Theme.of(context).colorScheme.primary,
-                                ),
+                              Icon(
+                                Icons.dns_outlined,
+                                size: 20,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
                               ),
-                              const SizedBox(width: 13),
+                              const SizedBox(width: 12),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -223,31 +235,29 @@ class _ConnectionPageState extends State<ConnectionPage> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 18),
+                          const SizedBox(height: 16),
                           const Divider(),
                           detail(
                             '曲库地址',
                             SelectableText(
                               state.origin,
-                              textAlign: TextAlign.right,
-                              style: Theme.of(context).textTheme.bodySmall,
+                              style: Theme.of(context).textTheme.bodyMedium,
                             ),
                           ),
                           const Divider(),
                           detail(
                             '账号状态',
                             Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   state.authenticated ? '已登录家庭曲库' : '尚未登录',
-                                  style: Theme.of(context).textTheme.bodySmall,
+                                  style: Theme.of(context).textTheme.bodyMedium,
                                 ),
-                                if (state.authenticated)
+                                if (state.authenticated &&
+                                    state.accountName.isNotEmpty)
                                   Text(
-                                    state.accountName.isEmpty
-                                        ? '账号已登录'
-                                        : state.accountName,
+                                    state.accountName,
                                     style: Theme.of(context)
                                         .textTheme
                                         .bodySmall,
@@ -259,10 +269,10 @@ class _ConnectionPageState extends State<ConnectionPage> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 24),
                   if (state.authenticated) ...[
-                    Text('连接管理', style: Theme.of(context).textTheme.bodySmall),
-                    const SizedBox(height: 8),
+                    const SectionTitle('连接管理'),
+                    const SizedBox(height: 12),
                     Card(
                       child: Column(
                         children: [
@@ -296,9 +306,9 @@ class _ConnectionPageState extends State<ConnectionPage> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 22),
-                    Text('账号', style: Theme.of(context).textTheme.bodySmall),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 24),
+                    const SectionTitle('账号'),
+                    const SizedBox(height: 12),
                     Card(
                       child: management(
                         Icons.logout_rounded,
@@ -310,54 +320,73 @@ class _ConnectionPageState extends State<ConnectionPage> {
                       ),
                     ),
                   ] else ...[
-                    Text(
-                      state.mfaRequired ? '验证身份' : '登录曲库',
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      state.mfaRequired
-                          ? '输入验证器中的动态码，或使用恢复码。'
-                          : '使用 NAS 管理员 admin 访问家里的歌曲。',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 16),
-                    AutofillGroup(
-                      child: state.mfaRequired
-                          ? TextField(
-                              controller: code,
-                              autocorrect: false,
-                              decoration: const InputDecoration(
-                                labelText: '动态码或恢复码',
-                              ),
-                              onSubmitted: (_) => submit(),
-                            )
-                          : TextField(
-                              controller: password,
-                              obscureText: true,
-                              autofillHints: const [AutofillHints.password],
-                              decoration: const InputDecoration(
-                                labelText: '管理员密码',
-                              ),
-                              onSubmitted: (_) => submit(),
+                    Card(
+                      key: const ValueKey('nas-account-form'),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              state.mfaRequired ? '验证身份' : '登录曲库',
+                              style: Theme.of(context).textTheme.titleLarge,
                             ),
-                    ),
-                    const SizedBox(height: 16),
-                    FilledButton(
-                      onPressed: state.busy || locked ? null : submit,
-                      child: Text(
-                        state.busy
-                            ? '正在登录…'
-                            : state.mfaRequired
-                            ? '验证并登录'
-                            : '登录',
+                            const SizedBox(height: 8),
+                            Text(
+                              state.mfaRequired
+                                  ? '输入验证器中的动态码，或使用恢复码。'
+                                  : '使用 NAS 管理员 admin 访问家里的歌曲。',
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                            ),
+                            const SizedBox(height: 16),
+                            AutofillGroup(
+                              child: state.mfaRequired
+                                  ? TextField(
+                                      controller: code,
+                                      autocorrect: false,
+                                      decoration: const InputDecoration(
+                                        labelText: '动态码或恢复码',
+                                      ),
+                                      onSubmitted: (_) => submit(),
+                                    )
+                                  : TextField(
+                                      controller: password,
+                                      obscureText: true,
+                                      autofillHints: const [
+                                        AutofillHints.password,
+                                      ],
+                                      decoration: const InputDecoration(
+                                        labelText: '管理员密码',
+                                      ),
+                                      onSubmitted: (_) => submit(),
+                                    ),
+                            ),
+                            const SizedBox(height: 16),
+                            FilledButton(
+                              key: const ValueKey('nas-submit'),
+                              onPressed: state.busy || locked ? null : submit,
+                              child: Text(
+                                state.busy
+                                    ? '正在登录…'
+                                    : state.mfaRequired
+                                    ? '验证并登录'
+                                    : '登录',
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: state.busy || locked
+                                  ? null
+                                  : () => setState(() => editing = true),
+                              child: const Text('修改 NAS 地址'),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    TextButton(
-                      onPressed: state.busy || locked
-                          ? null
-                          : () => setState(() => editing = true),
-                      child: const Text('修改 NAS 地址'),
                     ),
                   ],
                 ],

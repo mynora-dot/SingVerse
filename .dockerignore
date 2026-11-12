@@ -14,12 +14,11 @@
 !contracts/openapi/singverse.openapi.json
 
 
-!services/singverse-compute/Dockerfile
 !services/singverse-compute/requirements.lock
 !services/singverse-compute/singverse_compute/**
 
 !services/singverse-compute/requirements*.lock
-!services/singverse-compute/docker/**
+!infra/docker/build/compute/**
 
 # Do not copy local Python artifacts or a previous container's generated identity.
 **/__pycache__/
@@ -52,7 +51,7 @@ services/singverse-go-backend/internal/web/dist/
 !services/singverse-frontend/tests/**
 !database/migrations/**
 !scripts/setup-dbmate.sh
-!infra/docker/build/nginx/**
+
 
 # Exclude macOS metadata from build inputs.
 **/.DS_Store

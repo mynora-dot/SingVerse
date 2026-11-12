@@ -45,8 +45,9 @@ class _AppShellState extends State<AppShell> {
                 TextButton(
                   key: const Key('open-tv'),
                   style: TextButton.styleFrom(
-                    textStyle: const TextStyle(fontSize: 18),
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    textStyle: Theme.of(context).textTheme.labelLarge
+                        ?.copyWith(inherit: true, fontSize: 18),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
                   ),
                   onPressed: () => openTv(context, state),
                   child: const Text('扫码'),
@@ -69,8 +70,9 @@ class _AppShellState extends State<AppShell> {
                 TextButton(
                   key: const Key('open-settings'),
                   style: TextButton.styleFrom(
-                    textStyle: const TextStyle(fontSize: 18),
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    textStyle: Theme.of(context).textTheme.labelLarge
+                        ?.copyWith(inherit: true, fontSize: 18),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
                   ),
                   onPressed: () => openSettings(context, state),
                   child: const Text('设置'),
@@ -146,15 +148,13 @@ class _AppShellState extends State<AppShell> {
                             child: TextButton(
                               key: Key(entry.$4),
                               style: TextButton.styleFrom(
-                                minimumSize: Size(56, state.senior ? 64 : 54),
+                                minimumSize: Size(56, state.senior ? 64 : 56),
                                 foregroundColor: tab == entry.$1
                                     ? Theme.of(context).colorScheme.primary
                                     : Theme.of(context)
                                           .colorScheme
                                           .onSurfaceVariant,
-                                padding: EdgeInsets.symmetric(
-                                  vertical: state.senior ? 8 : 5,
-                                ),
+                                padding: EdgeInsets.symmetric(vertical: 8),
                               ),
                               onPressed: () => setState(() => tab = entry.$1),
                               child: Column(
@@ -162,17 +162,23 @@ class _AppShellState extends State<AppShell> {
                                 children: [
                                   Badge(
                                     isLabelVisible: entry.$1 == 2 && drafts > 0,
+                                    backgroundColor: Theme.of(context)
+                                        .colorScheme
+                                        .secondaryContainer,
+                                    textColor: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
                                     label: Text('$drafts'),
                                     child: Icon(
                                       entry.$2,
-                                      size: state.senior ? 26 : 23,
+                                      size: state.senior ? 28 : 24,
                                     ),
                                   ),
-                                  const SizedBox(height: 3),
+                                  const SizedBox(height: 4),
                                   Text(
                                     entry.$3,
                                     style: TextStyle(
-                                      fontSize: state.senior ? 18 : 11,
+                                      fontSize: state.senior ? 18 : 12,
                                       fontWeight: tab == entry.$1
                                           ? FontWeight.w600
                                           : FontWeight.w400,
@@ -200,30 +206,25 @@ class _Disconnected extends StatelessWidget {
   final AppState state;
   @override
   Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(24),
+    padding: const EdgeInsets.all(20),
     children: [
-      const SizedBox(height: 48),
-      Container(
-        width: 72,
-        height: 72,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.primaryContainer,
-          shape: BoxShape.circle,
-        ),
+      const SizedBox(height: 24),
+      Align(
+        alignment: Alignment.centerLeft,
         child: Icon(
           Icons.library_music_outlined,
-          size: 34,
-          color: Theme.of(context).colorScheme.onPrimaryContainer,
+          size: 32,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
       ),
       const SizedBox(height: 24),
       Text(
-        state.origin.isEmpty ? '家里的歌，随时开唱' : '重新连接家庭曲库',
+        state.origin.isEmpty ? '连接家庭曲库' : '重新连接家庭曲库',
         style: Theme.of(context).textTheme.headlineSmall,
       ),
       const SizedBox(height: 12),
       Text(
-        '连接 NAS 后就能选歌、练唱和录音。已保存的作品可以在“作品”里离线回听。',
+        '从 NAS 选歌练唱，录音保存在手机。已保存的作品可以离线回听。',
         style: Theme.of(context).textTheme.bodyLarge
             ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
@@ -315,12 +316,12 @@ class _FrequentPageState extends State<FrequentPage> {
                           ),
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 Container(
-                  padding: const EdgeInsets.all(3),
+                  padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.secondaryContainer,
-                    borderRadius: BorderRadius.circular(13),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
                     children: [
@@ -330,6 +331,9 @@ class _FrequentPageState extends State<FrequentPage> {
                             selected: history == item.$1,
                             child: TextButton(
                               style: TextButton.styleFrom(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
                                 backgroundColor: history == item.$1
                                     ? Theme.of(context).colorScheme.surface
                                     : Colors.transparent,
@@ -339,7 +343,7 @@ class _FrequentPageState extends State<FrequentPage> {
                                           .colorScheme
                                           .onSurfaceVariant,
                                 padding: const EdgeInsets.symmetric(
-                                  vertical: 7,
+                                  vertical: 8,
                                 ),
                               ),
                               onPressed: () =>
@@ -428,7 +432,7 @@ class SettingsPage extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
           children: [
             const SectionTitle('使用方式'),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             Card(
               child: SwitchListTile(
                 value: state.senior,
@@ -438,29 +442,41 @@ class SettingsPage extends StatelessWidget {
                       state.setUiMode(value ? UiMode.senior : UiMode.standard),
                 ),
                 title: Text(state.senior ? '长辈模式已开启' : '长辈模式'),
-                subtitle: const Text('更大的文字与按钮，点歌、常唱、作品位置不变'),
+                subtitle: const Text('放大文字和按钮，主导航位置保持不变'),
               ),
             ),
             const SizedBox(height: 24),
             const SectionTitle('连接与显示'),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.dns_outlined, size: 24),
+                title: const Text('NAS 连接与账号'),
+                subtitle: Text(
+                  state.authenticated
+                      ? '已登录\n${state.origin}'
+                      : state.origin.isEmpty
+                      ? '尚未连接'
+                      : '需要登录\n${state.origin}',
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => openConnection(context, state),
+              ),
+            ),
+            const SizedBox(height: 12),
             Card(
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  ListTile(
-                    leading: const Icon(Icons.dns_outlined),
-                    title: const Text('NAS 连接与账号'),
-                    subtitle: Text(
-                      state.authenticated
-                          ? '已登录 · ${state.origin}'
-                          : state.origin.isEmpty
-                          ? '尚未连接'
-                          : '需要登录 · ${state.origin}',
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                    child: Text(
+                      '外观',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () => openConnection(context, state),
                   ),
-                  const Divider(indent: 56),
                   for (final choice in [
                     (ThemeMode.system, '跟随系统'),
                     (ThemeMode.light, '浅色'),

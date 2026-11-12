@@ -25,6 +25,7 @@ import (
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/library"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/config"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/store"
+	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/playback"
 )
 
 //go:embed sql/*.sql
@@ -43,6 +44,8 @@ type Activity interface {
 	StartTV(context.Context, store.DBTX, string, string, string, string, string) error
 	FinishTV(context.Context, store.DBTX, string, string, string) error
 	ReportTV(context.Context, store.DBTX, string, string, map[string]any) error
+	TVPopular(context.Context, store.DBTX, []string, int, int) ([]map[string]any, int64, error)
+	TVHistory(context.Context, store.DBTX, playback.TVHistoryQuery) ([]map[string]any, int64, error)
 }
 type Library interface {
 	Song(context.Context, string) (map[string]any, error)
@@ -84,7 +87,12 @@ func New(db *sqlx.DB, dialect string, cfg config.Config, lib Library, log *slog.
 		log = slog.Default()
 	}
 	s := &Service{db: db, dialect: dialect, cfg: cfg, library: lib, log: log, q: q, now: time.Now, slots: map[string]*prefetchSlot{}, stop: make(chan struct{})}
-	_, err = s.transact(context.Background(), func(tx store.DBTX) (any, error) { return s.serverInfo(context.Background(), tx) })
+	_, err = s.transact(context.Background(), func(tx store.DBTX) (any, error) {
+		if err := s.seedHomeBanners(context.Background(), tx); err != nil {
+			return nil, err
+		}
+		return s.serverInfo(context.Background(), tx)
+	})
 	if err == nil {
 		go s.expirePrefetch()
 		s.StartDiscovery()

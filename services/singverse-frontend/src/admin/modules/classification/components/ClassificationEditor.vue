@@ -63,10 +63,10 @@ onMounted(load)
   </ElDialog>
 </template>
 <style scoped>
-.edit-dimension { padding: 10px 0; border-bottom: 1px solid var(--el-border-color-light); }
-.dimension-heading,.tag-options { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.edit-dimension { padding: 12px 0; border-bottom: 1px solid var(--el-border-color-light); }
+.dimension-heading,.tag-options { display: flex; flex-wrap: wrap; gap: 8px 20px; }
 .tag-options .el-checkbox { margin-right: 0; }
 .history { margin-top: 20px; }.history-row { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--el-border-color-light); }.history-row p { font-size: 12px; overflow-wrap: anywhere; }
-.panel-description{font-size:12px;color:var(--sv-text-secondary);line-height:1.9;margin:8px 0}.edit-dimension{padding:14px 0}.dimension-heading{justify-content:space-between;align-items:center}.dimension-heading>.el-checkbox:last-child{font-size:12px;color:var(--sv-text-secondary)}.tag-options{background:var(--sv-surface-2);padding:12px 14px;border-radius:10px;margin-top:12px}.history summary{font-size:13px;cursor:pointer;padding:14px 0;color:var(--sv-text-secondary)}
+.panel-description{font-size:12px;color:var(--sv-text-secondary);line-height:1.9;margin:8px 0}.edit-dimension{padding:16px 0}.dimension-heading{justify-content:space-between;align-items:center}.dimension-heading>.el-checkbox:last-child{font-size:12px;color:var(--sv-text-secondary)}.tag-options{background:var(--sv-surface-2);padding:12px 16px;border-radius:8px;margin-top:12px}.history summary{font-size:13px;cursor:pointer;padding:16px 0;color:var(--sv-text-secondary)}
 :global(.classification-manual-dialog.el-dialog){display:flex;flex-direction:column;max-height:88dvh}:global(.classification-manual-dialog>.el-dialog__body){overflow-y:auto;min-height:0}:global(.classification-manual-dialog>.el-dialog__header),:global(.classification-manual-dialog>.el-dialog__footer){flex-shrink:0}
 </style>

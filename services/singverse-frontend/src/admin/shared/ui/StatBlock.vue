@@ -15,8 +15,8 @@ withDefaults(defineProps<{ label: string; value: string | number; hint?: string;
 .stat-block {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 20px 22px;
+  gap: 8px;
+  padding: 20px 24px;
   min-width: 0;
   background: var(--sv-surface-2);
   border: 1px solid var(--sv-border-subtle);
@@ -34,9 +34,9 @@ withDefaults(defineProps<{ label: string; value: string | number; hint?: string;
 }
 
 .stat-value {
-  font: 600 var(--sv-font-display)/1.05 var(--sv-font-editorial);
+  font: 500 var(--sv-font-display)/1.05 var(--sv-font-editorial);
   font-variant-numeric: tabular-nums;
-  letter-spacing: -.5px;
+  letter-spacing: 0;
   color: var(--sv-text-primary);
 }
 
@@ -45,7 +45,7 @@ withDefaults(defineProps<{ label: string; value: string | number; hint?: string;
 
 .stat-label {
   font-size: 13px;
-  font-weight: 550;
+  font-weight: 500;
   color: var(--sv-text-secondary);
 }
 

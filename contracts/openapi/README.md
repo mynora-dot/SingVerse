@@ -11,6 +11,12 @@
 - 向后兼容：不随意删除字段、改变类型/含义或新增必填参数；客户端允许忽略未知字段。变更需契约评审与兼容性测试。
 - Go/Go 使用同一契约样例和测试，覆盖状态码、错误结构、分页、时间与空值规则；重构前先建立这些真实接口的兼容性基线。
 
+## TV 热歌与设备历史
+
+`GET /api/v1/tv/home` 新增真实 `popularSongs/recentlyPlayedSongs`，保留 `recentSongs` 的最近扫描含义以兼容旧端。`GET /api/v1/tv/popular` 按全 NAS 近 30 天 TV/手机有效播放排序；`GET /api/v1/tv/playback-history` 返回当前授权电视跨场次的全部终态实例。两列表默认 20、最大 100，稳定排序与空值见各路径 schema。
+
+三路由只接受 TV 设备 Bearer，亲友参与者及管理员 Cookie 不扩大授权；设备/会话范围由身份解析，不接受调用方参数。首页历史按歌曲去重并只含当前可点歌曲；独立历史不去重，失效歌曲保留快照且 `available=false/song=null`。有效阈值、终态与隐私范围详见 [TV 热歌与演唱历史](../../docs/tv-recommendations.md)。
+
 ## 计算节点内部契约
 
 `compute-internal.openapi.json`是已实现的Python节点探测接口契约（OpenAPI 3.1），由FastAPI的`app.openapi()`生成；`make compute-check`验证它与实际HTTP返回的`/openapi.json`逐项一致。内部调用由Go发起，不提供给四端直接调用：
@@ -157,6 +163,8 @@ compute 内部 `/internal/v1/audio-roles/tasks` 接收固定 UUID、mode=PROBE|A
 节点响应保留原 `model` 字段，并增加 `models`、`build` 和 `deployment`；后端支持 `openvino`，当前镜像未包含时返回 `IMAGE_MISSING`。可用资格绑定构建、运行库、设备与模型摘要；变更后须重新试跑。镜像构建及模型安装不等于硬件通过验收。
 
 ## 电视首页个性化
+
+Go 服务内嵌8张音乐主题默认封面，无需外部图片服务。首次启动仅在首页 revision=0 且无封面时原子初始化并启用，既有设置与图片不覆盖；改名、排序、停用、移除沿用现有接口，删除后重启不补回。默认图片来源及提示词见 [封面资源说明](../../services/singverse-go-backend/internal/party/assets/home/README.md)。
 
 新增`/api/v1/admin/tv-settings`及封面上传/删除/图片接口：管理员Cookie读取，写入再验证CSRF与全局revision；上限8张JPEG/PNG，单张2,000,000字节、4096像素，归一为最长边1280px的JPEG。上传即保存并启用；PUT完整保存文案、轮播设置与全部已有图片的启停/顺序，不能通过PUT增删图片。冲突409，不静默覆盖。
 

@@ -137,3 +137,18 @@ it('切换歌手后旧歌曲请求不能覆盖新详情',async()=>{
   expect(wrapper!.text()).toContain('第二位的歌')
   expect(wrapper!.text()).not.toContain('曲库歌曲')
 })
+
+it('手机筛选展开不提交草稿或清空跨页选择',async()=>{
+  await page()
+  await wrapper!.get('input[aria-label="选择歌手 歌手甲"]').setValue(true)
+  await wrapper!.get('input[aria-label="搜索歌手库"]').setValue('未提交关键词')
+  const before=vi.mocked(artists.list).mock.calls.length,toggle=wrapper!.get('.artists-filter-toggle')
+  expect(toggle.attributes('aria-expanded')).toBe('false')
+  await toggle.trigger('click')
+  expect(toggle.attributes('aria-expanded')).toBe('true')
+  expect(wrapper!.get('#artist-extra-filters').classes()).toContain('expanded')
+  await toggle.trigger('click')
+  expect(artists.list).toHaveBeenCalledTimes(before)
+  expect(wrapper!.get('.selection-count').text()).toContain('1')
+  expect((wrapper!.get('input[aria-label="搜索歌手库"]').element as HTMLInputElement).value).toBe('未提交关键词')
+})

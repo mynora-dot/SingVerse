@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -47,6 +48,7 @@ class _PlayerPageState extends State<PlayerPage> {
   final dockKey = GlobalKey();
   double dockHeight = 154, lastSubtitleInset = -1;
   bool measurePending = false;
+  Brightness playerBrightness = Brightness.dark;
 
   void measureChrome(double canvasHeight) {
     if (measurePending) return;
@@ -141,8 +143,22 @@ class _PlayerPageState extends State<PlayerPage> {
     }
   }
 
-  ThemeData get _theme =>
-      singVerseTheme(Brightness.dark, senior: widget.state.senior);
+  ThemeData get _theme => singVerseTheme(
+    playerBrightness,
+    senior: widget.state.senior,
+    compact: MediaQuery.sizeOf(context).width < 375,
+  );
+
+  Color get pageColor => _theme.brightness == Brightness.dark
+      ? stageColor
+      : const Color(0xFFFAFAFC);
+
+  Color get recordingColor => _theme.brightness == Brightness.dark
+      ? const Color(0xFFFF8794)
+      : const Color(0xFFAC263C);
+
+  bool get largeControls =>
+      widget.state.senior || MediaQuery.textScalerOf(context).scale(16) > 22;
 
   @override
   void initState() {
@@ -328,17 +344,6 @@ class _PlayerPageState extends State<PlayerPage> {
         armControls();
       }
     }
-  });
-  Future<void> toggleRole() => uiTask(context, () async {
-    final state = widget.state;
-    if (!state.backingMapped || !state.originalMapped) {
-      await panel(() => audioSettings(context, state));
-      return;
-    }
-    await state.command(
-      'useRole',
-      state.audioRole == 'backing' ? 'original' : 'backing',
-    );
   });
   Future<void> orientation() async {
     forcedLandscape = true;
@@ -554,10 +559,10 @@ class _PlayerPageState extends State<PlayerPage> {
     ),
   );
 
-  Widget header(Song song, {bool compact = false}) {
+  Widget header(Song song, {bool compact = false, bool dense = false}) {
     final state = widget.state;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(6, 4, 6, 6),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
       child: Row(
         children: [
           IconButton(
@@ -573,11 +578,11 @@ class _PlayerPageState extends State<PlayerPage> {
               children: [
                 Text(
                   song.title,
-                  maxLines: compact ? 1 : 2,
+                  maxLines: compact || dense ? 1 : 2,
                   overflow: TextOverflow.ellipsis,
                   style: _theme.textTheme.titleMedium,
                 ),
-                if (!compact)
+                if (!compact && !dense)
                   Text(
                     song.artist.isEmpty ? '手机练唱' : song.artist,
                     maxLines: 1,
@@ -636,6 +641,8 @@ class _PlayerPageState extends State<PlayerPage> {
     positionMs: widget.state.positionMs,
     senior: widget.state.senior,
     enabled: !widget.state.taking,
+    rangeA: widget.state.rangeA,
+    rangeB: widget.state.rangeB,
     onSeek: (ms) => uiTask(context, () => widget.state.command('seek', ms)),
   );
 
@@ -650,6 +657,10 @@ class _PlayerPageState extends State<PlayerPage> {
             right: 8,
             child: IconButton.filledTonal(
               tooltip: landscape ? '退出横屏' : '全屏视频',
+              style: IconButton.styleFrom(
+                backgroundColor: const Color(0xB314161B),
+                foregroundColor: Colors.white,
+              ),
               onPressed: orientation,
               icon: Icon(
                 landscape
@@ -660,43 +671,61 @@ class _PlayerPageState extends State<PlayerPage> {
           ),
         ],
       );
-      if (lines.isEmpty) return frame(video());
+      Widget roundedFrame() => ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: frame(video()),
+      );
+      if (lines.isEmpty) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+          child: roundedFrame(),
+        );
+      }
       return LayoutBuilder(
-        builder: (context, size) => Column(
-          children: [
-            SizedBox(
-              height: (size.maxWidth / state.videoAspect).clamp(
-                0.0,
-                size.maxHeight * .48,
-              ),
-              child: frame(video()),
-            ),
-            Expanded(
-              child: DecoratedBox(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0xFF1C1F26), stageColor],
+        builder: (context, size) {
+          final readingHeight =
+              MediaQuery.textScalerOf(context)
+                      .scale(_lyricFontSize(context, state.senior)) *
+                  2.8 +
+              48;
+          final pictureHeight = largeControls
+              ? math.max(48.0, size.maxHeight - readingHeight)
+              : size.maxHeight * .48;
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                child: SizedBox(
+                  height: ((size.maxWidth - 40) / state.videoAspect).clamp(
+                    0.0,
+                    math.max(0.0, math.min(pictureHeight, size.maxHeight - 8)),
                   ),
+                  child: roundedFrame(),
                 ),
-                child: lyrics(),
               ),
-            ),
-          ],
-        ),
+              Expanded(child: lyrics()),
+            ],
+          );
+        },
       );
     }
     if (lines.isNotEmpty) {
-      return DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF1C1F26), stageColor],
-          ),
+      return LayoutBuilder(
+        builder: (context, size) => Column(
+          children: [
+            if ((song.cover?.isNotEmpty ?? false) && size.maxHeight >= 340) ...[
+              const SizedBox(height: 16),
+              Artwork(
+                state: state,
+                path: song.cover,
+                label: song.title,
+                size: largeControls ? 64 : 96,
+              ),
+              const SizedBox(height: 8),
+            ],
+            Expanded(child: lyrics()),
+          ],
         ),
-        child: lyrics(),
       );
     }
     return LayoutBuilder(
@@ -709,30 +738,18 @@ class _PlayerPageState extends State<PlayerPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x66000000),
-                          blurRadius: 42,
-                          offset: Offset(0, 18),
-                        ),
-                      ],
-                    ),
-                    child: Artwork(
-                      state: state,
-                      path: song.cover,
-                      label: song.title,
-                      size: (size.maxHeight - 112).clamp(
-                        120.0,
-                        (size.maxWidth - 64).clamp(120.0, 320.0),
-                      ),
+                  Artwork(
+                    state: state,
+                    path: song.cover,
+                    label: song.title,
+                    size: (size.maxHeight - 112).clamp(
+                      80.0,
+                      (size.maxWidth - 48).clamp(80.0, 176.0),
                     ),
                   ),
                   const SizedBox(height: 24),
                   Text(
-                    lyricsLoading ? '正在读取歌词…' : lyricError ?? '没有独立歌词，跟着音乐唱就好',
+                    lyricsLoading ? '正在读取歌词…' : lyricError ?? '暂无独立歌词',
                     textAlign: TextAlign.center,
                     style: _theme.textTheme.bodyMedium?.copyWith(
                       color: _theme.colorScheme.onSurfaceVariant,
@@ -772,7 +789,11 @@ class _PlayerPageState extends State<PlayerPage> {
           ? '选段 ${durationLabel(state.rangeA)} — ${durationLabel(state.rangeB)}'
           : '练唱 · 麦克风未开启',
       style: _theme.textTheme.bodySmall?.copyWith(
-        color: state.taking ? coral : Colors.white60,
+        color: state.taking
+            ? recordingColor
+            : state.rangeB > state.rangeA
+            ? _theme.colorScheme.primary
+            : _theme.colorScheme.onSurfaceVariant,
         fontWeight: state.taking ? FontWeight.w600 : FontWeight.w400,
       ),
     );
@@ -780,58 +801,66 @@ class _PlayerPageState extends State<PlayerPage> {
 
   Widget progress() {
     final state = widget.state;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
+    final scheme = _theme.colorScheme;
+    final timeStyle = _theme.textTheme.bodySmall?.copyWith(
+      color: scheme.onSurfaceVariant,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    return Row(
       children: [
-        SliderTheme(
-          data: _theme.sliderTheme.copyWith(
-            trackHeight: 2,
-            activeTrackColor: const Color(0xFFB5C8FC),
-            thumbColor: const Color(0xFFB5C8FC),
-            inactiveTrackColor: Colors.white24,
-          ),
-          child: Semantics(
-            container: true,
-            child: Slider(
-              key: const ValueKey('player-progress'),
-              semanticFormatterCallback: (v) => durationLabel(v.round()),
-              value: (drag ?? state.positionMs.toDouble()).clamp(
-                0,
-                state.durationMs > 0 ? state.durationMs.toDouble() : 1,
+        Text(
+          durationLabel((drag ?? state.positionMs).round()),
+          style: timeStyle,
+        ),
+        Expanded(
+          child: SliderTheme(
+            data: _theme.sliderTheme.copyWith(
+              trackHeight: 3,
+              trackShape: _PracticeTrack(
+                start: state.rangeA,
+                end: state.rangeB,
+                duration: state.durationMs,
               ),
-              max: state.durationMs > 0 ? state.durationMs.toDouble() : 1,
-              onChangeStart: ready && !state.taking
-                  ? (v) {
-                      controlsTimer?.cancel();
-                      setState(() => drag = v);
-                    }
-                  : null,
-              onChanged: ready && !state.taking
-                  ? (v) => setState(() => drag = v)
-                  : null,
-              onChangeEnd: ready && !state.taking
-                  ? (v) {
-                      setState(() => drag = null);
-                      uiTask(context, () => state.command('seek', v.round()));
-                      armControls();
-                    }
-                  : null,
+            ),
+            child: SizedBox(
+              height: state.senior ? 56 : 48,
+              child: Semantics(
+                container: true,
+                child: Slider(
+                  key: const ValueKey('player-progress'),
+                  semanticFormatterCallback: (v) => state.rangeB > state.rangeA
+                      ? '${durationLabel(v.round())}，选段 ${durationLabel(state.rangeA)} 至 ${durationLabel(state.rangeB)}'
+                      : durationLabel(v.round()),
+                  value: (drag ?? state.positionMs.toDouble()).clamp(
+                    0,
+                    state.durationMs > 0 ? state.durationMs.toDouble() : 1,
+                  ),
+                  max: state.durationMs > 0 ? state.durationMs.toDouble() : 1,
+                  onChangeStart: ready && !state.taking
+                      ? (v) {
+                          controlsTimer?.cancel();
+                          setState(() => drag = v);
+                        }
+                      : null,
+                  onChanged: ready && !state.taking
+                      ? (v) => setState(() => drag = v)
+                      : null,
+                  onChangeEnd: ready && !state.taking
+                      ? (v) {
+                          setState(() => drag = null);
+                          uiTask(
+                            context,
+                            () => state.command('seek', v.round()),
+                          );
+                          armControls();
+                        }
+                      : null,
+                ),
+              ),
             ),
           ),
         ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              durationLabel((drag ?? state.positionMs).round()),
-              style: _theme.textTheme.bodySmall,
-            ),
-            Text(
-              durationLabel(state.durationMs),
-              style: _theme.textTheme.bodySmall,
-            ),
-          ],
-        ),
+        Text(durationLabel(state.durationMs), style: timeStyle),
       ],
     );
   }
@@ -847,57 +876,76 @@ class _PlayerPageState extends State<PlayerPage> {
 
   Widget roles({bool compact = false}) {
     final state = widget.state;
-    if (!state.backingMapped || !state.originalMapped) {
-      return TextButton.icon(
-        key: const ValueKey('player-audio-settings'),
-        onPressed: ready && !state.taking ? toggleRole : null,
-        icon: const Icon(Icons.headphones_rounded, size: 18),
-        label: const Text('选择声音'),
-      );
-    }
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: .09),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final role in [('original', '原唱'), ('backing', '伴奏')])
-            Expanded(
-              child: Semantics(
-                selected: state.audioRole == role.$1,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final role in [
+          ('original', '原唱', state.originalMapped),
+          ('backing', '伴奏', state.backingMapped),
+        ])
+          Expanded(
+            child: Semantics(
+              selected: role.$3 && state.audioRole == role.$1,
+              child: Tooltip(
+                message: role.$3 ? role.$2 : '${role.$2}暂不可用',
                 child: TextButton(
                   key: ValueKey('player-role-${role.$1}'),
                   style: TextButton.styleFrom(
                     minimumSize: Size(48, state.senior ? 56 : 48),
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     textStyle: _theme.textTheme.labelLarge?.copyWith(
                       fontSize: state.senior
                           ? 19
                           : compact
                           ? 13
                           : 14,
+                      fontWeight: role.$3 && state.audioRole == role.$1
+                          ? FontWeight.w500
+                          : FontWeight.w400,
                     ),
-                    backgroundColor: state.audioRole == role.$1
-                        ? Colors.white.withValues(alpha: .20)
-                        : Colors.transparent,
-                    foregroundColor: state.audioRole == role.$1
-                        ? Colors.white
-                        : Colors.white60,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    backgroundColor: Colors.transparent,
+                    foregroundColor: role.$3 && state.audioRole == role.$1
+                        ? _theme.colorScheme.primary
+                        : _theme.colorScheme.onSurfaceVariant,
+                    disabledForegroundColor: _theme.colorScheme.onSurface
+                        .withValues(alpha: .38),
                   ),
-                  onPressed: ready && !state.taking
+                  onPressed: ready && !state.taking && role.$3
                       ? () => uiTask(
                           context,
                           () => state.command('useRole', role.$1),
                         )
                       : null,
-                  child: Text(role.$2, maxLines: 1, softWrap: false),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(role.$2, maxLines: 1, softWrap: false),
+                      const SizedBox(height: 4),
+                      SizedBox(
+                        width: 20,
+                        height: 2,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: role.$3 && state.audioRole == role.$1
+                                ? _theme.colorScheme.primary
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(1),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 
@@ -920,13 +968,22 @@ class _PlayerPageState extends State<PlayerPage> {
               : 56,
         ),
         padding: text
-            ? const EdgeInsets.symmetric(horizontal: 16)
+            ? const EdgeInsets.symmetric(horizontal: 8, vertical: 12)
             : EdgeInsets.zero,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        disabledBackgroundColor: Colors.white24,
+        backgroundColor: _theme.brightness == Brightness.dark
+            ? const Color(0xFFF3F5FA)
+            : _theme.colorScheme.primary,
+        foregroundColor: _theme.brightness == Brightness.dark
+            ? stageColor
+            : _theme.colorScheme.onPrimary,
+        disabledBackgroundColor: _theme.colorScheme.onSurface.withValues(
+          alpha: .12,
+        ),
+        disabledForegroundColor: _theme.colorScheme.onSurface.withValues(
+          alpha: .38,
+        ),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(text ? 14 : 32),
+          borderRadius: BorderRadius.circular(text ? 12 : 32),
         ),
       ),
       onPressed: ready && !state.taking
@@ -948,7 +1005,7 @@ class _PlayerPageState extends State<PlayerPage> {
             ),
             if (text) ...[
               const SizedBox(width: 8),
-              Flexible(child: Text(label)),
+              Flexible(child: Text(state.isPlaying ? '暂停' : '继续')),
             ],
           ],
         ),
@@ -958,34 +1015,52 @@ class _PlayerPageState extends State<PlayerPage> {
 
   Widget recordButton({bool compact = false, Key? key}) {
     final state = widget.state;
+    final enabled =
+        !actionBusy && (ready || state.recording || state.countdown > 0);
     return FilledButton.icon(
       key: key ?? const ValueKey('player-record'),
       style: FilledButton.styleFrom(
-        minimumSize: Size(110, state.senior ? 56 : 48),
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        minimumSize: Size(48, state.senior ? 56 : 48),
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 12 : 20,
+          vertical: 12,
+        ),
         textStyle: _theme.textTheme.labelLarge?.copyWith(
           fontSize: state.senior
               ? 19
               : compact
               ? 13
               : 14,
+          fontWeight: FontWeight.w500,
         ),
-        backgroundColor: coral,
-        foregroundColor: const Color(0xFF410009),
-        disabledBackgroundColor: Colors.white12,
-        disabledForegroundColor: Colors.white38,
+        backgroundColor: state.taking
+            ? coral
+            : _theme.colorScheme.onSurface.withValues(alpha: .04),
+        foregroundColor: state.taking
+            ? const Color(0xFF410009)
+            : _theme.colorScheme.onSurface,
+        disabledBackgroundColor: _theme.colorScheme.onSurface.withValues(
+          alpha: .05,
+        ),
+        disabledForegroundColor: _theme.colorScheme.onSurface.withValues(
+          alpha: .38,
+        ),
+        side: state.taking
+            ? BorderSide.none
+            : BorderSide(
+                color: _theme.colorScheme.onSurface.withValues(alpha: .10),
+              ),
+        shape: const StadiumBorder(),
       ),
-      onPressed:
-          !actionBusy && (ready || state.recording || state.countdown > 0)
-          ? record
-          : null,
+      onPressed: enabled ? record : null,
       icon: Icon(
         state.recording
             ? Icons.stop_rounded
             : state.countdown > 0
             ? Icons.close_rounded
-            : Icons.fiber_manual_record_rounded,
+            : Icons.mic_none_rounded,
         size: 18,
+        color: enabled && !state.taking ? recordingColor : null,
       ),
       label: Text(
         state.recording
@@ -997,7 +1072,16 @@ class _PlayerPageState extends State<PlayerPage> {
     );
   }
 
-  Widget tools({bool compact = false}) {
+  Future<void> restart() => uiTask(context, () async {
+    final state = widget.state;
+    await state.command(
+      'restart',
+      state.rangeB > state.rangeA ? state.rangeA : 0,
+    );
+    await state.command('play');
+  });
+
+  Widget tools({bool compact = false, bool includeRestart = true}) {
     final state = widget.state;
     return LayoutBuilder(
       builder: (context, size) {
@@ -1009,19 +1093,12 @@ class _PlayerPageState extends State<PlayerPage> {
                 ? () => panel(() => singingSettings(context, state))
                 : null,
           ),
-          (
-            Icons.replay_rounded,
-            '重唱',
-            ready && !state.taking
-                ? () => uiTask(context, () async {
-                    await state.command(
-                      'restart',
-                      state.rangeB > state.rangeA ? state.rangeA : 0,
-                    );
-                    await state.command('play');
-                  })
-                : null,
-          ),
+          if (includeRestart)
+            (
+              Icons.replay_rounded,
+              '重唱',
+              ready && !state.taking ? restart : null,
+            ),
           (Icons.repeat_rounded, '选段', !state.taking ? range : null),
           (Icons.more_horiz_rounded, '更多', !state.taking ? more : null),
         ];
@@ -1029,7 +1106,7 @@ class _PlayerPageState extends State<PlayerPage> {
             size.maxWidth < 320 &&
                 MediaQuery.textScalerOf(context).scale(16) > 22
             ? 2
-            : 4;
+            : items.length;
         return Wrap(
           children: [
             for (final tool in items)
@@ -1037,12 +1114,12 @@ class _PlayerPageState extends State<PlayerPage> {
                 width: size.maxWidth / columns,
                 child: TextButton(
                   style: TextButton.styleFrom(
-                    foregroundColor: Colors.white70,
+                    foregroundColor: _theme.colorScheme.onSurfaceVariant,
                     minimumSize: Size(48, state.senior ? 56 : 48),
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     textStyle: _theme.textTheme.labelLarge?.copyWith(
                       fontSize: state.senior
-                          ? 18
+                          ? 17
                           : compact
                           ? 12
                           : 13,
@@ -1054,7 +1131,7 @@ class _PlayerPageState extends State<PlayerPage> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(tool.$1, size: 18),
-                            const SizedBox(width: 5),
+                            const SizedBox(width: 8),
                             Flexible(child: Text(tool.$2)),
                           ],
                         )
@@ -1062,7 +1139,7 @@ class _PlayerPageState extends State<PlayerPage> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(tool.$1, size: 20),
-                            const SizedBox(height: 3),
+                            const SizedBox(height: 4),
                             Text(tool.$2),
                           ],
                         ),
@@ -1078,83 +1155,91 @@ class _PlayerPageState extends State<PlayerPage> {
     final state = widget.state;
     final large = MediaQuery.textScalerOf(context).scale(16) > 22;
     final primaryFirst = compact && (large || state.senior);
+    if (!compact) {
+      return DecoratedBox(
+        key: const ValueKey('player-primary-controls'),
+        decoration: BoxDecoration(
+          color: pageColor,
+          border: Border(
+            top: BorderSide(
+              color: _theme.colorScheme.onSurface.withValues(alpha: .08),
+            ),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              progress(),
+              const SizedBox(height: 4),
+              Align(
+                child: largeControls
+                    ? SizedBox(
+                        width: double.infinity,
+                        child: playButton(text: true),
+                      )
+                    : SizedBox(width: 56, height: 56, child: playButton()),
+              ),
+              const SizedBox(height: 16),
+              Align(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minWidth: state.senior ? 184 : 160,
+                  ),
+                  child: recordButton(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Padding(
-      padding: EdgeInsets.fromLTRB(compact ? 24 : 20, 4, compact ? 24 : 20, 8),
+      padding: const EdgeInsets.fromLTRB(24, 4, 24, 12),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (!compact)
-            Align(alignment: Alignment.centerLeft, child: recordingStatus()),
           if (!primaryFirst) ...[progress(), const SizedBox(height: 8)],
           LayoutBuilder(
             builder: (context, size) {
-              if (compact) {
-                final choiceWidth = roleWidth(compact: true)
-                    .clamp(0.0, size.maxWidth);
-                final primary = Wrap(
-                  spacing: 12,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    playButton(compact: true),
-                    SizedBox(width: choiceWidth, child: roles(compact: true)),
-                    if (!state.recording) recordButton(compact: true),
-                  ],
-                );
-                if (!state.senior && !large && size.maxWidth >= 680) {
-                  return Row(
-                    children: [
-                      primary,
-                      const Spacer(),
-                      SizedBox(width: 284, child: tools(compact: true)),
-                    ],
-                  );
-                }
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+              final choiceWidth = roleWidth(compact: true)
+                  .clamp(0.0, size.maxWidth);
+              final primary = Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  playButton(compact: true),
+                  SizedBox(width: choiceWidth, child: roles(compact: true)),
+                  if (!state.recording) recordButton(compact: true),
+                ],
+              );
+              if (!state.senior && !large && size.maxWidth >= 680) {
+                return Row(
                   children: [
                     primary,
-                    if (primaryFirst) progress(),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: SizedBox(
-                        width: size.maxWidth.clamp(
-                          0.0,
-                          state.senior ? 500.0 : 380.0,
-                        ),
-                        child: tools(compact: true),
-                      ),
-                    ),
-                  ],
-                );
-              }
-              if (large || state.senior || size.maxWidth < 330) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    roles(),
-                    const SizedBox(height: 12),
-                    playButton(text: true),
-                    const SizedBox(height: 10),
-                    recordButton(),
-                    const SizedBox(height: 8),
-                    tools(),
+                    const Spacer(),
+                    SizedBox(width: 284, child: tools(compact: true)),
                   ],
                 );
               }
               return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      SizedBox(width: 120, child: roles()),
-                      playButton(),
-                      recordButton(),
-                    ],
-                  ),
+                  primary,
+                  if (primaryFirst) progress(),
                   const SizedBox(height: 8),
-                  tools(),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: SizedBox(
+                      width: size.maxWidth.clamp(
+                        0.0,
+                        state.senior ? 500.0 : 380.0,
+                      ),
+                      child: tools(compact: true),
+                    ),
+                  ),
                 ],
               );
             },
@@ -1164,6 +1249,103 @@ class _PlayerPageState extends State<PlayerPage> {
       ),
     );
   }
+
+  Widget practiceTools() {
+    final scheme = _theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (!widget.state.taking) ...[
+            recordingStatus(),
+            const SizedBox(height: 12),
+          ],
+          Row(
+            children: [
+              if (largeControls)
+                Icon(
+                  Icons.headphones_rounded,
+                  size: 24,
+                  color: scheme.onSurfaceVariant,
+                )
+              else
+                Text(
+                  '演唱声音',
+                  style: _theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: SizedBox(
+                    width: largeControls ? double.infinity : roleWidth(),
+                    child: roles(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          tools(),
+          if (widget.state.singing['clipped'] == true)
+            Text('声音偏大，请稍微远离麦克风', style: _theme.textTheme.bodySmall),
+        ],
+      ),
+    );
+  }
+
+  Widget portrait(Song song, BoxConstraints size) => Stack(
+    children: [
+      Positioned.fill(
+        child: Column(
+          children: [
+            header(song, dense: size.maxHeight < 680),
+            if (widget.state.taking)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: recordingStatus(),
+                ),
+              ),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, available) {
+                  // Only the content scrolls. Playback and the explicit microphone
+                  // action stay in the safe area, including at large text sizes.
+                  final mediaHeight = math.max(
+                    math.min(
+                      available.maxHeight,
+                      largeControls ? 280.0 : 240.0,
+                    ),
+                    available.maxHeight - (largeControls ? 208.0 : 172.0),
+                  );
+                  return SingleChildScrollView(
+                    key: const ValueKey('player-content'),
+                    child: Column(
+                      children: [
+                        SizedBox(
+                          height: mediaHeight,
+                          child: media(song, landscape: false),
+                        ),
+                        status(song),
+                        practiceTools(),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            controls(),
+          ],
+        ),
+      ),
+      if (widget.state.countdown > 0) Positioned.fill(child: countdown()),
+    ],
+  );
 
   Widget status(Song song) {
     final state = widget.state;
@@ -1231,21 +1413,34 @@ class _PlayerPageState extends State<PlayerPage> {
 
   Widget countdown() => ColoredBox(
     color: const Color(0xDB0C1017),
-    child: Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('准备好，跟着音乐唱'),
-            Text(
-              '${widget.state.countdown}',
-              style: const TextStyle(fontSize: 76, fontWeight: FontWeight.w700),
-            ),
-            const Text('倒数结束后开始录音'),
-            const SizedBox(height: 16),
-            OutlinedButton(onPressed: record, child: const Text('取消录音')),
-          ],
+    child: DefaultTextStyle.merge(
+      style: const TextStyle(color: Colors.white),
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('准备好，跟着音乐唱'),
+              Text(
+                '${widget.state.countdown}',
+                style: const TextStyle(
+                  fontSize: 76,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const Text('倒数结束后开始录音'),
+              const SizedBox(height: 16),
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  backgroundColor: Colors.white12,
+                ),
+                onPressed: record,
+                child: const Text('取消录音'),
+              ),
+            ],
+          ),
         ),
       ),
     ),
@@ -1283,14 +1478,8 @@ class _PlayerPageState extends State<PlayerPage> {
         ],
       );
     }
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: RadialGradient(
-          center: Alignment(.6, -.7),
-          radius: 1.6,
-          colors: [Color(0xFF253346), Color(0xFF10141C)],
-        ),
-      ),
+    return ColoredBox(
+      color: stageColor,
       child: Padding(
         padding: EdgeInsets.fromLTRB(40, top, 40, bottom),
         child: lines.isNotEmpty
@@ -1442,11 +1631,14 @@ class _PlayerPageState extends State<PlayerPage> {
                   key: dockKey,
                   constraints: BoxConstraints(maxHeight: maxDockHeight),
                   child: DecoratedBox(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Color(0x90080B11), Color(0xF0080B11)],
+                    decoration: BoxDecoration(
+                      color: stageColor.withValues(
+                        alpha: widget.state.reduceTransparency ? 1 : .96,
+                      ),
+                      border: Border(
+                        top: BorderSide(
+                          color: Colors.white.withValues(alpha: .08),
+                        ),
                       ),
                     ),
                     child: SingleChildScrollView(
@@ -1498,100 +1690,190 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Theme(
-    data: singVerseTheme(Brightness.dark, senior: widget.state.senior),
-    child: Builder(
-      builder: (context) => ListenableBuilder(
-        listenable: widget.state.performance,
-        builder: (context, _) {
-          final state = widget.state;
-          final song = opening || openError != null
-              ? widget.song ?? state.current
-              : state.current ?? widget.song;
-          return PopScope(
-            canPop: allowPop,
-            onPopInvokedWithResult: (didPop, result) {
-              if (!didPop) close();
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, bounds) {
+      playerBrightness = bounds.maxWidth > bounds.maxHeight
+          ? Brightness.dark
+          : Theme.of(context).brightness;
+      return Theme(
+        data: _theme,
+        child: Builder(
+          builder: (context) => ListenableBuilder(
+            listenable: widget.state.performance,
+            builder: (context, _) {
+              final state = widget.state;
+              final song = opening || openError != null
+                  ? widget.song ?? state.current
+                  : state.current ?? widget.song;
+              return PopScope(
+                canPop: allowPop,
+                onPopInvokedWithResult: (didPop, result) {
+                  if (!didPop) close();
+                },
+                child: Scaffold(
+                  backgroundColor: pageColor,
+                  appBar: AppBar(
+                    toolbarHeight: 0,
+                    backgroundColor: pageColor,
+                    systemOverlayStyle: _theme.brightness == Brightness.dark
+                        ? SystemUiOverlayStyle.light
+                        : SystemUiOverlayStyle.dark,
+                  ),
+                  body: SafeArea(
+                    child: song == null
+                        ? Notice('还没有正在演唱的歌曲。', action: close, label: '返回曲库')
+                        : LayoutBuilder(
+                            builder: (context, size) {
+                              final wide = size.maxWidth > size.maxHeight;
+                              accessibleControls =
+                                  MediaQuery.accessibleNavigationOf(context) ||
+                                  MediaQuery.viewInsetsOf(context).bottom > 0;
+                              if (accessibleControls) {
+                                controlsVisible = true;
+                                controlsTimer?.cancel();
+                              }
+                              updateLayout(wide);
+                              if (wide) return immersive(song, size);
+                              measureChrome(size.maxHeight);
+                              return portrait(song, size);
+                            },
+                          ),
+                  ),
+                ),
+              );
             },
-            child: Scaffold(
-              backgroundColor: stageColor,
-              appBar: AppBar(
-                toolbarHeight: 0,
-                backgroundColor: stageColor,
-                systemOverlayStyle: SystemUiOverlayStyle.light,
-              ),
-              body: SafeArea(
-                child: song == null
-                    ? Notice('还没有正在演唱的歌曲。', action: close, label: '返回曲库')
-                    : LayoutBuilder(
-                        builder: (context, size) {
-                          final wide = size.maxWidth > size.maxHeight;
-                          accessibleControls =
-                              MediaQuery.accessibleNavigationOf(context) ||
-                              MediaQuery.viewInsetsOf(context).bottom > 0;
-                          if (accessibleControls) {
-                            controlsVisible = true;
-                            controlsTimer?.cancel();
-                          }
-                          updateLayout(wide);
-                          if (wide) return immersive(song, size);
-                          measureChrome(size.maxHeight);
-                          // Keep controls reachable on short displays and at accessibility sizes.
-                          final scaled = MediaQuery.textScalerOf(context)
-                              .scale(state.senior ? 20 : 16);
-                          final scroll =
-                              size.maxHeight < (state.senior ? 760 : 600) ||
-                              scaled > (state.senior ? 24 : 23);
-                          final content = Column(
-                            children: [
-                              header(song),
-                              Expanded(child: media(song, landscape: false)),
-                              status(song),
-                              controls(),
-                            ],
-                          );
-                          if (!scroll) {
-                            return Stack(
-                              children: [
-                                Positioned.fill(child: content),
-                                if (state.countdown > 0)
-                                  Positioned.fill(child: countdown()),
-                              ],
-                            );
-                          }
-                          return Stack(
-                            children: [
-                              Positioned.fill(
-                                child: SingleChildScrollView(
-                                  child: Column(
-                                    children: [
-                                      header(song),
-                                      SizedBox(
-                                        height: (size.maxHeight * .60).clamp(
-                                          220.0,
-                                          440.0,
-                                        ),
-                                        child: media(song, landscape: false),
-                                      ),
-                                      status(song),
-                                      controls(),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              if (state.countdown > 0)
-                                Positioned.fill(child: countdown()),
-                            ],
-                          );
-                        },
-                      ),
-              ),
-            ),
-          );
-        },
-      ),
-    ),
+          ),
+        ),
+      );
+    },
   );
+}
+
+void _paintPracticeBracket(
+  Canvas canvas,
+  Offset center, {
+  required bool start,
+  required Color color,
+  required double height,
+}) {
+  final cap = start ? 4.0 : -4.0;
+  canvas.drawPath(
+    Path()
+      ..moveTo(center.dx + cap, center.dy - height / 2)
+      ..lineTo(center.dx, center.dy - height / 2)
+      ..lineTo(center.dx, center.dy + height / 2)
+      ..lineTo(center.dx + cap, center.dy + height / 2),
+    Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round,
+  );
+}
+
+class _PracticeTrack extends RoundedRectSliderTrackShape {
+  const _PracticeTrack({
+    required this.start,
+    required this.end,
+    required this.duration,
+  });
+  final int start, end, duration;
+
+  @override
+  void paint(
+    PaintingContext context,
+    Offset offset, {
+    required RenderBox parentBox,
+    required SliderThemeData sliderTheme,
+    required Animation<double> enableAnimation,
+    required TextDirection textDirection,
+    required Offset thumbCenter,
+    Offset? secondaryOffset,
+    bool isDiscrete = false,
+    bool isEnabled = false,
+    double additionalActiveTrackHeight = 2,
+  }) {
+    super.paint(
+      context,
+      offset,
+      parentBox: parentBox,
+      sliderTheme: sliderTheme,
+      enableAnimation: enableAnimation,
+      textDirection: textDirection,
+      thumbCenter: thumbCenter,
+      secondaryOffset: secondaryOffset,
+      isDiscrete: isDiscrete,
+      isEnabled: isEnabled,
+      additionalActiveTrackHeight: additionalActiveTrackHeight,
+    );
+    if (duration <= 0 || end <= start) return;
+    final rect = getPreferredRect(
+      parentBox: parentBox,
+      offset: offset,
+      sliderTheme: sliderTheme,
+      isEnabled: isEnabled,
+      isDiscrete: isDiscrete,
+    );
+    final color = sliderTheme.activeTrackColor ?? berry;
+    for (final boundary in [(start, true), (end, false)]) {
+      final fraction = (boundary.$1 / duration).clamp(0.0, 1.0);
+      final rtl = textDirection == TextDirection.rtl;
+      _paintPracticeBracket(
+        context.canvas,
+        Offset(
+          rect.left + rect.width * (rtl ? 1 - fraction : fraction),
+          rect.center.dy,
+        ),
+        start: rtl ? !boundary.$2 : boundary.$2,
+        color: color,
+        height: 12,
+      );
+    }
+  }
+}
+
+class _LyricRangePainter extends CustomPainter {
+  const _LyricRangePainter({
+    required this.start,
+    required this.end,
+    required this.color,
+  });
+  final bool start, end;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (start) {
+      _paintPracticeBracket(
+        canvas,
+        Offset(-12, size.height / 2),
+        start: true,
+        color: color,
+        height: 32,
+      );
+    }
+    if (end) {
+      _paintPracticeBracket(
+        canvas,
+        Offset(size.width + 12, size.height / 2),
+        start: false,
+        color: color,
+        height: 32,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_LyricRangePainter oldDelegate) =>
+      start != oldDelegate.start ||
+      end != oldDelegate.end ||
+      color != oldDelegate.color;
+}
+
+double _lyricFontSize(BuildContext context, bool senior, {bool active = true}) {
+  if (senior) return active ? 32 : 23;
+  final narrow = MediaQuery.sizeOf(context).width < 375;
+  return active ? (narrow ? 18 : 20) : (narrow ? 15 : 16);
 }
 
 class LyricsView extends StatefulWidget {
@@ -1604,11 +1886,14 @@ class LyricsView extends StatefulWidget {
     required this.onSeek,
     this.currentOnly = false,
     this.onBackgroundTap,
+    this.rangeA = 0,
+    this.rangeB = 0,
   });
   final bool currentOnly;
   final VoidCallback? onBackgroundTap;
   final List<TextLine> lines;
   final int positionMs;
+  final int rangeA, rangeB;
   final bool senior, enabled;
   final ValueChanged<int> onSeek;
   @override
@@ -1630,6 +1915,14 @@ class _LyricsViewState extends State<LyricsView> {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, size) {
       final scaler = MediaQuery.textScalerOf(context);
+      final scheme = Theme.of(context).colorScheme;
+      final hasRange = widget.rangeB > widget.rangeA;
+      final rangeStart = hasRange
+          ? widget.lines.lastIndexWhere((line) => line.startMs <= widget.rangeA)
+          : -1;
+      final rangeEnd = hasRange
+          ? widget.lines.lastIndexWhere((line) => line.startMs < widget.rangeB)
+          : -1;
       final active = widget.lines.lastIndexWhere(
         (line) => line.startMs <= widget.positionMs,
       );
@@ -1666,7 +1959,7 @@ class _LyricsViewState extends State<LyricsView> {
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: widget.senior ? 26 : 22,
+                          fontSize: widget.senior ? 26 : 20,
                           height: 1.45,
                           fontWeight: FontWeight.w600,
                           shadows: const [
@@ -1688,14 +1981,18 @@ class _LyricsViewState extends State<LyricsView> {
         );
       }
       TextStyle styleFor(int index) => TextStyle(
-        fontSize: index == active
-            ? (widget.senior ? 32 : 29)
-            : (widget.senior ? 23 : 20),
+        fontSize: _lyricFontSize(
+          context,
+          widget.senior,
+          active: index == active,
+        ),
         height: 1.4,
-        fontWeight: index == active ? FontWeight.w700 : FontWeight.w500,
-        letterSpacing: index == active ? -.3 : 0,
+        fontWeight: index == active
+            ? (widget.senior ? FontWeight.w600 : FontWeight.w500)
+            : FontWeight.w400,
       );
       final heights = <double>[];
+      final textHeights = <double>[];
       for (var index = 0; index < widget.lines.length; index++) {
         final painter = TextPainter(
           text: TextSpan(
@@ -1707,18 +2004,24 @@ class _LyricsViewState extends State<LyricsView> {
           textDirection: Directionality.of(context),
           textScaler: scaler,
         )..layout(maxWidth: (size.maxWidth - 48).clamp(1, double.infinity));
-        heights.add(painter.height + (index == active ? 36 : 28));
+        final padding = widget.senior
+            ? (index == active ? 36 : 28)
+            : (index == active ? 24 : 20);
+        heights.add(
+          math.max(widget.senior ? 56 : 48, painter.height + padding),
+        );
+        textHeights.add(painter.height);
         painter.dispose();
       }
       final topPadding = size.maxHeight * .26;
       if (active != lastActive ||
           size.maxWidth != lastWidth ||
           size.maxHeight != lastHeight ||
-          scaler.scale(28) != lastScale) {
+          scaler.scale(_lyricFontSize(context, widget.senior)) != lastScale) {
         lastActive = active;
         lastWidth = size.maxWidth;
         lastHeight = size.maxHeight;
-        lastScale = scaler.scale(28);
+        lastScale = scaler.scale(_lyricFontSize(context, widget.senior));
         final offset = heights
             .take(active < 0 ? 0 : active)
             .fold<double>(0, (sum, h) => sum + h);
@@ -1729,13 +2032,14 @@ class _LyricsViewState extends State<LyricsView> {
             return;
           }
           final activeHeight = active < 0 ? 0.0 : heights[active];
+          final textHeight = active < 0 ? 0.0 : textHeights[active];
           final target =
               (active < 0
                       ? 0.0
                       : topPadding +
                             offset +
-                            (activeHeight > size.maxHeight
-                                ? 0.0
+                            (textHeight > size.maxHeight
+                                ? (activeHeight - textHeight) / 2
                                 : activeHeight / 2 - size.maxHeight / 2))
                   .clamp(0.0, controller.position.maxScrollExtent);
           if (widget.senior ||
@@ -1772,6 +2076,13 @@ class _LyricsViewState extends State<LyricsView> {
           itemBuilder: (context, index) => Semantics(
             button: widget.enabled,
             selected: index == active,
+            label: index == rangeStart && index == rangeEnd
+                ? '选段起止句'
+                : index == rangeStart
+                ? '选段起句'
+                : index == rangeEnd
+                ? '选段结束句'
+                : null,
             child: InkWell(
               onTap: widget.enabled
                   ? () {
@@ -1781,17 +2092,22 @@ class _LyricsViewState extends State<LyricsView> {
                       );
                     }
                   : null,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  key: ValueKey('lyrics-line-$index'),
-                  widget.lines[index].text,
-                  style: styleFor(index).copyWith(
-                    color: index == active
-                        ? Colors.white
-                        : index < active
-                        ? const Color(0xFF8F898D)
-                        : const Color(0xFFB9B2B6),
+              child: CustomPaint(
+                painter: _LyricRangePainter(
+                  start: index == rangeStart,
+                  end: index == rangeEnd,
+                  color: scheme.primary,
+                ),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    key: ValueKey('lyrics-line-$index'),
+                    widget.lines[index].text,
+                    style: styleFor(index).copyWith(
+                      color: index == active
+                          ? scheme.primary
+                          : scheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ),

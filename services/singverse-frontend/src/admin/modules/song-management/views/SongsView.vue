@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import PageHeader from '../../../shared/ui/PageHeader.vue'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElAlert, ElButton, ElCard, ElEmpty, ElInput, ElPagination, ElSelect, ElOption, ElSkeleton, ElPopover } from 'element-plus'
-import { RefreshRight, Search, EditPen, Grid, List, Plus, Filter } from '@element-plus/icons-vue'
+import { ElAlert, ElButton, ElEmpty, ElInput, ElPagination, ElSelect, ElOption, ElSkeleton, ElPopover } from 'element-plus'
+import { RefreshRight, Search, EditPen, Grid, List, Plus, Filter, MoreFilled } from '@element-plus/icons-vue'
 import { playback as transcoding } from '../../transcoding/playback'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { classification } from '../../classification/api/classification'
@@ -33,7 +33,9 @@ async function refreshEmbedded(deep = false) {
 const route = useRoute(), router = useRouter()
 const columns = ref<SongColumn[]>([...defaultSongColumns]), compact = ref(false)
 const view = ref<'covers' | 'list'>('covers'), searchMode = ref<'identity' | 'path'>('identity')
-const mobileFiltersOpen = ref(false)
+const mobileFiltersOpen = ref(false), moreOpen = ref(false), mobileSummaryOpen = ref(false)
+const moreButton = ref<InstanceType<typeof ElButton>>()
+async function closeMore() { moreOpen.value = false; await nextTick(); moreButton.value?.$el.focus() }
 const appliedFilterCount = computed(() => Number(!!route.query.sourceId)
   + (typeof route.query.tagIds === 'string' ? route.query.tagIds.split(',').filter(Boolean).length : 0)
   + Number(!!route.query.status && route.query.status !== 'ALL') + Number(route.query.unclassified === 'true'))
@@ -147,12 +149,19 @@ onBeforeUnmount(() => { active = false; generation++ })
 
 <template>
   <section class="songs-page" :class="{ 'is-selecting': selectionMode }">
-    <PageHeader title="你的每一首好歌" description="收藏、整理，为下一次开唱做好准备。试听用来检查歌曲与播放效果。">
+    <PageHeader title="歌曲" description="浏览与整理本机曲库，试听检查歌曲和播放效果">
+      <template #meta><span class="count-badge" aria-live="polite">{{ total }}</span></template>
       <template #actions>
         <div class="page-actions">
-          <ElButton text @click="openFormalLens">歌曲资料 · 高级</ElButton>
-          <ElButton text :icon="EditPen" @click="router.push('/library/songs/metadata')">整理元数据</ElButton>
           <ElButton type="primary" :icon="Plus" @click="router.push('/library/media')">添加歌曲</ElButton>
+          <ElPopover v-model:visible="moreOpen" role="menu" placement="bottom-end" :width="200" trigger="click" :persistent="false">
+            <template #reference><ElButton ref="moreButton" class="song-more-button" text :icon="MoreFilled" aria-label="歌曲更多操作" :aria-expanded="moreOpen" @keydown.esc.prevent.stop="closeMore" /></template>
+            <div class="song-more-actions" role="menu" aria-label="歌曲更多操作" @keydown.esc.prevent.stop="closeMore">
+              <ElButton text :icon="EditPen" @click="moreOpen = false; router.push('/library/songs/metadata')">整理元数据</ElButton>
+              <ElButton text @click="moreOpen = false; openFormalLens()">歌曲资料 · 高级</ElButton>
+              <ElButton v-if="loaded && items.length && !loading" class="mobile-summary-action" text :aria-expanded="mobileSummaryOpen" aria-controls="song-page-summary" @click="mobileSummaryOpen = !mobileSummaryOpen; closeMore()">本页统计</ElButton>
+            </div>
+          </ElPopover>
         </div>
       </template>
     </PageHeader>
@@ -163,7 +172,7 @@ onBeforeUnmount(() => { active = false; generation++ })
     </div>
 
     <!-- 筛选与搜索 -->
-    <ElCard shadow="never" class="filters-card" aria-label="歌曲搜索与筛选">
+    <section class="filters-card" aria-label="歌曲搜索与筛选">
       <div class="filters-row">
         <select v-model="searchMode" aria-label="歌曲搜索范围" class="search-mode"><option value="identity">歌曲与歌手</option><option value="path">文件路径</option></select>
         <ElInput
@@ -176,7 +185,7 @@ onBeforeUnmount(() => { active = false; generation++ })
           @keyup.enter="apply()"
           class="search-input"
         />
-        <ElButton type="primary" @click="apply()" :loading="loading">搜索</ElButton>
+        <ElButton @click="apply()" :loading="loading">搜索</ElButton>
       </div>
 
       <ElButton class="mobile-filter-toggle" text :icon="Filter" :aria-expanded="mobileFiltersOpen" aria-controls="song-extra-filters" @click="mobileFiltersOpen = !mobileFiltersOpen">{{ mobileFiltersOpen ? '收起筛选' : '来源与分类筛选' }}<span v-if="appliedFilterCount"> · 已选 {{ appliedFilterCount }} 项</span></ElButton>
@@ -188,13 +197,14 @@ onBeforeUnmount(() => { active = false; generation++ })
       <p v-if="sourcesError" class="filter-load-error">{{ sourcesError }} <ElButton link @click="loadSources">重试来源</ElButton></p>
       <p v-if="classificationError" class="filter-load-error">{{ classificationError }} <ElButton link @click="loadTags">重试分类</ElButton></p>
       <ElButton v-if="filtered || keyword.trim() || sourceId || tagIds.length" class="filter-reset" text @click="reset">重置筛选</ElButton>
-    </ElCard>
+    </section>
 
     <!-- 操作栏 -->
     <div class="songs-toolbar">
       <div class="toolbar-left">
-        <h2>{{ filtered ? '筛选结果' : '歌曲列表' }} <span class="count-badge">{{ total }}</span></h2>
+        <span class="sr-only">{{ filtered ? '筛选结果' : '歌曲列表' }}</span>
         <span v-if="loaded && items.length" class="page-range">第 {{ visibleRange }} 首</span><span v-if="view === 'list'" class="table-scroll-hint">更多列可横向滚动</span>
+        <div v-if="loaded && items.length && !loading" id="song-page-summary" class="page-summary" :class="{ expanded: mobileSummaryOpen }" aria-label="当前页歌曲统计"><span>仅本页</span><span><b>{{ reviewCount }}</b> 待复核</span><span><b>{{ matchedCount }}</b> 文件名完整</span><span v-if="reviewedCount"><b>{{ reviewedCount }}</b> 已复核</span><span v-if="tagsLoaded"><b>{{ unclassifiedCount }}</b> 未分类</span></div>
       </div>
       <div class="toolbar-right">
         <label class="page-size-selector top-page-size">每页<select v-model.number="pageSize" aria-label="每页歌曲数" :disabled="loading" @change="changeSize"><option :value="20">20</option><option :value="50">50</option><option :value="100">100</option></select>首</label>
@@ -210,12 +220,9 @@ onBeforeUnmount(() => { active = false; generation++ })
         >
           批量操作
         </ElButton>
-        <ElButton :icon="RefreshRight" :loading="loading" @click="load">刷新</ElButton>
+        <ElButton class="songs-refresh-button" :icon="RefreshRight" :loading="loading" aria-label="刷新歌曲" @click="load"><span class="refresh-label">刷新</span></ElButton>
       </div>
     </div>
-
-    <div v-if="loaded && items.length && !loading" class="page-summary" aria-label="当前页歌曲统计"><span>仅本页</span><span><b>{{ reviewCount }}</b> 待复核</span><span><b>{{ matchedCount }}</b> 文件名完整</span><span v-if="reviewedCount"><b>{{ reviewedCount }}</b> 已复核</span><span v-if="tagsLoaded"><b>{{ unclassifiedCount }}</b> 未分类</span></div>
-
 
       <div v-if="selectionMode" class="batch-toolbar" role="region" aria-label="歌曲批量操作">
         <div class="batch-info">
@@ -323,20 +330,19 @@ onBeforeUnmount(() => { active = false; generation++ })
   margin: 0
 }
 
+.songs-page > .page-heading { margin-bottom: 12px; }
 .filters-card {
-  margin-bottom: 26px;
-  border-radius: 12px;
-  background: var(--sv-surface-1)
-}
-
-.filters-card :deep(.el-card__body) {
-  padding: 18px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 14px
+  gap: 12px;
+  margin-bottom: 8px;
+  min-width: 0;
 }
-
+.song-more-button { min-width: 40px; }
+.mobile-summary-action.el-button { display: none; }
+.song-more-actions { display: grid; gap: 4px; }
+.song-more-actions :deep(.el-button) { width: 100%; justify-content: flex-start; margin: 0; }
 .filters-row {
   display: flex;
   gap: 8px;
@@ -348,7 +354,7 @@ onBeforeUnmount(() => { active = false; generation++ })
   width: 135px;
   flex: none;
   font-size: 12px;
-  padding-left: 10px
+  padding-left: 12px
 }
 
 .search-input {
@@ -358,7 +364,7 @@ onBeforeUnmount(() => { active = false; generation++ })
 
 .songs-filter-selects {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   flex: 1 1 400px;
   min-width: 0
 }
@@ -394,7 +400,9 @@ onBeforeUnmount(() => { active = false; generation++ })
 
 .songs-toolbar {
   justify-content: space-between;
-  margin-bottom: 14px
+  margin-bottom: 16px;
+  padding: 8px 0 12px;
+  border-bottom: 1px solid var(--sv-border-subtle)
 }
 
 .toolbar-left h2 {
@@ -403,7 +411,7 @@ onBeforeUnmount(() => { active = false; generation++ })
 
 .page-range,
 .table-scroll-hint {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--sv-text-tertiary)
 }
 
@@ -423,22 +431,22 @@ onBeforeUnmount(() => { active = false; generation++ })
 .page-size-selector {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
+  gap: 8px;
+  font-size: 12px;
   color: var(--sv-text-secondary)
 }
 
 .page-size-selector select {
-  height: 34px;
-  padding: 0 25px 0 9px;
-  font-size: 11px
+  height: 40px;
+  padding: 0 24px 0 8px;
+  font-size: 12px
 }
 
 .density-control {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 11px;
+  gap: 4px;
+  font-size: 12px;
   color: var(--sv-text-secondary)
 }
 
@@ -448,20 +456,20 @@ onBeforeUnmount(() => { active = false; generation++ })
 
 .view-switch {
   display: flex;
-  gap: 3px;
-  padding: 3px;
+  gap: 4px;
+  padding: 4px;
   background: var(--sv-surface-3);
-  border-radius: 7px
+  border-radius: 8px
 }
 
 .view-switch button {
   display: grid;
   place-items: center;
   width: 32px;
-  height: 30px;
-  padding: 7px;
+  height: 32px;
+  padding: 8px;
   border: 0;
-  border-radius: 5px;
+  border-radius: 8px;
   background: transparent;
   color: var(--sv-text-tertiary);
   cursor: pointer
@@ -480,13 +488,13 @@ onBeforeUnmount(() => { active = false; generation++ })
 
 .column-settings {
   display: grid;
-  gap: 10px;
-  padding: 6px;
+  gap: 12px;
+  padding: 8px;
   font-size: 12px
 }
 
 .column-settings>p {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--sv-text-secondary)
 }
 
@@ -503,18 +511,18 @@ onBeforeUnmount(() => { active = false; generation++ })
 
 .page-summary {
   display: flex;
-  gap: 16px;
+  gap: 8px;
   align-items: center;
   flex-wrap: wrap;
-  margin-bottom: 20px;
-  font-size: 11px;
+  margin: 0;
+  font-size: 12px;
   color: var(--sv-text-secondary)
 }
 
 .page-summary>span:first-child {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--sv-text-tertiary);
-  padding: 2px 6px;
+  padding: 2px 8px;
   background: var(--sv-surface-3);
   border-radius: 4px
 }
@@ -527,7 +535,7 @@ onBeforeUnmount(() => { active = false; generation++ })
 .songs-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 18px
+  gap: 20px
 }
 
 .batch-toolbar {
@@ -539,8 +547,8 @@ onBeforeUnmount(() => { active = false; generation++ })
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  padding: 14px 20px;
-  margin-bottom: 18px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
   background: var(--sv-accent-soft);
   border: 1px solid var(--sv-border-default);
   border-radius: var(--sv-radius-lg);
@@ -553,8 +561,8 @@ onBeforeUnmount(() => { active = false; generation++ })
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  padding: 10px 16px;
-  margin-bottom: 18px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
   font-size: 12px;
   color: var(--sv-text-secondary);
   background: var(--sv-surface-3);
@@ -582,11 +590,11 @@ onBeforeUnmount(() => { active = false; generation++ })
 .batch-actions :deep(.el-button),
 .batch-info :deep(.el-button) {
   margin: 0;
-  font-size: 11px
+  font-size: 12px
 }
 
 .error-alert {
-  margin-bottom: 18px
+  margin-bottom: 20px
 }
 
 .songs-pagination {
@@ -599,7 +607,7 @@ onBeforeUnmount(() => { active = false; generation++ })
 }
 
 .feature-note {
-  font-size: 11px
+  font-size: 12px
 }
 
 .songs-empty {
@@ -625,7 +633,7 @@ onBeforeUnmount(() => { active = false; generation++ })
   }
 
   .toolbar-right {
-    gap: 6px
+    gap: 8px
   }
 
   .table-scroll-hint {
@@ -669,28 +677,23 @@ onBeforeUnmount(() => { active = false; generation++ })
     gap: 12px
   }
 
-  .filters-card :deep(.el-card__body) {
-    padding: 12px;
-    gap: 10px
-  }
-
+  .filters-card { gap: 8px; }
   .filters-row {
-    flex-wrap: wrap
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr) 60px;
+    gap: 8px;
   }
 
   .search-mode {
-    width: 124px;
-    height: 36px
+    width: 112px;
+    height: 44px
   }
 
   .search-input {
     flex-basis: calc(100% - 138px)
   }
 
-  .filters-row>.el-button {
-    width: 100%;
-    margin: 0
-  }
+  .filters-row>.el-button { min-width: 0; margin: 0; padding: 0 12px; }
 
   .songs-filter-selects {
     display: none;
@@ -706,9 +709,9 @@ onBeforeUnmount(() => { active = false; generation++ })
     display: inline-flex;
     width: 100%;
     justify-content: flex-start;
-    padding: 6px 0;
+    padding: 8px 0;
     margin: 0;
-    min-height: 36px;
+    min-height: 44px;
     font-size: 12px
   }
 
@@ -727,7 +730,7 @@ onBeforeUnmount(() => { active = false; generation++ })
 
   .toolbar-right {
     width: 100%;
-    gap: 6px
+    gap: 8px
   }
 
   .toolbar-right>.el-button {
@@ -739,9 +742,9 @@ onBeforeUnmount(() => { active = false; generation++ })
   }
 
   .page-summary {
-    font-size: 10px;
+    font-size: 12px;
     gap: 8px;
-    margin-bottom: 16px
+    margin: 0
   }
 
   .batch-toolbar {
@@ -751,7 +754,7 @@ onBeforeUnmount(() => { active = false; generation++ })
   }
 
   .batch-actions {
-    gap: 6px;
+    gap: 8px;
     width: 100%
   }
 
@@ -760,15 +763,37 @@ onBeforeUnmount(() => { active = false; generation++ })
   }
 
   .songs-pagination {
-    gap: 18px
+    gap: 20px
   }
 
   .songs-pagination :deep(.el-pagination) {
-    font-size: 11px
+    font-size: 12px
   }
 
   .songs-pagination :deep(.el-pagination__jump) {
     display: none
   }
+}
+@media(max-width: 650px) {
+  .page-size-selector select { height: 44px; }
+  .view-switch button { width: 44px; height: 44px; }
+}
+
+@media(max-width:768px) {
+  .density-control, .column-settings label { min-height: 44px; }
+  .song-more-button { min-width: 44px; min-height: 44px; }
+  .search-input :deep(.el-input__inner) { font-size: 16px; }
+  .song-more-actions :deep(.el-button) { min-height: 44px; }
+}
+@media(max-width:650px) {
+  .mobile-summary-action.el-button { display: inline-flex; }
+  .songs-toolbar { gap: 8px; padding-top: 4px; padding-bottom: 8px; }
+  .toolbar-left { display: contents; }
+  .toolbar-right { width: auto; gap: 6px; margin-left: auto; }
+  .toolbar-right > .el-button { flex: none; min-width: 44px; min-height: 44px; padding-left: 8px; padding-right: 8px; }
+  .view-switch { padding: 2px; gap: 2px; }
+  .table-scroll-hint,.songs-refresh-button .refresh-label { display: none; }
+  .page-summary { display: none; order: 1; flex-basis: 100%; }
+  .page-summary.expanded { display: flex; padding-top: 8px; }
 }
 </style>

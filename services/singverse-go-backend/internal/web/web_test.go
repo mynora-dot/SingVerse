@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"testing/fstest"
 )
@@ -22,6 +23,17 @@ func TestHostingContract(t *testing.T) {
 	}{{"GET", "/", 200, "admin"}, {"GET", "/admin/", 200, "admin"}, {"GET", "/party/index.html", 200, "party"}, {"GET", "/admin", 301, ""}, {"GET", "/assets/missing.js", 404, ""}, {"GET", "/assets/app.js", 200, "js"}, {"HEAD", "/assets/app.js", 200, ""}, {"POST", "/", 404, ""}, {"GET", "/assets/../admin/index.html", 404, ""}} {
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, httptest.NewRequest(v.method, v.path, nil))
+		if v.status == http.StatusOK && (v.path == "/" || v.path == "/admin/" || v.path == "/party/index.html") {
+			policy := w.Header().Get("Content-Security-Policy")
+			for _, directive := range []string{"media-src 'self' blob:", "worker-src 'self' blob:", "frame-ancestors 'none'"} {
+				if !strings.Contains(policy, directive) {
+					t.Errorf("%s: security policy missing %s", v.path, directive)
+				}
+			}
+			if w.Header().Get("Referrer-Policy") != "same-origin" {
+				t.Errorf("%s: referrer policy missing", v.path)
+			}
+		}
 		if w.Code != v.status {
 			t.Errorf("%s %s: %d", v.method, v.path, w.Code)
 		}

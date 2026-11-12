@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { Headset as SongPlaceholderIcon } from '@element-plus/icons-vue'
 import { requestId as newRequestId } from '../../../shared/request-id'
 import PageHeader from '../../shared/ui/PageHeader.vue'
 import { computed,onBeforeUnmount,onMounted,reactive,ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
-import { ElAlert,ElButton,ElDialog,ElInput,ElMessageBox,ElPagination } from 'element-plus'
+import { ElIcon, ElAlert,ElButton,ElDialog,ElInput,ElMessageBox,ElPagination } from 'element-plus'
 import { playlists,type Playlist,type Song,type Draft } from './api'
 import { ai } from '../ai-settings/api/ai'
 import type { AiService } from '../ai-settings/types'
@@ -37,12 +38,11 @@ onMounted(()=>{window.addEventListener('beforeunload',beforeUnload);void load();
 onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunload',beforeUnload)})
 </script>
 <template>
-<section class="playlist-page"><PageHeader title="为相聚，选一张歌单" description="共享歌单会出现在电视和亲友点歌页中。可手动选歌，也可让 AI 从曲库中推荐。"><template #actions><ElButton type="primary" @click="create">创建歌单</ElButton></template></PageHeader>
+<section class="playlist-page"><PageHeader title="歌单" description="共享歌单会出现在电视和亲友点歌页中。可手动选歌，也可让 AI 从曲库中推荐。"><template #meta><span class="playlist-total" aria-live="polite">{{ total }} 张</span></template><template #actions><ElButton type="primary" @click="create">创建歌单</ElButton></template></PageHeader>
 <ElAlert v-if="error" :title="error" type="error" :closable="false"/>
 <form class="toolbar playlist-filters" @submit.prevent="load(true)"><ElInput v-model="query" placeholder="搜索歌单名称或简介" aria-label="搜索歌单" clearable @clear="load(true)"/><label>排序<select v-model="sort" aria-label="歌单排序" @change="load(true)"><option value="UPDATED_DESC">最近更新</option><option value="NAME_ASC">名称排序</option><option value="SONGS_DESC">歌曲最多</option></select></label><ElButton native-type="submit" :loading="loading">搜索 / 刷新</ElButton></form>
-<div class="playlist-list-heading"><strong>共享歌单</strong><span>共 {{total}} 张 · 每页 12 张</span></div>
-<p v-if="loading" role="status">正在读取歌单…</p><div v-else-if="!items.length" class="empty"><span>♫</span><h2>{{query?'没有找到歌单':'为下一次欢聚准备一张歌单'}}</h2><p>手动选歌，或让 AI 根据你的想法从曲库中推荐。</p><ElButton @click="create">创建第一张歌单</ElButton></div>
-<div v-else class="grid"><article v-for="p in items" :key="p.id" class="card"><button class="card-open" @click="edit(p.id)"><div class="cover"><img v-if="p.coverPath&&!coverFailures.has(p.id+(p.coverVersion||''))" @error="coverFailures.add(p.id+(p.coverVersion||''))" :src="`${p.coverPath}?v=${encodeURIComponent(p.coverVersion||'')}`" alt=""/><span v-else role="img" aria-label="暂无歌单封面">♫</span></div><div class="card-copy"><h2 :title="p.name">{{p.name}}</h2><p>{{p.count}} 首可用歌曲<span v-if="p.missingCount"> · {{p.missingCount}} 首已移除</span></p><small :title="p.description">{{p.description||'打开歌单，选一首想唱的歌'}}</small></div></button><div class="card-actions"><ElButton text @click="edit(p.id)">编辑歌单</ElButton><ElButton text type="danger" :disabled="busy" @click="remove(p)">删除</ElButton></div></article></div>
+<p v-if="loading" role="status">正在读取歌单…</p><div v-else-if="!items.length" class="empty"><span><ElIcon><SongPlaceholderIcon /></ElIcon></span><h2>{{query?'没有找到歌单':'为下一次欢聚准备一张歌单'}}</h2><p>手动选歌，或让 AI 根据你的想法从曲库中推荐。</p><ElButton @click="create">创建第一张歌单</ElButton></div>
+<div v-else class="grid"><article v-for="p in items" :key="p.id" class="card"><button class="card-open" @click="edit(p.id)"><div class="cover"><img v-if="p.coverPath&&!coverFailures.has(p.id+(p.coverVersion||''))" @error="coverFailures.add(p.id+(p.coverVersion||''))" :src="`${p.coverPath}?v=${encodeURIComponent(p.coverVersion||'')}`" alt=""/><span v-else role="img" aria-label="暂无歌单封面"><ElIcon><SongPlaceholderIcon /></ElIcon></span></div><div class="card-copy"><h2 :title="p.name">{{p.name}}</h2><p>{{p.count}} 首可用歌曲<span v-if="p.missingCount"> · {{p.missingCount}} 首已移除</span></p><small :title="p.description">{{p.description||'打开歌单，选一首想唱的歌'}}</small></div></button><div class="card-actions"><ElButton text @click="edit(p.id)">编辑歌单</ElButton><ElButton text type="danger" :disabled="busy" @click="remove(p)">删除</ElButton></div></article></div>
 <ElPagination v-if="total" :current-page="page" :total="total" :page-size="12" layout="total, prev, pager, next" @current-change="v=>{page=v;load()}"/>
 <ElDialog :model-value="open" :title="current?'编辑歌单':'创建歌单'" width="min(960px, calc(100vw - 32px))" :close-on-click-modal="false" :close-on-press-escape="!busy&&!generating" :show-close="!busy&&!generating" :before-close="close"><ElAlert v-if="error" :title="error" type="error" :closable="false"/><div class="editor"><section class="details"><label>歌单名称<ElInput v-model="form.name" maxlength="120" aria-label="歌单名称" :disabled="busy||generating"/></label><label>简介<ElInput v-model="form.description" type="textarea" :rows="2" maxlength="1000" :disabled="busy||generating"/></label><div class="toolbar"><strong>已选 {{form.songIds.length}} / 500 首 <small v-if="dirty" class="draft-hint">尚未保存</small></strong><ElButton :disabled="busy||generating" @click="picker=true">选择歌曲</ElButton></div><p v-if="!form.songIds.length" class="hint">还没有歌曲。手动选择或使用右侧 AI 辅助。</p><ol class="song-list"><li v-for="(id,index) in form.songIds" :key="id"><span class="number">{{index+1}}</span><div><strong>{{songs[id]?.title||'已选择歌曲'}}</strong><small>{{songs[id]?.artists.join(' / ')||id}}</small></div><button :disabled="index===0||busy||generating" :aria-label="`上移第${index+1}首`" @click="move(index,-1)">↑</button><button :disabled="index===form.songIds.length-1||busy||generating" :aria-label="`下移第${index+1}首`" @click="move(index,1)">↓</button><ElButton text :disabled="busy||generating" @click="form.songIds=form.songIds.filter(v=>v!==id)">移除</ElButton></li></ol></section><aside class="ai-panel"><h2>AI 帮我选歌</h2><p>描述场景、歌手或氛围，只推荐当前 NAS 曲库内歌曲。使用已配置的模型，生成后预览确认。</p><label>模型<select v-model="generation.modelServiceId" aria-label="歌单 AI 模型" :disabled="generating"><option v-for="m in models" :key="m.id" :value="m.id">{{m.name}}</option></select></label><p v-if="!models.length" class="hint">尚无可用模型，请先到 AI 设置添加并启用。</p><label>你的想法<ElInput v-model="generation.prompt" type="textarea" :rows="3" maxlength="1000" placeholder="例如：适合朋友聚会的华语合唱，节奏轻快" :disabled="generating"/></label><label>候选关键词（可选）<ElInput v-model="generation.q" maxlength="200" placeholder="歌手、歌名或已有搜索词" :disabled="generating"/></label><label>最多推荐首数<input v-model="generation.limit" type="number" min="1" max="50" :disabled="generating"/></label><small>每次从最多 500 首候选中选择，可用关键词缩小范围。只发送歌曲标题、歌手和分类，不发送文件路径或音视频。</small><ElButton type="primary" :loading="generating" :disabled="!generation.prompt.trim()||!generation.modelServiceId||busy" @click="generate">生成歌单建议</ElButton></aside></div><template #footer><ElButton :disabled="busy||generating" @click="close">取消</ElButton><ElButton type="primary" :loading="busy" :disabled="!form.name.trim()||generating||form.songIds.length>500" @click="save">保存歌单</ElButton></template></ElDialog>
 <SongPicker v-if="picker" purpose="playlist" :selected-ids="form.songIds" @close="picker=false" @confirm="choose" @selected-songs="v=>v.forEach(s=>{songs[s.id]={id:s.id,title:(s.metadata&&!s.metadata.stale&&s.metadata.fields.includes('title')?s.metadata.track.title||s.result.title:s.result.title)||'未知歌曲',artists:s.metadata&&!s.metadata.stale&&s.metadata.fields.includes('artists')?s.metadata.track.artists:s.result.artists}})"/>
@@ -52,12 +52,12 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
 <style scoped>
 .playlist-page {
   display: grid;
-  gap: 24px;
+  gap: 12px;
   min-width: 0
 }
 
 .playlist-page>.page-heading {
-  margin-bottom: 6px
+  margin-bottom: 0
 }
 
 .toolbar {
@@ -68,11 +68,8 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
 }
 
 .playlist-filters {
-  padding: 18px;
-  margin: 0;
-  background: var(--sv-surface-1);
-  border: 1px solid var(--sv-border-subtle);
-  border-radius: 12px
+  padding: 0;
+  margin: 0 0 4px
 }
 
 .playlist-filters>.el-input {
@@ -87,6 +84,8 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
   color: var(--sv-text-secondary)
 }
 
+.playlist-total { font-size: 13px; color: var(--sv-text-secondary); }
+
 .playlist-list-heading {
   display: flex;
   justify-content: space-between;
@@ -96,7 +95,7 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
 
 .playlist-list-heading>strong {
   font-size: 18px;
-  font-weight: 550
+  font-weight: 500
 }
 
 .playlist-list-heading>span {
@@ -115,14 +114,14 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
 }
 
 .card {
-  background: var(--sv-surface-2);
-  border: 1px solid var(--sv-border-subtle);
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: 12px;
   overflow: hidden
 }
 
 .card:hover {
-  box-shadow: var(--sv-shadow-md)
+  box-shadow: var(--sv-shadow-sm)
 }
 
 .card-open {
@@ -137,7 +136,7 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
 
 .cover {
   --sleeve-paper: var(--sv-surface-3);
-  --sleeve-ink: var(--sv-accent-primary);
+  --sleeve-ink: var(--sv-text-tertiary);
   position: relative;
   isolation: isolate;
   aspect-ratio: 1.2;
@@ -160,15 +159,7 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
   z-index: -1
 }
 
-.card:nth-child(3n+2) .cover {
-  --sleeve-paper: var(--sv-accent-highlight-soft);
-  --sleeve-ink: var(--sv-terracotta)
-}
 
-.card:nth-child(3n+3) .cover {
-  --sleeve-paper: var(--sv-semantic-info-soft);
-  --sleeve-ink: var(--sv-semantic-info)
-}
 
 .cover img {
   width: 100%;
@@ -183,12 +174,12 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
   height: 84px;
   border-radius: 50%;
   background: var(--sv-surface-1);
-  color: var(--sv-accent-primary);
-  font-size: 30px
+  color: var(--sv-text-secondary);
+  font-size: 28px
 }
 
 .card-copy {
-  padding: 18px
+  padding: 16px 0 12px
 }
 
 .card-copy h2 {
@@ -201,7 +192,7 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
 .card-copy p {
   font-size: 12px;
   color: var(--sv-text-secondary);
-  margin: 9px 0
+  margin: 8px 0
 }
 
 .card-copy small {
@@ -218,8 +209,8 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
   display: flex;
   justify-content: space-between;
   border-top: 1px solid var(--sv-border-subtle);
-  margin: 0 18px;
-  padding: 8px 0
+  margin: 0;
+  padding: 4px 0
 }
 
 .card-actions :deep(.el-button) {
@@ -260,7 +251,7 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
 .editor {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 290px;
-  gap: 26px
+  gap: 28px
 }
 
 .details,
@@ -274,12 +265,12 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
 .details label,
 .ai-panel label {
   display: grid;
-  gap: 7px;
+  gap: 8px;
   font-size: 13px
 }
 
 .draft-hint {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
   color: var(--sv-semantic-warn);
   margin-left: 8px
@@ -287,7 +278,7 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
 
 .ai-panel {
   padding: 20px;
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--sv-surface-3);
   align-self: start
 }
@@ -299,12 +290,12 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
 .ai-panel select,
 .ai-panel input[type=number] {
   width: 100%;
-  height: 38px;
+  height: 40px;
   padding: 0 8px
 }
 
 .ai-panel small {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.7;
   color: var(--sv-text-secondary)
 }
@@ -343,7 +334,7 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
 
 .song-list small,
 .number {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--sv-text-secondary)
 }
 
@@ -351,11 +342,11 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
   background: var(--sv-surface-2);
   color: var(--sv-text-primary);
   border: 1px solid var(--sv-border-subtle);
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
-  padding: 5px;
+  padding: 4px;
   min-width: 34px;
-  min-height: 34px
+  min-height: 32px
 }
 
 .song-list button:disabled {
@@ -384,7 +375,7 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
   }
 
   .card-copy {
-    padding: 12px
+    padding: 12px 0 8px
   }
 
   .card-copy h2 {
@@ -393,17 +384,18 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
 
   .card-copy p,
   .card-copy small {
-    font-size: 11px
+    font-size: 12px
   }
 
   .card-actions {
-    margin: 0 10px
+    margin: 0
   }
 
   .card-actions :deep(.el-button) {
-    font-size: 11px;
-    padding: 5px 2px;
-    min-width: 40px
+    font-size: 12px;
+    padding: 4px 2px;
+    min-width: 44px;
+    min-height: 44px
   }
 
   .cover>span {
@@ -413,12 +405,12 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
   }
 
   .playlist-list-heading>span {
-    font-size: 11px
+    font-size: 12px
   }
 
   .playlist-filters {
-    gap: 10px;
-    padding: 12px
+    gap: 8px;
+    padding: 0
   }
 
   .playlist-filters>.el-input {
@@ -447,12 +439,16 @@ onBeforeUnmount(()=>{active=false;epoch++;window.removeEventListener('beforeunlo
   }
 
   .song-list li>button {
-    min-height: 40px;
-    min-width: 40px
+    min-height: 44px;
+    min-width: 44px
   }
 
   .song-list li>.el-button {
     margin-left: auto
   }
+}
+@media(max-width:768px) {
+  .playlist-filters :deep(.el-input__inner) { font-size: 16px; }
+  .playlist-filters select { min-height: 44px; }
 }
 </style>

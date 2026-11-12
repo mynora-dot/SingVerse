@@ -4,10 +4,6 @@ import type { MediaSong } from '../../media-library/types'
 import { songTitle } from '../../metadata/utils'
 const props = defineProps<{ song: MediaSong; fallbackOnly?: boolean }>()
 const failed = ref(false)
-const palette = computed(() => {
-  const colors = [['#e7dcc3','#8a6d3b'],['#e3d3c3','#8c5a3c'],['#dfe0d0','#6f7350'],['#e9d9c8','#9c6b45'],['#e0d4d0','#7d5a52']]
-  return colors[Array.from(props.song.id).reduce((n, c) => n + c.charCodeAt(0), 0) % colors.length]!
-})
 const artwork = computed(() => {
   const metadata = props.song.metadata
   return metadata && !metadata.stale && metadata.fields.includes('cover') && metadata.track.coverUrl
@@ -18,17 +14,17 @@ watch(() => [props.song.id, props.song.metadata, artwork.value], () => { failed.
 <template>
   <span class="song-cover">
     <img v-if="artwork && !failed && !fallbackOnly" :src="artwork" :alt="`${songTitle(song)}的封面`" loading="lazy" decoding="async" @error="failed = true">
-    <span v-else class="song-cover-placeholder" role="img" aria-label="暂无歌曲封面" :style="{ '--cover-paper': palette[0], '--cover-ink': palette[1] }"><span class="record-grooves"><span>{{ songTitle(song).slice(0, 1) }}</span></span></span>
+    <span v-else class="song-cover-placeholder" role="img" aria-label="暂无歌曲封面"><span class="record-grooves"><span>{{ songTitle(song).slice(0, 1) }}</span></span></span>
   </span>
 </template>
 <style scoped>
 .song-cover {
   display: block;
   flex-shrink: 0;
-  width: 46px;
-  height: 46px;
+  width: 48px;
+  height: 48px;
   overflow: hidden;
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--sv-surface-3)
 }
 
@@ -44,7 +40,7 @@ watch(() => [props.song.id, props.song.metadata, artwork.value], () => { failed.
   place-items: center;
   width: 100%;
   height: 100%;
-  background: var(--cover-paper);
+  background: var(--sv-surface-3);
   position: relative;
   overflow: hidden
 }
@@ -55,9 +51,9 @@ watch(() => [props.song.id, props.song.metadata, artwork.value], () => { failed.
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: repeating-radial-gradient(circle, var(--cover-ink) 0 1px, transparent 2px 4px);
+  background: var(--sv-record-groove), var(--sv-surface-3);
   transform: translate(15%, 9%);
-  opacity: .8
+  opacity: 1
 }
 
 .record-grooves>span {
@@ -66,9 +62,9 @@ watch(() => [props.song.id, props.song.metadata, artwork.value], () => { failed.
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: var(--cover-paper);
-  color: var(--cover-ink);
-  font: 600 clamp(10px, 2vw, 22px) var(--sv-font-editorial);
-  border: 1px solid var(--cover-ink)
+  background: var(--sv-surface-3);
+  color: var(--sv-text-tertiary);
+  font: 500 clamp(12px, 2vw, 20px) var(--sv-font-editorial);
+  border: 1px solid var(--sv-border-default)
 }
 </style>

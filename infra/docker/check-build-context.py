@@ -66,7 +66,7 @@ def main():
         stream.write(b'FROM scratch\nCOPY . /context/\n')
         stream.flush()
         ignore = dockerfile.with_name(dockerfile.name + '.dockerignore')
-        ignore.write_bytes((build / 'go.Dockerfile.dockerignore').read_bytes())
+        ignore.write_bytes((build / 'app.Dockerfile.dockerignore').read_bytes())
         try:
             audit(dockerfile, 'go-specific')
         finally:

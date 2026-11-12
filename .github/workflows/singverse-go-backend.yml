@@ -1,9 +1,9 @@
 name: singverse-go-backend
 on:
   push:
-    paths: ['services/singverse-go-backend/**', 'services/singverse-frontend/**', '.github/workflows/singverse-go-backend.yml', 'Makefile', 'VERSION', '.env.example', 'database/**', 'contracts/**', 'scripts/*go*', 'infra/docker/check-go-mysql.py', 'infra/docker/check-go-container.py', 'scripts/setup-dbmate.sh', 'scripts/check-database-baseline.py']
+    paths: ['services/singverse-go-backend/**', 'services/singverse-frontend/**', '.github/workflows/singverse-go-backend.yml', 'Makefile', 'VERSION', '.env.example', 'database/**', 'contracts/**', 'scripts/*go*', 'infra/docker/check-go-mysql.py', 'infra/docker/check-go-container.py', 'infra/docker/build/**', 'scripts/setup-dbmate.sh', 'scripts/check-database-baseline.py']
   pull_request:
-    paths: ['services/singverse-go-backend/**', 'services/singverse-frontend/**', '.github/workflows/singverse-go-backend.yml', 'Makefile', 'VERSION', '.env.example', 'database/**', 'contracts/**', 'scripts/*go*', 'infra/docker/check-go-mysql.py', 'infra/docker/check-go-container.py', 'scripts/setup-dbmate.sh', 'scripts/check-database-baseline.py']
+    paths: ['services/singverse-go-backend/**', 'services/singverse-frontend/**', '.github/workflows/singverse-go-backend.yml', 'Makefile', 'VERSION', '.env.example', 'database/**', 'contracts/**', 'scripts/*go*', 'infra/docker/check-go-mysql.py', 'infra/docker/check-go-container.py', 'infra/docker/build/**', 'scripts/setup-dbmate.sh', 'scripts/check-database-baseline.py']
   workflow_dispatch:
 permissions:
   contents: read

@@ -9,7 +9,6 @@ import type { ParserProfile, ParserWorkspace, ProfileInput, RulePreview } from '
 import type { FormatItem } from '../utils'
 import { attemptFor, candidateEntries, copyValue, errorMessage, expressionFor, formatItems } from '../utils'
 import RulePreviewPanel from '../components/RulePreviewPanel.vue'
-import SourceWorkspaceNav from '../../media-library/components/SourceWorkspaceNav.vue'
 
 type GalleryItem = FormatItem & { attempt?: RulePreview['attempts'][number] }
 
@@ -242,12 +241,10 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
 <template>
   <section class="profiles-page management-page" :class="{ 'profiles-embedded': embedded }">
     <template v-if="!embedded">
-      <PageHeader title="歌曲来源的文件名识别" description="填一个真实的文件名，挑出能识别的格式并保存，再为歌曲来源选择方案。扫描时用它提取歌名和歌手。" />
-      <SourceWorkspaceNav />
+      <PageHeader title="文件名识别" description="填一个真实的文件名，挑出能识别的格式并保存，再为歌曲来源选择方案。扫描时用它提取歌名和歌手。" />
     </template>
     <p v-else class="embedded-profile-intro">先试一个文件名，再选择适合的格式；也可以复制方案单独使用。</p>
-    <details v-if="embedded" class="profile-sharing-note"><summary>共享方案的修改会影响其他来源</summary><p>同一方案可供多个来源使用，保存修改会影响它们之后的扫描。只想调整一个来源时，请先复制方案。已有歌曲不会在这里被重新扫描。</p></details>
-    <p v-else class="profile-sharing-note">同一方案可供多个来源使用，保存修改会影响它们之后的扫描。只想调整一个来源时，请先复制方案。已有歌曲不会在这里被重新扫描。</p>
+    <details class="profile-sharing-note"><summary>共享方案与修改范围</summary><p>同一方案可供多个来源使用，保存修改会影响它们之后的扫描。只想调整一个来源时，请先复制方案。已有歌曲不会在这里被重新扫描。</p></details>
     <div v-if="error || conflict || parseError" class="page-feedback"><ElAlert v-if="error" :title="error" type="error" :closable="false" role="alert" /><ElButton :disabled="loading || busy" @click="load(!!workspace)">{{ workspace ? '加载最新配置，保留草稿' : '重试加载' }}</ElButton></div>
     <p v-if="loading" class="page-status" role="status">正在读取解析方案…</p>
     <template v-if="workspace">
@@ -306,9 +303,9 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
 
 <style scoped>
 .embedded-profile-intro { margin-bottom: 16px; color: var(--sv-text-secondary); font-size: 13px; line-height: 1.8; }
-.profile-sharing-note { margin: 0 0 24px; padding: 14px 18px; background: var(--sv-surface-3); border-radius: var(--sv-radius-sm); color: var(--sv-text-secondary); font-size: 12px; line-height: 1.9; }
+.profile-sharing-note { margin: 0 0 24px; padding: 16px 20px; background: var(--sv-surface-3); border-radius: var(--sv-radius-sm); color: var(--sv-text-secondary); font-size: 12px; line-height: 1.9; }
 .profile-sharing-note summary { cursor: pointer; font-weight: 600; }
-.profile-sharing-note[open] summary { margin-bottom: 10px; }
+.profile-sharing-note[open] summary { margin-bottom: 12px; }
 .embedded-profile-confirm { position: sticky; bottom: -1px; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; padding: 16px 0; background: var(--sv-surface-1); border-top: 1px solid var(--sv-border-subtle); }
 .embedded-profile-confirm p { flex: 1; min-width: 140px; font-size: 12px; color: var(--sv-text-secondary); overflow-wrap: anywhere; }
 .profiles-page > .page-feedback,
@@ -332,30 +329,30 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
 .editor-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 14px 24px;
+  gap: 16px 24px;
   align-items: end;
 }
 .editor-id { min-width: 0; }
-.name-label { display: block; margin-bottom: 10px; font-size: 13px; font-weight: 600; }
+.name-label { display: block; margin-bottom: 12px; font-size: 13px; font-weight: 600; }
 .editor-id .name-field { margin-top: 0; }
 .name-field :deep(.el-input__wrapper) { min-height: 40px; background: var(--sv-surface-1); }
 .name-field :deep(.el-input__inner) { font-size: 14px; font-weight: 500; }
 .editor-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .editor-actions :deep(.el-button) { margin-left: 0; }
 .editor-meta { grid-column: 1 / -1; font-size: 12px; color: var(--sv-text-secondary); }
-.editor-note { grid-column: 1 / -1; margin-top: -6px; font-size: 12px; line-height: 1.8; }
+.editor-note { grid-column: 1 / -1; margin-top: -8px; font-size: 12px; line-height: 1.8; }
 .profiles-advanced { padding: 0; background: transparent; }
 .profiles-advanced > summary { font-size: 14px; line-height: 1.8; overflow-wrap: anywhere; }
-.members-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 24px 0 10px; }
-.members-head h3 { display: flex; align-items: center; gap: 10px; font-size: 15px; }
+.members-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 24px 0 12px; }
+.members-head h3 { display: flex; align-items: center; gap: 12px; font-size: 15px; }
 .library-link { font-size: 12px; }
-.preview-hint { margin: 0 0 18px; font-size: 12px; line-height: 1.8; }
-.entry-controls { flex-wrap: nowrap; gap: 6px; }
+.preview-hint { margin: 0 0 20px; font-size: 12px; line-height: 1.8; }
+.entry-controls { flex-wrap: nowrap; gap: 8px; }
 .entry-controls :deep(.el-switch) { margin-right: 8px; }
 .entry-controls :deep(.el-button) { border-color: var(--sv-border-subtle); background: var(--sv-surface-1); min-height: 32px; }
 .add-rule { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; margin: 20px 0 0; padding: 16px; background: var(--sv-surface-3); border-radius: var(--sv-radius-md); }
 .add-rule .native-field { min-width: 0; width: 100%; }
-.preview-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 28px 0 12px; padding-top: 24px; border-top: 1px solid var(--sv-border-subtle); }
+.preview-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 28px 0 12px; padding-top: 24px; border-top: 1px solid var(--sv-border-subtle); }
 .preview-head h3 { font-size: 15px; }
 .preview-scope { font-size: 12px; color: var(--sv-text-secondary); overflow-wrap: anywhere; }
 .preview-placeholder { margin-top: 16px; padding: 24px 16px; text-align: center; border: 1px dashed var(--sv-border-default); border-radius: var(--sv-radius-md); color: var(--sv-text-secondary); font-size: 12px; }
@@ -369,16 +366,16 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
   .profiles-embedded .embedded-profile-intro,
   .profiles-embedded .rail-head { display: none; }
   .profiles-embedded .rail-actions { margin-top: 0; margin-bottom: 12px; }
-  .profiles-embedded .profile-choice { padding: 10px 12px; }
-  .profiles-embedded .profile-sharing-note { margin-bottom: 18px; }
+  .profiles-embedded .profile-choice { padding: 12px 12px; }
+  .profiles-embedded .profile-sharing-note { margin-bottom: 20px; }
   .editor-head { gap: 16px; }
-  .editor-actions { gap: 10px; }
+  .editor-actions { gap: 12px; }
   .editor-actions > .el-tag { width: fit-content; }
   .editor-actions > .el-button { flex: 1; }
-  .entry { gap: 12px; padding: 14px; }
+  .entry { gap: 12px; padding: 16px; }
   .entry-controls { justify-content: flex-start; flex-wrap: wrap; }
   .entry-controls :deep(.el-button) { flex: 1; }
-  .add-rule { grid-template-columns: minmax(0, 1fr); padding: 14px; }
+  .add-rule { grid-template-columns: minmax(0, 1fr); padding: 16px; }
 }
 
 code {
@@ -386,4 +383,8 @@ code {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* 当前步骤使用轻量分隔，方案选择仍保留原草稿保护。 */
+.profiles-layout{grid-template-columns:208px minmax(0,1fr);gap:24px}.profiles-rail{--el-card-padding:0;border:0;border-radius:0;background:transparent;padding-right:20px;border-right:1px solid var(--sv-border-subtle)}.rail-head h2{font-size:14px;font-weight:500}.rail-actions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 16px}.rail-actions .el-button{width:auto;flex:1;margin:0}.profiles-main{gap:0}.profiles-main>.el-card{border:0;border-radius:0;background:transparent;--el-card-padding:0}.profiles-main>.el-card+.el-card{margin-top:0;border-top:1px solid var(--sv-border-subtle);padding-top:20px}.profile-detect,.profile-formats,.profile-draft{padding-bottom:20px}.profile-sharing-note{margin:0 0 16px;padding:0;background:transparent;border-radius:0}.profile-sharing-note summary{display:inline-flex;align-items:center;min-height:40px;font-weight:400;cursor:pointer}.profile-sharing-note p{max-width:900px}.step-head{gap:12px;margin-bottom:16px}.step-head h2{font-size:15px}.step-head p{font-size:12px;margin-top:4px}.step-no{width:28px;height:28px}.format-choice{padding:16px}.add-rule{padding:12px 0;background:transparent;border-radius:0}.editor-head{gap:12px 16px}.name-label{font-size:12px;margin-bottom:8px}.editor-actions{gap:8px}.members-head{margin-top:16px}.profiles-advanced>summary{display:flex;align-items:center;min-height:40px}.library-link{display:inline-flex;align-items:center;min-height:40px}.profile-choice{min-width:0}
+@media(max-width:1000px){.profiles-layout{grid-template-columns:minmax(0,1fr)}.profiles-rail{position:static;padding:0 0 16px;border:0;border-bottom:1px solid var(--sv-border-subtle)}.rail-actions{justify-content:flex-start}.rail-actions .el-button{flex:0 1 auto}.rail-list{display:flex;overflow-x:auto;max-height:none;gap:8px;scrollbar-width:thin;padding-bottom:4px}.profile-choice{flex:0 0 auto;max-width:260px;min-width:140px}.profile-choice strong{overflow-wrap:anywhere}.profile-choice small{display:block}}
+@media(max-width:768px){.profiles-page .el-button,.profile-sharing-note summary,.profiles-advanced>summary,.library-link,.profile-choice{min-height:44px}.entry-controls :deep(.el-button){min-height:44px}.name-field :deep(.el-input__wrapper){min-height:44px}.profiles-layout{gap:16px}.profiles-main>.el-card+.el-card{padding-top:16px}.profile-sharing-note p{font-size:12px}.rail-list{width:100%;min-width:0}.profile-choice{white-space:normal}.entry-controls :deep(.el-switch){min-height:44px}.add-rule{padding:12px 0}.editor-actions>.el-button{flex:0 1 auto}}
 </style>

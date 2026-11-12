@@ -1,9 +1,0 @@
-# Docker Desktop cannot pass VideoToolbox through to a Linux container.
-# Start scripts/macos-compute.py first; run Compose from the repository root.
-services:
-  singverse-go-backend:
-    environment:
-      COMPUTE_NODE_URL: http://host.docker.internal:18090
-      SINGVERSE_COMPUTE_AUTO_CALLBACK_ORIGIN: http://127.0.0.1:18080
-  singverse-compute:
-    profiles: [container-compute]

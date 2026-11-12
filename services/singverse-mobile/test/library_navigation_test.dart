@@ -92,7 +92,7 @@ void main() {
       expect(find.text('只出现一次的歌曲'), findsOneWidget);
       expect(find.text('最近练唱'), findsNothing);
       expect(find.text('家庭歌单'), findsOneWidget);
-      expect(find.text('1 首歌，随时开唱'), findsOneWidget);
+      expect(find.text('1 首歌曲'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

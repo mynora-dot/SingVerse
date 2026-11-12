@@ -27,7 +27,7 @@ make frontend-dev
 |---|---|
 | Go 格式、vet、staticcheck、govulncheck、race 全部业务测试 | `make go-backend-test` |
 | 真实终端管理员恢复，独立临时数据 | `make go-recovery-check` |
-| 已构建 Go/Nginx 镜像的隔离容器验收 | `make go-container-check`，可指定 `GO_BACKEND_IMAGE` / `GO_FRONTEND_IMAGE` |
+| 已构建 Go 业务镜像的隔离容器验收 | `make go-container-check`，可指定 `GO_BACKEND_IMAGE` |
 | 独立静态托管与权限边界 | `make web-check` |
 | 空库迁移、幂等迁移和回退重建 | `make db-fresh-check` |
 | SQLite 事务、进程锁及业务 HTTP | `make db-sqlite-check` |
@@ -37,6 +37,8 @@ make frontend-dev
 | Go 检查、Python 检查及真实联动 | `make backend-check` |
 | 前端类型与构建；交互测试 | `make frontend-check`；模块内 `npm test` |
 | 容器配置；真实页面/代理；隔离 MFA 恢复 | `make docker-config-check`；`make docker-check`；`make auth-docker-check` |
+
+`make verify` 与 `make backend-check` 使用同一依赖图，共享前端构建和 Go 资源准备，不再通过多次递归 Make 重复执行。Docker 专用检查脚本位于 `infra/docker/`，发布脚本与测试也位于 `infra/docker/`。源码构建使用 `make docker-up`，预构建镜像使用 `make docker-image-up`；旧部署包、Java 回退和 Nginx 检查入口已删除。
 
 Go 单项检查可通过 `sh scripts/run-go.sh test ./internal/library -run TestLocal` 运行，复用仓库缓存。数据库和 HTTP 测试用临时目录、随机回环端口，不重置开发数据。MySQL 检查脚本自行创建随机、仅回环发布的容器，只清理该测试容器。
 
@@ -54,6 +56,6 @@ HTTP 注册、DTO 解码、Cookie/Bearer 与错误映射留在 HTTP 边界；业
 
 ## CI 与设备验证
 
-`singverse-go-backend` 验证静态分析、漏洞、race、SQLite/MySQL 并构建版本化二进制；`singverse-backend` 验证真实 Python 联动；`singverse-docker` 验证容器矩阵、部署包、代理流式传输及登录恢复。Java 源码及 Maven 工作流已退休，镜像回退不要求安装宿主 JDK。配置存在不代表远程 CI 已通过。
+`singverse-go-backend` 验证静态分析、漏洞、race、SQLite/MySQL 并构建版本化二进制；`singverse-backend` 验证真实 Python 联动；`singverse-docker` 验证两条部署路线、构建上下文、媒体 HTTP、登录恢复及同机／独立 compute 认证回源；`singverse-images` 按实际架构检查 OCI 制品，仅正式 Release 推送三平台镜像。配置存在不代表远程 CI 已通过。
 
 Flutter/TV 保留现有构建：`make mobile-check mobile-build`、`make tv-build`；JDK 仍供 Android 工程使用。TV minSdk 23、手机 minSdk 24；微信、真实麦克风、电视遥控焦点、NAS 权限及各 CPU/GPU 架构必须单独验收。历史结果不改写为 Go 本次结果，见 [Go 验证](go-migration-verification.md) 和 [验证记录](verification.md)。

@@ -4,7 +4,7 @@
 
 ## 路由与产物
 
-| 内容 | Go直接托管 | Nginx对外托管 | 静态产物 |
+| 内容 | Go直接托管（含Docker） | 外部反向代理要求 | 静态产物 |
 |---|---|---|---|
 | 管理页面 | `/` 与 `/admin/` | `/`，同时兼容 `/admin/` | `dist/admin/index.html` |
 | 点歌H5 | `/party/` | `/party/` | `dist/party/index.html` |
@@ -22,18 +22,18 @@
 
 前端API适配层只允许同源 `/api`、`/api/*` 请求；当前调用 `/api/health` 和 `/api/v1` 账号/MFA接口，发送Accept: application/json。Go 提供兼容健康响应 `{"status":"UP"}`，数据库不可用时 DOWN/503，不公开数据库详情。前端不直连Python或数据库。
 
-Nginx匹配整个 `/api` 命名空间并保留URI和查询参数，proxy_pass不附加替换URI；`/api/v1/songs?page=0`不会被剥离为 `/v1/songs?page=0`。业务API继续使用 `/api/v1`；运维健康不套业务分页或RFC9457错误结构。
+外部代理匹配整个 `/api` 命名空间并保留URI和查询参数，不剥离API前缀；`/api/v1/songs?page=0`不会被剥离为 `/v1/songs?page=0`。业务API继续使用 `/api/v1`；运维健康不套业务分页或RFC9457错误结构。
 
 健康适配仅接受字符串UP、DOWN、OUT_OF_SERVICE、UNKNOWN并忽略额外字段；HTTP失败、HTML、非法JSON、超时或断网均显示失败，仅UP显示正常。
 
 ## 开发、交付与验证
 
-Vite本地提供 `/admin/` 和 `/party/` 两入口，仅将 `/api` 代理到Go，默认后端为127.0.0.1:8080。原生二进制由 Go 嵌入托管完整 dist，不需要生产Node进程。Nginx配置位于[infra Nginx 配置](../infra/docker/build/nginx/nginx.conf)，对外根页读取admin目录，party和assets读取完整dist中的对应目录。
+Vite本地提供 `/admin/` 和 `/party/` 两入口，仅将 `/api` 代理到Go，默认后端为127.0.0.1:8080。原生二进制由 Go 嵌入托管完整 dist，不需要生产Node进程。Docker 业务容器同样由 Go 直接托管，不再提供独立 Nginx；HTTPS 使用外部反向代理。
 
-`make frontend-check`验证API前缀、请求行为、管理挂载路径、类型与构建；`make web-check`验证Go实际HTTP；`make backend-check`验证Python上下线隔离。Nginx部署前需验证根页、party页、引用资源、健康、未知API及缺失JS/CSS，不能仅靠静态构建成功宣告代理可用。
+`make frontend-check`验证类型与构建，前端模块 `npm test` 验证API前缀、请求行为和管理挂载路径；`make web-check`验证Go实际HTTP；`make backend-check`验证Python上下线隔离。外部代理部署前需验证根页、party页、引用资源、健康、未知API及缺失JS/CSS，不能仅靠静态构建成功宣告代理可用。
 
 Go 复用同一 dist 与协议，静态与真实 HTTP 检查见 `make web-check`、`make docker-check`。当前根路径或/admin挂载支持不代表任意路径前缀、WebSocket、NAS部署或微信真机验收完成。
 
-正式资料的创建、修改与关联 JSON 使用专用 16 MiB 上限；`POST /api/v1/metadata/assets` 接受不超过 32 MiB 的原始附件。歌曲封面 multipart 上传 `/api/v1/metadata/songs/{id}/covers/upload` 的代理上限为 33 MiB，Go 继续限制原图本身不超过 32 MiB。分类封面、歌手图片和 TV 横幅沿用专用 3 MiB 代理上限及各自文件校验，其余 API 默认仍为 16 KiB。`make nginx-media-check` 使用隔离容器验证原图、歌词请求和超限拒绝；`make docker-check` 用大于 16 KiB 的无效图片验证代理实际转发到 Go 且不写数据。
+请求大小由 Go 各业务接口自行校验。外部反向代理需允许相应 JSON、原始附件和 multipart 请求到达业务校验层，不能沿用旧 Nginx 的全局小请求限制。正式元数据 JSON 为 16 MiB、原始附件及歌曲封面文件为 32 MiB；multipart 还需预留封装开销。图片等具体限制以对应业务接口契约为准。
 
-HLS 播放的 MSE MediaSource 和 hls.js worker 需要 `media-src 'self' blob:` 与 `worker-src 'self' blob:`；网络仍仅 `connect-src 'self'`。转码清单/分片及兼容版本代理关闭缓冲和磁盘缓存，并保留原始媒体 Range 行为。
+HLS 播放的 MSE MediaSource 和 hls.js worker 需要 `media-src 'self' blob:` 与 `worker-src 'self' blob:`；网络仍仅 `connect-src 'self'`。外部代理对转码清单/分片及兼容版本关闭缓冲和磁盘缓存，并保留原始媒体 Range 行为。

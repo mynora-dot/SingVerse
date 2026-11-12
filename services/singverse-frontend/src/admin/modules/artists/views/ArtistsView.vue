@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { Filter, Headset as SongPlaceholderIcon } from '@element-plus/icons-vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElAlert, ElButton, ElDialog, ElInput, ElPagination, ElTable, ElTableColumn, ElMessage, ElMessageBox } from 'element-plus'
+import { ElIcon, ElAlert, ElButton, ElDialog, ElInput, ElPagination, ElTable, ElTableColumn, ElMessage, ElMessageBox } from 'element-plus'
 import { ApiError } from '../../../core/auth/api'
 import PageHeader from '../../../shared/ui/PageHeader.vue'
 import { artists } from '../api/artists'
@@ -14,6 +15,7 @@ import SingleSongScrapeDialog from '../../metadata/components/SingleSongScrapeDi
 
 const route = useRoute(), router = useRouter()
 const pageSize = 20
+const mobileFiltersOpen = ref(false)
 const query = ref(''), artistType = ref(''), artworkFilter = ref(''), countLessThan = ref<number|null>(null)
 const page = ref(1), total = ref(0), profiles = ref<Artist[]>([]), loading = ref(false), error = ref('')
 const profile = ref<Artist|null>(null), songs = ref<MediaSong[]>([]), songPage = ref(1), songTotal = ref(0), songsLoading = ref(false)
@@ -180,7 +182,8 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
 
 <template>
 <section class="artists-page">
-  <PageHeader title="歌手" description="熟悉的声音，值得一张好封面。歌手随曲库自动收录，在这里整理图片与分类。">
+  <PageHeader title="歌手" description="歌手随曲库自动收录，可在这里整理图片与分类">
+    <template #meta><span class="artist-total" aria-live="polite">{{ total }} 位</span></template>
     <template #actions><ElButton @click="openSettings">背景图来源</ElButton><ElButton type="primary" :disabled="!total && !selectedCount" @click="openArtwork()">获取歌手封面</ElButton></template>
   </PageHeader>
   <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon />
@@ -189,18 +192,19 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
     <div class="artists-types" role="group" aria-label="按歌手类型筛选"><button v-for="item in categories" :key="item.value" :class="{ active:artistType===item.value }" :aria-pressed="artistType===item.value" @click="chooseType(item.value)">{{ item.label }}</button></div>
     <form class="artists-toolbar" @submit.prevent="load(true)">
       <ElInput v-model="query" placeholder="搜索歌手、别名或拼音" aria-label="搜索歌手库" clearable />
-      <select v-model="artworkFilter" class="native-field" aria-label="按封面状态筛选" @change="load(true)"><option value="">全部封面状态</option><option value="MISSING">还没有封面</option><option value="REVIEW">有候选待确认</option></select>
-      <label class="song-count-filter">歌曲少于<input v-model.number="countLessThan" aria-label="歌曲数量小于" type="number" min="1" max="1000000" placeholder="不限" @change="load(true)" />首</label>
+      <ElButton class="artists-filter-toggle" text :icon="Filter" :aria-expanded="mobileFiltersOpen" aria-controls="artist-extra-filters" @click="mobileFiltersOpen = !mobileFiltersOpen">筛选</ElButton>
+      <div id="artist-extra-filters" class="artists-extra-filters" :class="{ expanded: mobileFiltersOpen }"><select v-model="artworkFilter" class="native-field" aria-label="按封面状态筛选" @change="load(true)"><option value="">全部封面状态</option><option value="MISSING">还没有封面</option><option value="REVIEW">有候选待确认</option></select>
+      <label class="song-count-filter">歌曲少于<input v-model.number="countLessThan" aria-label="歌曲数量小于" type="number" min="1" max="1000000" placeholder="不限" @change="load(true)" />首</label></div>
       <ElButton native-type="submit" :loading="loading">搜索</ElButton><ElButton v-if="hasFilters" text @click="clearFilters">重置</ElButton>
     </form>
     <div class="artists-selection" :class="{ 'has-selection':selectedCount }">
       <label class="page-selection"><input type="checkbox" :checked="allPageSelected" :disabled="!profiles.length || loading" @change="togglePage" />本页全选</label>
-      <span v-if="selectedCount" class="selection-count">已选 <strong>{{ selectedCount }}</strong> 位<span class="selection-explanation"> · 跨页保留</span></span><span v-else class="collection-count">{{ loading ? '正在读取…' : `${hasFilters?'符合筛选':'曲库中共有'} ${total} 位歌手` }}</span>
+      <span v-if="selectedCount" class="selection-count">已选 <strong>{{ selectedCount }}</strong> 位<span class="selection-explanation"> · 跨页保留</span></span><span v-else class="collection-count">{{ loading ? '正在读取…' : `第 ${(page - 1) * pageSize + (profiles.length ? 1 : 0)}–${(page - 1) * pageSize + profiles.length} 位` }}</span>
       <div v-if="selectedCount" class="selection-actions"><ElButton size="small" @click="openArtwork()">批量获取封面</ElButton><ElButton size="small" @click="openCategories">标注歌手类型</ElButton><ElButton size="small" text @click="selected.clear()">取消选择</ElButton></div>
       <span v-else class="selection-tip">选择歌手，批量整理封面与分类</span>
     </div>
     <p v-if="loading && !profiles.length" class="artists-note" role="status">正在读取歌手…</p>
-    <div v-else-if="!profiles.length" class="artists-empty"><span aria-hidden="true">♪</span><h2>{{ hasFilters?'没有找到符合条件的歌手':'扫描歌曲后，这里会自动出现歌手' }}</h2><p>{{ hasFilters?'试试调整类型、封面状态或搜索词。':'歌手来自歌曲信息，无需手动建档。先到歌曲来源添加目录并扫描。' }}</p><ElButton v-if="hasFilters" @click="clearFilters">查看全部歌手</ElButton><RouterLink v-else class="empty-source-link" to="/library/media">添加歌曲来源 →</RouterLink></div>
+    <div v-else-if="!profiles.length" class="artists-empty"><span aria-hidden="true"><ElIcon><SongPlaceholderIcon /></ElIcon></span><h2>{{ hasFilters?'没有找到符合条件的歌手':'扫描歌曲后，这里会自动出现歌手' }}</h2><p>{{ hasFilters?'试试调整类型、封面状态或搜索词。':'歌手来自歌曲信息，无需手动建档。先到歌曲来源添加目录并扫描。' }}</p><ElButton v-if="hasFilters" @click="clearFilters">查看全部歌手</ElButton><RouterLink v-else class="empty-source-link" to="/library/media">添加歌曲来源 →</RouterLink></div>
     <div v-else class="artists-grid" :aria-busy="loading">
       <article v-for="artist in profiles" :key="artist.id" class="artist-card" :class="{ selected:selected.has(artist.id) }">
         <div class="artist-banner">
@@ -239,9 +243,13 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
 <style scoped>
 .artists-page {
   display:grid;
-  gap:24px;
+  gap:12px;
   align-content:start;
   min-width:0;
+}
+
+.artists-page>.page-heading {
+  margin-bottom:0;
 }
 
 .artists-browser {
@@ -252,7 +260,7 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   display:flex;
   gap:28px;
   border-bottom:1px solid var(--sv-border-subtle);
-  margin-bottom:20px;
+  margin-bottom:12px;
   overflow-x:auto;
 }
 
@@ -271,7 +279,7 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
 
 .artists-types button.active {
   color:var(--sv-accent-primary);
-  font-weight:650;
+  font-weight:600;
 }
 
 .artists-types button.active::after {
@@ -296,7 +304,10 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   max-width:420px;
 }
 
-.artists-toolbar>.native-field {
+.artists-extra-filters { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.artists-filter-toggle { display: none; }
+.artist-total { font-size: 13px; color: var(--sv-text-secondary); }
+.artists-extra-filters>.native-field {
   width:auto;
   min-width:150px;
   height:40px;
@@ -305,7 +316,7 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
 .song-count-filter {
   display:flex;
   align-items:center;
-  gap:7px;
+  gap:8px;
   white-space:nowrap;
   font-size:12px;
   color:var(--sv-text-secondary);
@@ -314,7 +325,7 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
 .song-count-filter input {
   width:74px;
   height:40px;
-  padding:0 10px;
+  padding:0 12px;
   background:var(--sv-surface-2);
   border:1px solid var(--sv-border-default);
   border-radius:8px;
@@ -324,17 +335,17 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
 .artists-selection {
   display:flex;
   align-items:center;
-  gap:18px;
-  min-height:64px;
-  padding:12px 0;
-  margin:8px 0 10px;
+  gap:20px;
+  min-height:48px;
+  padding:8px 0;
+  margin:4px 0 12px;
   font-size:12px;
   color:var(--sv-text-secondary);
   flex-wrap:wrap;
 }
 
 .artists-selection.has-selection {
-  padding:12px 14px;
+  padding:12px 16px;
   background:var(--sv-accent-soft);
   border-radius:8px;
 }
@@ -361,7 +372,7 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
 
 .selection-actions {
   display:flex;
-  gap:6px;
+  gap:8px;
   flex-wrap:wrap;
   margin-left:auto;
 }
@@ -394,22 +405,13 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
 .artist-banner {
   position:relative;
   aspect-ratio:1;
-  border-radius:10px;
+  border-radius:8px;
   overflow:hidden;
   background:var(--sv-surface-3);
 }
 
-.artist-card:nth-child(4n+2) .artist-banner {
-  background:var(--sv-accent-highlight-soft);
-}
 
-.artist-card:nth-child(4n+3) .artist-banner {
-  background:var(--sv-semantic-info-soft);
-}
 
-.artist-card:nth-child(4n+4) .artist-banner {
-  background:var(--sv-surface-4);
-}
 
 .artist-open {
   width:100%;
@@ -419,7 +421,7 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   padding:0;
   border:0;
   background:none;
-  color:var(--sv-accent-primary);
+  color:var(--sv-text-secondary);
   cursor:pointer;
   overflow:hidden;
 }
@@ -428,15 +430,11 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   width:100%;
   height:100%;
   object-fit:cover;
-  transition:transform .2s;
 }
 
-.artist-open:hover img {
-  transform:scale(1.025);
-}
 
 .artist-monogram {
-  font-family:var(--sv-font-display,Georgia,serif);
+  font-family:var(--sv-font-sans);
   font-size:clamp(40px,5vw,76px);
   letter-spacing:.04em;
   font-weight:400;
@@ -455,7 +453,7 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   display:grid;
   place-items:center;
   border:1px solid color-mix(in srgb, var(--sv-surface-2) 73%, transparent);
-  border-radius:7px;
+  border-radius:8px;
   cursor:pointer;
 }
 
@@ -463,44 +461,32 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   background:var(--sv-accent-soft);
 }
 
-.artist-type {
+.artist-banner .artist-type {
   position:absolute;
   right:10px;
   bottom:10px;
-  padding:5px 9px;
-  border-radius:5px;
-  background:color-mix(in srgb, var(--sv-surface-2) 95%, transparent);
-  color:var(--sv-accent-primary);
-  font-size:11px;
+  padding:4px 8px;
+  border-radius:8px;
+  background:rgb(0 0 0 / 72%);
+  color:#fff;
+  font-size:12px;
   line-height:1.5;
   pointer-events:none;
-  font-weight:550;
+  font-weight:500;
 }
 
-.artist-type.female {
-  color:var(--sv-text-secondary);
-  background:var(--sv-accent-highlight-soft);
-}
 
-.artist-type.group {
-  color:var(--sv-semantic-info);
-  background:var(--sv-semantic-info-soft);
-}
 
-.artist-type.unknown,.artist-type.person {
-  color:var(--sv-text-secondary);
-  background:var(--sv-surface-3);
-}
 
 .artist-card-info {
-  padding:15px 2px 6px;
+  padding:16px 2px 8px;
   min-width:0;
 }
 
 .artist-name {
   text-align:left;
   font-size:17px;
-  font-weight:620;
+  font-weight:600;
   line-height:1.5;
   display:-webkit-box;
   -webkit-line-clamp:2;
@@ -521,16 +507,16 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
 
 .artist-card-info>p {
   font-size:12px;
-  margin:5px 0 9px;
+  margin:4px 0 8px;
   color:var(--sv-text-secondary);
 }
 
 .artist-card-info>small {
   display:flex;
-  gap:6px;
+  gap:8px;
   align-items:flex-start;
   color:var(--sv-text-secondary);
-  font-size:11px;
+  font-size:12px;
   line-height:1.7;
   overflow-wrap:anywhere;
 }
@@ -539,7 +525,7 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   width:5px;
   height:5px;
   flex:0 0 5px;
-  margin-top:6px;
+  margin-top:8px;
   border-radius:50%;
   background:var(--sv-text-tertiary);
 }
@@ -553,7 +539,7 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
 }
 
 .artists-pagination {
-  margin-top:30px;
+  margin-top:32px;
   justify-content:center;
 }
 
@@ -561,7 +547,7 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   display:grid;
   justify-items:center;
   text-align:center;
-  padding:65px 20px 80px;
+  padding:64px 20px 80px;
   border:1px dashed var(--sv-border-default);
   border-radius:12px;
   background:var(--sv-surface-1);
@@ -575,8 +561,8 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
 
 .artists-empty h2 {
   font-size:19px;
-  font-weight:550;
-  margin:18px 0 10px;
+  font-weight:500;
+  margin:20px 0 12px;
   line-height:1.6;
 }
 
@@ -628,7 +614,7 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
 .artist-images {
   display:grid;
   grid-template-columns:1fr 1.8fr;
-  gap:18px;
+  gap:20px;
 }
 
 .artist-images button {
@@ -678,8 +664,8 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   position:absolute;
   top:12px;
   right:12px;
-  padding:5px 8px;
-  font-size:10px;
+  padding:4px 8px;
+  font-size:12px;
   color:var(--sv-on-accent);
   background:color-mix(in srgb, var(--sv-accent-primary) 82%, transparent);
   border-radius:4px;
@@ -689,9 +675,9 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
 .detail-artwork-actions {
   display:flex;
   align-items:center;
-  gap:10px;
+  gap:12px;
   flex-wrap:wrap;
-  margin:20px 0 14px;
+  margin:20px 0 16px;
 }
 
 .detail-artwork-actions .el-button+.el-button {
@@ -708,13 +694,13 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   gap:0;
   background:var(--sv-surface-1);
   border-radius:8px;
-  padding:8px 14px;
+  padding:8px 16px;
 }
 
 .artwork-status p {
   display:flex;
   align-items:center;
-  gap:14px;
+  gap:16px;
   margin:0;
   min-height:36px;
   font-size:12px;
@@ -722,7 +708,7 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
 }
 
 .artwork-status strong {
-  font-weight:550;
+  font-weight:500;
 }
 
 .artwork-status span {
@@ -759,7 +745,7 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
 .candidate-grid {
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:18px;
+  gap:20px;
   margin-top:16px;
 }
 
@@ -767,7 +753,7 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   min-width:0;
   display:grid;
   align-content:start;
-  gap:10px;
+  gap:12px;
 }
 
 .candidate-grid img {
@@ -803,7 +789,7 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
 @media(min-width:1600px) {
   .artists-grid {
     grid-template-columns:repeat(6,minmax(0,1fr));
-    gap:28px 22px;
+    gap:28px 24px;
   }
 }
 
@@ -840,23 +826,20 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
 }
 
 @media(max-width:540px) {
-  .artists-page {
-    gap:20px;
-  }
   .artists-types {
-    gap:22px;
+    gap:24px;
     margin-bottom:16px;
   }
   .artists-types button {
     font-size:13px;
-    padding-bottom:13px;
+    padding-bottom:12px;
   }
   .artists-grid {
     grid-template-columns:repeat(2,minmax(0,1fr));
-    gap:22px 14px;
+    gap:24px 16px;
   }
   .artists-toolbar {
-    gap:10px;
+    gap:12px;
   }
   .artists-toolbar>.el-input {
     flex-basis:100%;
@@ -867,28 +850,28 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   }
   .song-count-filter {
     width:calc(50% - 5px);
-    font-size:11px;
-    gap:5px;
+    font-size:12px;
+    gap:4px;
   }
   .song-count-filter input {
     width:58px;
   }
   .artists-selection {
     gap:12px;
-    font-size:11px;
+    font-size:12px;
     min-height:60px;
-    margin-bottom:6px;
+    margin-bottom:8px;
   }
   .selection-explanation {
     display:none;
   }
   .selection-actions {
-    gap:5px;
+    gap:4px;
   }
   .selection-actions>.el-button {
-    font-size:11px;
-    padding-left:9px;
-    padding-right:9px;
+    font-size:12px;
+    padding-left:8px;
+    padding-right:8px;
   }
   .artist-name {
     font-size:15px;
@@ -899,43 +882,43 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   .artist-select {
     left:8px;
     top:8px;
-    padding:6px;
+    padding:8px;
   }
   .artist-type {
     right:8px;
     bottom:8px;
-    font-size:10px;
-    padding:4px 7px;
+    font-size:12px;
+    padding:4px 8px;
   }
   .artist-monogram {
     font-size:48px;
   }
   .artist-card-info>small {
-    font-size:10px;
+    font-size:12px;
   }
   .artist-images {
-    gap:10px;
+    gap:12px;
     grid-template-columns:1fr 1.3fr;
   }
   .artist-images button {
     border-radius:8px;
   }
   .artist-detail-heading {
-    gap:10px;
+    gap:12px;
   }
   .detail-artwork-actions>span {
     width:100%;
   }
   .artist-images small {
-    font-size:11px;
-    padding:14px 4px 10px;
+    font-size:12px;
+    padding:16px 4px 12px;
   }
   .candidate-grid {
     gap:12px;
   }
   .candidate-grid .el-button {
-    padding-left:10px;
-    padding-right:10px;
+    padding-left:12px;
+    padding-right:12px;
   }
 }
 
@@ -943,8 +926,22 @@ onBeforeUnmount(()=>{ active=false; generation++; detailGeneration++; candidateG
   .artist-card,.artist-open img {
     transition:none;
   }
-  .artist-open:hover img {
-    transform:none;
   }
+
+@media(max-width:768px) {
+  .page-selection { min-height: 44px; }
+  .artist-name { min-height: 44px; min-width: 44px; }
+  .artists-toolbar { gap: 8px; }
+  .artists-toolbar>.el-input { flex: 1 1 0; max-width: none; min-width: 0; }
+  .artists-toolbar :deep(.el-input__inner) { font-size: 16px; }
+  .artists-filter-toggle { display: inline-flex; min-height: 44px; min-width: 44px; margin: 0; }
+  .artists-extra-filters { display: none; flex-basis: 100%; flex-wrap: wrap; }
+  .artists-extra-filters.expanded { display: flex; }
+  .artists-extra-filters>.native-field,.song-count-filter input { height: 44px; }
+  .artists-types { gap: 20px; }
+  .artists-types button { min-width: 44px; }
+  .artists-selection { gap: 12px; }
+  .selection-tip { display: none; }
+  .selection-actions :deep(.el-button) { min-height: 44px; }
 }
 </style>

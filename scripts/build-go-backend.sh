@@ -1,10 +1,7 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
-export GOTOOLCHAIN=go1.27.4
-export GOPATH="${GOPATH:-$PWD/.tools/go}"
-export GOMODCACHE="${GOMODCACHE:-$PWD/.tools/go-mod-cache}"
-export GOCACHE="${GOCACHE:-$PWD/.tools/go-build-cache}"
+. ./scripts/go-env.sh
 python3 scripts/prepare-go-assets.py
 version=$(cat VERSION)
 case "$version" in ''|*[!a-zA-Z0-9._+-]*) echo 'Invalid VERSION' >&2; exit 1;; esac

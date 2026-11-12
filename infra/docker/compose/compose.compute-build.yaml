@@ -1,0 +1,9 @@
+services:
+  singverse-compute:
+    image: 'singverse-compute:local-${COMPUTE_RUNTIME:-base}'
+    build:
+      context: .
+      dockerfile: infra/docker/build/compute.Dockerfile
+      target: '${COMPUTE_RUNTIME:-base}'
+      args:
+        SOURCE_REVISION: '${SINGVERSE_SOURCE_REVISION:-local}'

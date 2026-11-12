@@ -63,14 +63,299 @@ void main() {
     WidgetTester tester,
     Size size, {
     double scale = 1,
+    Brightness brightness = Brightness.light,
   }) async {
     await tester.binding.setSurfaceSize(size);
     tester.platformDispatcher.textScaleFactorTestValue = scale;
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-    await tester.pumpWidget(MaterialApp(home: PlayerPage(state: state)));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: singVerseTheme(brightness, senior: state.senior),
+        home: PlayerPage(state: state),
+      ),
+    );
     await tester.pumpAndSettle();
   }
+
+  testWidgets(
+    'portrait primary actions stay in the safe area before and after content scrolls',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.padding = const FakeViewPadding(top: 24, bottom: 24);
+      tester.view.viewPadding = tester.view.padding;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPadding);
+      addTearDown(tester.view.resetViewPadding);
+      (state.api as FakeApi).textTracks = [
+        {
+          'format': 'lrc',
+          'text': '[00:00.00]晨光落在窗前\n[00:10.00]把心事轻轻唱出来\n[00:20.00]熟悉的旋律还在',
+        },
+      ];
+      state.positionMs = 12000;
+      for (final brightness in Brightness.values) {
+        for (final senior in [false, true]) {
+          state.uiMode = senior ? UiMode.senior : UiMode.standard;
+          for (final dimensions in [
+            const Size(320, 568),
+            const Size(390, 844),
+          ]) {
+            for (final scale in [1.0, 1.8]) {
+              for (final mediaType in ['AUDIO', 'VIDEO']) {
+                await tester.pumpWidget(const SizedBox.shrink());
+                state.current = Song({
+                  ...state.current!.data,
+                  'mediaType': mediaType,
+                });
+                await player(
+                  tester,
+                  dimensions,
+                  scale: scale,
+                  brightness: brightness,
+                );
+                final label =
+                    '$brightness senior=$senior $dimensions scale=$scale $mediaType';
+                final play = find.byKey(const ValueKey('player-play'));
+                final record = find.byKey(const ValueKey('player-record'));
+                final initial = tester.getRect(play);
+                final current = tester.getRect(
+                  find.byKey(const ValueKey('lyrics-line-1')),
+                );
+                final viewport = tester.getRect(
+                  find.byKey(const ValueKey('lyrics-viewport')),
+                );
+                final content = tester.getRect(
+                  find.byKey(const ValueKey('player-content')),
+                );
+                expect(
+                  current.top,
+                  greaterThanOrEqualTo(viewport.top - 1),
+                  reason: label,
+                );
+                expect(
+                  current.bottom,
+                  lessThanOrEqualTo(viewport.bottom + 1),
+                  reason: label,
+                );
+                expect(
+                  current.top,
+                  greaterThanOrEqualTo(content.top - 1),
+                  reason: label,
+                );
+                expect(
+                  current.bottom,
+                  lessThanOrEqualTo(content.bottom + 1),
+                  reason: label,
+                );
+                for (final action in [play, record]) {
+                  expect(action.hitTestable(), findsOneWidget, reason: label);
+                  final rect = tester.getRect(action);
+                  expect(rect.top, greaterThanOrEqualTo(24), reason: label);
+                  expect(
+                    rect.bottom,
+                    lessThanOrEqualTo(dimensions.height - 24),
+                    reason: label,
+                  );
+                  expect(rect.left, greaterThanOrEqualTo(0), reason: label);
+                  expect(
+                    rect.right,
+                    lessThanOrEqualTo(dimensions.width),
+                    reason: label,
+                  );
+                  expect(
+                    rect.shortestSide,
+                    greaterThanOrEqualTo(senior ? 56 : 48),
+                    reason: label,
+                  );
+                }
+                await tester.ensureVisible(find.text('更多'));
+                await tester.pumpAndSettle();
+                expect(tester.getRect(play), initial, reason: label);
+                expect(play.hitTestable(), findsOneWidget, reason: label);
+                expect(record.hitTestable(), findsOneWidget, reason: label);
+                expect(tester.takeException(), isNull, reason: label);
+              }
+            }
+          }
+        }
+      }
+      expect(native.commands, isEmpty);
+      expect(native.calls, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'real phone metrics keep compact lyrics and a centered recording pill',
+    (tester) async {
+      const logicalSize = Size(360, 800);
+      tester.view.devicePixelRatio = 3.5;
+      tester.view.physicalSize = const Size(1260, 2800);
+      tester.view.padding = const FakeViewPadding(top: 140);
+      tester.view.viewPadding = tester.view.padding;
+      await tester.binding.setSurfaceSize(logicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetPadding);
+      addTearDown(tester.view.resetViewPadding);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      (state.api as FakeApi).textTracks = [
+        {
+          'format': 'lrc',
+          'text': '[00:00.00]晨光落在窗前\n[00:10.00]轻轻唱出心声\n[00:20.00]熟悉的旋律还在',
+        },
+      ];
+      state.positionMs = 12000;
+      for (final brightness in Brightness.values) {
+        for (final senior in [false, true]) {
+          for (final scale in [1.0, 1.8]) {
+            await tester.pumpWidget(const SizedBox.shrink());
+            state.uiMode = senior ? UiMode.senior : UiMode.standard;
+            tester.platformDispatcher.textScaleFactorTestValue = scale;
+            await tester.pumpWidget(
+              MaterialApp(
+                theme: singVerseTheme(brightness, senior: senior),
+                home: PlayerPage(state: state),
+              ),
+            );
+            await tester.pumpAndSettle();
+            final reason = '$brightness senior=$senior scale=$scale';
+            final page = tester.element(find.byType(PlayerPage));
+            expect(MediaQuery.sizeOf(page), logicalSize, reason: reason);
+            expect(MediaQuery.devicePixelRatioOf(page), 3.5, reason: reason);
+            expect(MediaQuery.paddingOf(page).top, 40, reason: reason);
+
+            final active = find.byKey(const ValueKey('lyrics-line-1'));
+            final inactive = find.byKey(const ValueKey('lyrics-line-0'));
+            expect(
+              tester.widget<Text>(active).style?.fontSize,
+              senior ? 32 : 18,
+              reason: reason,
+            );
+            expect(
+              tester.widget<Text>(inactive).style?.fontSize,
+              senior ? 23 : 15,
+              reason: reason,
+            );
+            expect(
+              MediaQuery.textScalerOf(tester.element(active)).scale(18),
+              closeTo(18 * scale, .001),
+              reason: reason,
+            );
+            final lyricTarget = find.ancestor(
+              of: active,
+              matching: find.byType(InkWell),
+            );
+            expect(lyricTarget, findsOneWidget, reason: reason);
+            expect(
+              tester.getSize(lyricTarget).height,
+              greaterThanOrEqualTo(senior ? 56 : 48),
+              reason: reason,
+            );
+
+            final play = find.byKey(const ValueKey('player-play'));
+            final record = find.byKey(const ValueKey('player-record'));
+            final playRect = tester.getRect(play);
+            final recordRect = tester.getRect(record);
+            expect(play.hitTestable(), findsOneWidget, reason: reason);
+            expect(record.hitTestable(), findsOneWidget, reason: reason);
+            expect(
+              recordRect.top,
+              greaterThanOrEqualTo(playRect.bottom + 16 - .001),
+              reason: reason,
+            );
+            expect(recordRect.left, greaterThanOrEqualTo(20), reason: reason);
+            expect(recordRect.right, lessThanOrEqualTo(340), reason: reason);
+            expect(recordRect.width, lessThan(320), reason: reason);
+            expect(
+              recordRect.width,
+              greaterThanOrEqualTo(senior ? 184 : 160),
+              reason: reason,
+            );
+            expect(recordRect.center.dx, closeTo(180, .001), reason: reason);
+            expect(playRect.center.dx, closeTo(180, .001), reason: reason);
+            for (final rect in [playRect, recordRect]) {
+              expect(rect.top, greaterThanOrEqualTo(40), reason: reason);
+              expect(rect.bottom, lessThanOrEqualTo(800), reason: reason);
+              expect(
+                rect.shortestSide,
+                greaterThanOrEqualTo(senior ? 56 : 48),
+                reason: reason,
+              );
+            }
+            expect(tester.takeException(), isNull, reason: reason);
+          }
+        }
+      }
+      expect(native.commands, isEmpty);
+      expect(native.calls, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'player follows portrait themes and preserves playback on the dark landscape stage',
+    (tester) async {
+      state.positionMs = 63000;
+      for (final brightness in Brightness.values) {
+        await player(tester, const Size(390, 844), brightness: brightness);
+        final primary = find.byKey(const ValueKey('player-primary-controls'));
+        expect(Theme.of(tester.element(primary)).brightness, brightness);
+        await tester.binding.setSurfaceSize(const Size(844, 390));
+        await tester.pumpAndSettle();
+        expect(
+          Theme.of(
+            tester.element(
+              find.byKey(const ValueKey('player-landscape-surface')),
+            ),
+          ).brightness,
+          Brightness.dark,
+        );
+        expect(state.positionMs, 63000);
+        expect(state.audioRole, 'backing');
+        expect(state.isPlaying, true);
+        expect(tester.takeException(), isNull);
+      }
+      expect(native.commands, isEmpty);
+      expect(native.calls, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'selected practice range is announced on the timeline and its lyric boundaries',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      try {
+        (state.api as FakeApi).textTracks = [
+          {
+            'format': 'lrc',
+            'text': '[00:00.00]晨光落在窗前\n[00:10.00]把心事轻轻唱出来\n[00:20.00]熟悉的旋律还在',
+          },
+        ];
+        state
+          ..positionMs = 12000
+          ..rangeA = 10000
+          ..rangeB = 20000;
+        await player(tester, const Size(390, 844));
+        final timeline = tester.widget<Slider>(
+          find.byKey(const ValueKey('player-progress')),
+        );
+        expect(
+          timeline.semanticFormatterCallback!(12000),
+          contains('选段 0:10 至 0:20'),
+        );
+        expect(find.bySemanticsLabel(RegExp('选段起止句')), findsOneWidget);
+        await tester.tap(find.text('把心事轻轻唱出来'));
+        await tester.pumpAndSettle();
+        expect(native.commands.single, {'action': 'seek', 'value': 10000});
+        expect(state.rangeA, 10000);
+        expect(state.rangeB, 20000);
+        expect(tester.takeException(), isNull);
+      } finally {
+        semantics.dispose();
+      }
+    },
+  );
 
   testWidgets('explicit restart is a new playback intent rather than a seek', (
     tester,
@@ -130,6 +415,73 @@ void main() {
         semantics.dispose();
       }
     });
+  }
+
+  for (final mapping in [
+    (false, false),
+    (false, true),
+    (true, false),
+    (true, true),
+  ]) {
+    for (final scenario in [
+      (false, const Size(390, 844), 1.0),
+      (true, const Size(390, 844), 1.0),
+      (false, const Size(844, 390), 1.0),
+      (true, const Size(320, 568), 1.8),
+    ]) {
+      testWidgets(
+        'audio roles remain visible and honor mapping $mapping at $scenario',
+        (tester) async {
+          state
+            ..uiMode = scenario.$1 ? UiMode.senior : UiMode.standard
+            ..backingMapped = mapping.$1
+            ..originalMapped = mapping.$2
+            ..audioRole = '';
+          await player(tester, scenario.$2, scale: scenario.$3);
+          expect(find.text('选择声音'), findsNothing);
+          for (final role in [
+            ('original', '原唱', mapping.$2),
+            ('backing', '伴奏', mapping.$1),
+          ]) {
+            final choice = find.byKey(ValueKey('player-role-${role.$1}'));
+            expect(choice, findsOneWidget);
+            expect(
+              find.descendant(of: choice, matching: find.text(role.$2)),
+              findsOneWidget,
+            );
+            await tester.ensureVisible(choice);
+            await tester.pumpAndSettle();
+            expect(choice.hitTestable(), findsOneWidget);
+            expect(
+              tester.getSize(choice).height,
+              greaterThanOrEqualTo(state.senior ? 56 : 48),
+            );
+            final button = tester.widget<TextButton>(choice);
+            final commandsBefore = native.commands.length;
+            final previousRole = state.audioRole;
+            if (role.$3) {
+              expect(button.onPressed, isNotNull);
+              await tester.tap(choice);
+              await tester.pumpAndSettle();
+              expect(native.commands.length, commandsBefore + 1);
+              expect(native.commands.last, {
+                'action': 'useRole',
+                'value': role.$1,
+              });
+              expect(state.audioRole, role.$1);
+            } else {
+              expect(button.onPressed, isNull);
+              await tester.tap(choice, warnIfMissed: false);
+              await tester.pumpAndSettle();
+              expect(native.commands.length, commandsBefore);
+              expect(state.audioRole, previousRole);
+            }
+          }
+          expect(native.calls, isEmpty);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
   }
 
   testWidgets('landscape controls hide and return without changing playback', (
@@ -404,26 +756,49 @@ void main() {
     },
   );
 
-  testWidgets('unconfirmed audio opens choices directly at large senior type', (
-    tester,
-  ) async {
-    state
-      ..uiMode = UiMode.senior
-      ..backingMapped = false
-      ..originalMapped = false
-      ..audioRole = '';
-    await player(tester, const Size(320, 568), scale: 1.8);
-    final role = find.byKey(const ValueKey('player-audio-settings'));
-    await tester.ensureVisible(role);
-    await tester.tap(role);
-    await tester.pumpAndSettle();
-    expect(find.text('音轨与播放设置'), findsOneWidget);
-    await tester.tap(find.text('音轨 1'));
-    await tester.pumpAndSettle();
-    expect(native.commands.last['action'], 'track');
-    expect(native.commands.last['value'], '0:0');
-    expect(tester.takeException(), isNull);
-  });
+  testWidgets(
+    'unmapped roles stay disabled while more retains audio settings',
+    (tester) async {
+      state
+        ..uiMode = UiMode.senior
+        ..backingMapped = false
+        ..originalMapped = false
+        ..audioRole = '';
+      await player(tester, const Size(320, 568), scale: 1.8);
+      for (final role in ['original', 'backing']) {
+        final choice = find.byKey(ValueKey('player-role-$role'));
+        expect(choice, findsOneWidget);
+        await tester.ensureVisible(choice);
+        await tester.pumpAndSettle();
+        expect(tester.widget<TextButton>(choice).onPressed, isNull);
+        await tester.tap(choice, warnIfMissed: false);
+        await tester.pumpAndSettle();
+      }
+      expect(native.commands, isEmpty);
+      expect(find.text('选择声音'), findsNothing);
+      final more = find.text('更多');
+      await tester.ensureVisible(more);
+      await tester.pumpAndSettle();
+      expect(more.hitTestable(), findsOneWidget);
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+      final settings = find.widgetWithText(ListTile, '音轨与播放设置');
+      await tester.ensureVisible(settings);
+      await tester.pumpAndSettle();
+      expect(settings.hitTestable(), findsOneWidget);
+      await tester.tap(settings);
+      await tester.pumpAndSettle();
+      final track = find.text('音轨 1');
+      await tester.ensureVisible(track);
+      await tester.pumpAndSettle();
+      await tester.tap(track);
+      await tester.pumpAndSettle();
+      expect(native.commands.last['action'], 'track');
+      expect(native.commands.last['value'], '0:0');
+      expect(native.commands.where((c) => c['action'] == 'useRole'), isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'large recording timer remains readable while source controls lock',

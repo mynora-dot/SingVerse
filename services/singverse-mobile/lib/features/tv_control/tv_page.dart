@@ -74,19 +74,33 @@ class _TvPageState extends State<TvPage> {
     super.initState();
     if (!widget.resume || tvSession.controller == null) {
       scanning = true;
-      camera = MobileScannerController(formats: [BarcodeFormat.qrCode]);
+      camera = createCamera();
     }
   }
 
   bool scanning = false, checking = false;
   String? error;
   MobileScannerController? camera;
+  MobileScannerController createCamera() {
+    final controller = MobileScannerController(
+      autoStart: false,
+      formats: [BarcodeFormat.qrCode],
+    );
+    // Starting synchronously inside MobileScanner's layout would notify the
+    // state builder above it while that tree is still being built.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || !identical(camera, controller) || !scanning) return;
+      await controller.start();
+    });
+    return controller;
+  }
+
   Future<void> scan() async {
     if (!mounted) return;
     await camera?.dispose();
     if (!mounted) return;
     setState(() {
-      camera = MobileScannerController(formats: [BarcodeFormat.qrCode]);
+      camera = createCamera();
       scanning = true;
       error = null;
     });
@@ -251,24 +265,35 @@ class _TvPageState extends State<TvPage> {
   }
 
   Widget cameraFailure(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 36),
+    padding: const EdgeInsets.symmetric(vertical: 24),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Icon(Icons.camera_alt_outlined, size: 40),
-        const SizedBox(height: 20),
-        Text(
-          '还不能使用相机',
-          style: Theme.of(context).textTheme.titleLarge,
-          textAlign: TextAlign.center,
+        Row(
+          children: [
+            Icon(
+              Icons.camera_alt_outlined,
+              size: 20,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '还不能使用相机',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
-        const Text(
+        Text(
           '允许相机权限后，就能扫描电视上的二维码。若已关闭权限，请到系统设置中允许相机访问。',
-          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodyMedium
+              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 24),
         FilledButton(
+          key: const ValueKey('tv-camera-settings'),
           onPressed: () => uiTask(context, () async {
             await widget.state.sing('settings');
           }),
@@ -288,13 +313,13 @@ class _TvPageState extends State<TvPage> {
       builder: (context, size) => SingleChildScrollView(
         child: ContentWidth(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 6, 20, 24),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (tvSession.controller != null)
                   Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.only(bottom: 16),
                     child: Wrap(
                       alignment: WrapAlignment.spaceBetween,
                       crossAxisAlignment: WrapCrossAlignment.center,
@@ -304,7 +329,7 @@ class _TvPageState extends State<TvPage> {
                           '已连接${tvSession.deviceName ?? '电视'}',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
-                        TextButton.icon(
+                        TextButton(
                           onPressed: checking
                               ? null
                               : () async {
@@ -316,11 +341,7 @@ class _TvPageState extends State<TvPage> {
                                     });
                                   }
                                 },
-                          icon: const Icon(
-                            Icons.arrow_forward_rounded,
-                            size: 18,
-                          ),
-                          label: const Text('继续点歌'),
+                          child: const Text('继续点歌'),
                         ),
                       ],
                     ),
@@ -329,12 +350,13 @@ class _TvPageState extends State<TvPage> {
                   cameraFailure(context)
                 else ...[
                   SizedBox(
+                    key: const ValueKey('tv-scanner-preview'),
                     height: math.min(
                       size.maxWidth - 40,
                       math.max(220, size.maxHeight * .57),
                     ),
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(18),
+                      borderRadius: BorderRadius.circular(16),
                       child: LayoutBuilder(
                         builder: (context, preview) {
                           final side = math.min(
@@ -371,23 +393,24 @@ class _TvPageState extends State<TvPage> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 24),
                   Text(
                     '对准电视上的二维码',
-                    style: Theme.of(context).textTheme.titleMedium,
-                    textAlign: TextAlign.center,
+                    key: const ValueKey('tv-scan-instructions'),
+                    style: Theme.of(context).textTheme.titleLarge,
                   ),
-                  const SizedBox(height: 7),
+                  const SizedBox(height: 8),
                   Text(
                     '将二维码放入框内，自动连接电视或确认授权。',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
-                    textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 14),
-                  Center(
+                  const SizedBox(height: 16),
+                  Align(
+                    alignment: Alignment.centerLeft,
                     child: OutlinedButton.icon(
+                      key: const ValueKey('tv-torch'),
                       onPressed: scanner.torchState == TorchState.unavailable
                           ? null
                           : () => uiTask(context, camera!.toggleTorch),
@@ -405,7 +428,7 @@ class _TvPageState extends State<TvPage> {
                 ],
                 if (checking)
                   const Padding(
-                    padding: EdgeInsets.only(top: 18),
+                    padding: EdgeInsets.only(top: 16),
                     child: LinearProgressIndicator(),
                   ),
                 if (error != null)
@@ -421,7 +444,11 @@ class _TvPageState extends State<TvPage> {
   @override
   Widget build(BuildContext context) => Theme(
     data: scanning
-        ? singVerseTheme(Brightness.dark, senior: widget.state.senior)
+        ? singVerseTheme(
+            Brightness.dark,
+            senior: widget.state.senior,
+            compact: MediaQuery.sizeOf(context).width < 375,
+          )
         : Theme.of(context),
     child: Builder(
       builder: (context) => PopScope(
@@ -508,7 +535,7 @@ class _ScanFrame extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final shade = Path()
       ..addRect(Offset.zero & size)
-      ..addRRect(RRect.fromRectAndRadius(window, const Radius.circular(18)));
+      ..addRRect(RRect.fromRectAndRadius(window, const Radius.circular(16)));
     shade.fillType = PathFillType.evenOdd;
     canvas.drawPath(
       shade,
@@ -516,7 +543,7 @@ class _ScanFrame extends CustomPainter {
     );
     final border = Paint()
       ..color = Colors.white
-      ..strokeWidth = 3
+      ..strokeWidth = 2
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
     for (final corner in [
@@ -528,7 +555,7 @@ class _ScanFrame extends CustomPainter {
       final dx = corner.dx == window.left ? 1.0 : -1.0;
       final dy = corner.dy == window.top ? 1.0 : -1.0;
       final path = Path()
-        ..moveTo(corner.dx, corner.dy + dy * 25)
+        ..moveTo(corner.dx, corner.dy + dy * 24)
         ..lineTo(corner.dx, corner.dy + dy * 12)
         ..quadraticBezierTo(
           corner.dx,
@@ -536,7 +563,7 @@ class _ScanFrame extends CustomPainter {
           corner.dx + dx * 12,
           corner.dy,
         )
-        ..lineTo(corner.dx + dx * 25, corner.dy);
+        ..lineTo(corner.dx + dx * 24, corner.dy);
       canvas.drawPath(path, border);
     }
   }

@@ -12,6 +12,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:singverse_mobile/app/design.dart';
 import 'package:singverse_mobile/app/mini_player.dart';
+import 'package:singverse_mobile/features/library/connection.dart';
+import 'package:singverse_mobile/features/library/widgets.dart';
 import 'package:singverse_mobile/core/app_state.dart';
 import 'package:singverse_mobile/core/local_store.dart';
 import 'package:singverse_mobile/core/models.dart';
@@ -310,6 +312,30 @@ void main() {
     native.uninstall();
     state.dispose();
     await store.close();
+  });
+  test('theme text remains legible on filled controls and surfaces', () {
+    for (final brightness in Brightness.values) {
+      final theme = singVerseTheme(brightness);
+      final scheme = theme.colorScheme;
+      for (final colors in [
+        (scheme.onSurface, scheme.surface),
+        (scheme.onSurfaceVariant, theme.scaffoldBackgroundColor),
+        (scheme.onSurfaceVariant, scheme.secondaryContainer),
+        (scheme.onPrimary, scheme.primary),
+        (scheme.onPrimaryContainer, scheme.primaryContainer),
+      ]) {
+        final foreground = colors.$1.computeLuminance();
+        final background = colors.$2.computeLuminance();
+        final contrast =
+            (math.max(foreground, background) + .05) /
+            (math.min(foreground, background) + .05);
+        expect(
+          contrast,
+          greaterThanOrEqualTo(4.5),
+          reason: '$brightness $colors',
+        );
+      }
+    }
   });
   Future<void> size(WidgetTester tester, Size dimensions) async {
     await tester.binding.setSurfaceSize(dimensions);
@@ -1523,7 +1549,21 @@ void main() {
             find.byKey(const Key('lyrics-viewport')),
           );
           final label = '$senior height=${step.$1} position=${step.$2}';
-          expect(text.height, greaterThan(200), reason: 'fixture必须实际换成多行');
+          final paragraph = tester.renderObject<RenderParagraph>(active);
+          final lineTops = paragraph
+              .getBoxesForSelection(
+                TextSelection(
+                  baseOffset: 0,
+                  extentOffset: paragraph.text.toPlainText().length,
+                ),
+              )
+              .map((box) => box.top)
+              .toSet();
+          expect(
+            lineTops.length,
+            greaterThanOrEqualTo(2),
+            reason: 'fixture必须实际换成多行：$label',
+          );
           expect(
             text.height,
             lessThanOrEqualTo(viewport.height),
@@ -1612,7 +1652,21 @@ void main() {
               final label =
                   'scale=$scale senior=$senior tick=$tick active=$activeIndex';
               if (scale == 1.8 && activeIndex == 3) {
-                expect(text.height, greaterThan(100), reason: '活动歌词必须实际换行');
+                final paragraph = tester.renderObject<RenderParagraph>(active);
+                final lineTops = paragraph
+                    .getBoxesForSelection(
+                      TextSelection(
+                        baseOffset: 0,
+                        extentOffset: paragraph.text.toPlainText().length,
+                      ),
+                    )
+                    .map((box) => box.top)
+                    .toSet();
+                expect(
+                  lineTops.length,
+                  greaterThanOrEqualTo(2),
+                  reason: '活动歌词必须实际换行：$label',
+                );
               }
               expect(
                 text.height,
@@ -1678,6 +1732,462 @@ void main() {
       }
     },
   );
+
+  testWidgets(
+    'settings and NAS editing remain reachable without interrupting playback',
+    (tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      addTearDown(tester.view.resetViewInsets);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 1.8;
+      for (final senior in [false, true]) {
+        for (final theme in [ThemeMode.light, ThemeMode.dark]) {
+          for (final dimensions in [
+            const Size(320, 568),
+            const Size(390, 844),
+            const Size(844, 390),
+          ]) {
+            await tester.pumpWidget(const SizedBox.shrink());
+            tester.view.resetViewInsets();
+            await tester.binding.setSurfaceSize(dimensions);
+            state
+              ..uiMode = senior ? UiMode.senior : UiMode.standard
+              ..themeMode = theme
+              ..current = Song(api.rows.first)
+              ..positionMs = 35000
+              ..isPlaying = true
+              ..playbackState = 'PLAYING'
+              ..origin = 'http://family-music-library.home.local:18080';
+            await app(tester);
+            for (final key in ['open-tv', 'open-settings']) {
+              final button = find.byKey(Key(key));
+              expect(button.hitTestable(), findsOneWidget);
+              expect(
+                tester.getSize(button).height,
+                greaterThanOrEqualTo(senior ? 56 : 48),
+              );
+            }
+            await tester.tap(find.byKey(const Key('open-settings')));
+            await tester.pumpAndSettle();
+            final option = find.text('深色');
+            await tester.scrollUntilVisible(
+              option,
+              120,
+              scrollable: find.byType(Scrollable).first,
+            );
+            await tester.pumpAndSettle();
+            expect(option.hitTestable(), findsOneWidget);
+            await tester.tap(option);
+            await tester.pumpAndSettle();
+            expect(state.themeMode, ThemeMode.dark);
+            await state.setTheme(theme);
+            await tester.pumpAndSettle();
+            final nas = find.text('NAS 连接与账号');
+            await tester.scrollUntilVisible(
+              nas,
+              -120,
+              scrollable: find.byType(Scrollable).first,
+            );
+            await tester.pumpAndSettle();
+            await tester.tap(nas);
+            await tester.pumpAndSettle();
+            expect(
+              find.byKey(const ValueKey('nas-status-card')),
+              findsOneWidget,
+            );
+            final change = find.text('修改 NAS 地址');
+            await tester.scrollUntilVisible(
+              change,
+              120,
+              scrollable: find.byType(Scrollable).first,
+            );
+            await tester.pumpAndSettle();
+            await tester.tap(change);
+            await tester.pumpAndSettle();
+            final address = find.byKey(const ValueKey('nas-address-field'));
+            await tester.scrollUntilVisible(
+              address,
+              -120,
+              scrollable: find.byType(Scrollable).first,
+            );
+            await tester.pumpAndSettle();
+            await Scrollable.ensureVisible(
+              tester.element(address),
+              alignment: 0.5,
+            );
+            await tester.pumpAndSettle();
+            expect(address.hitTestable(), findsOneWidget);
+            await tester.tap(address);
+            await tester.pumpAndSettle();
+            expect(
+              tester
+                  .widget<EditableText>(find.byType(EditableText))
+                  .focusNode
+                  .hasFocus,
+              isTrue,
+            );
+            // Editing alone must neither replace the NAS nor disturb playback.
+            tester.view.viewInsets = const FakeViewPadding(bottom: 160);
+            await tester.pumpAndSettle();
+            final submit = find.byKey(const ValueKey('nas-submit'));
+            await tester.scrollUntilVisible(
+              submit,
+              120,
+              scrollable: find.byType(Scrollable).first,
+            );
+            await tester.pumpAndSettle();
+            expect(submit.hitTestable(), findsOneWidget);
+            expect(
+              tester.getSize(submit).height,
+              greaterThanOrEqualTo(senior ? 56 : 48),
+            );
+            expect(state.positionMs, 35000);
+            expect(state.isPlaying, true);
+            expect(state.playbackState, 'PLAYING');
+            expect(
+              state.origin,
+              'http://family-music-library.home.local:18080',
+            );
+            expect(
+              tester.takeException(),
+              isNull,
+              reason: '$senior $theme $dimensions',
+            );
+          }
+        }
+      }
+      expect(native.commands, isEmpty);
+      expect(native.calls, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'phone density preserves compact type scaling safe area and playback',
+    (tester) async {
+      tester.view.devicePixelRatio = 3.5;
+      tester.view.physicalSize = const Size(1260, 2800);
+      tester.view.padding = const FakeViewPadding(top: 140);
+      tester.view.viewPadding = const FakeViewPadding(top: 140);
+      tester.platformDispatcher.textScaleFactorTestValue = 1;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetPadding);
+      addTearDown(tester.view.resetViewPadding);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      state
+        ..current = Song(api.rows.first)
+        ..positionMs = 35000
+        ..isPlaying = true
+        ..playbackState = 'PLAYING';
+      await app(tester);
+      BuildContext pageContext() => tester.element(find.byType(AppBar).first);
+      final media = MediaQuery.of(pageContext());
+      expect(media.size, const Size(360, 800));
+      expect(media.devicePixelRatio, 3.5);
+      expect(media.padding.top, 40);
+      expect(media.textScaler.scale(14), 14);
+      expect(Theme.of(pageContext()).textTheme.headlineSmall!.fontSize, 20);
+      expect(Theme.of(pageContext()).textTheme.bodyMedium!.fontSize, 14);
+      final songTitle = find.descendant(
+        of: find.byType(SongRow).first,
+        matching: find.text('晴天'),
+      );
+      expect(tester.widget<Text>(songTitle).style!.fontSize, 14);
+      for (final key in ['open-tv', 'open-settings', 'nav-songs']) {
+        final button = find.byKey(Key(key));
+        expect(button.hitTestable(), findsOneWidget);
+        expect(tester.getSize(button).height, greaterThanOrEqualTo(48));
+        expect(tester.getTopLeft(button).dy, greaterThanOrEqualTo(40));
+      }
+
+      // The same live app responds to width changes, not physical pixel count.
+      tester.view.physicalSize = const Size(1365, 2954);
+      await tester.pumpAndSettle();
+      expect(MediaQuery.sizeOf(pageContext()).width, 390);
+      expect(Theme.of(pageContext()).textTheme.headlineSmall!.fontSize, 22);
+      expect(tester.widget<Text>(songTitle).style!.fontSize, 15);
+      tester.view.physicalSize = const Size(1260, 2800);
+      await state.setTheme(ThemeMode.dark);
+      tester.platformDispatcher.textScaleFactorTestValue = 1.8;
+      await tester.pumpAndSettle();
+      expect(Theme.of(pageContext()).brightness, Brightness.dark);
+      expect(Theme.of(pageContext()).textTheme.headlineSmall!.fontSize, 20);
+      expect(
+        MediaQuery.textScalerOf(pageContext()).scale(14),
+        closeTo(25.2, .01),
+      );
+      await state.setUiMode(UiMode.senior);
+      await tester.pumpAndSettle();
+      expect(Theme.of(pageContext()).textTheme.headlineSmall!.fontSize, 26);
+      final settings = find.byKey(const Key('open-settings'));
+      expect(settings.hitTestable(), findsOneWidget);
+      expect(tester.getSize(settings).height, greaterThanOrEqualTo(56));
+      expect(state.positionMs, 35000);
+      expect(state.isPlaying, isTrue);
+      expect(native.commands, isEmpty);
+      expect(native.calls, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('capture refined app screens with controlled fixtures', (
+    tester,
+  ) async {
+    if (!const bool.fromEnvironment('CAPTURE_APP_UI')) return;
+    final round = const String.fromEnvironment(
+      'UI_ROUND',
+      defaultValue: 'round-1',
+    );
+    final directory = Directory('../../tmp/mobile-ui-unslop/$round')
+      ..createSync(recursive: true);
+    await size(tester, const Size(390, 844));
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final boundary = GlobalKey();
+    Future<void> capture(String name) async {
+      await tester.runAsync(() async {
+        final context = boundary.currentContext!;
+        await precacheImage(MemoryImage(fixtureCover), context);
+        for (final size in [48, 60, 64, 80]) {
+          await precacheImage(
+            ResizeImage(
+              MemoryImage(fixtureCover),
+              width: (size * MediaQuery.devicePixelRatioOf(context)).ceil(),
+            ),
+            context,
+          );
+        }
+      });
+      await tester.pumpAndSettle();
+      await tester.runAsync(() async {
+        final render =
+            boundary.currentContext!.findRenderObject()!
+                as RenderRepaintBoundary;
+        final picture = await render.toImage(pixelRatio: 2);
+        final bytes = await picture.toByteData(format: ui.ImageByteFormat.png);
+        await File('${directory.path}/$name.png')
+            .writeAsBytes(bytes!.buffer.asUint8List());
+        picture.dispose();
+      });
+      expect(tester.takeException(), isNull, reason: name);
+    }
+
+    await store.favorite('nas-a', Song(api.rows.first), true);
+    await state.refreshPersonal();
+    native.works['draft'] = {...workFixture(), 'name': '晴天 · 练唱草稿'};
+    native.works['saved'] = {
+      ...workFixture(id: 'saved', status: 'SAVED'),
+      'name': '晴天 · 我的演唱',
+    };
+    state.works = native.works.values.toList();
+    await tester.pumpWidget(
+      RepaintBoundary(
+        key: boundary,
+        child: SingVerseApp(state: state),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await capture('01-library');
+    await state.setTheme(ThemeMode.dark);
+    await tester.pumpAndSettle();
+    await capture('02-library-dark');
+    await state.setTheme(ThemeMode.light);
+    await section(tester, 'frequent');
+    await capture('03-frequent');
+    await section(tester, 'works');
+    await capture('04-works');
+    await tester.tap(find.text('晴天 · 练唱草稿'));
+    await tester.pumpAndSettle();
+    await capture('05-review');
+    await tester.tap(find.text('调整声音'));
+    await tester.pumpAndSettle();
+    await capture('06-adjustment');
+    final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
+    nav.popUntil((route) => route.isFirst);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('open-settings')));
+    await tester.pumpAndSettle();
+    await capture('07-settings');
+    await tester.tap(find.text('NAS 连接与账号'));
+    await tester.pumpAndSettle();
+    await capture('08-nas-connected');
+    nav.popUntil((route) => route.isFirst);
+    await tester.pumpAndSettle();
+    await state.setUiMode(UiMode.senior);
+    await section(tester, 'songs');
+    await capture('09-senior-library');
+    await tester.binding.setSurfaceSize(const Size(320, 568));
+    tester.platformDispatcher.textScaleFactorTestValue = 1.8;
+    await tester.pumpAndSettle();
+    await capture('10-small-senior');
+    tester.platformDispatcher.clearTextScaleFactorTestValue();
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    await state.setUiMode(UiMode.standard);
+    state.authenticated = false;
+    nav.push(
+      MaterialPageRoute<void>(builder: (_) => ConnectionPage(state: state)),
+    );
+    await tester.pumpAndSettle();
+    await capture('11-nas-login');
+  });
+
+  testWidgets('capture refined player screens with controlled fixtures', (
+    tester,
+  ) async {
+    if (!const bool.fromEnvironment('CAPTURE_PLAYER_UI')) return;
+    final directory = Directory('../../tmp/mobile-player-unslop')
+      ..createSync(recursive: true);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final scenarios = [
+      (
+        '01-dark-audio',
+        Brightness.dark,
+        const Size(390, 844),
+        'AUDIO',
+        false,
+        1.0,
+        true,
+        true,
+      ),
+      (
+        '02-light-audio',
+        Brightness.light,
+        const Size(390, 844),
+        'AUDIO',
+        false,
+        1.0,
+        true,
+        true,
+      ),
+      (
+        '03-dark-mv',
+        Brightness.dark,
+        const Size(390, 844),
+        'VIDEO',
+        false,
+        1.0,
+        true,
+        true,
+      ),
+      (
+        '04-light-mv',
+        Brightness.light,
+        const Size(390, 844),
+        'VIDEO',
+        false,
+        1.0,
+        true,
+        true,
+      ),
+      (
+        '05-landscape',
+        Brightness.light,
+        const Size(844, 390),
+        'VIDEO',
+        false,
+        1.0,
+        true,
+        true,
+      ),
+      (
+        '06-small-large',
+        Brightness.dark,
+        const Size(320, 568),
+        'VIDEO',
+        true,
+        1.8,
+        true,
+        false,
+      ),
+      (
+        '07-no-artwork-or-lyrics',
+        Brightness.light,
+        const Size(390, 844),
+        'AUDIO',
+        false,
+        1.0,
+        false,
+        false,
+      ),
+      (
+        '08-selected-range',
+        Brightness.light,
+        const Size(390, 844),
+        'AUDIO',
+        false,
+        1.0,
+        true,
+        true,
+      ),
+    ];
+    for (final sample in scenarios) {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.binding.setSurfaceSize(sample.$3);
+      tester.platformDispatcher.textScaleFactorTestValue = sample.$6;
+      api.textTracks = sample.$7
+          ? [
+              {
+                'format': 'lrc',
+                'text': '[00:00.00]晨光落在窗前\n[00:10.00]把心事轻轻唱出来\n[00:20.00]熟悉的旋律还在\n[00:30.00]每一次开口都值得期待',
+              },
+            ]
+          : [];
+      state
+        ..current = Song({
+          'id': 'capture-player',
+          'title': '晴天',
+          'artists': ['样本歌手'],
+          'mediaType': sample.$4,
+          if (sample.$8) 'coverPath': '/api/v1/test-artwork/player',
+        })
+        ..uiMode = sample.$5 ? UiMode.senior : UiMode.standard
+        ..positionMs = 12000
+        ..durationMs = 240000
+        ..isPlaying = false
+        ..playbackState = 'PAUSED'
+        ..rangeA = sample.$1 == '08-selected-range' ? 10000 : 0
+        ..rangeB = sample.$1 == '08-selected-range' ? 30000 : 0
+        ..backingMapped = true
+        ..originalMapped = true
+        ..audioRole = 'backing'
+        ..tracks = [
+          {'id': '0:0', 'type': 'audio', 'selected': true, 'channels': 2},
+        ];
+      final boundary = GlobalKey();
+      await tester.pumpWidget(
+        RepaintBoundary(
+          key: boundary,
+          child: MaterialApp(
+            debugShowCheckedModeBanner: false,
+            theme: singVerseTheme(sample.$2, senior: state.senior),
+            home: PlayerPage(state: state),
+          ),
+        ),
+      );
+      if (sample.$8) {
+        await tester.runAsync(
+          () => precacheImage(
+            MemoryImage(fixtureCover),
+            boundary.currentContext!,
+          ),
+        );
+      }
+      await tester.pumpAndSettle();
+      await tester.runAsync(() async {
+        final render =
+            boundary.currentContext!.findRenderObject()!
+                as RenderRepaintBoundary;
+        final picture = await render.toImage(pixelRatio: 2);
+        final bytes = await picture.toByteData(format: ui.ImageByteFormat.png);
+        await File('${directory.path}/${sample.$1}.png')
+            .writeAsBytes(bytes!.buffer.asUint8List());
+        picture.dispose();
+      });
+      expect(tester.takeException(), isNull, reason: sample.$1);
+    }
+  });
 
   testWidgets('capture redesign reference screens with controlled fixtures', (
     tester,

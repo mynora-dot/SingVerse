@@ -1,20 +1,63 @@
+name: singverse-go-app
 services:
-  mysql:
-    image: mysql:8.4.8
+  singverse-go-backend:
+    image: '${IMAGE_PREFIX:-ghcr.io/mynora-dot}/singverse:${SINGVERSE_VERSION:-latest}'
     environment:
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-singverse}
-      MYSQL_USER: ${MYSQL_USER:-singverse}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env or environment}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env or environment}
+      SINGVERSE_DB_DRIVER: sqlite
+      SINGVERSE_BIND_ADDRESS: 0.0.0.0
+      SERVER_PORT: '8080'
+      SQLITE_PATH: /data/singverse.db
+      SINGVERSE_AUTH_KEY_FILE: /secrets/master.key
+      COMPUTE_NODE_URL: '${COMPUTE_NODE_URL:-}'
+      COMPUTE_AUTH_TOKEN_FILE: /run/singverse-compute/token
+      SINGVERSE_COMPUTE_AUTO_CALLBACK_ORIGIN: http://singverse-go-backend:8080
+      SINGVERSE_CALLBACK_ORIGIN: '${SINGVERSE_CALLBACK_ORIGIN:-}'
+      SINGVERSE_PUBLIC_ORIGIN: '${SINGVERSE_PUBLIC_ORIGIN:-}'
+      SINGVERSE_TRUSTED_PROXIES: '${SINGVERSE_TRUSTED_PROXIES:-}'
+      WEBDAV_METADATA_PATH: /data/metadata/webdav
+      METADATA_CACHE_PATH: /data/metadata/covers
+      TRANSCODE_VERSION_PATH: /data/transcoding
+      SINGVERSE_SONG_CACHE_PATH: /data/transcoding/cache
+      SINGVERSE_SONG_CACHE_BYTES: '${SINGVERSE_SONG_CACHE_BYTES:-10737418240}'
+      SINGVERSE_SONG_CACHE_MINIMUM_FREE_BYTES: '${SINGVERSE_SONG_CACHE_MINIMUM_FREE_BYTES:-2147483648}'
+      AUDIO_DERIVED_PATH: /data/audio-roles
+      SINGVERSE_TV_RELEASE_DIRECTORY: '${SINGVERSE_TV_RELEASE_DIRECTORY:-}'
     ports:
-      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
+      - '${SINGVERSE_HTTP_BIND:-127.0.0.1}:${SINGVERSE_HTTP_PORT:-18080}:8080'
     volumes:
-      - mysql-data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql --protocol=TCP -h 127.0.0.1 -u$$MYSQL_USER -D $$MYSQL_DATABASE -e 'SELECT 1' >/dev/null 2>&1"]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-      start_period: 30s
+      - singverse-data:/data
+      - singverse-secrets:/secrets
+      - singverse-compute-auth:/run/singverse-compute:ro
+      - singverse-media:/media:ro
+      - singverse-downloads:/downloads
+    restart: unless-stopped
+    stop_grace_period: 25s
+  singverse-compute:
+    profiles: [compute]
+    image: '${IMAGE_PREFIX:-ghcr.io/mynora-dot}/singverse-compute:${SINGVERSE_VERSION:-latest}-${COMPUTE_RUNTIME:-base}'
+    environment:
+      COMPUTE_AUTH_TOKEN_FILE: /run/singverse-compute/token
+      COMPUTE_LAN_PAIRING_ENABLED: '${COMPUTE_LAN_PAIRING_ENABLED:-true}'
+      COMPUTE_PROCESS_MEMORY_BYTES: '${COMPUTE_PROCESS_MEMORY_BYTES:-1073741824}'
+      COMPUTE_TRANSCODE_CONCURRENCY: '${COMPUTE_TRANSCODE_CONCURRENCY:-1}'
+      COMPUTE_AUDIO_MODEL_REPO: /var/lib/singverse-models/htdemucs
+      COMPUTE_AUDIO_MEMORY_BYTES: '${COMPUTE_AUDIO_MEMORY_BYTES:-4294967296}'
+      COMPUTE_AUDIO_THREADS: '${COMPUTE_AUDIO_THREADS:-2}'
+      COMPUTE_AUDIO_WORKER_IDLE_SECONDS: '${COMPUTE_AUDIO_WORKER_IDLE_SECONDS:-60}'
+    volumes:
+      - singverse-compute-auth:/run/singverse-compute
+      - singverse-transcode-cache:/var/cache/singverse-transcode
+      - singverse-audio-models:/var/lib/singverse-models
+    mem_limit: '${COMPUTE_CONTAINER_MEMORY_LIMIT:-6g}'
+    cpus: '${COMPUTE_CPU_LIMIT:-2.0}'
+    restart: unless-stopped
+    stop_grace_period: 10s
 volumes:
-  mysql-data:
+  singverse-data:
+  singverse-secrets:
+  singverse-media:
+  singverse-downloads:
+  singverse-compute-auth:
+  # Also contains persistent hardware/model selection and qualification settings.
+  singverse-transcode-cache:
+  singverse-audio-models:

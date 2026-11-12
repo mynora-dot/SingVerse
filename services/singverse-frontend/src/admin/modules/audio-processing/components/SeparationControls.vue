@@ -15,5 +15,5 @@ const emit = defineEmits<{ 'update:profile': [value: SeparationProfile]; 'update
 </template>
 
 <style scoped>
-.separation-controls{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}.separation-controls label{display:flex;gap:6px;align-items:center;font-size:var(--sv-font-meta);color:var(--sv-text-secondary)}.separation-controls select{min-height:34px;max-width:100%;padding:4px 8px;border:1px solid var(--sv-border-default);border-radius:6px;background:var(--sv-surface-1);color:var(--sv-text-primary);font:inherit}.separation-controls p{flex-basis:100%;margin:0;font-size:var(--sv-font-meta);line-height:1.6;color:var(--sv-text-secondary)}
+.separation-controls{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}.separation-controls label{display:flex;gap:8px;align-items:center;font-size:var(--sv-font-meta);color:var(--sv-text-secondary)}.separation-controls select{min-height:40px;max-width:100%;padding:4px 8px;border:1px solid var(--sv-border-default);border-radius:8px;background:var(--sv-surface-1);color:var(--sv-text-primary);font:inherit}.separation-controls p{flex-basis:100%;margin:0;font-size:var(--sv-font-meta);line-height:1.6;color:var(--sv-text-secondary)}
 </style>

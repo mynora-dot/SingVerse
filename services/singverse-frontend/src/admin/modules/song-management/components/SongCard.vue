@@ -26,16 +26,15 @@ const emit = defineEmits<{ click: []; play: []; edit: []; select: [song: MediaSo
 .song-card {
   min-width: 0;
   position: relative;
-  padding: 12px;
-  background: var(--sv-surface-2);
-  border: 1px solid var(--sv-border-subtle);
-  border-radius: 13px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 12px;
   transition: border-color .18s, box-shadow .18s
 }
 
 .song-card:hover {
   border-color: var(--sv-border-default);
-  box-shadow: var(--sv-shadow-md)
 }
 
 .song-card.selected {
@@ -77,12 +76,12 @@ const emit = defineEmits<{ click: []; play: []; edit: []; select: [song: MediaSo
   bottom: 10px;
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   border: 1px solid #ffffff75;
   border-radius: 50%;
-  background: #fff;
-  color: var(--sv-accent-primary);
+  background: var(--sv-surface-2);
+  color: var(--sv-text-primary);
   box-shadow: 0 3px 12px rgb(36 31 23 / 18%);
   cursor: pointer;
   font-size: 22px
@@ -90,7 +89,7 @@ const emit = defineEmits<{ click: []; play: []; edit: []; select: [song: MediaSo
 
 .cover-play:hover {
   background: var(--sv-accent-primary);
-  color: white
+  color: var(--sv-on-accent)
 }
 
 .selection-checkbox {
@@ -101,8 +100,8 @@ const emit = defineEmits<{ click: []; play: []; edit: []; select: [song: MediaSo
   place-items: center;
   width: 32px;
   height: 32px;
-  border-radius: 7px;
-  background: white;
+  border-radius: 8px;
+  background: var(--sv-surface-2);
   box-shadow: var(--sv-shadow-sm)
 }
 
@@ -118,23 +117,23 @@ const emit = defineEmits<{ click: []; play: []; edit: []; select: [song: MediaSo
   position: absolute;
   left: 10px;
   bottom: 12px;
-  padding: 1px 5px;
+  padding: 1px 4px;
   background: rgb(32 26 18 / 72%);
   color: white;
   border-radius: 4px;
-  font-size: 10px
+  font-size: 12px
 }
 
 .song-card-title {
   display: grid;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
   width: 100%;
   text-align: left;
   background: transparent;
   color: inherit;
   border: 0;
-  padding: 15px 0 10px;
+  padding: 16px 0 12px;
   cursor: pointer
 }
 
@@ -159,8 +158,8 @@ const emit = defineEmits<{ click: []; play: []; edit: []; select: [song: MediaSo
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 6px;
-  font-size: 10px;
+  gap: 8px;
+  font-size: 12px;
   min-height: 23px
 }
 
@@ -180,7 +179,7 @@ const emit = defineEmits<{ click: []; play: []; edit: []; select: [song: MediaSo
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
-  padding: 1px 6px;
+  padding: 1px 8px;
   border-radius: 4px;
   background: var(--sv-surface-3);
   color: var(--sv-text-secondary)
@@ -190,8 +189,8 @@ const emit = defineEmits<{ click: []; play: []; edit: []; select: [song: MediaSo
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 6px;
-  margin-top: 9px;
+  gap: 8px;
+  margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--sv-border-subtle)
 }
@@ -201,7 +200,7 @@ const emit = defineEmits<{ click: []; play: []; edit: []; select: [song: MediaSo
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--sv-text-tertiary)
 }
 
@@ -210,17 +209,17 @@ const emit = defineEmits<{ click: []; play: []; edit: []; select: [song: MediaSo
   padding: 4px 0;
   min-height: 28px;
   height: auto;
-  font-size: 11px
+  font-size: 12px
 }
 
 @media(max-width:480px) {
   .song-card {
-    padding: 8px;
-    border-radius: 10px
+    padding: 0;
+    border-radius: 8px
   }
 
   .song-card-title {
-    padding: 10px 0 6px
+    padding: 12px 0 8px
   }
 
   .song-card-title strong {
@@ -228,7 +227,7 @@ const emit = defineEmits<{ click: []; play: []; edit: []; select: [song: MediaSo
   }
 
   .song-card-title span {
-    font-size: 11px
+    font-size: 12px
   }
 
   .song-card-context {
@@ -241,7 +240,7 @@ const emit = defineEmits<{ click: []; play: []; edit: []; select: [song: MediaSo
 
   .song-status {
     display: block;
-    font-size: 11px
+    font-size: 12px
   }
 
   .cover-play {
@@ -252,23 +251,27 @@ const emit = defineEmits<{ click: []; play: []; edit: []; select: [song: MediaSo
   }
 
   .selection-checkbox {
-    width: 40px;
-    height: 40px
+    width: 44px;
+    height: 44px
   }
 
   .song-card-actions>span {
-    font-size: 10px
+    font-size: 12px
   }
 
   .song-card-actions {
-    margin-top: 5px;
-    padding-top: 5px
+    margin-top: 4px;
+    padding-top: 4px
   }
 
   .song-card-actions :deep(.el-button) {
-    font-size: 11px;
-    min-height: 40px;
+    font-size: 12px;
+    min-height: 44px;
     min-width: 44px
   }
+}
+
+@media(max-width:768px) {
+  .selection-checkbox { width: 44px; height: 44px; }
 }
 </style>

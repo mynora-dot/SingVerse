@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { Headset as SongPlaceholderIcon } from '@element-plus/icons-vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
-import { ElAlert, ElButton, ElDialog, ElInput, ElMessage, ElPagination, type InputInstance } from 'element-plus'
+import { ElIcon, ElAlert, ElButton, ElDialog, ElInput, ElMessage, ElPagination, type InputInstance } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import SongCover from '../../song-management/components/SongCover.vue'
 import { songs } from '../../song-management/api/songs'
@@ -56,7 +57,7 @@ void load()
     <div class="picker-toolbar"><label><input type="checkbox" aria-label="选择本页歌曲" :checked="allOnPage" :indeterminate="partialPage" :disabled="loading || !items.length" @change="togglePage(($event.target as HTMLInputElement).checked)">选择本页</label><span>已选 {{ selected.size }} 首</span><ElButton v-if="selected.size" text size="small" @click="selected = new Set()">清空已选</ElButton></div>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon><ElButton text @click="load">重新加载</ElButton></ElAlert>
     <div v-if="loading" class="picker-empty" role="status">正在读取歌曲…</div>
-    <div v-else-if="!error && !items.length" class="picker-empty"><span class="empty-note" aria-hidden="true">♪</span><h3>{{ appliedSearch ? '没有找到匹配的歌曲' : '曲库中还没有歌曲' }}</h3><p>{{ appliedSearch ? '试试其他歌名、歌手或文件名。' : '先在媒体库添加来源并扫描，再来选择。' }}</p><ElButton v-if="appliedSearch" text @click="search = ''; query()">清除搜索</ElButton></div>
+    <div v-else-if="!error && !items.length" class="picker-empty"><span class="empty-note" aria-hidden="true"><ElIcon><SongPlaceholderIcon /></ElIcon></span><h3>{{ appliedSearch ? '没有找到匹配的歌曲' : '曲库中还没有歌曲' }}</h3><p>{{ appliedSearch ? '试试其他歌名、歌手或文件名。' : '先在媒体库添加来源并扫描，再来选择。' }}</p><ElButton v-if="appliedSearch" text @click="search = ''; query()">清除搜索</ElButton></div>
     <div v-else-if="!error" class="picker-song-list"><label v-for="song in items" :key="song.id" class="picker-song" :class="{ selected: selected.has(song.id) }"><input type="checkbox" :aria-label="`选择歌曲：${songTitle(song)}`" :checked="selected.has(song.id)" :disabled="!selected.has(song.id) && selected.size >= limit" @change="toggle(song.id, ($event.target as HTMLInputElement).checked)"><SongCover class="picker-song-art" :song="song" /><span class="picker-song-name"><strong>{{ songTitle(song) }}</strong><small>{{ songArtists(song).join('、') || '未知歌手' }}</small></span><span class="picker-song-location"><strong>{{ song.sourceName }}</strong><small :title="song.relativePath">{{ song.relativePath }}</small></span></label></div>
     <div class="picker-pagination"><small v-if="!loading && !error">{{ items.length ? `第 ${rangeStart}–${rangeEnd} 首，共 ${total} 首` : `共 ${total} 首` }}</small><ElPagination :current-page="page + 1" :total="total" :page-size="20" :disabled="loading" layout="prev, pager, next" @current-change="changePage" /></div>
     <template #footer><div class="picker-footer"><span>已选择 <strong>{{ selected.size }}</strong> 首 <small>· 最多 {{ limit }} 首</small></span><div><ElButton @click="emit('close')">取消</ElButton><ElButton type="primary" :disabled="!selected.size && !props.selectedIds.length" @click="emit('selectedSongs',[...selected].map(id=>selectedModels.get(id)).filter((s):s is MediaSong=>!!s));emit('confirm', [...selected])">确认选择<span v-if="selected.size">（{{ selected.size }} 首）</span></ElButton></div></div></template>
@@ -68,13 +69,13 @@ void load()
   font-size: 12px;
   color: var(--sv-text-secondary);
   line-height: 1.8;
-  margin-bottom: 18px
+  margin-bottom: 20px
 }
 
 .picker-search {
   flex-shrink: 0;
   display: flex;
-  gap: 10px
+  gap: 12px
 }
 
 .picker-search .el-input {
@@ -86,7 +87,7 @@ void load()
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
   min-height: 48px;
   font-size: 12px;
   border-bottom: 1px solid var(--sv-border-subtle)
@@ -95,7 +96,7 @@ void load()
 .picker-toolbar>label {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
   cursor: pointer
 }
 
@@ -128,7 +129,7 @@ input:focus-visible {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 13px 10px;
+  padding: 12px 12px;
   border-bottom: 1px solid var(--sv-border-subtle);
   cursor: pointer;
   border-radius: 8px
@@ -147,7 +148,7 @@ input:focus-visible {
   place-items: center;
   width: 34px;
   height: 34px;
-  border-radius: 9px;
+  border-radius: 8px;
   background: var(--sv-surface-2);
   color: var(--sv-accent-primary);
   font-size: 21px;
@@ -162,16 +163,16 @@ input:focus-visible {
 .picker-song-name strong {
   display: block;
   font-size: 13px;
-  font-weight: 550;
+  font-weight: 500;
   overflow-wrap: anywhere;
   line-height: 1.7
 }
 
 .picker-song-name small {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--sv-text-secondary);
-  margin-top: 3px;
+  margin-top: 4px;
   overflow-wrap: anywhere
 }
 
@@ -183,7 +184,7 @@ input:focus-visible {
 
 .picker-song-location strong {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
   color: var(--sv-text-secondary);
   overflow-wrap: anywhere
@@ -194,7 +195,7 @@ input:focus-visible {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--sv-text-tertiary);
   margin-top: 4px
 }
@@ -206,11 +207,11 @@ input:focus-visible {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 18px
+  margin-top: 20px
 }
 
 .picker-pagination>small {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--sv-text-secondary)
 }
 
@@ -265,12 +266,12 @@ input:focus-visible {
 }
 
 .picker-footer small {
-  font-size: 10px
+  font-size: 12px
 }
 
 .picker-footer>div {
   display: flex;
-  gap: 10px
+  gap: 12px
 }
 
 .picker-footer .el-button+.el-button {
@@ -298,7 +299,7 @@ input:focus-visible {
 @media(max-width:600px) {
   .picker-song {
     flex-wrap: wrap;
-    gap: 8px 10px;
+    gap: 8px 12px;
     padding: 12px 8px
   }
 
@@ -306,17 +307,17 @@ input:focus-visible {
     flex-basis: 100%;
     width: 100%;
     text-align: left;
-    padding-left: 26px
+    padding-left: 28px
   }
 
   .picker-song-location strong {
     display: inline;
-    font-size: 10px
+    font-size: 12px
   }
 
   .picker-song-location small {
     display: inline;
-    margin-left: 6px
+    margin-left: 8px
   }
 
   .picker-song-art {
@@ -347,5 +348,9 @@ input:focus-visible {
     flex-basis: 100%;
     text-align: center
   }
+}
+
+@media(max-width:768px) {
+  .picker-toolbar > label { min-height: 44px; }
 }
 </style>

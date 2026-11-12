@@ -12,11 +12,7 @@ for program in ("go", "ffmpeg", "ffprobe"):
     if shutil.which(program) is None:
         raise SystemExit(f"Required real integration program unavailable: {program}")
 
-env = dict(os.environ, GOTOOLCHAIN="go1.27.4",
-           GOMODCACHE=str(ROOT / ".tools/go-mod-cache"),
-           GOCACHE=str(ROOT / ".tools/go-build-cache"),
-           GOPATH=str(ROOT / ".tools/go"),
-           SINGVERSE_TEST_REAL_COMPUTE="1")
-subprocess.run(["go", "test", "-race", "-count=1", "-timeout=200s",
+env = dict(os.environ, SINGVERSE_TEST_REAL_COMPUTE="1")
+subprocess.run(["sh", str(ROOT / "scripts/run-go.sh"), "test", "-race", "-count=1", "-timeout=200s",
                 "./internal/execution", "-run", "^TestRealPythonComputeRoundTrip$", "-v"],
                cwd=ROOT / "services/singverse-go-backend", env=env, check=True)

@@ -21,7 +21,7 @@ WebDAV 原片按需分块缓存，完整成功的音视频解码结果也由 Go 
 | 业务主服务 | Go 1.27.4 / Gin / database/sql + sqlx / 显式嵌入 SQL | `services/singverse-go-backend` |
 | 计算节点 | Python 3.12+ / FastAPI 0.121.3 / Uvicorn 0.38.0；媒体探测、转码及可选音轨分析/伴奏分离 | `services/singverse-compute` |
 | 网页前端 | Vue 3 / TypeScript / Vite / Element Plus 管理端 + Vue 亲友点歌页，同一工程构建 | `services/singverse-frontend` |
-| 数据库 | 默认SQLite，MySQL保留可选连接验证 | `infra/docker/compose/compose.yaml`仅开发MySQL |
+| 数据库 | 默认SQLite，MySQL保留可选连接验证 | `infra/docker/compose/compose.mysql.yaml`仅开发MySQL |
 
 ```text
 services/
@@ -32,25 +32,24 @@ services/
   singverse-compute/       内部媒体探测、转码与音频计算服务
 contracts/openapi/        业务API约定与计算节点内部探测契约
 database/                 数据库约定
-infra/docker/             Compose配置、Bake镜像矩阵与构建忽略规则
-infra/deploy/             NAS部署包模板
+infra/docker/             两条部署路线、镜像发布、硬件配置与构建忽略规则
 docs/                     架构、开发、验证与research调研
 .github/workflows/        singverse-frontend、singverse-mobile、singverse-tv、singverse-go-backend、singverse-backend
 ```
 
 `services/`是本仓库统一工程目录，各模块使用`singverse-模块名`命名并独立构建。亲友点歌页面与NAS管理页面同属`singverse-frontend`；业务模块名为 `singverse-go-backend`，版本由根 `VERSION` 注入。目录迁移明细见[仓库布局](docs/repository-layout.md)。
 
-统一前端以Vite多页面方式构建：`party/index.html`加载亲友点歌 Vue 应用，`admin/index.html`加载Vue/Element Plus管理页面。管理端提供概览、系统状态、真实健康检查及失败重试。整个`services/singverse-frontend/dist`由 Go 嵌入托管；浏览器通过同源HTTP访问主服务，不依赖Go内部类型。Go 构建将完整 dist 嵌入原生二进制，生产不需要Node进程；默认 Docker 交付由 Nginx 前端、Go 后端和基础 compute 三个容器组成。详见[前端说明](services/singverse-frontend/README.md)与[托管契约](contracts/frontend-hosting.md)。
+统一前端以Vite多页面方式构建：`party/index.html`加载亲友点歌 Vue 应用，`admin/index.html`加载Vue/Element Plus管理页面。管理端提供概览、系统状态、真实健康检查及失败重试。整个`services/singverse-frontend/dist`由 Go 嵌入托管；浏览器通过同源HTTP访问主服务，不依赖Go内部类型。Go 构建将完整 dist 嵌入原生二进制，生产不需要Node进程；默认 Docker 交付仅启动内置完整前端的 Go，compute 按需部署。详见[前端说明](services/singverse-frontend/README.md)与[托管契约](contracts/frontend-hosting.md)。
 
-亲友H5使用本地构建的 Vue/TypeScript 与 CSS，入口为`/party/`；管理端直接托管在`/admin/`，Nginx对外映射到`/`；无CDN、微信JS-SDK、小程序AppID或微信网页登录。
+亲友H5使用本地构建的 Vue/TypeScript 与 CSS，入口为`/party/`；管理端由Go直接托管于`/`及`/admin/`；无CDN、微信JS-SDK、小程序AppID或微信网页登录。
 
-后端[Nginx配置](infra/docker/build/nginx/nginx.conf)已提供静态页面映射和API转发约定。前端请求统一带`/api`前缀，健康检查为`/api/health`，业务接口使用`/api/v1`；代理保留该前缀。
+Go 直接提供静态页面和业务 API，HTTPS 使用外部反向代理。前端请求统一带`/api`前缀，健康检查为`/api/health`，业务接口使用`/api/v1`；代理保留该前缀。
 
 ## Go 切换与数据保护
 
 默认生产链路已改为 Go，不包含 JVM。此次为全新部署，不迁移已有 Java 数据库或账号。默认 Compose 项目 `singverse-go-app` 与旧 `singverse-app` 使用各自的卷；独立部署包使用 `singverse-go-business`。禁止给 Go 指定旧项目名/旧数据库，旧数据与命名卷继续保留。
 
-Java 源码和 Maven 构建入口已退休，已保存镜像仅用于明确回退：`make java-rollback-up` 使用 `compose.java-rollback.yaml` 与旧卷。Java 读取自身旧数据，Go 上线后新建的数据不自动回流，也不承诺 Go 写入后的库可交给 Java。步骤见 [切换与回退](docs/go-migration.md)，实际结果见 [Go 验证](docs/go-migration-verification.md)。
+Java 源码、Maven 入口和旧 Docker 回退配置已退休；不自动迁移旧账号或数据库，不删除旧卷。新部署升级与回退必须配套备份数据和密钥，见[运维](infra/docker/OPERATIONS.md)。
 
 ## 管理员账号
 
@@ -58,18 +57,19 @@ Java 源码和 Maven 构建入口已退休，已保存镜像仅用于明确回�
 
 ## Docker 部署
 
-从零安装请看 **[Docker 部署指南](infra/docker/README.md)**；硬件加速、AMD gfx1103 原生 ROCm、CUDA/OpenVINO、模型安装与完整歌曲验收见 **[GPU 与 AI 部署](infra/docker/GPU.md)**。指南同时覆盖 WebDAV、本地曲库只读挂载、独立计算节点、离线业务包以及备份和升级。
+从零安装请看 **[Docker 部署指南](infra/docker/README.md)**；硬件加速、AMD gfx1103 原生 ROCm、CUDA/OpenVINO、模型安装与完整歌曲验收见 **[GPU 与 AI 部署](infra/docker/GPU.md)**。指南同时覆盖 WebDAV、本地曲库只读挂载、独立计算节点以及备份和升级。
 
-部署后的验收清单、可执行备份/恢复及版本更新步骤见 **[验收与运维指南](infra/docker/OPERATIONS.md)**，该指南也随部署包交付。
+部署后的验收清单、可执行备份/恢复及版本更新步骤见 **[验收与运维指南](infra/docker/OPERATIONS.md)**。
 
 ```sh
 make docker-up
 make docker-check
+# 或拉取已发布镜像启动：make docker-pull docker-image-up
 # 停止并保留数据卷
 make docker-down
 ```
 
-构建启动只需 Docker、Buildx 和 Compose 插件 2.24.4+；检查脚本另需 Python 3。管理页访问 http://localhost:18080/ ，亲友入口为 http://localhost:18080/party/ 。默认仅本机可访问，后端不发布端口，SQLite 使用独立命名卷。默认三个容器为 Nginx、Go 和基础 compute；AI 运行库与模型需要按上述指南另选配置，不随默认镜像安装。
+构建启动只需 Docker、Buildx 和 Compose 插件 2.24.4+；检查脚本另需 Python 3。管理页访问 http://localhost:18080/ ，亲友入口为 http://localhost:18080/party/ 。默认仅本机可访问，Go直接发布HTTP端口，SQLite 使用独立命名卷。默认只启动Go，compute可选；AI 运行库与模型需要按上述指南另选配置，不随默认镜像安装。
 
 ## 环境与命令
 
@@ -99,13 +99,13 @@ make go-backend-build
 make go-backend-run
 ```
 
-在“系统设置 → 性能节点配置”管理计算服务。应用 Compose 自动提供同套 `singverse-compute` 地址与共享凭据；独立部署仅配置节点地址和加密凭据，无需给性能节点挂载曲库，或选择暂不使用。连接检查验证节点身份、认证、实际能力及业务回源，不发起媒体任务。节点离线不影响 Go/管理端健康，扫描保留文件名回退；音视频标签读取由 Python 执行。独立部署见[计算节点说明](services/singverse-compute/README.md)。
+在“系统设置 → 性能节点配置”管理计算服务。应用 Compose 显式启用 compute profile 并设置 `COMPUTE_NODE_URL` 后，通过共享凭据连接同套 `singverse-compute`；独立部署仅配置节点地址和加密凭据，无需给性能节点挂载曲库，或选择暂不使用。连接检查验证节点身份、认证、实际能力及业务回源，不发起媒体任务。节点离线不影响 Go/管理端健康，扫描保留文件名回退；音视频标签读取由 Python 执行。独立部署见[计算节点说明](services/singverse-compute/README.md)。
 
 管理中心访问 `http://localhost:8080/admin/`，亲友欢迎页 `http://localhost:8080/party/`，健康检查 `http://localhost:8080/api/health`。Go 构建先准备完整前端，缺少任一入口时明确失败。后续在NAS实际部署后，手机必须使用其可达地址，例如 `http://<NAS局域网IP>:8080/`；二维码不能写localhost或容器内部IP。
 
 TV 已提供设备授权与聚会邀请二维码，亲友扫码进入同一 NAS 的 H5 点歌、队列及授权遥控。Android/iOS 微信真机的导航、安全提示、网络权限和前后台恢复仍需单独验收，普通浏览器检查不替代微信结果。
 
-两个入口的页面、脚本与样式随原生二进制交付；独立admin CI检查前端，Go CI验证H5与管理端HTTP及资源。无需小程序开发者工具、上传或发布流程。compose.yaml提供开发MySQL；compose.app.yaml 提供 Nginx、Go 与基础 compute 容器，本地运行不代表NAS实机已验收。
+两个入口的页面、脚本与样式随原生二进制交付；独立admin CI检查前端，Go CI验证H5与管理端HTTP及资源。无需小程序开发者工具、上传或发布流程。compose.mysql.yaml提供开发MySQL；compose.yaml 提供内置前端的 Go 与可选 compute，本地运行不代表NAS实机已验收。
 
 ## 数据库
 
@@ -128,7 +128,7 @@ make db-mysql-check
 SINGVERSE_DB_DRIVER=mysql make go-backend-run
 ```
 
-Go 不会自动读取 `.env`；Compose会读取，主机Go必须导出变量。MySQL默认仅绑定`127.0.0.1:3306`，使用命名卷；更改初始化密码不会自动更新已有卷账号。停止使用`docker compose --project-directory . -f infra/docker/compose/compose.yaml stop mysql`，不自动删除数据卷。
+Go 不会自动读取 `.env`；Compose会读取，主机Go必须导出变量。MySQL默认仅绑定`127.0.0.1:3306`，使用命名卷；更改初始化密码不会自动更新已有卷账号。停止使用`docker compose --project-directory . -f infra/docker/compose/compose.mysql.yaml stop mysql`，不自动删除数据卷。
 
 首次执行`make compute-setup`并正确配置环境后，`make verify`依次验证手机、NAS管理前端、H5、TV、Go/Python整体联动及SQLite/MySQL。任一步失败返回非零；不会跳过数据库或自动删除卷。
 
@@ -162,7 +162,7 @@ Go 后端业务 SQL 显式位于所属 `internal/<domain>/sql/*.sql`，通过 `d
 
 视频兼容播放、离线版本、工具安装及硬件边界见 [转码说明](docs/transcoding.md)。
 
-TV／手机播放按可用解码器的实际 AVC profile、level 和尺寸能力协商，解码／格式错误可自动尝试一次兼容播放；切歌会取消旧请求，准备轮询与旧会话清理分离。已生成且可寻址的 HLS 时间范围内直接跳转，范围外再按原始时间轴协商；实时转码使用 2 秒目标分段，各轨首片齐备后可播，整曲缓存后台复制。该链路需同步更新 Go、compute、Nginx 和两端 APK。WebDAV 原流仍要求直接 GET／Range，下载跳转或不支持定位的来源需调整配置；真实 NAS 与设备效果见各模块 README 和验证记录。`make nginx-media-check` 可隔离检查全部媒体代理路径的首段流式传输。
+TV／手机播放按可用解码器的实际 AVC profile、level 和尺寸能力协商，解码／格式错误可自动尝试一次兼容播放；切歌会取消旧请求，准备轮询与旧会话清理分离。已生成且可寻址的 HLS 时间范围内直接跳转，范围外再按原始时间轴协商；实时转码使用 2 秒目标分段，各轨首片齐备后可播，整曲缓存后台复制。该链路需同步更新 Go、compute 和两端 APK。WebDAV 原流仍要求直接 GET／Range，下载跳转或不支持定位的来源需调整配置；真实 NAS 与设备效果见各模块 README 和验证记录。媒体 Range/HEAD 和流式处理需通过实际 Go 及外部代理验收。
 
 WebDAV 原片直放也会按需缓存在 NAS，无需等待整首下载；原片与 HLS 结果共用「曲库 → 歌曲缓存」的容量及清理策略，管理页区分部分缓存和完整缓存。TV 聚会队列在当前歌剩余约 30 秒时预取下一首，优先文件头和尾部索引，再补齐其余内容；排序、撤歌、停止和散场会更新或撤销预取。手机扫码点歌复用同一队列，本机播放器仍为单曲模式。原片预取不依赖 compute，已有未缓存内容继续按需回源。
 
@@ -193,33 +193,11 @@ COMPUTE_HARDWARE_BACKEND=videotoolbox make compute-run
 
 **优先级：后台保存的选择 > `COMPUTE_HARDWARE_BACKEND` > 默认 `auto`。** 后台选择“遵循部署配置”恢复环境变量的值。环境变量变化需重启 compute；后台保存无需重启。后台选择保存在计算节点缓存卷根目录的 `hardware-settings.json`，重建容器且保留缓存卷时继续生效；更换计算节点后使用新节点自己的设置。
 
-Docker 必须在部署时配置设备、驱动和组权限。Intel/AMD 使用 `infra/docker/compose/compose.compute.dri.yaml`，NVIDIA 使用 `infra/docker/compose/compose.compute.nvidia.yaml`，Rockchip 使用 `infra/docker/compose/compose.compute.rockchip.yaml`；覆盖文件会向容器传入对应 `COMPUTE_HARDWARE_BACKEND`。仅把变量写入根 `.env` 不会自动传入未声明该变量的容器；使用上述覆盖文件或显式增加 Compose environment。后台不能自动透传 GPU、安装驱动或赋予设备权限。
+Docker 必须在部署时配置设备、驱动和组权限。Intel/AMD 使用 `infra/docker/compose/compose.dri.yaml`，NVIDIA 使用 `infra/docker/compose/compose.nvidia.yaml`，Rockchip 使用 `infra/docker/compose/compose.rockchip.yaml`；覆盖文件会向容器传入对应 `COMPUTE_HARDWARE_BACKEND`。仅把变量写入根 `.env` 不会自动传入未声明该变量的容器；使用上述覆盖文件或显式增加 Compose environment。后台不能自动透传 GPU、安装驱动或赋予设备权限。
 
-独立业务节点上传包使用 `make app-package`，包含完整前端、Go 源码、版本与 SQLite 数据库迁移。
-所有部署参数位于包内 Compose，曲库只读挂载解压目录下的 `media/`；数据库与密钥分别持久化到命名卷。
-默认仅监听 `127.0.0.1:18080`，局域网部署时按说明改为 NAS 实际地址，并在管理页连接已有性能节点；包内不携带本机业务数据或凭据。
-部署、回源地址及数据保留说明见 [业务节点上传包](infra/deploy/app/README.md)。
-无法访问镜像仓库的远端可使用包含 AMD64 运行镜像的[离线业务包](infra/deploy/app/README.offline.md)，
-导入镜像后无需在线构建或拉取；`make app-package-offline` 用于导出已构建的离线镜像。
+Docker 只保留[源码构建与预构建镜像](infra/docker/README.md)两条路线。预构建镜像支持 GHCR、Docker Hub 和阿里云，命名空间由维护者在 Actions 配置；发布规则见[镜像发布](infra/docker/PUBLISHING.md)。
 
-已增加按素材试跑的硬件解码、零拷贝与 GPU 色调映射；无法使用的阶段会明确回退。Dolby Vision 单层 P5/P8 使用 RPU 元数据转换至 SDR，普通 HDR 支持不自动等于 DV 支持。短样本成功不代表其他硬件或持续负载已验收；详情见[转码说明](docs/transcoding.md)和[验证记录](docs/verification.md)。
-
-macOS + Docker Desktop 使用原生 GPU 节点：先确保现有应用已启动并执行过 `make compute-setup`、`make transcode-tools`，再从仓库根目录运行：
-
-```sh
-services/singverse-compute/.venv/bin/python scripts/macos-compute.py start
-docker compose --project-directory . -f infra/docker/compose/compose.app.yaml -f infra/docker/compose/compose.compute.macos.yaml up -d singverse-go-backend singverse-frontend
-docker compose --project-directory . -f infra/docker/compose/compose.app.yaml stop singverse-compute
-SINGVERSE_MACOS_COMPUTE=1 make docker-check
-```
-
-后台性能节点连接方式使用“自动识别”。Go 经 `host.docker.internal:18090` 连接仅监听回环的 Mac 节点，复用现有内部凭据，使用 VideoToolbox；WebDAV 仍通过 Go 读取。本地曲库只需挂载到 Go，Mac 节点通过任务授权回源读取，无需相同路径。节点缓存与凭据也保存在被忽略的 `data/macos-compute`，均不放入媒体目录。启动器使用当前用户的 launchd 保持节点运行，并在 `~/Library/LaunchAgents` 注册指向本地运行配置的登录启动项；保留本仓库及虚拟环境路径。`scripts/macos-compute.py status` 查询、`stop` 停止节点并移除本启动器自己的登录启动项。Go HTTP 入口需为本机默认 18080；其他端口部署请调整 macOS Compose 覆盖文件中 Go 的业务回源地址。重启应用继续带上 macOS 覆盖文件，以保留此连接配置。
-
-Mac 启动器会把当前 shell 的 `COMPUTE_LAN_PAIRING_ENABLED=true|false` 写入 launchd 配置；未设置时保留上次配置，首次默认 `true`。例如 `COMPUTE_LAN_PAIRING_ENABLED=false services/singverse-compute/.venv/bin/python scripts/macos-compute.py restart` 关闭自动配对，后续普通重启继续保留；原有 Bearer 连接不受影响。仅接受 `true` / `false`，非法值会在停止现有节点前报错。
-
-Mac 原唱／伴奏使用原生 CPU 或 MPS：显式执行 `make compute-audio-setup` 安装固定依赖及权重后，用 `scripts/macos-compute.py restart` 加载音频配置，再到“设置 → 计算与模型”对 CPU／MPS 试跑。启动器默认 4GiB 音频预算，可显式指定 `--audio-memory-mib 2048`，后续重启保留该预算。本机 M2 已通过 MPS 分块卷积、CPU 数值对照及 8／60 秒批量分离验证；不启用隐式 CPU 算子回退。复验可执行 `make macos-audio-check`，完整说明见 compute README。
-
-可选真机验证：`make transcode-fixtures` 下载校验固定的 Jellyfin 官方 Dolby Vision 测试素材（不进入生产镜像）；设置仓库媒体工具 PATH 后，可在目标设备运行 `services/singverse-compute/.venv/bin/python services/singverse-compute/tests/smoke/verify_hardware.py --backend videotoolbox --fixtures .tools/transcode-fixtures`。其他设备替换 backend；输出会区分实际硬解、CPU 回传、零拷贝和 GPU 色调映射。
+Mac GPU 继续使用 `scripts/macos-compute.py` 原生节点；Docker 不提供 MPS 或 VideoToolbox，连接及回源配置见[计算节点](infra/docker/GPU.md)。
 
 ## 原唱与伴奏
 

@@ -97,6 +97,51 @@ it('单块读取失败只影响该块，不显示“无待办”，可重新读�
   } finally { wrapper.unmount() }
 })
 
+it.each([true, false])('首页整体读取失败时明确提示并可重试恢复（已有数据：%s）', async hasPrevious => {
+  let fail = !hasPrevious
+  let totalSongs = 321
+  const song = { id: 'kept-song', result: { ...preview().result, title: '保留的收藏', artists: ['家庭歌手'] } }
+  const fetchMock = serve({
+    '/api/v1/admin/overview': () => fail
+      ? Response.json({ detail: '服务暂时不可用' }, { status: 503 })
+      : Response.json(baseOverview({
+        library: { totalSongs, reviewSongs: 0, formalSongs: totalSongs, formalVariants: totalSongs, formalMedia: totalSongs },
+        recentSongs: [song],
+      })),
+    '/api/v1/background-tasks': emptyTasks,
+    '/api/health': { status: 'UP' },
+  })
+  const wrapper = mount(OverviewView, { global: { plugins: [router] } })
+  try {
+    await flushPromises()
+    if (hasPrevious) {
+      expect(wrapper.find('.overview-error').exists()).toBe(false)
+      expect(wrapper.findAll('.stat-block')[0]!.text()).toContain('321')
+      fail = true
+      await wrapper.get('button[aria-label="刷新曲库概览"]').trigger('click'); await flushPromises()
+    }
+    expect(wrapper.get('.overview-error').text()).toContain(hasPrevious ? '正在显示上次读取的结果' : '曲库概览暂时无法读取')
+    expect(wrapper.get('.overview-error').text()).toContain('服务暂时不可用')
+    if (hasPrevious) {
+      expect(wrapper.findAll('.stat-block')[0]!.text()).toContain('321')
+      expect(wrapper.get('.shelf-song').text()).toContain('保留的收藏')
+    } else {
+      expect(wrapper.findAll('.stat-block')[0]!.text()).toContain('读取失败')
+      expect(wrapper.find('.recent-shelf').exists()).toBe(false)
+      expect(wrapper.text()).not.toContain('暂无待处理事项')
+    }
+    const taskCalls = () => fetchMock.mock.calls.filter(([path]) => String(path).startsWith('/api/v1/background-tasks')).length
+    const taskCallsBeforeRetry = taskCalls()
+    fail = false
+    totalSongs = 642
+    await wrapper.get('.overview-error button').trigger('click'); await flushPromises()
+    expect(wrapper.find('.overview-error').exists()).toBe(false)
+    expect(wrapper.findAll('.stat-block')[0]!.text()).toContain('642')
+    expect(wrapper.get('.shelf-song').text()).toContain('保留的收藏')
+    expect(taskCalls()).toBe(taskCallsBeforeRetry)
+  } finally { wrapper.unmount() }
+})
+
 it('首页展示真实收藏与后台任务，未知整体进度不会冒充百分比', async () => {
   const song = { id: 'recent-song', result: { ...preview().result, title: '收藏里的歌', artists: ['家庭歌手'] } }
   serve({

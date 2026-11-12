@@ -86,13 +86,22 @@ class _SingVerseAppState extends State<SingVerseApp> {
     listenable: widget.state,
     builder: (context, _) {
       final state = widget.state;
+      final compact = MediaQuery.sizeOf(context).width < 375;
       return MaterialApp(
         title: 'SingVerse',
         debugShowCheckedModeBanner: false,
         navigatorKey: navigator,
         navigatorObservers: [pages],
-        theme: singVerseTheme(Brightness.light, senior: state.senior),
-        darkTheme: singVerseTheme(Brightness.dark, senior: state.senior),
+        theme: singVerseTheme(
+          Brightness.light,
+          senior: state.senior,
+          compact: compact,
+        ),
+        darkTheme: singVerseTheme(
+          Brightness.dark,
+          senior: state.senior,
+          compact: compact,
+        ),
         themeMode: state.themeMode,
         builder: (context, child) => ValueListenableBuilder<String>(
           valueListenable: pages.current,

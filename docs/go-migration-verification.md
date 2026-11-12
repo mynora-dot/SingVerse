@@ -1,5 +1,7 @@
 # Go 迁移专项验证
 
+> 本文记录旧交付版本的历史结果；旧 Nginx、打包及回退命令已退休。当前 Docker 入口见 `infra/docker/README.md`，不将下列结果视为重建交付的验证。
+
 ## 2026-11-09 十万首曲库 HTTP 查询
 
 在本机 macOS arm64、Go 1.27.1 上运行真实 Go 服务与隔离 SQLite。测试通过实际管理员 Cookie/CSRF 登录、电视 Bearer 授权、邀请及亲友加入协议建立身份，批量写入 100000 首合成歌曲，然后调用生产 HTTP 处理器。没有读取或修改用户曲库，也没有创建媒体原件。
@@ -92,7 +94,7 @@ Python 完整回归实际为 223 项、8 项显式跳过，退出 0。可选模�
 
 该轮精确构建上下文重建后，从 `infra/docker/check-go-container.py` 入口重跑：ARM64 为 166 条契约加 51 条交付断言，3.521 秒；AMD64 为 166 加 52 条，4.244 秒，均通过。ARM64 Go/Nginx 镜像 ID 分别为 `sha256:bff448cccc9d683ce2f810933a5b5652aa710b73253f868cb09495a786ff09d4` / `sha256:004ca0da35183ef4591a35d77f0a6dfb8f0e0a42342e12ab385fde71ca950cf2`，AMD64 对应下文 11 月 9 日候选离线包 ID。该轮镜像已被 11 月 10 日的亲友权限修复镜像替代。各次独占容器与网络标签检查均为空。
 
-现有 `scripts/check-docker-app.py` 在新随机 Compose 项目中实际通过，固定当前源码构建的 Go、Nginx、compute 镜像，不拉取或覆盖旧 `local` 镜像。覆盖三个页面入口及 18 个资源、登录登出、health、20 KiB 非法封面确实到达 Go 格式校验、AUTO 节点认证和双向 callback，以及未知 GET/POST API 的 JSON 404。当前 compute 镜像的真实 FLAC/MP3/M4A/MP4/MKV HTTP 回源标签、离线转码、SHA 校验和原件只读检查也通过。测试项目的容器、网络与七个新建卷均已清理，原项目和旧卷没有操作。
+现有 `infra/docker/check-docker-app.py` 在新随机 Compose 项目中实际通过，固定当前源码构建的 Go、Nginx、compute 镜像，不拉取或覆盖旧 `local` 镜像。覆盖三个页面入口及 18 个资源、登录登出、health、20 KiB 非法封面确实到达 Go 格式校验、AUTO 节点认证和双向 callback，以及未知 GET/POST API 的 JSON 404。当前 compute 镜像的真实 FLAC/MP3/M4A/MP4/MKV HTTP 回源标签、离线转码、SHA 校验和原件只读检查也通过。测试项目的容器、网络与七个新建卷均已清理，原项目和旧卷没有操作。
 
 完整检查首次拒绝本机旧 `compute:local` 镜像的 `media-tags` 能力名称；随后从当前 Dockerfile 另建测试标签，实际验证当前 `media-remote-tags` 协议并重跑通过。镜像源网络超时通过相同固定摘要的镜像源完成构建，没有修改 TLS 校验或放宽能力断言。
 
@@ -114,7 +116,7 @@ Python 完整回归实际为 223 项、8 项显式跳过，退出 0。可选模�
 
 上述业务、数据库、真实 Python、两种架构容器及离线包检查通过后，移除 `services/singverse-java-backend/` 下全部 343 个受版本控制的文件。删除前确认这些文件没有既有工作区修改，再逐文件删除并仅移除空目录；保留下来的 916 个未跟踪或被忽略的本地文件，其 inode、权限、大小和修改时间前后完全一致。没有整树删除旧工程目录，也没有操作既有命名卷或覆盖旧回退镜像。
 
-Java 源码移除后，`scripts/go-migration-inventory.py` 以只读历史基线模式通过：276 个公开操作、276 个 Java 路由、23 个定时入口、556 个 SQL 项；`--write` 明确拒绝覆盖该基线。真实 Go 应用的路由测试再次通过，276 个基线操作全部匹配 281 个注册。Java/Maven 构建目标及后端工作流已删除，默认构建、启动和发布均指向 Go；旧镜像及旧卷的显式回退配置保留。
+Java 源码移除后，当时的迁移清单脚本（现已退休）以只读历史基线模式通过：276 个公开操作、276 个 Java 路由、23 个定时入口、556 个 SQL 项；`--write` 明确拒绝覆盖该基线。真实 Go 应用的路由测试再次通过，276 个基线操作全部匹配 281 个注册。Java/Maven 构建目标及后端工作流已删除，默认构建、启动和发布均指向 Go；旧镜像及旧卷的显式回退配置保留。
 
 Java 退休时的源码候选 ZIP 为 1157 个文件、10238820 字节，SHA256 为 `ad73813682c06acbdd95de3f413a844bbbe78c6b98658fa05cc57a584901700f`；退休后再生并逐文件核对，与上文该轮已解压构建和短测试通过的输入一致。该包已被下方 11 月 10 日亲友权限修复后的最终包替代。Make 入口、工作流 YAML、37 组 Compose 配置、部署包单元测试及 `git diff --check` 均通过。
 
@@ -166,7 +168,7 @@ Java 退休时的源码候选 ZIP 为 1157 个文件、10238820 字节，SHA256 
 | 完整 Go 检查 | `env GOPROXY=off sh scripts/check-go-backend.sh` 通过格式、vet、staticcheck、govulncheck 及全包 `go test -race ./...`；漏洞检查输出 `No vulnerabilities found.`。初次沙箱因无法连接漏洞数据库中止，允许联网后完整重跑通过 |
 | 真实 MySQL | `env GOPROXY=off python3 infra/docker/check-go-mysql.py` 在新建隔离 MySQL 8.4.8 中通过；包含新增 AI 配置、反馈并发修订/解决状态及 sqlx 参数/类型/事务用例，使用 race 检测。测试容器随后清理，没有操作已有业务库 |
 | 真实 Python | `env GOPROXY=off python3 scripts/check-go-compute.py` 通过，实际往返测试体 4.44 秒、包报告 6.440 秒；包含配对与回源、本地/WebDAV 标签、音轨探测、HLS/离线导出、范围读取、校验与授权释放 |
-| 本机恢复 | 最终 macOS 二进制通过 `python3 scripts/check-go-recovery.py` 的 74 条真实 PTY 断言，覆盖回显关闭、占用锁、非 TTY 拒绝、会话撤销及恢复后账号/MFA 状态；Linux 最终镜像另通过 `scripts/check-auth-docker.py` 的真实 TTY 恢复、改密/MFA 和重建持久化检查 |
+| 本机恢复 | 最终 macOS 二进制通过 `python3 scripts/check-go-recovery.py` 的 74 条真实 PTY 断言，覆盖回显关闭、占用锁、非 TTY 拒绝、会话撤销及恢复后账号/MFA 状态；Linux 最终镜像另通过 `infra/docker/check-auth-docker.py` 的真实 TTY 恢复、改密/MFA 和重建持久化检查 |
 | 平台构建 | 最终源码以根 `VERSION` 构建 macOS 二进制及 `CGO_ENABLED=0` 的 Linux ARM64、AMD64 二进制。ARM64 实际容器运行通过；本轮 AMD64 仅编译，没有把此前模拟运行结果计为本次运行通过 |
 | ARM64 交付镜像 | `infra/docker/check-go-container.py` 使用本轮后端及既有配套前端，在原生 ARM64 Docker VM 中通过 166 条共同 HTTP 契约及 104 条交付断言，包含认证媒体边界、重启持久化、可选 compute 健康及无 JVM/Node/编译器运行时检查 |
 

@@ -114,7 +114,7 @@ const origin = computed(() => {
   grid-row: 1 / 3;
   aspect-ratio: 1;
   overflow: hidden;
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--sv-accent-soft);
   box-shadow: 0 8px 24px rgb(36 31 23 / 10%)
 }
@@ -137,7 +137,7 @@ const origin = computed(() => {
   font-size: 23px;
   line-height: 1.4;
   letter-spacing: -.3px;
-  font-weight: 650;
+  font-weight: 600;
   overflow-wrap: anywhere;
   color: var(--sv-text-primary)
 }
@@ -152,7 +152,7 @@ const origin = computed(() => {
 .song-album {
   font-size: 13px;
   line-height: 1.6;
-  margin: 5px 0 0;
+  margin: 4px 0 0;
   color: var(--sv-text-secondary);
   overflow-wrap: anywhere
 }
@@ -168,9 +168,9 @@ const origin = computed(() => {
 }
 
 .song-quick-facts>span {
-  padding: 3px 8px;
+  padding: 4px 8px;
   border: 1px solid var(--sv-border-subtle);
-  border-radius: 5px;
+  border-radius: 8px;
   line-height: 1.3
 }
 
@@ -197,7 +197,7 @@ const origin = computed(() => {
   line-height: 1.7;
   color: var(--sv-text-secondary);
   margin: 16px 0 0;
-  padding: 10px 12px;
+  padding: 12px 12px;
   background: var(--sv-surface-3);
   border-radius: 8px
 }
@@ -216,7 +216,7 @@ const origin = computed(() => {
 }
 
 dt {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
   color: var(--sv-text-secondary);
   margin-bottom: 4px
@@ -236,7 +236,7 @@ dd {
 
 .lyrics-card {
   margin-top: 24px;
-  padding: 18px 20px;
+  padding: 20px 20px;
   background: var(--sv-surface-3);
   border: 1px solid var(--sv-border-subtle);
   border-radius: 12px
@@ -258,12 +258,12 @@ dd {
 }
 
 .section-caption {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--sv-text-secondary)
 }
 
 .lyrics-content {
-  margin-top: 14px;
+  margin-top: 16px;
   max-height: 320px;
   overflow: auto;
   scrollbar-width: thin;
@@ -288,12 +288,12 @@ dd {
   font-size: 13px;
   text-align: center;
   color: var(--sv-text-secondary);
-  padding: 18px 0;
+  padding: 20px 0;
   margin: 0
 }
 
 .classification-section {
-  margin: 22px 0
+  margin: 24px 0
 }
 
 .classification-section :deep(.el-button) {
@@ -328,8 +328,8 @@ dd {
 
 .song-tag {
   font-size: 12px;
-  padding: 5px 10px;
-  border-radius: 6px;
+  padding: 4px 12px;
+  border-radius: 8px;
   background: var(--sv-accent-soft);
   color: var(--sv-accent-primary)
 }
@@ -341,7 +341,7 @@ dd {
 
 .file-details {
   border-top: 1px solid var(--sv-border-subtle);
-  padding-top: 14px;
+  padding-top: 16px;
   color: var(--sv-text-secondary);
   font-size: 12px
 }
@@ -353,7 +353,7 @@ dd {
 }
 
 .file-details-content {
-  padding-top: 10px
+  padding-top: 12px
 }
 
 .file-path {
@@ -361,9 +361,9 @@ dd {
   line-height: 1.7;
   overflow-wrap: anywhere;
   margin: 0;
-  padding: 10px 12px;
+  padding: 12px 12px;
   background: var(--sv-surface-3);
-  border-radius: 6px
+  border-radius: 8px
 }
 
 .file-facts {
@@ -405,7 +405,7 @@ dd {
 
   .song-facts,
   .file-facts {
-    gap: 14px 16px;
+    gap: 16px 16px;
     margin: 20px 0
   }
 
@@ -429,7 +429,7 @@ dd {
 </style>
 <style>
 .song-detail-drawer .el-drawer__header {
-  padding: 18px 28px;
+  padding: 20px 28px;
   margin-bottom: 0;
   border-bottom: 1px solid var(--sv-border-subtle)
 }

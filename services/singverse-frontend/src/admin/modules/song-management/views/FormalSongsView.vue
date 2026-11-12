@@ -3,6 +3,7 @@ import { requestId as newRequestId } from '../../../../shared/request-id'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElAlert, ElButton, ElCard, ElDialog, ElDrawer, ElEmpty, ElInput, ElMessage, ElMessageBox, ElOption, ElPagination, ElSelect, ElSkeleton, ElTag } from 'element-plus'
+import { Filter } from '@element-plus/icons-vue'
 import PageHeader from '../../../shared/ui/PageHeader.vue'
 import { formalArtists, formalLibrary, formalStateLabel, formalTitle, type FormalDetail, type FormalDocument } from '../api/formal'
 import { songs } from '../api/songs'
@@ -13,6 +14,7 @@ import FormalMetadataEditor from '../components/FormalMetadataEditor.vue'
 import SongVideoDialog from '../components/SongVideoDialog.vue'
 
 const route = useRoute(), router = useRouter()
+const mobileFiltersOpen = ref(false)
 const search = ref(''), sourceId = ref(''), page = ref(1), total = ref(0), items = ref<FormalDocument[]>([]), sources = ref<MediaSource[]>([])
 const counts = ref<Record<string, number>>({}), loading = ref(false), error = ref(''), detailError = ref(''), busy = ref(false)
 const detail = ref<FormalDetail | null>(null), variant = ref<FormalDetail | null>(null), editing = ref<FormalDocument | null>(null), playing = ref<MediaSong | null>(null)
@@ -86,14 +88,15 @@ onBeforeUnmount(() => { active = false; generation++; detailGeneration++; varian
 <template>
   <section class="formal-library">
     <PageHeader title="歌曲与版本" description="歌曲资料保存在本机。每次演绎与剪辑单独管理版本，同一版本可以关联多个编码文件。">
+      <template #meta><span class="formal-count" aria-live="polite">{{ total }} 首</span></template>
       <template #actions><ElButton @click="openFilesLens">按文件管理与筛选</ElButton><ElButton type="primary" @click="router.push('/library/media')">添加或导入歌曲</ElButton></template>
     </PageHeader>
+    <div class="filters" role="search" aria-label="歌曲资料搜索与筛选"><ElInput v-model="search" aria-label="搜索正式歌曲资料" placeholder="搜索歌名、演唱者或别名" maxlength="200" clearable @keyup.enter="apply()" /><ElButton class="formal-filter-toggle" text :icon="Filter" :aria-expanded="mobileFiltersOpen" aria-controls="formal-source-filter" @click="mobileFiltersOpen = !mobileFiltersOpen">筛选</ElButton><ElSelect id="formal-source-filter" v-model="sourceId" class="formal-source-filter" :class="{ expanded: mobileFiltersOpen }" aria-label="媒体来源" clearable placeholder="全部来源" @change="apply()"><ElOption v-for="source in sources" :key="source.id" :value="source.id" :label="source.name" /></ElSelect><ElButton :loading="loading" @click="apply()">搜索</ElButton></div>
     <p class="counts" aria-live="polite">全库 {{ counts.SONG ?? '—' }} 首歌曲 · {{ counts.VARIANT ?? '—' }} 个版本 · {{ counts.MEDIA ?? '—' }} 个媒体文件</p>
-    <ElCard shadow="never"><div class="filters"><ElInput v-model="search" aria-label="搜索正式歌曲资料" placeholder="搜索歌名、演唱者或别名" maxlength="200" clearable @keyup.enter="apply()" /><ElSelect v-model="sourceId" aria-label="媒体来源" clearable placeholder="全部来源" @change="apply()"><ElOption v-for="source in sources" :key="source.id" :value="source.id" :label="source.name" /></ElSelect><ElButton type="primary" :loading="loading" @click="apply()">搜索</ElButton></div></ElCard>
     <ElAlert v-if="error" type="error" :title="error" :closable="false" role="alert" />
     <ElSkeleton v-if="loading" :rows="5" animated />
     <ElEmpty v-else-if="!items.length && !error" description="还没有符合条件的歌曲资料"><ElButton @click="router.push('/library/media')">添加媒体来源或导入资料包</ElButton></ElEmpty>
-    <div v-else class="song-list"><ElCard v-for="song in items" :key="song.id" shadow="never"><div class="song-row"><div><h3>{{ formalTitle(song) }}</h3><p>{{ formalArtists(song) }}</p><small>{{ formalStateLabel(song.states.title) }} · 资料已保存</small></div><div class="actions"><ElButton @click="editing = song">订正资料</ElButton><ElButton @click="inspectDifferences(song)">查看差异</ElButton><ElButton type="primary" plain @click="openSong(song.id)">查看版本与文件</ElButton></div></div></ElCard></div>
+    <div v-else class="song-list"><article v-for="song in items" :key="song.id" class="formal-song"><div class="song-row"><div><h3>{{ formalTitle(song) }}</h3><p>{{ formalArtists(song) }}</p><small>{{ formalStateLabel(song.states.title) }} · 资料已保存</small></div><div class="actions"><ElButton @click="editing = song">订正资料</ElButton><ElButton @click="inspectDifferences(song)">查看差异</ElButton><ElButton type="primary" plain @click="openSong(song.id)">查看版本与文件</ElButton></div></div></article></div>
     <ElPagination :current-page="page" :page-size="20" :total="total" layout="total, prev, pager, next" @current-change="apply" />
     <ElAlert v-if="detailError && !detail" type="error" :title="detailError" :closable="false" />
 
@@ -124,5 +127,5 @@ onBeforeUnmount(() => { active = false; generation++; detailGeneration++; varian
 </template>
 
 <style scoped>
-.formal-library { display: grid; gap: 20px; }.counts { margin: 0; color: var(--sv-text-secondary); }.filters,.song-row,.actions,.version-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }.filters .el-input { flex: 1; min-width: 180px; }.filters .el-select { width: 220px; }.song-list { display: grid; gap: 12px; }.song-row { justify-content: space-between; }.song-row h3 { margin: 0 0 8px; }.song-row p { margin: 0 0 8px; }.song-row small,p { color: var(--sv-text-secondary); }.version-toolbar { margin: 20px 0; }.version-toolbar .version-select { min-width: 260px; flex: 1; }.media-card { margin: 16px 0; }.file-path { overflow-wrap: anywhere; }pre { white-space: pre-wrap; overflow-wrap: anywhere; }.el-dialog .el-input,.el-dialog .el-select { margin: 8px 0; width: 100%; }@media(max-width: 650px) { .song-row { align-items: start; }.filters .el-select { width: 100%; }.actions { gap: 8px; }.actions .el-button { margin: 0; } }
+.formal-library { display: grid; gap: 12px; min-width: 0; }.formal-library>.page-heading { margin-bottom: 0; }.counts { margin: 0; color: var(--sv-text-secondary); }.filters,.song-row,.actions,.version-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }.filters .el-input { flex: 1; min-width: 180px; }.filters .el-select { width: 220px; }.song-list { display: grid; }.formal-song { padding: 16px 0; border-bottom: 1px solid var(--sv-border-subtle); }.formal-count { font-size: 13px; color: var(--sv-text-secondary); }.counts { font-size: 12px; }.formal-filter-toggle { display: none; }.song-row { justify-content: space-between; }.song-row h3 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }.song-row p { margin: 0 0 8px; }.song-row small,p { color: var(--sv-text-secondary); }.version-toolbar { margin: 20px 0; }.version-toolbar .version-select { min-width: 260px; flex: 1; }.media-card { margin: 16px 0; }.file-path { overflow-wrap: anywhere; }pre { white-space: pre-wrap; overflow-wrap: anywhere; }.el-dialog .el-input,.el-dialog .el-select { margin: 8px 0; width: 100%; }@media(max-width: 650px) { .formal-filter-toggle { display: inline-flex; min-width: 44px; min-height: 44px; margin: 0; }.filters .formal-source-filter { display: none; }.filters .formal-source-filter.expanded { display: flex; order: 1; width: 100%; }.filters .el-input { min-width: 0; }.filters :deep(.el-input__inner) { font-size: 16px; }.filters { gap: 8px; }.counts { line-height: 1.8; } .song-row { align-items: start; }.filters .el-select { width: 100%; }.actions { gap: 8px; }.actions .el-button { margin: 0; } }
 </style>

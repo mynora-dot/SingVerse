@@ -8,7 +8,6 @@ import { ApiError } from '../../../core/auth/api'
 import { ruleLibrary } from '../api/rules'
 import type { ParserWorkspace, RuleDefinition, RuleInput } from '../types'
 import { copyValue, errorMessage, expressionFor } from '../utils'
-import SourceWorkspaceNav from '../../media-library/components/SourceWorkspaceNav.vue'
 
 const props = defineProps<{ embedded?: boolean }>()
 const emit = defineEmits<{ profile: [id: string] }>()
@@ -116,12 +115,18 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
 
 <template>
   <section class="rules-page management-page">
-    <template v-if="!embedded"><PageHeader title="歌曲来源的自定义规则"><template #description>仅在常见格式无法识别时编写模板或正则。<RouterLink class="library-link" :to="{ path: '/library/media/recognition', query: route.query }">返回文件名识别 →</RouterLink></template></PageHeader><SourceWorkspaceNav /></template>
+    <template v-if="!embedded">
+      <PageHeader title="自定义规则" description="仅在常见格式无法识别时编写模板或正则">
+        <template #meta><span v-if="workspace" class="rule-count" :aria-label="`规则库共 ${workspace.definitions.length} 条规则`">{{ workspace.definitions.length }}条</span></template>
+        <template #actions><RouterLink class="library-link rules-back-link" aria-label="返回文件名识别" title="返回文件名识别" :to="{ path: '/library/media/recognition', query: route.query }"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m12 5-7 7 7 7M5 12h15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" /></svg><span>返回识别</span></RouterLink><ElButton v-if="workspace" type="primary" :icon="Plus" :disabled="busy || loading || workspace.definitions.length >= 1000" @click="edit()">新增规则</ElButton></template>
+      </PageHeader>
+    </template>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" role="alert"><template v-for="profile in referencedBy" :key="profile.id"><ElButton v-if="embedded" text @click="emit('profile', profile.id)">{{ profile.name }}</ElButton><RouterLink v-else :to="{ path: '/library/media/recognition', query: { profile: profile.id } }">{{ profile.name }} </RouterLink></template></ElAlert>
     <ElButton v-if="error || conflict" :disabled="loading" @click="load">加载最新规则库，保留编辑内容</ElButton>
     <p v-if="loading" role="status">正在读取规则库…</p>
     <ElCard v-if="workspace" shadow="never" class="rules-card">
-      <div class="toolbar"><div><h2>规则库 <span class="count-badge">{{ workspace.definitions.length }}</span></h2><p class="panel-description">自定义的模板和正则在这里维护，方案按顺序引用它们；内置格式不用来这一页启用。</p></div><ElButton type="primary" :icon="Plus" :disabled="busy || loading || workspace.definitions.length >= 1000" @click="edit()">新增规则</ElButton></div>
+      <div v-if="embedded" class="toolbar"><div><h2>规则库 <span class="count-badge">{{ workspace.definitions.length }}</span></h2><p class="panel-description">自定义的模板和正则在这里维护，方案按顺序引用它们；内置格式不用来这一页启用。</p></div><ElButton type="primary" :icon="Plus" :disabled="busy || loading || workspace.definitions.length >= 1000" @click="edit()">新增规则</ElButton></div>
+      <p v-if="!embedded" class="panel-description rules-context">自定义的模板和正则在这里维护，方案按顺序引用它们；内置格式不用来这一页启用。</p>
       <ElTable :data="workspace.definitions" row-key="id" empty-text="暂无规则，可新增模板或正则。">
         <ElTableColumn label="规则名称" min-width="210"><template #default="{ row }"><strong class="rule-name">{{ row.name }}</strong><ElTag size="small" :type="row.type === 'BUILTIN' ? 'info' : 'success'" effect="plain">{{ row.type === 'BUILTIN' ? '内置规则' : row.type === 'REGEX' ? '高级正则' : '字段模板' }}</ElTag></template></ElTableColumn>
         <ElTableColumn label="匹配表达式" min-width="260"><template #default="{ row }"><div class="expression-cell"><code>{{ expressionFor(row as RuleDefinition, workspace) }}</code></div></template></ElTableColumn>
@@ -150,6 +155,19 @@ onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void lo
 </template>
 
 <style scoped>
+.rules-back-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: var(--sv-radius-md);
+  color: var(--sv-text-secondary);
+  font-size: 13px;
+}
+.rules-back-link:hover {
+  background: var(--sv-surface-3);
+  color: var(--sv-text-primary);
+}
 .editor-fields { min-width: 0; margin: 0; padding: 0; border: 0; }
 .field-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .field-buttons :deep(.el-button) { margin-left: 0; }
@@ -166,5 +184,17 @@ code {
   display: block;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+@media(max-width:768px) {
+  .rules-back-link { min-height: 44px; }
+}
+.rules-card{border:0;border-radius:0;background:transparent;--el-card-padding:0;min-width:0}.rules-card .toolbar{align-items:center;margin:0 0 16px;padding:0 0 12px;border-bottom:1px solid var(--sv-border-subtle)}.rules-card .toolbar h2{font-size:15px}.rules-card .panel-description{font-size:12px;margin:4px 0 0}.rules-card :deep(.el-card__body){padding:0;min-width:0}.rules-card :deep(.el-table){max-width:100%;font-size:14px}.rules-card .feature-note{font-size:12px;margin-top:16px}.rule-name{font-size:14px}.rules-back-link{padding:0 8px}.rules-card .toolbar>div{min-width:0}.rules-card .toolbar>.el-button{flex-shrink:0}@media(max-width:768px){.rules-card .toolbar{align-items:flex-start;flex-wrap:wrap}.rules-page .el-button,.field-buttons :deep(.el-button),.rules-card :deep(.el-table .el-button){min-height:44px}.rules-card .toolbar>.el-button{margin-left:0}.rules-card :deep(.el-table__inner-wrapper){overflow-x:auto}.rules-card :deep(.el-table .cell){font-size:14px}}
+.rule-count{font-size:12px;font-weight:400;color:var(--sv-text-secondary);white-space:nowrap}.rules-back-link{gap:6px;white-space:nowrap}.rules-back-link svg{width:16px;height:16px;flex-shrink:0}.rules-card .rules-context{margin:0 0 12px;line-height:1.7}@media(max-width:768px){.rules-back-link{width:44px;min-width:44px;justify-content:center;padding:0}.rules-back-link span{display:none}}
+/* 窄屏让整张规则表横向滚动，操作列随内容移动，避免遮住规则名称。 */
+@media(max-width:768px){
+  .rules-card :deep(.el-table__header),
+  .rules-card :deep(.el-table__body){min-width:820px}
+  .rules-card :deep(.el-table .el-table-fixed-column--right){position:static!important;right:auto!important;z-index:auto!important}
+  .rules-card :deep(.el-table .el-table-fixed-column--right::before){display:none}
 }
 </style>

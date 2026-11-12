@@ -1,38 +1,28 @@
-# Standalone execution node; Go supplies task-scoped media callbacks.
-# For another host to connect, explicitly select a private interface or place behind TLS.
 name: singverse-compute-node
 services:
   singverse-compute:
-    image: '${COMPUTE_IMAGE:-singverse-compute:local}'
-    build:
-      context: .
-      dockerfile: services/singverse-compute/Dockerfile
-      target: '${COMPUTE_AUDIO_RUNTIME:-base}'
-      args:
-        SINGVERSE_VERSION: '${SINGVERSE_VERSION:-}'
-        SOURCE_REVISION: '${SINGVERSE_SOURCE_REVISION:-local}'
+    image: '${IMAGE_PREFIX:-ghcr.io/mynora-dot}/singverse-compute:${SINGVERSE_VERSION:-latest}-${COMPUTE_RUNTIME:-base}'
     environment:
       COMPUTE_AUTH_TOKEN_FILE: /run/singverse-compute/token
       COMPUTE_LAN_PAIRING_ENABLED: '${COMPUTE_LAN_PAIRING_ENABLED:-true}'
       COMPUTE_PROCESS_MEMORY_BYTES: '${COMPUTE_PROCESS_MEMORY_BYTES:-1073741824}'
       COMPUTE_TRANSCODE_CONCURRENCY: '${COMPUTE_TRANSCODE_CONCURRENCY:-1}'
-      COMPUTE_AUDIO_MODEL_REPO: '${COMPUTE_AUDIO_MODEL_REPO:-/var/lib/singverse-models/htdemucs}'
+      COMPUTE_AUDIO_MODEL_REPO: /var/lib/singverse-models/htdemucs
       COMPUTE_AUDIO_MEMORY_BYTES: '${COMPUTE_AUDIO_MEMORY_BYTES:-4294967296}'
       COMPUTE_AUDIO_THREADS: '${COMPUTE_AUDIO_THREADS:-2}'
       COMPUTE_AUDIO_WORKER_IDLE_SECONDS: '${COMPUTE_AUDIO_WORKER_IDLE_SECONDS:-60}'
-    ports:
-      - '${COMPUTE_HTTP_BIND:-127.0.0.1}:${COMPUTE_HTTP_PORT:-18090}:8090'
     volumes:
       - singverse-compute-auth:/run/singverse-compute
       - singverse-transcode-cache:/var/cache/singverse-transcode
       - singverse-audio-models:/var/lib/singverse-models
-    restart: unless-stopped
-    mem_limit: '${COMPUTE_CONTAINER_MEMORY_LIMIT:-2g}'
+    mem_limit: '${COMPUTE_CONTAINER_MEMORY_LIMIT:-6g}'
     cpus: '${COMPUTE_CPU_LIMIT:-2.0}'
+    restart: unless-stopped
     stop_grace_period: 10s
+    ports:
+      - '${COMPUTE_HTTP_BIND:-127.0.0.1}:${COMPUTE_HTTP_PORT:-18090}:8090'
 volumes:
   singverse-compute-auth:
-  # Includes persistent hardware/model settings and qualification records.
+  # Also contains persistent hardware/model selection and qualification settings.
   singverse-transcode-cache:
-  # Weights are kept apart from the settings in transcode-cache.
   singverse-audio-models:

@@ -2,9 +2,8 @@
 import PageHeader from '../../../shared/ui/PageHeader.vue'
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElAlert, ElButton, ElCard, ElInput, ElForm, ElFormItem, ElDialog, ElMessageBox, ElIcon, ElTag } from 'element-plus'
+import { ElAlert, ElButton, ElInput, ElForm, ElFormItem, ElDialog, ElMessageBox, ElTag } from 'element-plus'
 import { auth, authRequest, refreshAccount } from '../../../core/auth/api'
-import { User, Lock, Key } from '@element-plus/icons-vue'
 const router = useRouter()
 const password = ref(''), code = ref(''), next = ref(''), confirmPassword = ref(''), error = ref(''), busy = ref(false)
 const operation = ref(''), setup = ref<{ secret: string; qrDataUrl: string; expiresAt: string } | null>(null)
@@ -58,21 +57,12 @@ async function closeRecovery() {
     <PageHeader title="账号与安全" description="修改登录账号、密码，开启或管理二次验证。修改账号或密码后所有设备都需要重新登录。" />
     <ElAlert v-if="auth.account?.defaultPassword" title="当前仍在使用默认密码，请及时修改并开启二次验证。" type="warning" :closable="false" show-icon />
     <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon />
-    <div class="account-banner"><span class="settings-icon"><ElIcon><User /></ElIcon></span><div><h2>{{ auth.account?.username }}</h2><p>管理员 · 管理当前 NAS 的全部设置</p></div><ElTag effect="plain" round>单管理员账号</ElTag></div>
-    <div class="security-grid">
-      <ElCard class="security-card" shadow="never">
-        <div class="security-heading"><span class="settings-icon"><ElIcon><Key /></ElIcon></span><ElTag :type="auth.account?.defaultPassword ? 'warning' : 'success'" effect="light" round>{{ auth.account?.defaultPassword ? '待修改' : '已设置' }}</ElTag></div>
-        <h2>登录密码</h2><p class="settings-description">使用独立的强密码，保护管理员访问权限。</p>
-        <div class="settings-detail"><span>当前账号</span><strong>{{ auth.account?.username }}</strong></div><div class="settings-detail"><span>密码要求</span><strong>15～128 个字符</strong></div>
-        <div class="security-actions"><ElButton @click="start('username')">修改登录账号</ElButton><ElButton @click="start('password')">修改密码</ElButton><p>修改后，所有设备都需要重新登录。</p></div>
-      </ElCard>
-      <ElCard class="security-card" shadow="never">
-        <div class="security-heading"><span class="settings-icon"><ElIcon><Lock /></ElIcon></span><ElTag :type="auth.account?.mfaEnabled ? 'success' : 'info'" effect="light" round>{{ auth.account?.mfaEnabled ? '已开启' : '未开启' }}</ElTag></div>
-        <h2>二次验证 <span class="heading-suffix">MFA</span></h2><p class="settings-description">通过认证器动态码，为登录多加一层保护。</p>
-        <div class="settings-detail"><span>验证方式</span><strong>认证器动态码（TOTP）</strong></div><div class="settings-detail"><span>恢复码</span><strong>{{ auth.account?.mfaEnabled ? `剩余 ${auth.account.recoveryCodesRemaining} 枚` : '开启后生成' }}</strong></div>
-        <div class="security-actions"><div class="button-row"><ElButton type="primary" @click="start('setup')">{{ auth.account?.mfaEnabled ? '重新绑定认证器' : '开启二次验证' }}</ElButton><ElButton v-if="auth.account?.mfaEnabled" @click="start('recovery')">重新生成恢复码</ElButton><ElButton v-if="auth.account?.mfaEnabled" type="danger" plain @click="start('disable')">关闭二次验证</ElButton></div><p>绑定后，登录时需同时验证密码与动态码。</p></div>
-      </ElCard>
-    </div>
+    <section class="security-list" aria-label="账号安全设置">
+      <div class="security-row"><div><h2>登录账号 <span class="account-name">{{ auth.account?.username }}</span></h2><p>用于登录当前 NAS 的单管理员账号。</p></div><ElButton @click="start('username')">修改登录账号</ElButton></div>
+      <div class="security-row"><div><h2>登录密码 <ElTag :type="auth.account?.defaultPassword ? 'warning' : 'success'" effect="light">{{ auth.account?.defaultPassword ? '待修改' : '已设置' }}</ElTag></h2><p>15～128 个字符。修改账号或密码后，所有设备都需要重新登录。</p></div><ElButton @click="start('password')">修改密码</ElButton></div>
+      <div class="security-row"><div><h2>二次验证 <ElTag :type="auth.account?.mfaEnabled ? 'success' : 'info'" effect="light">{{ auth.account?.mfaEnabled ? '已开启' : '未开启' }}</ElTag></h2><p>使用认证器动态码（TOTP），登录时同时验证密码与动态码。</p></div><div class="button-row"><ElButton @click="start('setup')">{{ auth.account?.mfaEnabled ? '重新绑定认证器' : '开启二次验证' }}</ElButton><ElButton v-if="auth.account?.mfaEnabled" type="danger" plain @click="start('disable')">关闭二次验证</ElButton></div></div>
+      <div class="security-row"><div><h2>恢复码</h2><p>{{ auth.account?.mfaEnabled ? `剩余 ${auth.account.recoveryCodesRemaining} 枚。每枚只能使用一次，请离线妥善保管。` : '开启二次验证后生成，可在无法使用认证器时登录。' }}</p></div><ElButton v-if="auth.account?.mfaEnabled" @click="start('recovery')">重新生成恢复码</ElButton></div>
+    </section>
     <ElDialog :model-value="!!operation" :title="operation === 'username' ? '修改登录账号' : operation === 'password' ? '修改密码' : '验证身份'" width="440px" @close="operation = ''; password = ''; code = ''; next = ''; confirmPassword = ''">
       <ElForm label-position="top" @submit.prevent="submit">
         <ElFormItem label="当前密码"><ElInput v-model="password" type="password" show-password autocomplete="current-password" /></ElFormItem>
@@ -94,6 +84,13 @@ async function closeRecovery() {
 </template>
 
 <style scoped>
+.security-list { border-top: 1px solid var(--sv-border-subtle); }
+.security-row { display: flex; align-items: center; justify-content: space-between; gap: 16px 24px; padding: 24px 0; border-bottom: 1px solid var(--sv-border-subtle); }
+.security-row>div:first-child { flex: 1; min-width: 0; }
+.security-row h2 { display: flex; align-items: center; gap: 12px; font-size: 16px; flex-wrap: wrap; }
+.security-row p { margin-top: 8px; color: var(--sv-text-secondary); font-size: 14px; line-height: 1.7; }
+.account-name { font-weight: 400; color: var(--sv-text-secondary); overflow-wrap: anywhere; }
+@media(max-width:650px) { .security-row { flex-wrap: wrap; padding: 20px 0; }.security-row>div:first-child { flex-basis: 100%; } }
 .dialog-hint {
   margin: 4px 0 16px;
 }

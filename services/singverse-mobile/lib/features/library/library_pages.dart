@@ -205,7 +205,7 @@ class _SongsPageState extends State<SongsPage> {
             _BrowseIntroduction(state: state, item: widget.browseItem!),
           if (widget.showBrowse && !searching)
             Padding(
-              padding: const EdgeInsets.only(top: 2, bottom: 14),
+              padding: const EdgeInsets.only(top: 4, bottom: 16),
               child: Wrap(
                 alignment: WrapAlignment.spaceBetween,
                 crossAxisAlignment: WrapCrossAlignment.center,
@@ -215,26 +215,26 @@ class _SongsPageState extends State<SongsPage> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        query.error == null
-                            ? Icons.circle
-                            : Icons.wifi_off_rounded,
-                        size: query.error == null ? 5 : 14,
-                        color: query.error == null
-                            ? const Color(0xFF24845C)
-                            : Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 6),
+                      if (query.error != null) ...[
+                        Icon(
+                          Icons.wifi_off_rounded,
+                          size: 16,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 8),
+                      ],
                       Text(
                         query.error == null ? '家里的曲库' : '曲库暂不可读',
-                        style: Theme.of(context).textTheme.bodySmall,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),
                   Text(
                     query.loading && query.total == 0
                         ? '正在读取歌曲…'
-                        : '${query.total} 首歌，随时开唱',
+                        : '${query.total} 首歌曲',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
@@ -270,6 +270,7 @@ class _SongsPageState extends State<SongsPage> {
                     onPressed: filters,
                     icon: Badge(
                       isLabelVisible: query.tagIds.isNotEmpty,
+                      backgroundColor: Theme.of(context).colorScheme.primary,
                       child: const Icon(Icons.tune_rounded),
                     ),
                   ),
@@ -292,7 +293,7 @@ class _SongsPageState extends State<SongsPage> {
             },
           ),
           if (widget.showBrowse && !searching) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             _BrowseLinks(state: state),
           ],
           if (query.tagIds.isNotEmpty)
@@ -323,12 +324,15 @@ class _SongsPageState extends State<SongsPage> {
                 ],
               ),
             ),
-          SizedBox(height: widget.showBrowse && !searching ? 12 : 20),
+          const SizedBox(height: 24),
           SectionTitle(
             searching ? '搜索结果' : '全部歌曲',
             trailing: Text(
               '${query.total} 首',
-              style: Theme.of(context).textTheme.bodySmall,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -408,7 +412,7 @@ class _BrowseIntroduction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 6, bottom: 20),
+    padding: const EdgeInsets.only(top: 8, bottom: 24),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -419,9 +423,9 @@ class _BrowseIntroduction extends StatelessWidget {
               path: item['portraitPath'] as String?,
               revision: item['portraitVersion']?.toString(),
               round: true,
-              size: state.senior ? 76 : 82,
+              size: 80,
             ),
-            const SizedBox(width: 18),
+            const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -430,10 +434,13 @@ class _BrowseIntroduction extends StatelessWidget {
                     item['name'] as String,
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 4),
                   Text(
                     '${item['count'] ?? 0} 首歌曲',
-                    style: Theme.of(context).textTheme.bodySmall,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
                   ),
                 ],
               ),
@@ -441,10 +448,12 @@ class _BrowseIntroduction extends StatelessWidget {
           ],
         ),
         if ((item['biography'] as String? ?? '').trim().isNotEmpty) ...[
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           Text(
             item['biography'] as String,
-            style: Theme.of(context).textTheme.bodySmall,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ],
@@ -460,7 +469,7 @@ class _BrowseLinks extends StatelessWidget {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final stacked =
-          constraints.maxWidth < 310 ||
+          constraints.maxWidth < 280 ||
           MediaQuery.textScalerOf(context).scale(15) > 20;
       final links = [
         for (final item in [
@@ -470,9 +479,9 @@ class _BrowseLinks extends StatelessWidget {
         ])
           TextButton(
             style: TextButton.styleFrom(
-              foregroundColor: Theme.of(context).colorScheme.onSurface,
+              foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
               padding: EdgeInsets.symmetric(
-                horizontal: stacked ? 0 : 4,
+                horizontal: stacked ? 12 : 4,
                 vertical: 8,
               ),
               minimumSize: Size(48, state.senior ? 72 : 48),
@@ -490,9 +499,9 @@ class _BrowseLinks extends StatelessWidget {
                       Icon(
                         item.$1,
                         size: 24,
-                        color: Theme.of(context).colorScheme.primary,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 8),
                       Text(
                         item.$2,
                         style: Theme.of(context).textTheme.bodySmall,
@@ -507,7 +516,7 @@ class _BrowseLinks extends StatelessWidget {
                       Icon(
                         item.$1,
                         size: 20,
-                        color: Theme.of(context).colorScheme.primary,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                       const SizedBox(width: 8),
                       Flexible(
@@ -526,16 +535,22 @@ class _BrowseLinks extends StatelessWidget {
                   ),
           ),
       ];
-      if (stacked) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: links,
-        );
-      }
-      return Row(
-        children: [
-          for (var i = 0; i < links.length; i++) ...[Expanded(child: links[i])],
-        ],
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .04),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: stacked
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: links,
+                )
+              : Row(
+                  children: [for (final link in links) Expanded(child: link)],
+                ),
+        ),
       );
     },
   );
@@ -638,7 +653,7 @@ class _BrowsePageState extends State<BrowsePage> {
     child: Material(
       color: Colors.transparent,
       child: ListTile(
-        minTileHeight: widget.state.senior ? 84 : 66,
+        minTileHeight: widget.state.senior ? 88 : 72,
         contentPadding: EdgeInsets.symmetric(
           vertical: widget.state.senior ? 12 : 4,
         ),
@@ -649,7 +664,7 @@ class _BrowsePageState extends State<BrowsePage> {
                 path: item[artist ? 'portraitPath' : 'coverPath'] as String?,
                 label: item['name'] as String,
                 round: artist,
-                size: widget.state.senior ? 60 : 44,
+                size: widget.state.senior ? 64 : 48,
                 revision: item[artist ? 'portraitVersion' : 'revision']
                     ?.toString(),
               ),
@@ -659,7 +674,7 @@ class _BrowsePageState extends State<BrowsePage> {
               ?.copyWith(fontWeight: FontWeight.w500),
         ),
         subtitle: Text('${item['count'] ?? 0} 首歌曲'),
-        trailing: const Icon(Icons.chevron_right_rounded),
+        trailing: const Icon(Icons.chevron_right_rounded, size: 20),
         onTap: () => open(item),
       ),
     ),
@@ -683,18 +698,18 @@ class _BrowsePageState extends State<BrowsePage> {
                   state: widget.state,
                   path: item[artist ? 'portraitPath' : 'coverPath'] as String?,
                   round: artist,
-                  size: artist ? math.min(108, size.maxWidth) : size.maxWidth,
+                  size: artist ? math.min(112, size.maxWidth) : size.maxWidth,
                   revision: item[artist ? 'portraitVersion' : 'revision']
                       ?.toString(),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 Text(
                   item['name'] as String,
                   textAlign: artist ? TextAlign.center : TextAlign.start,
                   style: Theme.of(context).textTheme.bodyMedium
                       ?.copyWith(fontWeight: FontWeight.w500),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 4),
                 Text(
                   '${item['count'] ?? 0} 首${artist ? '歌曲' : ' · 家庭共享'}',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -802,7 +817,7 @@ class _BrowsePageState extends State<BrowsePage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Expanded(child: gridTile(row.items.first)),
-                              const SizedBox(width: 18),
+                              const SizedBox(width: 16),
                               Expanded(
                                 child: row.items.length == 2
                                     ? gridTile(row.items.last)
@@ -894,7 +909,7 @@ class _PlaylistPageState extends State<PlaylistPage> {
             ),
             slivers: [
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                 sliver: SliverToBoxAdapter(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -909,24 +924,29 @@ class _PlaylistPageState extends State<PlaylistPage> {
                             revision: item['revision']?.toString(),
                             size: widget.state.senior ? 88 : 100,
                           ),
-                          const SizedBox(width: 18),
+                          const SizedBox(width: 16),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  '家庭歌单',
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                                const SizedBox(height: 5),
-                                Text(
                                   item['name'] as String,
-                                  style: Theme.of(context).textTheme.titleLarge,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineSmall,
                                 ),
-                                const SizedBox(height: 5),
+                                const SizedBox(height: 4),
                                 Text(
                                   '${item['count'] ?? songs.length} 首 · 家庭共享',
-                                  style: Theme.of(context).textTheme.bodySmall,
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                        fontFeatures: const [
+                                          FontFeature.tabularFigures(),
+                                        ],
+                                      ),
                                 ),
                               ],
                             ),
@@ -936,7 +956,15 @@ class _PlaylistPageState extends State<PlaylistPage> {
                       if ((item['description'] as String? ?? '').isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Text(item['description'] as String),
+                          child: Text(
+                            item['description'] as String,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                          ),
                         ),
                       if ((item['missingCount'] as num? ?? 0) > 0)
                         Notice('${item['missingCount']} 首歌曲暂不可用，请在 NAS 管理端整理。'),
@@ -976,7 +1004,7 @@ class _SongDetailState extends State<SongDetail> {
   );
   @override
   Widget build(BuildContext context) => SingleChildScrollView(
-    padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
     child: ListenableBuilder(
       listenable: widget.state,
       builder: (context, _) => FutureBuilder<dynamic>(
@@ -1002,15 +1030,77 @@ class _SongDetailState extends State<SongDetail> {
                 ],
               ),
               const SizedBox(height: 16),
-              Text(song.title, style: Theme.of(context).textTheme.titleLarge),
-              Text(song.artist.isEmpty ? '歌手未知' : song.artist),
-              const SizedBox(height: 16),
-              Text('版本：${song.version}'),
-              Text(
-                '格式：${song.mediaType == 'AUDIO' ? '音频' : '视频'} · ${song.format}',
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Artwork(
+                    state: widget.state,
+                    path: song.cover,
+                    label: song.title,
+                    revision: song.data['revision']?.toString(),
+                    size: 64,
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          song.title,
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          song.artist.isEmpty ? '歌手未知' : song.artist,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              Text('来源：${song.source.isEmpty ? '家庭曲库' : song.source}'),
-              if (song.data['album'] != null) Text('专辑：${song.data['album']}'),
+              const SizedBox(height: 24),
+              Table(
+                columnWidths: const {0: IntrinsicColumnWidth()},
+                defaultVerticalAlignment: TableCellVerticalAlignment.top,
+                children: [
+                  for (final field in [
+                    ('版本', song.version),
+                    (
+                      '格式',
+                      '${song.mediaType == 'AUDIO' ? '音频' : '视频'} · ${song.format}',
+                    ),
+                    ('来源', song.source.isEmpty ? '家庭曲库' : song.source),
+                    if (song.data['album'] != null)
+                      ('专辑', '${song.data['album']}'),
+                  ])
+                    TableRow(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(0, 0, 16, 12),
+                          child: Text(
+                            field.$1,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Text(field.$2),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
               if (result.hasError)
                 Notice(
                   '详细信息暂不可读。',
@@ -1032,7 +1122,12 @@ class _SongDetailState extends State<SongDetail> {
                 label: Text(widget.state.isFavorite(song) ? '取消收藏' : '收藏歌曲'),
               ),
               const SizedBox(height: 12),
-              const Text('练唱不开麦。主动开始录音后，声音只保存在此手机。'),
+              Text(
+                '练唱不开麦。主动开始录音后，声音只保存在此手机。',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
             ],
           );
         },

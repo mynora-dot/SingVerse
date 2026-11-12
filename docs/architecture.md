@@ -66,7 +66,7 @@ Python是项目内部的执行层，产品继续按曲库、播放兼容和AI能
 4. 输出保存独立衍生目录，Go校验任务归属、内容及完整性后接收结果、写入元数据；原媒体保持只读。AI分析为带模型/版本/证据的建议，未确认前不覆盖人工伴奏标注。
 5. 取消、节点离线和进程重启时有明确收尾；临时/失败产物可清理，原件与正在使用的结果受保护。AI与离线任务不得挤占在播媒体资源。
 
-节点要求内部认证，默认仅回环访问；独立主机或容器组网需落实 TLS/受限网络、双向回源、输入输出权限和实际硬件验证。`infra/docker/compose/compose.app.yaml` 提供 Nginx、Go、compute 及独立数据卷，`infra/docker/compose/compose.compute.yaml` 支持独立计算节点，`infra/docker/compose/compose.yaml` 保留开发 MySQL。设备映射及 NAS 部署以本次实际验收为准，详见[Docker说明](docker.md)。
+节点要求内部认证，默认仅回环访问；独立主机或容器组网需落实 TLS/受限网络、双向回源、输入输出权限和实际硬件验证。`infra/docker/compose/compose.yaml` 提供内置前端的 Go 和显式启用的 compute 及独立数据卷，`infra/docker/compose/compose.compute.yaml` 支持独立计算节点，`infra/docker/compose/compose.mysql.yaml` 保留开发 MySQL。设备映射及 NAS 部署以本次实际验收为准，详见[Docker说明](docker.md)。
 
 <a id="app-local-and-tv"></a>
 
@@ -125,11 +125,11 @@ Go 保持[前端托管契约](../contracts/frontend-hosting.md)与同源接口�
 
 ## 现有工程边界
 
-亲友H5与NAS管理页面使用统一前端工程构建，再由Go托管，均随原生二进制更新，生产无Node运行时、CDN或微信JS-SDK；Docker交付使用Nginx前端与Go后端两个容器。业务 API 由 Go 提供。亲友微信扫一扫普通NAS URL的入口已确定，小程序已取消。二维码、配对与会话权限由业务服务管理，微信导航和生命周期仍须真机验证。
+亲友H5与NAS管理页面使用统一前端工程构建，再由Go托管，均随原生二进制更新，生产无Node运行时、CDN或微信JS-SDK；Docker业务交付只使用内置完整前端的Go容器，compute按需部署。业务 API 由 Go 提供。亲友微信扫一扫普通NAS URL的入口已确定，小程序已取消。二维码、配对与会话权限由业务服务管理，微信导航和生命周期仍须真机验证。
 
 SQLite默认，MySQL 由显式驱动配置选择，切换不迁移数据；Python不引入第二套业务表。Flutter/TV/管理前端独立构建，两个网页入口随 Go 验证，Python独立虚拟环境与锁定依赖；六个CI工作流为singverse-frontend、singverse-mobile、singverse-tv、singverse-go-backend、singverse-backend、singverse-docker。TV当前minSdk23，Android5/API21与音频链路仍待验证。
 
-计算节点开发入口见[开发指南](development.md)与[节点README](../services/singverse-compute/README.md)；产品体验见[原型说明](prototype/README.md)中的AD10、AD24、AD26与AD27，不新增页面。
+计算节点开发入口见[开发指南](development.md)与[节点README](../services/singverse-compute/README.md)；产品行为以现有管理端与 API 契约为准，历史原型已删除。
 
 媒体来源配置由 Go `/api/v1/media-sources` 管理并唯一写入业务库，前端入口为“加歌 → 歌曲来源”。当前本地目录读取校验不调用 Python，WebDAV 保存时仅加密保存配置，手动后台扫描时由 Go 使用 PROPFIND 列目录；本地及 WebDAV 文件名索引由 Go 实现，WebDAV 使用数据库暂存与内部有界执行器，不下载视频；播放队列与重计算由独立业务模块编排，详见[媒体库管理](media-library.md)。
 

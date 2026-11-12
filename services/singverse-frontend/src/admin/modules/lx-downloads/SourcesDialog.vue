@@ -38,5 +38,5 @@ onBeforeUnmount(() => { alive = false; generation++ })
   </ElDialog>
 </template>
 <style scoped>
-.help{color:var(--el-text-color-secondary);font-size:13px;line-height:1.7;overflow-wrap:anywhere}.source{padding:16px 0;border-bottom:1px solid var(--el-border-color-lighter)}.source p{margin:6px 0}.actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.actions>.el-button{margin:0}form{margin-top:20px}details{margin:16px 0}summary{cursor:pointer}.compatibility{display:block;margin-top:12px}select{padding:8px;border:1px solid var(--el-border-color);border-radius:6px;background:var(--el-bg-color);color:var(--el-text-color-primary)}input[type=file]{max-width:100%}.el-form-item .help{display:block;width:100%;margin-top:8px}
+.help{color:var(--el-text-color-secondary);font-size:13px;line-height:1.7;overflow-wrap:anywhere}.source{padding:16px 0;border-bottom:1px solid var(--el-border-color-lighter)}.source p{margin:8px 0}.actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.actions>.el-button{margin:0}form{margin-top:20px}details{margin:16px 0}summary{cursor:pointer}.compatibility{display:block;margin-top:12px}select{padding:8px;border:1px solid var(--el-border-color);border-radius:8px;background:var(--el-bg-color);color:var(--el-text-color-primary)}input[type=file]{max-width:100%}.el-form-item .help{display:block;width:100%;margin-top:8px}
 </style>

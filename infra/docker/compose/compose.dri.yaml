@@ -1,0 +1,9 @@
+services:
+  singverse-compute:
+    environment:
+      COMPUTE_HARDWARE_BACKEND: '${COMPUTE_HARDWARE_BACKEND:-auto}'
+      COMPUTE_HARDWARE_DEVICE: '${COMPUTE_HARDWARE_DEVICE:-/dev/dri/renderD128}'
+    devices:
+      - '${COMPUTE_HARDWARE_DEVICE:-/dev/dri/renderD128}:${COMPUTE_HARDWARE_DEVICE:-/dev/dri/renderD128}'
+    group_add:
+      - '${COMPUTE_RENDER_GID:?Set the numeric render device group ID}'

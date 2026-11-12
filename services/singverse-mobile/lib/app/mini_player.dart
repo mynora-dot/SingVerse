@@ -58,10 +58,10 @@ class MiniPlayer extends StatelessWidget {
       top: false,
       bottom: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
         child: Glass(
           state: state,
-          radius: 14,
+          radius: 16,
           child: InkWell(
             key: const Key('mini-player'),
             onTap: open,
@@ -72,7 +72,7 @@ class MiniPlayer extends StatelessWidget {
                 children: [
                   Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 9,
+                      horizontal: 8,
                       vertical: 4,
                     ),
                     child: Row(
@@ -81,9 +81,9 @@ class MiniPlayer extends StatelessWidget {
                           state: state,
                           path: state.current!.cover,
                           label: state.current!.title,
-                          size: state.senior ? 48 : 38,
+                          size: state.senior ? 48 : 40,
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -95,7 +95,7 @@ class MiniPlayer extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: state.senior
                                     ? Theme.of(context).textTheme.titleMedium
-                                    : Theme.of(context).textTheme.bodySmall
+                                    : Theme.of(context).textTheme.bodyMedium
                                           ?.copyWith(
                                             fontWeight: FontWeight.w600,
                                           ),

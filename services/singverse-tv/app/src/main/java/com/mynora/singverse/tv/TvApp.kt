@@ -116,6 +116,31 @@ class TvApp(context: android.content.Context) {
     private var activeRequests = 0
     var snapshot by mutableStateOf(JSONObject())
     var homeSongs by mutableStateOf(listOf<JSONObject>())
+    var homePopularSongs by mutableStateOf(listOf<JSONObject>())
+        private set
+    var homeHistorySongs by mutableStateOf(listOf<JSONObject>())
+        private set
+    var homeRecommendationsAvailable by mutableStateOf(false)
+        private set
+    var popularSongs by mutableStateOf(listOf<JSONObject>())
+        private set
+    var historyRecords by mutableStateOf(listOf<JSONObject>())
+        private set
+    var feedPage by mutableIntStateOf(0)
+        private set
+    var feedTotal by mutableLongStateOf(0)
+        private set
+    var feedLoading by mutableStateOf(false)
+        private set
+    var feedError by mutableStateOf("")
+        private set
+    internal var feedResetVersion by mutableIntStateOf(0)
+        private set
+    private var feedGeneration = 0
+    private var homeGeneration = 0
+    private var homeConnection: Pair<String, String>? = null
+    internal var feedFocusFirst by mutableStateOf(false)
+        private set
     var homeAppearance by mutableStateOf(JSONObject())
     var homePlaylists by mutableStateOf(listOf<JSONObject>())
     var homeTotal by mutableLongStateOf(0)
@@ -166,7 +191,7 @@ class TvApp(context: android.content.Context) {
     private var artistDetailGeneration=0
     fun openArtist(artist: JSONObject) {
         val generation=++artistDetailGeneration;val id=artist.getString("id");lastArtistId=id
-        run { val detail=json("/api/v1/tv/library/artists/$id");if(generation!=artistDetailGeneration)return@run;artistDetail=detail;selected=null;artistId=id;number=0;songs=emptyList();total=0;loadSongs(resetList = true) }
+        run { val detail=json("/api/v1/tv/library/artists/$id");if(generation!=artistDetailGeneration)return@run;artistDetail=detail;selected=null;artistId=id;number=0;songs=emptyList();total=0;loadSongs(resetList = true, focusFirst = true) }
     }
     fun closeArtist() {artistDetailGeneration++;detailGeneration++;requestGeneration++;artistDetail=null;artistId="";selected=null}
     var playlists by mutableStateOf(listOf<JSONObject>())
@@ -178,7 +203,7 @@ class TvApp(context: android.content.Context) {
     private var playlistGeneration=0
     suspend fun fetchPlaylists(){val generation=++playlistGeneration;val result=json("/api/v1/tv/library/playlists?q=${URLEncoder.encode(playlistQuery,"UTF-8")}&page=$playlistPage&size=20");if(generation==playlistGeneration){playlists=result.getJSONArray("items").objects();playlistTotal=result.getLong("totalElements")}}
     fun loadPlaylists()=run {fetchPlaylists()}
-    fun openPlaylist(playlist:JSONObject){val generation=++playlistGeneration;val id=playlist.getString("id");lastPlaylistId=id;run {val detail=json("/api/v1/tv/library/playlists/$id");if(generation!=playlistGeneration)return@run;playlistDetail=detail;artistId="";selected=null;number=0;songs=emptyList();total=0;loadSongs(resetList = true)}}
+    fun openPlaylist(playlist:JSONObject){val generation=++playlistGeneration;val id=playlist.getString("id");lastPlaylistId=id;run {val detail=json("/api/v1/tv/library/playlists/$id");if(generation!=playlistGeneration)return@run;playlistDetail=detail;artistId="";selected=null;number=0;songs=emptyList();total=0;loadSongs(resetList = true, focusFirst = true)}}
     fun closePlaylist(){playlistGeneration++;detailGeneration++;requestGeneration++;playlistDetail=null;selected=null}
     var artistId by mutableStateOf("")
     var lastSongId by mutableStateOf("")
@@ -427,15 +452,25 @@ class TvApp(context: android.content.Context) {
         if (value.optString("id") != snapshot.optString("id") || value.optString("status") != "ACTIVE") clearPartyConnection()
         snapshot=value
     }
-    private suspend fun json(path: String, method: String = "GET", body: JSONObject? = null): JSONObject {
-        val server=client.base;val credential=client.token
-        val result=JSONObject(client.request(path,method,body))
-        if(client.base!=server || client.token!=credential)throw CancellationException("连接已更换")
-        return result
+    private suspend fun requestCurrent(path: String, method: String = "GET", body: JSONObject? = null): String {
+        val connection = client.credentials()
+        val generation = client.connectionGeneration
+        fun changed() = client.credentials() != connection || client.connectionGeneration != generation
+        try {
+            val result = client.request(path, method, body, connection)
+            if (changed()) throw CancellationException("连接已更换")
+            return result
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            if (changed()) throw CancellationException("连接已更换").apply { initCause(e) }
+            throw e
+        }
     }
+    private suspend fun json(path: String, method: String = "GET", body: JSONObject? = null): JSONObject =
+        JSONObject(requestCurrent(path, method, body))
     fun connect() = run { establishConnection() }
     private suspend fun establishConnection() { val info = json("/api/v1/server-info"); require(info.optString("service") == "singverse" && info.optInt("apiVersion") == 1) { "不是兼容的 SingVerse 服务" }; acceptSnapshot(json("/api/v1/tv/sessions", "POST"), replaceSession=true); if (!connected) { acceptSnapshot(json("/api/v1/tv/sessions/${snapshot.getString("id")}/recover", "POST")); page = "首页" }; connected = true; online = true; failureCount = 0; error = ""; ensureInvitation(); loadHome(); login.recordSuccess(client.base, serverName); loadSongs(); loadTags() }
-    suspend fun refresh() { try { val sid = snapshot.optString("id"); if (sid.isEmpty()) return; acceptSnapshot(json("/api/v1/tv/sessions/$sid/snapshot")); if(error.startsWith("与 NAS 同步失败"))error=""; online = true; failureCount = 0; lastSync = android.os.SystemClock.elapsedRealtime(); if (foreground) { executeCommands(); ensureInvitation(); if (!participantsKnown || lastSync - lastParticipantsRefresh >= 5000) refreshParticipants(sid) }
+    suspend fun refresh() { val connection = client.credentials(); val generation = client.connectionGeneration; try { val sid = snapshot.optString("id"); if (sid.isEmpty()) return; acceptSnapshot(json("/api/v1/tv/sessions/$sid/snapshot")); if(error.startsWith("与 NAS 同步失败"))error=""; online = true; failureCount = 0; lastSync = android.os.SystemClock.elapsedRealtime(); if (foreground) { executeCommands(); ensureInvitation(); if (!participantsKnown || lastSync - lastParticipantsRefresh >= 5000) refreshParticipants(sid) }
         if (foreground && android.os.SystemClock.elapsedRealtime() - lastLibraryRefresh > 30000) {
             if (page == "首页") loadHome()
             if (page == "分类") loadTags()
@@ -454,11 +489,11 @@ class TvApp(context: android.content.Context) {
                 }
             }
             lastLibraryRefresh = android.os.SystemClock.elapsedRealtime()
-        } } catch (e: Exception) { if (e is CancellationException) throw e; online = false; participantsKnown = false; failureCount++; if (e is TvHttpException && e.status == 401) { pauseLocal(); client.clear(); connected = false; clearPartyConnection(); login.cancel() }; error = "与 NAS 同步失败；本地仍可暂停或停止。${e.message}" } }
+        } } catch (e: Exception) { if (e is CancellationException) throw e; if (client.credentials() != connection || client.connectionGeneration != generation) throw CancellationException("连接已更换").apply { initCause(e) }; online = false; participantsKnown = false; failureCount++; if (e is TvHttpException && e.status == 401) { pauseLocal(); client.clear(); connected = false; clearPartyConnection(); login.cancel() }; error = "与 NAS 同步失败；本地仍可暂停或停止。${e.message}" } }
     private suspend fun refreshParticipants(sid: String) {
         val generation = ++participantsGeneration
         val server = client.base; val credential = client.token
-        val result = JSONArray(client.request("/api/v1/tv/sessions/$sid/participants")).objects()
+        val result = JSONArray(requestCurrent("/api/v1/tv/sessions/$sid/participants")).objects()
         if (generation == participantsGeneration && server == client.base && credential == client.token && sid == snapshot.optString("id")) {
             participants = result
             participantsKnown = true
@@ -467,8 +502,18 @@ class TvApp(context: android.content.Context) {
     }
     suspend fun loadHome() {
         val server = client.base; val credential = client.token
+        val generation = ++homeGeneration
+        if (homeConnection != (server to credential)) {
+            homeConnection = server to credential
+            homeSongs = emptyList(); homePopularSongs = emptyList(); homeHistorySongs = emptyList()
+            homeAppearance = JSONObject(); homePlaylists = emptyList(); homeTotal = 0
+            homeRecommendationsAvailable = false; serverName = "SingVerse"
+        }
         val result = json("/api/v1/tv/home")
-        if (client.base != server || client.token != credential) return
+        if (client.base != server || client.token != credential || generation != homeGeneration) return
+        homeRecommendationsAvailable = result.has("popularSongs") && result.has("recentlyPlayedSongs")
+        homePopularSongs = result.optJSONArray("popularSongs")?.objects().orEmpty()
+        homeHistorySongs = result.optJSONArray("recentlyPlayedSongs")?.objects().orEmpty()
         homeSongs = result.getJSONArray("recentSongs").objects()
         homeAppearance = result.optJSONObject("appearance") ?: JSONObject()
         homePlaylists = result.optJSONArray("featuredPlaylists")?.objects().orEmpty()
@@ -477,7 +522,7 @@ class TvApp(context: android.content.Context) {
     }
     suspend fun loadTags() {
         val server = client.base; val credential = client.token
-        val result = JSONArray(client.request("/api/v1/tv/library/classification-tags")).objects()
+        val result = JSONArray(requestCurrent("/api/v1/tv/library/classification-tags")).objects()
         if (client.base == server && client.token == credential) tags = result
     }
     fun navigate(destination: String) {
@@ -487,17 +532,62 @@ class TvApp(context: android.content.Context) {
         artistDetailGeneration++
         detailGeneration++
         selected = null
+        if (destination == "点歌") {
+            if (selectedTags.isNotEmpty() || unclassified) number = 0
+            selectedTags = emptySet(); unclassified = false; artistId = ""
+        }
         categoryResults = false
+        val previousPage = page
         page = destination
+        if (destination in listOf("热歌", "历史")) {
+            if (previousPage != destination) { feedPage = 0; feedTotal = 0; popularSongs = emptyList(); historyRecords = emptyList() }
+            loadFeed()
+            return
+        }
+        feedGeneration++; feedLoading = false; feedError = ""
         run {
             when (destination) {
                 "首页" -> loadHome()
-                "点歌" -> Unit
+                "点歌" -> loadSongs()
                 "找歌" -> loadSongs()
                 "歌手" -> fetchArtists()
                 "分类" -> loadTags()
                 "歌单" -> fetchPlaylists()
                 "已点", "设置" -> { if (destination == "设置") lastParticipantsRefresh = 0; refresh() }
+            }
+        }
+    }
+    fun loadFeed(targetPage: Int = feedPage) {
+        val destination = page
+        if (destination !in listOf("热歌", "历史")) return
+        val generation = ++feedGeneration
+        val server = client.base; val credential = client.token
+        val requestedPage = targetPage.coerceAtLeast(0)
+        feedLoading = true; feedError = ""
+        run {
+            try {
+                val route = if (destination == "热歌") "popular" else "playback-history"
+                val result = json("/api/v1/tv/$route?page=$requestedPage&size=20")
+                if (generation != feedGeneration || page != destination || client.base != server || client.token != credential) return@run
+                val totalElements = result.getLong("totalElements")
+                val lastPage = ((totalElements - 1).coerceAtLeast(0) / 20).toInt()
+                if (requestedPage > lastPage && totalElements > 0) {
+                    loadFeed(lastPage)
+                    return@run
+                }
+                if (destination == "热歌") popularSongs = result.getJSONArray("items").objects()
+                else historyRecords = result.getJSONArray("items").objects()
+                feedTotal = totalElements
+                feedFocusFirst = requestedPage != feedPage || (totalElements == 0L && feedPage != 0)
+                feedPage = if (totalElements == 0L) 0 else result.optInt("page", requestedPage)
+                feedResetVersion++
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                if (generation == feedGeneration && client.base == server && client.token == credential) {
+                    feedError = if (e is TvHttpException && e.status == 404) "请更新 NAS 服务以读取热歌和历史记录" else e.message ?: "读取失败，请重试"
+                }
+            } finally {
+                if (generation == feedGeneration) feedLoading = false
             }
         }
     }
@@ -544,7 +634,7 @@ class TvApp(context: android.content.Context) {
         total = 0
         search(focusFirst = true)
     }
-    internal fun addSongFromList(song: JSONObject) {
+    internal fun addSongFromList(song: JSONObject, closeDetailOnSuccess: Boolean = false) {
         // Set this before launching so a second confirm cannot enqueue another request.
         if (queueAddSongId.isNotBlank()) return
         val server = client.base; val credential = client.token; val sessionId = snapshot.optString("id")
@@ -558,6 +648,7 @@ class TvApp(context: android.content.Context) {
                 sendCommand("ADD", songId = song.getString("id"))
                 if (current()) {
                     showQueueAddMessage("已加入队列：${song.optString("title")}", generation)
+                    if (closeDetailOnSuccess && selected?.optString("id") == song.optString("id")) selected = null
                 }
             } catch (e: Exception) {
                 if (e is CancellationException || current()) throw e
@@ -853,7 +944,7 @@ class TvApp(context: android.content.Context) {
         participantsKnown = false
         lastParticipantsRefresh = 0
     }
-    fun disconnect() { currentSongGeneration++; currentSong=null; playbackMedia=JSONObject(); observedVideo=false; observedAudio=false; selectedAudioFormat=null; embeddedCues=emptyList(); login.open(LoginPage.METHODS);playlistGeneration++;playlistDetail=null;playlists=emptyList();playlistPage=0;playlistQuery="";playlistTotal=0;lastPlaylistId=""; stopLocal();loadedAttempt="";pendingOperation=null;updateManifest=null;updateFile=null;online=false; client.clear(); connected = false; login.cancel(); snapshot = JSONObject(); clearPartyConnection(); artistDetail=null;artistDetailGeneration++;lastArtistId=""; selected = null; homeSongs = emptyList(); homeAppearance = JSONObject(); homePlaylists = emptyList(); songs = emptyList(); artists = emptyList(); tags = emptyList(); participants = emptyList(); homeTotal = 0; artistTotal = 0; total = 0; query = ""; artistQuery = ""; number = 0; artistPage = 0; artistId = ""; selectedTags = emptySet(); unclassified = false; requestGeneration++; artistGeneration++; detailGeneration++ }
+    fun disconnect() { currentSongGeneration++; currentSong=null; playbackMedia=JSONObject(); observedVideo=false; observedAudio=false; selectedAudioFormat=null; embeddedCues=emptyList(); login.open(LoginPage.METHODS);playlistGeneration++;playlistDetail=null;playlists=emptyList();playlistPage=0;playlistQuery="";playlistTotal=0;lastPlaylistId=""; stopLocal();loadedAttempt="";pendingOperation=null;updateManifest=null;updateFile=null;online=false; client.clear(); connected = false; login.cancel(); snapshot = JSONObject(); clearPartyConnection(); artistDetail=null;artistDetailGeneration++;lastArtistId=""; selected = null; homeSongs = emptyList(); homePopularSongs = emptyList(); homeHistorySongs = emptyList(); homeRecommendationsAvailable = false; popularSongs = emptyList(); historyRecords = emptyList(); feedPage = 0; feedTotal = 0; feedError = ""; feedLoading = false; feedGeneration++; homeGeneration++; homeAppearance = JSONObject(); homePlaylists = emptyList(); songs = emptyList(); artists = emptyList(); tags = emptyList(); participants = emptyList(); homeTotal = 0; artistTotal = 0; total = 0; query = ""; artistQuery = ""; number = 0; artistPage = 0; artistId = ""; selectedTags = emptySet(); unclassified = false; requestGeneration++; artistGeneration++; detailGeneration++ }
     fun newSession() = run { acceptSnapshot(json("/api/v1/tv/sessions", "POST"), replaceSession=true); ensureInvitation() }
     fun close() { releasePlaybackHistory(); login.close(); resourceGeneration++; releaseExecution(); discovery.stop(); playbackOptions.close(); scope.cancel(); player.release() }
 }
