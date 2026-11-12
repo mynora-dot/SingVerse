@@ -106,5 +106,4 @@ func (s *Service) Register(router *gin.Engine) {
 	s.registerPlaybackRoutes(router)
 	s.registerLibrary(router)
 	s.registerHome(router)
-	s.registerRecommendations(router)
 }

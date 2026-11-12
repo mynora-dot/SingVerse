@@ -55,11 +55,10 @@ class TvPlayerRemoteTest : InstrumentationTestCase() {
                 screenshot("$name-final").recycle()
                 File(output, "$name-tree.txt").writeText(nodes().joinToString("\n") {
                     val bounds = Rect(); it.getBoundsInScreen(bounds)
-                    "enabled=${it.isEnabled} clickable=${it.isClickable} focused=${it.isFocused} visible=${it.isVisibleToUser} bounds=$bounds state=${state(it)} ${label(it)}"
+                    "enabled=${it.isEnabled} clickable=${it.isClickable} visible=${it.isVisibleToUser} bounds=$bounds state=${state(it)} ${label(it)}"
                 })
                 File(output, "$name-keys.txt").writeText(history.joinToString("\n"))
                 File(output, "$name-http.txt").writeText(fixture.httpEvents.joinToString("\n"))
-                File(output, "$name-events.json").writeText(org.json.JSONArray(playback.playbackEvents).toString(2))
                 onMain { activity.finish() }
                 instrumentation.waitForIdleSync()
             }
@@ -152,38 +151,25 @@ class TvPlayerRemoteTest : InstrumentationTestCase() {
     fun testActualPlaybackCountersExcludeSeekAndPausedTime() {
         start("test-song-1", next = "test-song-2")
         val attempt = onMain { app.snapshot.getJSONObject("playback").getString("attemptId") }
-        fun latestEvent() = playback.playbackEvents.filter { it.optString("attemptId") == attempt && it.has("eventSeq") }
-            .maxByOrNull { it.getLong("eventSeq") }
         SystemClock.sleep(1200)
         onMain { app.pauseLocal(); app.report() }
-        waitFor("暂停结算真实播放") { latestEvent()?.optString("state") == "PAUSED" }
-        val before = checkNotNull(latestEvent())
+        waitFor("暂停结算真实播放") { playback.playbackEvents.lastOrNull()?.optString("state") == "PAUSED" }
+        val before = playback.playbackEvents.last()
         assertTrue("实际播放区间已计时", before.getLong("actualPlayedMs") >= 500)
         SystemClock.sleep(1200)
         onMain { app.player.seekTo(10000); app.report(); app.report() }
-        waitFor("暂停后重复事件不重复累计") { (latestEvent()?.optLong("elapsedMs", 0) ?: 0) >= before.getLong("elapsedMs") + 1000 }
-        val after = checkNotNull(latestEvent())
+        waitFor("暂停后重复事件不重复累计") { (playback.playbackEvents.lastOrNull()?.optLong("elapsedMs", 0) ?: 0) >= before.getLong("elapsedMs") + 1000 }
+        val after = playback.playbackEvents.last()
         assertEquals(attempt, after.getString("attemptId"))
         assertEquals("跳转和暂停不增加真实播放", before.getLong("actualPlayedMs"), after.getLong("actualPlayedMs"))
         assertEquals("暂停心跳不能刷新最近真实播放", before.getLong("lastActivityAt"), after.getLong("lastActivityAt"))
         assertTrue(after.getLong("occurredAt") >= before.getLong("occurredAt") + 1000)
         assertTrue("累计真实播放不超过单调经过时间", after.getLong("actualPlayedMs") <= after.getLong("elapsedMs"))
         onMain { app.player.play() }
-        waitFor("同实例恢复播放") { latestEvent()?.optString("state") == "PLAYING" }
-        assertEquals(attempt, checkNotNull(latestEvent()).getString("attemptId"))
-        // Concurrent reports may arrive at the NAS out of order. eventSeq is the actual
-        // client sampling order and the server's stale-event rejection boundary.
-        val received = playback.playbackEvents.filter { it.optString("attemptId") == attempt }
-        assertTrue("同实例每个实际回报必须有正eventSeq", received.all { it.has("eventSeq") && it.getLong("eventSeq") > 0 })
-        val events = received.sortedBy { it.getLong("eventSeq") }
-        val counters = events.map { "${it.getLong("eventSeq")}:${it.getLong("actualPlayedMs")}/${it.getLong("elapsedMs")}" }
-        assertTrue("同实例eventSeq必须唯一且递增：$counters", events.zipWithNext().all { (first, second) ->
-            second.getLong("eventSeq") > first.getLong("eventSeq")
-        })
-        assertTrue("真实累计必须按eventSeq单调增加：$counters", events.zipWithNext().all { (first, second) ->
-            second.getLong("actualPlayedMs") >= first.getLong("actualPlayedMs") && second.getLong("elapsedMs") >= first.getLong("elapsedMs")
-        })
-        assertTrue("每个事件的真实播放累计都不超过经过时间：$counters", events.all { it.getLong("actualPlayedMs") <= it.getLong("elapsedMs") })
+        waitFor("同实例恢复播放") { playback.playbackEvents.lastOrNull()?.optString("state") == "PLAYING" }
+        assertEquals(attempt, playback.playbackEvents.last().getString("attemptId"))
+        assertTrue(playback.playbackEvents.filter { it.optString("attemptId") == attempt }
+            .zipWithNext().all { (first, second) -> second.getLong("actualPlayedMs") >= first.getLong("actualPlayedMs") })
     }
 
     fun testDurationEventBelongsOnlyToTheCurrentPlayingAttempt() {
@@ -256,7 +242,6 @@ class TvPlayerRemoteTest : InstrumentationTestCase() {
         val originalAttempt = onMain { app.snapshot.getJSONObject("playback").getString("attemptId") }
         val originalResources = playback.resourceRequests.count { it.optString("songId") == "test-song-1" }
         focusAction("restart")
-        val restartOrigin = focused()
         key(KeyEvent.KEYCODE_DPAD_CENTER)
         waitFor("遥控重唱创建新播放实例并从头真实播放", 20000) {
             onMain {
@@ -265,8 +250,6 @@ class TvPlayerRemoteTest : InstrumentationTestCase() {
             } && playback.resourceRequests.count { it.optString("songId") == "test-song-1" } > originalResources
         }
         assertTrue("重唱须通过真实RESTART命令", fixture.actions.contains("RESTART"))
-        waitFor("重唱准备完成后恢复重唱来源焦点") { focused() == restartOrigin }
-        assertVisibleFocus()
         screenshot("audio-real-restart-at-beginning").recycle()
 
         focusAction("pause")
@@ -280,18 +263,6 @@ class TvPlayerRemoteTest : InstrumentationTestCase() {
         waitFor("遥控进入进度条") { focused().endsWith(":player:progress") }
         key(KeyEvent.KEYCODE_DPAD_RIGHT)
         assertTrue("进度预览在确认前不能改变真实媒体时钟", abs(onMain { app.player.currentPosition } - paused) <= 100)
-        key(KeyEvent.KEYCODE_BACK)
-        waitFor("返回只取消进度预览，保留播放器与进度焦点") {
-            onMain { app.page == "演唱" && !app.playing } && focused().endsWith(":player:progress")
-        }
-        assertTrue("取消预览不能提交seek", abs(onMain { app.player.currentPosition } - paused) <= 100)
-        key(KeyEvent.KEYCODE_DPAD_RIGHT)
-        key(KeyEvent.KEYCODE_DPAD_DOWN)
-        waitFor("离开进度条取消预览") { focused().contains(":action:player:") }
-        assertTrue("焦点离开不能提交seek", abs(onMain { app.player.currentPosition } - paused) <= 100)
-        key(KeyEvent.KEYCODE_DPAD_UP)
-        waitFor("重新进入进度条") { focused().endsWith(":player:progress") }
-        key(KeyEvent.KEYCODE_DPAD_RIGHT)
         key(KeyEvent.KEYCODE_DPAD_CENTER)
         waitFor("确认提交真实10秒seek") { onMain { app.position >= beforeSeek + 9500 } }
         assertFalse("暂停状态下拖动进度不应自行播放", onMain { app.playing })
@@ -708,86 +679,6 @@ class TvPlayerRemoteTest : InstrumentationTestCase() {
         assertVisibleFocus()
     }
 
-    fun testAudioSynchronizationSettingsHideVideoQualityAndRestoreNestedFocus() {
-        start("test-song-1")
-        focusAction("pause")
-        key(KeyEvent.KEYCODE_DPAD_CENTER)
-        waitFor("暂停音频后验收嵌套播放设置") { onMain { !app.playing } }
-        focusAction("more")
-        val playerOrigin = focused()
-        key(KeyEvent.KEYCODE_DPAD_CENTER)
-        waitFor("更多设置完成按钮取得焦点") { focused().startsWith("dialog:") && focused().endsWith(":action:完成") }
-        key(KeyEvent.KEYCODE_DPAD_DOWN)
-        waitFor("更多设置首项为音轨与声道") { focused().endsWith(":action:音轨与声道") }
-        key(KeyEvent.KEYCODE_DPAD_DOWN)
-        waitFor("音频模式显示歌词与声音同步") { focused().endsWith(":action:歌词与声音同步") }
-        val moreOrigin = focused()
-        key(KeyEvent.KEYCODE_DPAD_CENTER)
-        waitFor("嵌套同步设置打开") { onMain { activity.focusMemory.activeDialogs == 2 } && focused().endsWith(":action:完成") }
-        assertFalse("纯音频同步设置不显示视频画质", visibleText("视频画质") || visibleText("自动画质"))
-        assertTrue("音频仍能调整真实歌词偏移", visibleText("外置歌词偏移"))
-        assertVisibleFocus()
-        key(KeyEvent.KEYCODE_BACK)
-        waitFor("关闭同步设置恢复更多来源项") { onMain { activity.focusMemory.activeDialogs == 1 } && focused() == moreOrigin }
-        assertSettingActionInViewport("歌词与声音同步")
-        key(KeyEvent.KEYCODE_BACK)
-        waitFor("关闭更多恢复播放器来源控件") { onMain { activity.focusMemory.activeDialogs == 0 } && focused() == playerOrigin }
-        assertVisibleFocus()
-        assertEquals("仅浏览设置不能重新申请媒体", 1, playback.resourceRequests.size)
-    }
-
-    fun testPlayerQueueReorderAndRemoveRestoreTheRemainingQueueRow() {
-        start("test-song-1", next = "test-song-2")
-        onMain { app.command("ADD", songId = "test-song-3") }
-        waitFor("当前演唱之外准备两首待唱") {
-            onMain { app.pendingOperation == null && app.snapshot.getJSONArray("queue").objects().count { it.optString("status") == "WAITING" } == 2 }
-        }
-        focusAction("pause")
-        key(KeyEvent.KEYCODE_DPAD_CENTER)
-        waitFor("暂停当前歌曲后调整待唱") { onMain { !app.playing } }
-        val attempt = onMain { app.snapshot.getJSONObject("playback").getString("attemptId") }
-        val first = onMain { app.snapshot.getJSONArray("queue").objects().first { it.optString("songId") == "test-song-2" }.getString("id") }
-        val second = onMain { app.snapshot.getJSONArray("queue").objects().first { it.optString("songId") == "test-song-3" }.getString("id") }
-        focusAction("queue")
-        val playerOrigin = focused()
-        key(KeyEvent.KEYCODE_DPAD_CENTER)
-        waitFor("播放器队列作为第一层弹窗打开") { onMain { activity.focusMemory.activeDialogs == 1 } && focused().endsWith(":action:完成") }
-        key(KeyEvent.KEYCODE_DPAD_DOWN)
-        waitFor("进入第一首待唱行") { focused().endsWith(":action:queue:$first") }
-        key(KeyEvent.KEYCODE_DPAD_DOWN)
-        waitFor("进入第二首待唱行") { focused().endsWith(":action:queue:$second") }
-        key(KeyEvent.KEYCODE_DPAD_CENTER)
-        waitFor("排序操作作为第二层弹窗打开") { onMain { activity.focusMemory.activeDialogs == 2 } && focused().endsWith(":action:完成") }
-        repeat(4) { if (!focused().endsWith(":action:queue:$second:UP")) key(KeyEvent.KEYCODE_DPAD_UP) }
-        waitFor("上移操作可从遥控到达") { focused().endsWith(":action:queue:$second:UP") }
-        key(KeyEvent.KEYCODE_DPAD_CENTER)
-        waitFor("上移后仍回到移动的队列行") {
-            onMain { activity.focusMemory.activeDialogs == 1 && app.pendingOperation == null &&
-                app.snapshot.getJSONArray("queue").objects().filter { it.optString("status") == "WAITING" }.map { it.optString("id") } == listOf(second, first) } &&
-                focused().endsWith(":action:queue:$second")
-        }
-        assertVisibleFocus()
-        key(KeyEvent.KEYCODE_DPAD_CENTER)
-        waitFor("再次打开第一首待唱的操作弹窗") { onMain { activity.focusMemory.activeDialogs == 2 } && focused().endsWith(":action:完成") }
-        repeat(3) { if (!focused().endsWith(":action:queue:$second:REMOVE")) key(KeyEvent.KEYCODE_DPAD_UP) }
-        waitFor("移除操作可从遥控到达") { focused().endsWith(":action:queue:$second:REMOVE") }
-        key(KeyEvent.KEYCODE_DPAD_CENTER)
-        waitFor("移除后第一层弹窗恢复相邻的待唱行") {
-            onMain { activity.focusMemory.activeDialogs == 1 && app.pendingOperation == null &&
-                app.snapshot.getJSONArray("queue").objects().filter { it.optString("status") == "WAITING" }.map { it.optString("id") } == listOf(first) } &&
-                focused().endsWith(":action:queue:$first")
-        }
-        assertVisibleFocus()
-        assertEquals("待唱排序和移除不改变当前演唱实例", attempt, onMain { app.snapshot.getJSONObject("playback").getString("attemptId") })
-        assertFalse("调整队列不能恢复暂停的媒体", onMain { app.playing })
-        assertEquals("调整队列不能重新协商当前媒体", 1, playback.resourceRequests.size)
-        assertTrue("排序和移除通过真实命令请求完成", fixture.actions.containsAll(listOf("UP", "REMOVE")))
-        screenshot("player-queue-nested-remove-focus-restored").recycle()
-        key(KeyEvent.KEYCODE_BACK)
-        waitFor("关闭第一层队列恢复播放器入口") { onMain { activity.focusMemory.activeDialogs == 0 } && focused() == playerOrigin }
-        assertVisibleFocus()
-    }
-
     fun testVideoControlsAutoHideAndSettingsCategoriesRestoreFocus() {
         start("test-song-2")
         focusAction("pause")
@@ -890,13 +781,7 @@ class TvPlayerRemoteTest : InstrumentationTestCase() {
 
     private fun focusAction(control: String) {
         val target = ":action:player:$control"
-        // The redesigned player has a real header action above the progress/control
-        // rows. Leave it through Down before horizontal control navigation or seeking.
-        repeat(3) {
-            if (focused().endsWith(":action:player:return-catalog") || focused().endsWith(":player:progress") || focused().endsWith(":player")) {
-                key(KeyEvent.KEYCODE_DPAD_DOWN)
-            }
-        }
+        if (focused().endsWith(":player:progress")) key(KeyEvent.KEYCODE_DPAD_DOWN)
         repeat(14) { if (!focused().endsWith(target)) key(KeyEvent.KEYCODE_DPAD_LEFT) }
         repeat(14) { if (!focused().endsWith(target)) key(KeyEvent.KEYCODE_DPAD_RIGHT) }
         waitFor("遥控聚焦$control") { focused().endsWith(target) }
@@ -935,7 +820,7 @@ class TvPlayerRemoteTest : InstrumentationTestCase() {
         waitFor("待唱队列实际显示下一首和正确数量") { visibleText(title) && visibleText("1 首待唱") }
         val row = nodes().firstOrNull { it.isVisibleToUser && it.isClickable && label(it).contains(title) }
         assertNotNull("下一首应有真实可操作待唱行", row)
-        assertTrue("待唱编号从1开始，歌名歌手来自真实歌曲", Regex("(^|\\s)1(\\s|$)").containsMatchIn(label(row!!)) && label(row).contains("合成测试信号"))
+        assertTrue("待唱编号从01开始，歌名歌手来自真实歌曲", label(row!!).contains("01") && label(row).contains("合成测试信号"))
         assertFalse("个人队列不展示点歌人表头", visibleText("点歌人"))
         assertFalse("个人队列不展示fixture的点歌人", visibleText("播放器验收测试") || visibleText("测试电视"))
         val rowBounds = Rect(); row.getBoundsInScreen(rowBounds)
@@ -968,43 +853,23 @@ class TvPlayerRemoteTest : InstrumentationTestCase() {
         waitFor("复用现有动态邀请") { onMain { app.invitation == fixture.invitationUrl && app.participantsKnown } }
         assertEquals("有效设备数量排除已撤销设备", 1, onMain { app.participantCount })
         val image = screenshot(name)
-        try {
-            val qr = nodes().firstOrNull { it.isVisibleToUser && it.contentDescription?.toString() == "本场邀请二维码" }
-            assertNotNull("播放器真实二维码应有可见边界", qr)
-            val area = Rect().also { qr!!.getBoundsInScreen(it) }
-            assertTrue("二维码完整位于原始截图内", Rect(0, 0, image.width, image.height).contains(area) && !area.isEmpty)
-            val hints = mapOf(DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE), DecodeHintType.TRY_HARDER to true)
-            val pixels = IntArray(image.width * image.height)
-            image.getPixels(pixels, 0, image.width, 0, 0, image.width, image.height)
-            val source = RGBLuminanceSource(image.width, image.height, pixels)
-            val wholeFrame = runCatching { MultiFormatReader().decode(BinaryBitmap(HybridBinarizer(source)), hints) }.getOrNull()
-            // Artwork elsewhere can distract ZXing's whole-image finder search. A retry
-            // uses only the real QR bounds from this screenshot, with no pixel resizing.
-            val decoded = wholeFrame ?: MultiFormatReader().decode(BinaryBitmap(HybridBinarizer(
-                source.crop(area.left, area.top, area.width(), area.height()))), hints)
-            File(output, "$name-qr-decode.txt").writeText("wholeFrame=${wholeFrame != null}; originalQrBounds=$area; resized=false")
-            assertEquals("播放器二维码必须能从最终原尺寸像素解出同一个动态邀请", fixture.invitationUrl, decoded.text)
-        } finally { image.recycle() }
+        val pixels = IntArray(image.width * image.height)
+        image.getPixels(pixels, 0, image.width, 0, 0, image.width, image.height)
+        val decoded = MultiFormatReader().decode(BinaryBitmap(HybridBinarizer(RGBLuminanceSource(image.width, image.height, pixels))),
+            mapOf(DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE), DecodeHintType.TRY_HARDER to true))
+        assertEquals("播放器二维码必须能从最终像素解出同一个动态邀请", fixture.invitationUrl, decoded.text)
+        image.recycle()
     }
 
     private fun assertVisibleFocus() {
         assertEquals("播放器只能有一个真实Compose遥控焦点", 1, onMain { activity.focusMemory.focusedTargets.size })
         val target = focused()
-        waitFor("遥控焦点边框按共享焦点色完成绘制") {
+        waitFor("白色遥控焦点完成绘制") {
             assertEquals("等待绘制时不能改变焦点", target, focused())
             val image = instrumentation.uiAutomation.takeScreenshot() ?: return@waitFor false
-            val focusedNode = focusedNode()
-            val area = Rect()
-            focusedNode?.getBoundsInScreen(area)
-            val margin = (4f * minOf(image.width / 960f, image.height / 540f)).toInt().coerceAtLeast(2)
-            area.inset(-margin, -margin)
-            val intersects = focusedNode != null && area.intersect(0, 0, image.width, image.height) && !area.isEmpty
-            val visible = if (intersects) {
-                val pixels = IntArray(area.width() * area.height())
-                image.getPixels(pixels, 0, area.width(), area.left, area.top, area.width(), area.height())
-                val tint = onMain { Focus }
-                pixels.count { abs(Color.red(it) - tint.red * 255) < 16 && abs(Color.green(it) - tint.green * 255) < 16 && abs(Color.blue(it) - tint.blue * 255) < 16 } > 60
-            } else false
+            val pixels = IntArray(image.width * image.height)
+            image.getPixels(pixels, 0, image.width, 0, 0, image.width, image.height)
+            val visible = pixels.count { abs(Color.red(it) - 245) < 12 && abs(Color.green(it) - 245) < 12 && abs(Color.blue(it) - 247) < 12 } > 100
             image.recycle()
             visible
         }
@@ -1040,17 +905,6 @@ class TvPlayerRemoteTest : InstrumentationTestCase() {
         }
         instrumentation.uiAutomation.rootInActiveWindow?.let(::visit)
         return result
-    }
-
-    private fun focusedNode(): AccessibilityNodeInfo? {
-        if (Build.VERSION.SDK_INT >= 33) instrumentation.uiAutomation.clearCache()
-        // findFocus can retain a previous Compose node even after clearing its cache.
-        // Traverse current window nodes and read their actual focus flags instead.
-        fun find(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-            for (index in 0 until node.childCount) node.getChild(index)?.let { find(it)?.let { focused -> return focused } }
-            return node.takeIf { it.isFocused && it.isVisibleToUser }
-        }
-        return instrumentation.uiAutomation.rootInActiveWindow?.let(::find)
     }
 
     private fun visibleText(text: String) = nodes().any { it.isVisibleToUser && label(it).contains(text) }

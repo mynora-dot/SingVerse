@@ -25,7 +25,6 @@ import (
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/library"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/config"
 	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/platform/store"
-	"github.com/mynora-dot/SingVerse/services/singverse-go-backend/internal/playback"
 )
 
 //go:embed sql/*.sql
@@ -44,8 +43,6 @@ type Activity interface {
 	StartTV(context.Context, store.DBTX, string, string, string, string, string) error
 	FinishTV(context.Context, store.DBTX, string, string, string) error
 	ReportTV(context.Context, store.DBTX, string, string, map[string]any) error
-	TVPopular(context.Context, store.DBTX, []string, int, int) ([]map[string]any, int64, error)
-	TVHistory(context.Context, store.DBTX, playback.TVHistoryQuery) ([]map[string]any, int64, error)
 }
 type Library interface {
 	Song(context.Context, string) (map[string]any, error)

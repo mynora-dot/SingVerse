@@ -33,11 +33,15 @@ import androidx.compose.ui.unit.*
 import androidx.tv.material3.*
 import kotlinx.coroutines.delay
 
-@Composable internal fun TvHomeScreen(app: TvApp, onPhone: () -> Unit) {
+@OptIn(ExperimentalFoundationApi::class)
+@Composable internal fun TvHomeScreen(app: TvApp, libraryState: LazyListState, onPhone: () -> Unit) {
+    val viewAllFocus = remember { FocusRequester() }
+    val focusMemory = LocalTvFocusMemory.current
+    val focusPage = LocalTvFocusPage.current
+    var lastLibrarySong by remember { mutableStateOf("") }
     val appearance = app.homeAppearance
     val banners = appearance.optJSONArray("banners")?.objects().orEmpty().filter { it.optBoolean("enabled", true) }
-    // Recent scans remain a truthful fallback for the feature, never for the hot/history sections.
-    val recommendations = (app.homePopularSongs.ifEmpty { app.homeSongs }).take(8)
+    val recommendations = app.homeSongs.take(5)
     val signature = app.client.base + banners.joinToString { it.optString("id") + it.optString("version") } + recommendations.joinToString { it.optString("id") }
     var index by remember(signature) { mutableIntStateOf(0) }
     var bannerFocused by remember { mutableStateOf(false) }
@@ -50,94 +54,130 @@ import kotlinx.coroutines.delay
             index = (index + 1) % count
         }
     }
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(Modifier.fillMaxWidth().height(124.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-            Row(Modifier.weight(1f).fillMaxHeight().onFocusChanged { bannerFocused = it.hasFocus }.focusGroup(),
-                horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (active != null) HomeImage(app, active.optString("imagePath"), active.optString("version"), Modifier.size(124.dp).clip(TvShape.card))
-                else SongArtwork(app, song, Modifier.size(124.dp))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(appearance.optString("headline").ifBlank { "今晚，先唱这一首" }, color = Muted, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(song?.optString("title") ?: "唱你喜欢的歌", color = Paper, fontSize = 32.sp, lineHeight = 40.sp,
+    val focusMargin = with(LocalDensity.current) { 14.dp.toPx() }
+    val minimalScroll = remember(focusMargin) { object : BringIntoViewSpec {
+        override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = when {
+            offset < focusMargin -> offset - focusMargin
+            offset + size > containerSize - focusMargin -> offset + size - containerSize + focusMargin
+            else -> 0f
+        }
+    } }
+    CompositionLocalProvider(LocalBringIntoViewSpec provides minimalScroll) {
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(Modifier.fillMaxWidth().height(150.dp).onFocusChanged { bannerFocused = it.hasFocus }.focusGroup()
+                .clip(TvShape.panel).background(Panel)) {
+                HomeImage(app, active?.optString("imagePath") ?: song?.optString("coverPath").orEmpty(),
+                    active?.optString("version") ?: song?.optString("revision").orEmpty(), Modifier.fillMaxSize())
+                Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0xFA050505), Color(0xB8050505), Color(0x10050505)))))
+                Column(Modifier.fillMaxHeight().widthIn(max = 610.dp).padding(start = 26.dp, top = 16.dp, bottom = 14.dp, end = 22.dp)) {
+                    Text("今晚推荐", color = Paper.copy(alpha = .66f), fontSize = 11.sp, lineHeight = 15.sp, fontWeight = FontWeight.Medium)
+                    Text(appearance.optString("headline").ifBlank { "把生活，唱成热爱。" }, color = Paper, fontSize = 30.sp, lineHeight = 37.sp,
                         fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(song?.artists() ?: appearance.optString("subtitle").ifBlank { "在 NAS 导入自备歌曲，开启家庭音乐现场" }, color = Muted,
-                        fontSize = 16.sp, lineHeight = 22.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        HomeButton(if (song == null) "去点歌" else "加入待唱", primary = true, focusKey = "featured:add") {
-                            if (song == null) app.navigate("点歌") else app.addSongFromList(song)
-                        }
-                        if (song != null) HomeButton("歌曲详情", focusKey = "featured:sing") { app.openSong(song) }
-                        if (count > 1) {
-                            HomeButton("‹", Modifier.width(28.dp), focusKey = "featured:previous") { index = (index - 1 + count) % count }
-                            Text("${index + 1}/$count", color = Muted, fontSize = 12.sp)
-                            HomeButton("›", Modifier.width(28.dp), focusKey = "featured:next") { index = (index + 1) % count }
-                        }
-                    }
-                }
-            }
-            HomeTile(Modifier.width(216.dp).fillMaxHeight().tvFocusTarget("phone"), onClick = onPhone) {
-                Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        HomeGlyph("phone", Modifier.size(18.dp), Muted)
-                        Text("手机点歌", color = Paper, fontSize = 18.sp, lineHeight = 24.sp)
-                    }
-                    Text("亲友扫码，各点一首", color = Muted, fontSize = 13.sp, lineHeight = 18.sp)
+                    Text(if (song == null) appearance.optString("subtitle").ifBlank { "你的私人音乐现场" } else "${song.optString("title")}  ·  ${song.artists()}",
+                        color = Paper.copy(alpha = .72f), fontSize = 13.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Spacer(Modifier.weight(1f))
-                    Text(if (app.snapshot.optString("status") == "ENDED") "开始新聚会后邀请" else if (!app.online) "网络异常 · 确认以重连" else if (app.participantsKnown) "${app.participantCount} 台设备已加入  ·  打开二维码" else "打开本场邀请二维码",
-                        color = if (app.online) Paper else Danger, fontSize = 12.sp, lineHeight = 18.sp, maxLines = 2)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        HomeButton(if (song == null) "浏览曲库" else "播放", focusKey = "featured:sing") {
+                            if (song == null) app.navigate("找歌") else app.openSong(song)
+                        }
+                        if (song != null) HomeButton("加入已点", focusKey = "featured:add") { app.command("ADD", songId = song.getString("id")) }
+                        Spacer(Modifier.weight(1f))
+                        if (count > 1) {
+                            HomeButton("‹", Modifier.width(32.dp), focusKey = "featured:previous") { index = (index - 1 + count) % count }
+                            Text("${index + 1} / $count", color = Paper.copy(alpha = .55f), fontSize = 10.sp)
+                            HomeButton("›", Modifier.width(32.dp), focusKey = "featured:next") { index = (index + 1) % count }
+                        }
+                    }
+                }
+                PhoneConnectionCard(app, Modifier.align(Alignment.CenterEnd).padding(end = 18.dp).width(218.dp).height(108.dp), onPhone)
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("快捷点歌", color = Paper.copy(alpha = .56f), fontSize = 12.sp, lineHeight = 16.sp, modifier = Modifier.padding(start = 5.dp))
+                QuickSongEntries(app)
+            }
+            Column(Modifier.weight(1f)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("我的曲库", color = Paper, fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.Medium)
+                    Text("  ${app.homeTotal} 首", color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
+                    Spacer(Modifier.weight(1f))
+                    HomeButton("查看全部", Modifier.focusRequester(viewAllFocus).focusProperties {
+                        val songId = lastLibrarySong.ifBlank { app.homeSongs.getOrNull(libraryState.firstVisibleItemIndex)?.optString("id").orEmpty() }
+                        down = focusMemory.targets["$focusPage:song:$songId"] ?: FocusRequester.Default
+                    }, focusKey = "library:all") { app.navigate("找歌") }
+                }
+                if (app.homeSongs.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(if (app.busy) "正在读取曲库…" else "曲库还没有歌曲，请在 NAS 管理端扫描自备歌曲。", color = Muted, fontSize = 14.sp)
+                } else BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                    // Reserve both text lines plus button (10), metadata (8), gap (3) and row (18) dp.
+                    val textHeight = with(LocalDensity.current) { 19.sp.toDp() + 16.sp.toDp() }
+                    val coverSize = (maxHeight - textHeight - 39.dp).coerceIn(1.dp, 106.dp)
+                    // Shrink the artwork independently so the text retains its readable width.
+                    val cardWidth = (coverSize + 10.dp).coerceAtLeast(68.dp)
+                    LazyRow(state = libraryState, modifier = Modifier.fillMaxSize().focusGroup(),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 9.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        items(app.homeSongs, key = { it.getString("id") }) { song ->
+                            SongCard(app, song, Modifier.width(cardWidth).focusProperties { up = viewAllFocus }
+                                .onFocusChanged { if (it.isFocused) lastLibrarySong = song.getString("id") },
+                                imageHeight = coverSize, metadataVerticalPadding = 4.dp)
+                        }
+                    }
                 }
             }
         }
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            HomeSectionHeading("家庭热歌", "近 30 天常唱", "查看榜单", "hot:all") { app.navigate("热歌") }
-            if (app.homePopularSongs.isEmpty()) HomeFeedEmpty(
-                if (!app.homeRecommendationsAvailable) "请更新 NAS 服务以读取家庭热歌" else "还没有常唱歌曲，先去点一首", 84.dp)
-            else Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                app.homePopularSongs.take(4).forEachIndexed { rank, item ->
-                    HomeSongTile(app, item, Modifier.weight(1f).height(84.dp), "hot:${item.optString("id")}",
-                        "${rank + 1}  ·  ${item.optLong("effectivePlayCount")} 次有效演唱")
+    }
+}
+
+@Composable internal fun QuickSongEntries(app: TvApp, large: Boolean = false) {
+    val entries = listOf(
+        Triple("search", "搜索歌曲", "歌名 / 拼音 / 编号"),
+        Triple("mic", "歌手点歌", "按歌手查找歌曲"),
+        Triple("grid", "分类点歌", "语种 / 风格 / 年代"),
+        Triple("playlist", "我的歌单", "NAS 共享歌单"),
+    )
+    Row(Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        entries.forEachIndexed { i, entry ->
+            HomeTile(
+                Modifier.weight(if (large && i == 0) 1.25f else 1f).height(if (large) 118.dp else 52.dp).tvFocusTarget("quick:$i"),
+                onClick = { app.navigate(listOf("找歌", "歌手", "分类", "歌单")[i]) },
+            ) {
+                val foreground = Paper
+                Row(Modifier.fillMaxSize().padding(horizontal = if (large) 20.dp else 14.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    HomeGlyph(entry.first, Modifier.size(if (large) 25.dp else 19.dp), foreground)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(entry.second, color = foreground, fontSize = if (large) 18.sp else 14.sp, lineHeight = if (large) 25.sp else 19.sp,
+                            fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (large) Text(entry.third, color = foreground.copy(alpha = .58f), fontSize = 11.sp, lineHeight = 15.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Text("›", color = foreground.copy(alpha = .7f), fontSize = 22.sp, fontWeight = FontWeight.Light)
                 }
             }
         }
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            HomeSectionHeading("这台电视唱过", "最近演唱", "全部记录", "history:all") { app.navigate("历史") }
-            if (app.homeHistorySongs.isEmpty()) HomeFeedEmpty(
-                if (!app.homeRecommendationsAvailable) "请更新 NAS 服务以读取演唱历史" else "这台电视还没有演唱记录", 58.dp)
-            else Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                app.homeHistorySongs.take(3).forEach { item ->
-                    HomeSongTile(app, item, Modifier.weight(1f).height(64.dp), "history:${item.optString("id")}",
-                        "${tvHistoryDate(item.optString("lastPlayedAt"))} · ${tvHistoryStatus(item.optString("lastPlaybackStatus"))}", compact = true)
-                }
+    }
+}
+
+@Composable internal fun PhoneConnectionCard(app: TvApp, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    HomeTile(modifier.tvFocusTarget("phone"), translucent = true, onClick = onClick) {
+        Row(Modifier.fillMaxSize().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (app.invitation.isNotEmpty() && app.online) Qr(app.invitation, Modifier.size(80.dp))
+            else Box(Modifier.size(80.dp).background(Paper, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                Text(if (app.snapshot.optString("status") == "ENDED") "本场已结束" else if (app.invitationLoading) "生成中…" else "确认以重试", color = Ink, fontSize = 10.sp)
             }
-        }
-        if (appearance.optString("subtitle").isNotBlank() && song != null) Text(appearance.optString("subtitle"), color = Muted,
-            fontSize = 12.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable private fun HomeSectionHeading(title: String, subtitle: String, action: String, focusKey: String, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().height(28.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, color = Paper, fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.Medium)
-        Text("   $subtitle", color = Muted, fontSize = 12.sp)
-        Spacer(Modifier.weight(1f))
-        HomeButton(action, focusKey = focusKey, onClick = onClick)
-    }
-}
-
-@Composable private fun HomeFeedEmpty(message: String, height: Dp) {
-    Box(Modifier.fillMaxWidth().height(height).background(Panel, TvShape.card).padding(16.dp), contentAlignment = Alignment.CenterStart) {
-        Text(message, color = Muted, fontSize = 14.sp, lineHeight = 20.sp)
-    }
-}
-
-@Composable private fun HomeSongTile(app: TvApp, song: org.json.JSONObject, modifier: Modifier, key: String, caption: String, compact: Boolean = false) {
-    HomeTile(modifier.tvFocusTarget(key), onClick = { app.openSong(song) }) {
-        Row(Modifier.fillMaxSize().padding(if (compact) 8.dp else 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            SongArtwork(app, song, Modifier.size(if (compact) 40.dp else 48.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(song.optString("title"), color = Paper, fontSize = 15.sp, lineHeight = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(if (compact) caption else song.artists(), color = Muted, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (!compact) Text(caption, color = Muted, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("手机点歌", color = Paper, fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium)
+                Text("扫码加入", color = Paper.copy(alpha = .55f), fontSize = 10.sp, lineHeight = 14.sp)
+                val status = when {
+                    app.snapshot.optString("status") == "ENDED" -> "聚会已结束"
+                    !app.online -> "网络异常"
+                    app.invitationError.isNotEmpty() -> "邀请异常"
+                    app.invitationLoading -> "正在生成"
+                    !app.participantsKnown -> "正在同步"
+                    app.participantCount > 0 -> "${app.participantCount} 台已加入"
+                    else -> "等待加入"
+                }
+                Text(status, color = if (!app.online || app.invitationError.isNotEmpty()) Danger else Paper.copy(alpha = .66f),
+                    fontSize = 10.sp, lineHeight = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -145,17 +185,13 @@ import kotlinx.coroutines.delay
 
 @Composable internal fun TvNavigation(label: String, modifier: Modifier = Modifier, selected: Boolean = false, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    val shape = TvShape.control
-    Button(onClick, modifier.height(36.dp).semantics { this.selected = selected; stateDescription = if (selected) "当前页面" else "" }
-        .onFocusChanged { focused = it.isFocused }.tvFocus(focused, shape, focusedScale = 1f), contentPadding = PaddingValues(horizontal = 14.dp),
+    val shape = RoundedCornerShape(12.dp)
+    Button(onClick, modifier.height(34.dp).semantics { this.selected = selected; stateDescription = if (selected) "当前页面" else "" }
+        .onFocusChanged { focused = it.isFocused }.tvFocus(focused, shape), contentPadding = PaddingValues(horizontal = 18.dp),
         scale = ButtonDefaults.scale(focusedScale = 1f), shape = ButtonDefaults.shape(shape),
-        colors = ButtonDefaults.colors(containerColor = if (focused) Elevated else Color.Transparent,
+        colors = ButtonDefaults.colors(containerColor = when { focused -> Elevated; selected -> Panel; else -> Color.Transparent },
             contentColor = if (selected || focused) Paper else Muted, focusedContainerColor = Elevated, focusedContentColor = Paper)) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(label, fontSize = 14.sp, lineHeight = 21.sp, fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal)
-            Spacer(Modifier.height(3.dp))
-            Box(Modifier.width(16.dp).height(1.5.dp).background(if (selected) Paper else Color.Transparent))
-        }
+        Text(label, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal)
     }
 }
 

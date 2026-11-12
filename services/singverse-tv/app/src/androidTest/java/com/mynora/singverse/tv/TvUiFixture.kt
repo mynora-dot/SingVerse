@@ -30,37 +30,19 @@ internal class TvUiFixture(private val playback: TvPlaybackFixture? = null) : Au
     val commandRequests = CopyOnWriteArrayList<JSONObject>()
     val httpEvents = CopyOnWriteArrayList<String>()
     val songRequests = CopyOnWriteArrayList<String>()
-    val feedRequests = CopyOnWriteArrayList<String>()
     @Volatile var extraGenreTags = 0
     @Volatile var songCount = 20
     @Volatile var mixedSongMetadata = false
-    @Volatile var titlePrefix = "测试歌曲"
-    @Volatile var popularCount = 20
-    @Volatile var historyCount = 45
-    @Volatile var unavailableHistoryNumber = 3
-    @Volatile var includeRecommendationFields = true
-    @Volatile var homeDelayMs = 0L
-    @Volatile var snapshotDelayMs = 0L
-    @Volatile var snapshotFailureStatus = 0
-    @Volatile var classificationDelayMs = 0L
-    @Volatile var popularDelayMs = 0L
-    @Volatile var historyDelayMs = 0L
     @Volatile var addDelayMs = 0L
     @Volatile var sessionId = "ui-test-session"
     val rejectNextAdd = AtomicInteger()
     val failNextAddResponse = AtomicInteger()
-    val failNextHome = AtomicInteger()
-    val failNextSnapshot = AtomicInteger()
-    val failNextClassification = AtomicInteger()
-    val failNextPopular = AtomicInteger()
-    val failNextHistory = AtomicInteger()
     private val clients = ConcurrentHashMap.newKeySet<Socket>()
     private val connectionNumber = AtomicInteger()
     private val connections = Executors.newFixedThreadPool(8) { task ->
         Thread(task, "tv-ui-http-${connectionNumber.incrementAndGet()}").apply { isDaemon = true }
     }
     private val queue = JSONArray()
-    private var nextQueueId = 0L
     private var revision = 1L
     private val addReceipts = mutableSetOf<String>()
     private val covers = (1..20).associateWith(::coverPng)
@@ -109,22 +91,6 @@ internal class TvUiFixture(private val playback: TvPlaybackFixture? = null) : Au
                 val media = playback?.media(path)
                 val jsonBody = if (length > 0) JSONObject(String(body, Charsets.UTF_8)) else JSONObject()
                 val adding = path.endsWith("/commands") && jsonBody.optString("action") == "ADD"
-                val readDelay = when {
-                    path == "/api/v1/tv/home" -> homeDelayMs
-                    path.endsWith("/snapshot") -> snapshotDelayMs
-                    path == "/api/v1/tv/library/classification-tags" -> classificationDelayMs
-                    path == "/api/v1/tv/popular" -> popularDelayMs
-                    path == "/api/v1/tv/playback-history" -> historyDelayMs
-                    else -> 0L
-                }
-                val readFailure = when {
-                    path == "/api/v1/tv/home" -> failNextHome.getAndSet(0)
-                    path.endsWith("/snapshot") -> failNextSnapshot.getAndSet(0).takeIf { it > 0 } ?: snapshotFailureStatus
-                    path == "/api/v1/tv/library/classification-tags" -> failNextClassification.getAndSet(0)
-                    path == "/api/v1/tv/popular" -> failNextPopular.getAndSet(0)
-                    path == "/api/v1/tv/playback-history" -> failNextHistory.getAndSet(0)
-                    else -> 0
-                }
                 if (path.endsWith("/commands")) commandRequests.add(JSONObject(jsonBody.toString()))
                 if (adding && addDelayMs > 0) Thread.sleep(addDelayMs)
                 var responseStatus = 200
@@ -134,12 +100,6 @@ internal class TvUiFixture(private val playback: TvPlaybackFixture? = null) : Au
                         if (rejection > 0) throw TvFixtureHttpException(rejection, "测试：本场已暂停接单")
                         response(path, jsonBody, request.getOrElse(1) { path }).also {
                             playback?.beforeSend(path, jsonBody, it)
-                            // Freeze the response before delaying, without blocking snapshot/other NAS reads.
-                            if (readDelay > 0) {
-                                httpEvents.add("prepared $description")
-                                Thread.sleep(readDelay)
-                            }
-                            if (readFailure > 0) throw TvFixtureHttpException(readFailure, "测试：演唱数据读取失败")
                             val failure = if (adding) failNextAddResponse.getAndSet(0) else 0
                             if (failure > 0) throw TvFixtureHttpException(failure, "测试：命令回报中断，请核对后重试")
                         }.toByteArray(Charsets.UTF_8)
@@ -178,9 +138,7 @@ internal class TvUiFixture(private val playback: TvPlaybackFixture? = null) : Au
 
     @Synchronized private fun response(path: String, body: JSONObject, requestTarget: String): String {
         if (path.endsWith("/commands")) actions.add(body.getString("action"))
-        playback?.response(path, body)?.let {
-            return if (path == "/api/v1/tv/home") JSONObject(it).put("popularSongs", JSONArray()).put("recentlyPlayedSongs", JSONArray()).toString() else it
-        }
+        playback?.response(path, body)?.let { return it }
         return when {
         path.endsWith("/invitations") -> JSONObject().put("invitation", token)
             .put("expiresAt", "2099-01-01T00:00:00Z").toString()
@@ -191,69 +149,24 @@ internal class TvUiFixture(private val playback: TvPlaybackFixture? = null) : Au
             val action = body.getString("action")
             if (action == "ADD" && body.optString("requestId") !in addReceipts) {
                 if (body.optLong("expectedRevision") != revision) throw TvFixtureHttpException(409, "队列已更新，请核对后重试")
-                val song = catalogSongs().first { it.optString("id") == body.optString("songId") }
-                queue.put(JSONObject().put("id", "test-queue-${nextQueueId++}").put("songId", song.getString("id"))
+                val song = songs(songCount, mixedSongMetadata).first { it.optString("id") == body.optString("songId") }
+                queue.put(JSONObject().put("id", "test-queue-${queue.length()}").put("songId", song.getString("id"))
                     .put("song", song).put("status", "WAITING").put("ownerName", "测试电视"))
                 addReceipts.add(body.getString("requestId"))
-                revision++
-            }
-            if (action in listOf("TOP", "UP", "DOWN", "REMOVE", "CLEAR")) {
-                val original = (0 until queue.length()).map { queue.getJSONObject(it) }
-                val rows = original.filter { it.optString("status") == "WAITING" }.toMutableList()
-                val index = rows.indexOfFirst { it.optString("id") == body.optString("itemId") }
-                when {
-                    action == "CLEAR" -> rows.removeAll { it.optString("status") == "WAITING" }
-                    index >= 0 -> {
-                        val item = rows.removeAt(index)
-                        when (action) {
-                            "TOP" -> rows.add(0, item)
-                            "UP" -> rows.add((index - 1).coerceAtLeast(0), item)
-                            "DOWN" -> rows.add((index + 1).coerceAtMost(rows.size), item)
-                        }
-                    }
-                }
-                while (queue.length() > 0) queue.remove(0)
-                val waiting = rows.iterator()
-                original.forEach { item ->
-                    if (item.optString("status") != "WAITING") queue.put(item)
-                    else if (waiting.hasNext()) queue.put(waiting.next())
-                }
                 revision++
             }
             currentSnapshot().toString()
         }
         path.endsWith("/snapshot") || path.endsWith("/recover") || path == "/api/v1/tv/sessions" -> currentSnapshot().toString()
-        path == "/api/v1/tv/home" -> JSONObject().put("recentSongs", JSONArray(catalogSongs().take(20))).put("totalSongs", songCount)
-            .put("server", JSONObject().put("name", "UI 验收测试服务")).put("appearance", appearance()).put("featuredPlaylists", JSONArray(playlists()))
-            .apply {
-                if (includeRecommendationFields) {
-                    put("popularSongs", JSONArray(popularSongs().take(8)))
-                    put("recentlyPlayedSongs", JSONArray(historyRecords().filter { it.optBoolean("available") }
-                        .distinctBy { it.optString("songId") }.take(6).map { record ->
-                            JSONObject(record.getJSONObject("song").toString()).put("lastPlayedAt", record.getString("startedAt"))
-                                .put("lastPlaybackStatus", record.getString("status")).put("lastHistoryId", record.getString("id"))
-                        }))
-                }
-            }.toString()
-        path == "/api/v1/tv/popular" || path == "/api/v1/tv/playback-history" -> {
-            feedRequests.add(requestTarget)
-            val parameters = android.net.Uri.parse(requestTarget)
-            val page = parameters.getQueryParameter("page")?.toIntOrNull()?.coerceAtLeast(0) ?: 0
-            val size = parameters.getQueryParameter("size")?.toIntOrNull()?.coerceIn(1, 100) ?: 20
-            val rows = if (path.endsWith("/popular")) popularSongs() else historyRecords()
-            JSONObject().put("items", JSONArray(rows.drop(page * size).take(size))).put("totalElements", rows.size)
-                .put("page", page).put("size", size).toString()
-        }
-        path.matches(Regex("/api/v1/tv/library/songs/test-song-\\d+")) -> catalogSongs().firstOrNull { it.optString("id") == path.substringAfterLast('/') }
-            ?.toString() ?: throw TvFixtureHttpException(404, "歌曲已移除")
+        path == "/api/v1/tv/home" -> JSONObject().put("recentSongs", JSONArray(songs())).put("totalSongs", 20)
+            .put("server", JSONObject().put("name", "UI 验收测试服务")).put("appearance", appearance()).put("featuredPlaylists", JSONArray(playlists())).toString()
+        path.matches(Regex("/api/v1/tv/library/songs/test-song-\\d+")) -> songs(songCount, mixedSongMetadata).first { it.optString("id") == path.substringAfterLast('/') }.toString()
         path == "/api/v1/tv/library/songs" || path == "/api/v1/tv/library/artists/test-artist/songs" || path == "/api/v1/tv/library/playlists/test-playlist/songs" -> {
             songRequests.add(requestTarget)
             val parameters = android.net.Uri.parse(requestTarget)
             val page = parameters.getQueryParameter("page")?.toIntOrNull() ?: 0
-            val size = parameters.getQueryParameter("size")?.toIntOrNull()?.coerceIn(1, 100) ?: 20
-            val query = parameters.getQueryParameter("q").orEmpty()
-            val rows = catalogSongs().filter { query.isBlank() || it.optString("title").contains(query, true) || it.artists().contains(query, true) }
-            JSONObject().put("items", JSONArray(rows.drop(page * size).take(size))).put("totalElements", rows.size).put("page", page).put("size", size).toString()
+            val rows = songs(songCount, mixedSongMetadata)
+            JSONObject().put("items", JSONArray(rows.drop(page * 20).take(20))).put("totalElements", rows.size).toString()
         }
         path == "/api/v1/tv/library/classification-tags" -> JSONArray()
             .put(JSONObject().put("id", "tag-language").put("dimension", "LANGUAGE").put("name", "国语").put("count", 20))
@@ -266,29 +179,6 @@ internal class TvUiFixture(private val playback: TvPlaybackFixture? = null) : Au
         else -> JSONObject().toString()
         }
     }
-
-    private fun catalogSongs(): List<JSONObject> = songs(songCount, mixedSongMetadata).also { rows ->
-        if (titlePrefix != "测试歌曲") rows.forEachIndexed { index, song -> song.put("title", "$titlePrefix ${(index + 1).toString().padStart(2, '0')}") }
-    }
-
-    private fun popularSongs(): List<JSONObject> = catalogSongs().take(popularCount).mapIndexed { index, song ->
-        JSONObject(song.toString()).put("effectivePlayCount", 120 - index).put("lastPlayedAt", historyTime(index))
-    }
-
-    private fun historyRecords(): List<JSONObject> {
-        val songs = catalogSongs()
-        return (1..historyCount).map { number ->
-            val song = songs.getOrNull((number - 1) % songs.size.coerceAtLeast(1))
-            val available = song != null && number != unavailableHistoryNumber
-            val status = when (number % 4) { 1 -> "COMPLETED"; 2 -> "SKIPPED"; 3 -> "ERROR"; else -> "STOPPED" }
-            JSONObject().put("id", "test-history-$number").put("songId", song?.optString("id") ?: "removed-test-song-$number")
-                .put("title", song?.optString("title") ?: "已移除的测试歌曲 $number").put("artists", song?.optJSONArray("artists") ?: JSONArray().put("测试歌手"))
-                .put("status", status).put("startedAt", historyTime(number - 1)).put("lastPlayedAt", historyTime(number - 1))
-                .put("available", available).put("song", if (available) song else JSONObject.NULL)
-        }
-    }
-
-    private fun historyTime(index: Int): String = "2026-11-${(12 - index / 24).toString().padStart(2, '0')}T${(23 - index % 24).toString().padStart(2, '0')}:00:00Z"
 
     private fun currentSnapshot(): JSONObject = snapshot().put("id", sessionId).put("queue", JSONArray(queue.toString())).put("revision", revision).put("stateRevision", revision)
 

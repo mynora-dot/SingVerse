@@ -23,35 +23,35 @@ import androidx.media3.common.C
 import androidx.tv.material3.Text
 
 private val PlaybackSettingTabs = listOf(
-    "音轨" to "音轨",
+    "音轨" to "音轨设置",
     "歌词字幕" to "歌词字幕",
     "声音输出" to "声音输出",
-    "同步" to "同步",
+    "同步" to "同步设置",
 )
 
 /** Shared by the player dialog and Settings; playback operations stay in PlaybackOptions/TvApp. */
 @Composable internal fun PlaybackSettings(
     app: TvApp,
     initialTab: String = "音轨",
-    audioOnly: Boolean = app.playerMode == TvPlayerMode.AUDIO,
+    audioOnly: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var tab by remember(initialTab) {
         mutableStateOf(PlaybackSettingTabs.firstOrNull { initialTab == it.first || initialTab == it.second }?.first ?: "音轨")
     }
-    Column(modifier.fillMaxWidth().heightIn(max = 332.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(modifier.fillMaxWidth().heightIn(max = 332.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         LazyRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)) {
             items(PlaybackSettingTabs, key = { it.first }) { (value, label) ->
-                Action(label, selected = tab == value, focusKey = "playback:tab:$value", textSize = 14.sp) { tab = value }
+                Action(label, selected = tab == value, focusKey = "playback:tab:$value") { tab = value }
             }
         }
         key(tab, audioOnly) {
             LazyColumn(
-                modifier = Modifier.weight(1f, fill = false).fillMaxWidth().background(Ink, TvShape.card),
+                modifier = Modifier.weight(1f, fill = false).fillMaxWidth().background(Ink.copy(alpha = .3f), TvShape.card),
                 state = rememberLazyListState(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(9.dp),
             ) {
                 when (tab) {
                     "音轨" -> audioTrackSettings(app)
@@ -67,25 +67,21 @@ private val PlaybackSettingTabs = listOf(
 private fun LazyListScope.audioTrackSettings(app: TvApp) {
     val options = app.playbackOptions
     val audio = options.tracks.filter { it.type == C.TRACK_TYPE_AUDIO }
-    section("audio", "可用音轨", "选择音轨后试听，仅显示本机可播放的音轨")
+    section("audio", "可用音轨", "选择音轨后试听；仅显示本机可播放的音轨。")
     if (audio.isEmpty()) item("audio:empty") { SettingNote("开始播放后显示可用音轨。") }
     items(audio, key = { "audio:${it.group}:${it.index}" }) { track ->
         Action(track.label, Modifier.fillMaxWidth(), selected = track.selected,
             focusKey = "playback:audio:${track.group}:${track.index}") { options.selectTrack(track) }
     }
     if (audio.any { it.selected && it.channels == 2 }) {
-        section("channel", "声道", "分别试听左右声道，也可保留立体声或混合为单声道")
-        item("channel:choices") {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("STEREO" to "立体声", "LEFT" to "左声道", "RIGHT" to "右声道", "MONO" to "混合单声道").forEach { (mode, label) ->
-                    Action(label, Modifier.weight(1f), selected = options.channel == mode, textSize = 14.sp,
-                        focusKey = "playback:channel:$mode") { options.selectChannel(mode) }
-                }
-            }
+        section("channel", "声道", "分别试听左、右声道，或保留立体声。")
+        items(listOf("STEREO" to "立体声", "LEFT" to "左声道", "RIGHT" to "右声道", "MONO" to "混合单声道"), key = { "channel:${it.first}" }) { (mode, label) ->
+            Action(label, Modifier.fillMaxWidth(), selected = options.channel == mode,
+                focusKey = "playback:channel:$mode") { options.selectChannel(mode) }
         }
     }
     if (audio.isNotEmpty()) {
-        section("roles", "原唱 / 伴奏标记", "先试听再标记，演唱时可在主控制栏切换")
+        section("roles", "原唱 / 伴奏标记", "先选择并试听音轨，再标记当前轨道。演唱时可在主控制栏切换。")
         item("roles:status") {
             SettingNote("原唱${if (options.roleOriginal.isBlank()) "未标记" else "已标记"} · 伴奏${if (options.roleBacking.isBlank()) "未标记" else "已标记"}")
         }
@@ -150,13 +146,9 @@ private fun LazyListScope.synchronizationSettings(app: TvApp, audioOnly: Boolean
     val options = app.playbackOptions
     if (!audioOnly) {
         section("quality", "视频画质", "切换后沿用当前歌曲与播放进度。")
-        item("quality:choices") {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("auto", "1080p", "720p", "480p").forEach { quality ->
-                    Action(if (quality == "auto") "自动画质" else quality, Modifier.weight(1f), selected = app.playbackQuality == quality, textSize = 14.sp,
-                        focusKey = "playback:quality:$quality") { app.changeQuality(quality) }
-                }
-            }
+        items(listOf("auto", "1080p", "720p", "480p"), key = { "quality:$it" }) { quality ->
+            Action(if (quality == "auto") "自动画质" else quality, Modifier.fillMaxWidth(), selected = app.playbackQuality == quality,
+                focusKey = "playback:quality:$quality") { app.changeQuality(quality) }
         }
     }
     section("lyric-offset", "外置歌词偏移", "正数延后显示，负数提前显示；内嵌字幕使用媒体自身时间轴。")
@@ -186,25 +178,25 @@ private fun LazyListScope.synchronizationSettings(app: TvApp, audioOnly: Boolean
     onDecrease: () -> Unit,
     onIncrease: () -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth().background(Panel, TvShape.control).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().background(Elevated.copy(alpha = .6f), TvShape.control).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(label, color = Paper, fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.weight(1f))
-        Text(value, color = Paper, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium,
+        Text(value, color = Primary, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold,
             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp))
-        Action("−", Modifier.width(48.dp), focusKey = decreaseKey, enabled = decreaseEnabled, onClick = onDecrease)
+        Action("−", focusKey = decreaseKey, enabled = decreaseEnabled, onClick = onDecrease)
         Spacer(Modifier.width(6.dp))
-        Action("＋", Modifier.width(48.dp), focusKey = increaseKey, enabled = increaseEnabled, onClick = onIncrease)
+        Action("＋", focusKey = increaseKey, enabled = increaseEnabled, onClick = onIncrease)
     }
 }
 
 private fun LazyListScope.section(key: String, title: String, description: String = "") {
     item("section:$key") {
-        Column(Modifier.padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(title, color = Paper, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium)
+        Column(Modifier.padding(top = 5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(title, color = Paper, fontSize = 17.sp, lineHeight = 23.sp, fontWeight = FontWeight.SemiBold)
             if (description.isNotBlank()) SettingNote(description)
         }
     }
 }
 
 @Composable private fun SettingNote(text: String) {
-    Text(text, color = Muted, fontSize = 12.sp, lineHeight = 18.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+    Text(text, color = Muted, fontSize = 13.sp, lineHeight = 19.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
 }

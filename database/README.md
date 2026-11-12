@@ -63,7 +63,3 @@ SQLite/MySQL 的 `202611100001_artist_artwork_batches.sql` 只新增封面批次
 SQLite/MySQL 成对新增 `202611110001_metadata_standard.sql`，保留已部署基线。新增正式文档及层级/搜索投影、位置、字段证据/差异/回执、资源与引用租约、不可变共享修订登记、共享身份映射、封面保存任务和旧共享资料迁移游标；媒体位置状态与 v4 任务信息独立保存。启动时旧媒体按“一文件一版本”分批登记，保留原 ID，不按同名合并；旧附件缺失只标记待恢复，不抹除文字资料。`metadata_document` 保存当前值和修订，不提供历史回滚。
 
 `make db-fresh-check` 覆盖此增量的应用、重复迁移、逐级回退和重建；实际 MySQL 行为使用 `make db-mysql-check` 的随机隔离数据库。down 只供隔离验证，会移除标准资料结构、证据和资源登记，不用于正式系统降级。持久附件目录必须与业务数据库配套备份，v4 资料包用于可移植曲库资料，不能替代账号/密钥和系统运行状态备份。
-
-## TV 播放历史读取索引
-
-SQLite/MySQL 的 `202611120001_tv_playback_reads.sql` 增加 `playback_history(client_type,session_id,started_at,id)` 索引，支持电视按自身所有场次读取真实终态历史，不改动现有记录或初始化基线。down 只移除此索引；接口与统计口径见 [TV 热歌与演唱历史](../docs/tv-recommendations.md)。

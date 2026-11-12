@@ -296,10 +296,6 @@ func (s *Service) registerHome(r *gin.Engine) {
 	r.GET("/api/v1/admin/tv-settings/banners/:id/image", imageHandler(false))
 	r.GET("/api/v1/tv/home/banners/:id/image", s.RequireActor(true), imageHandler(true))
 	r.GET("/api/v1/tv/home", s.RequireActor(true), func(c *gin.Context) {
-		if err := rejectTVScope(c); err != nil {
-			s.report(c, err)
-			return
-		}
 		index, err := s.current(c.Request.Context())
 		if err != nil {
 			s.report(c, err)
@@ -321,10 +317,7 @@ func (s *Service) registerHome(r *gin.Engine) {
 			delete(v, "songs")
 			featured = append(featured, v)
 		}
-		s.runAsActor(c, func(ctx context.Context, tx store.DBTX, actor document) (any, error) {
-			if str(actor, "kind") != "device" {
-				return nil, fail(403, "需要电视设备授权")
-			}
+		s.run(c, func(tx store.DBTX) (any, error) {
 			server, err := s.serverInfo(c.Request.Context(), tx)
 			if err != nil {
 				return nil, err
@@ -333,15 +326,7 @@ func (s *Service) registerHome(r *gin.Engine) {
 			if err != nil {
 				return nil, err
 			}
-			popular, _, err := s.popularSongs(ctx, tx, index, 0, 8)
-			if err != nil {
-				return nil, err
-			}
-			history, err := s.recentPlayedSongs(ctx, tx, actor, index)
-			if err != nil {
-				return nil, err
-			}
-			return document{"server": server, "totalSongs": len(index.entries), "recentSongs": recent, "popularSongs": popular, "recentlyPlayedSongs": history, "appearance": appearance, "featuredPlaylists": featured, "generatedAt": s.now().UTC().Format("2006-01-02T15:04:05.999999999Z")}, nil
+			return document{"server": server, "totalSongs": len(index.entries), "recentSongs": recent, "appearance": appearance, "featuredPlaylists": featured, "generatedAt": s.now().UTC().Format("2006-01-02T15:04:05.999999999Z")}, nil
 		})
 	})
 	r.GET("/api/v1/tv/releases/current", s.RequireActor(true), func(c *gin.Context) {

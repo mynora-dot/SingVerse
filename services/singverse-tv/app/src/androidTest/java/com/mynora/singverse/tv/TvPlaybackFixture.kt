@@ -140,25 +140,6 @@ internal class TvPlaybackFixture(videoBytes: ByteArray) {
                 }
                 "PAUSE", "RESUME", "STOP" -> enqueue(body.getString("action"))
                 "CLEAR" -> queue.filter { it.optString("status") == "WAITING" }.forEach { it.put("status", "CANCELLED") }
-                "TOP", "UP", "DOWN", "REMOVE" -> {
-                    val waiting = queue.filter { it.optString("status") == "WAITING" }
-                    val item = waiting.firstOrNull { it.optString("id") == body.optString("itemId") }
-                    if (item != null) {
-                        val index = waiting.indexOf(item)
-                        if (body.getString("action") == "REMOVE") item.put("status", "CANCELLED")
-                        else {
-                            val neighbor = when (body.getString("action")) {
-                                "TOP" -> waiting.firstOrNull()
-                                "UP" -> waiting.getOrNull(index - 1)
-                                else -> waiting.getOrNull(index + 1)
-                            }
-                            if (neighbor != null && neighbor !== item) {
-                                queue.remove(item)
-                                queue.add(queue.indexOf(neighbor) + if (body.getString("action") == "DOWN") 1 else 0, item)
-                            }
-                        }
-                    }
-                }
             }
             revision++
             snapshot().toString()

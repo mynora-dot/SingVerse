@@ -11,12 +11,6 @@
 - 向后兼容：不随意删除字段、改变类型/含义或新增必填参数；客户端允许忽略未知字段。变更需契约评审与兼容性测试。
 - Go/Go 使用同一契约样例和测试，覆盖状态码、错误结构、分页、时间与空值规则；重构前先建立这些真实接口的兼容性基线。
 
-## TV 热歌与设备历史
-
-`GET /api/v1/tv/home` 新增真实 `popularSongs/recentlyPlayedSongs`，保留 `recentSongs` 的最近扫描含义以兼容旧端。`GET /api/v1/tv/popular` 按全 NAS 近 30 天 TV/手机有效播放排序；`GET /api/v1/tv/playback-history` 返回当前授权电视跨场次的全部终态实例。两列表默认 20、最大 100，稳定排序与空值见各路径 schema。
-
-三路由只接受 TV 设备 Bearer，亲友参与者及管理员 Cookie 不扩大授权；设备/会话范围由身份解析，不接受调用方参数。首页历史按歌曲去重并只含当前可点歌曲；独立历史不去重，失效歌曲保留快照且 `available=false/song=null`。有效阈值、终态与隐私范围详见 [TV 热歌与演唱历史](../../docs/tv-recommendations.md)。
-
 ## 计算节点内部契约
 
 `compute-internal.openapi.json`是已实现的Python节点探测接口契约（OpenAPI 3.1），由FastAPI的`app.openapi()`生成；`make compute-check`验证它与实际HTTP返回的`/openapi.json`逐项一致。内部调用由Go发起，不提供给四端直接调用：

@@ -123,7 +123,6 @@ singverse-compute*.tar.gz
 !/docs/single-song-review.md
 !/docs/song-classification.md
 !/docs/transcoding.md
-!/docs/tv-recommendations.md
 # Unapproved design explorations, prototypes, and review screenshots remain local.
 /docs/design/
 

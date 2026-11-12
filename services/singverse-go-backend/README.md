@@ -47,7 +47,6 @@ SQLite 创建必要父目录，单连接；启动先取得部署锁并执行固�
 | 启动与关闭 | `internal/app/app.go` 管理生命周期；`services.go` 按依赖顺序创建服务并登记关闭顺序；`adapters.go` 转换跨模块回调数据 |
 | HTTP 与观测 | `internal/app/http.go` 装配路由和认证边界；`observability.go` 管理请求日志及诊断指标。Gin 在注册时固定中间件，compute grant 与 Bearer 路由先于管理员边界注册 |
 | 聚会与播放 | `internal/party/http_*.go` 按设备、邀请、会话和播放资源分组；`queue.go` 负责幂等回执、修订检查及权限分派，`session_commands.go`、`playback_commands.go` 和 `playback_events.go` 分别处理主持操作、电视指令和播放回报 |
-| TV 热歌与历史 | `internal/party/recommendations.go` 解析设备身份、所有场次与当前曲库；`internal/playback/tv.go` 负责真实播放统计及终态历史，同一事务读取。接口、有效阈值和快照边界见 [TV 热歌与演唱历史](../../docs/tv-recommendations.md) |
 | 后台任务投影 | `internal/background/projection.go` 串联读取、构建和持久化；`projection_details.go` 映射各任务类型，`projection_progress.go` 处理计数及时间，`projection_items.go` 分页同步明细和关联子任务，全程复用调用方事务 |
 | 歌手封面与分类 | `internal/catalog/artist_batch.go` 保存范围快照、幂等批次和原子分类；`artist_batch_worker.go` 复用串行取图与 generation 保护，离页或重启继续处理；平台选择与确认边界见 [歌手库说明](../../docs/artist-library.md) |
 | 媒体执行 | `internal/execution/http.go` 汇总音轨、批次、模型、转码和缓存路由，处理函数位于对应 `http_*.go`；模型导入在 `models.go`，缓存任务执行及等待在 `cache_cleanup.go` |

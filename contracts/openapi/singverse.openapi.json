@@ -11417,7 +11417,7 @@
         "tags": [
           "TV and party"
         ],
-        "summary": "TV home with current songs, NAS popular songs and this device’s terminal playback history",
+        "summary": "Independent TV home: current indexed song count and latest eight indexed songs",
         "operationId": "tv_get_home",
         "security": [
           {
@@ -11435,9 +11435,7 @@
                     "server",
                     "totalSongs",
                     "recentSongs",
-                    "generatedAt",
-                    "popularSongs",
-                    "recentlyPlayedSongs"
+                    "generatedAt"
                   ],
                   "properties": {
                     "server": {
@@ -11476,20 +11474,6 @@
                         "type": "object"
                       },
                       "description": "First four existing shared playlists; not a popularity ranking."
-                    },
-                    "popularSongs": {
-                      "type": "array",
-                      "maxItems": 8,
-                      "items": {
-                        "$ref": "#/components/schemas/TvPopularSong"
-                      }
-                    },
-                    "recentlyPlayedSongs": {
-                      "type": "array",
-                      "maxItems": 8,
-                      "items": {
-                        "$ref": "#/components/schemas/TvRecentlyPlayedSong"
-                      }
                     }
                   }
                 }
@@ -11509,8 +11493,7 @@
             "description": "Revision conflict or state does not allow operation"
           }
         },
-        "parameters": [],
-        "description": "Requires a TV device Bearer token; administrator Cookie and party-participant tokens do not grant access. Device and session scope comes only from the token; deviceId/sessionId/ownerSessionId query parameters are rejected. recentSongs retains its existing latest-indexed meaning for older clients. popularSongs and recentlyPlayedSongs are independent real playback projections; empty data stays empty. Cache-Control: no-store."
+        "parameters": []
       }
     },
     "/api/v1/tv/library/songs/{id}": {
@@ -17423,7 +17406,6 @@
           "TV settings"
         ],
         "summary": "Read shared television personalization settings",
-        "description": "Untouched settings (revision 0 and no banners) are initialized once with eight enabled built-in music-themed JPEG covers embedded in the Go service. Existing personalization is preserved; removed covers are not restored on restart. Built-in covers support the same rename, ordering, enable and delete operations and count toward the eight-cover limit.",
         "security": [
           {
             "sessionCookie": []
@@ -17455,7 +17437,8 @@
           "409": {
             "description": "Settings changed; reload before retry"
           }
-        }
+        },
+        "description": "Untouched settings (revision 0 and no banners) are initialized once with eight enabled built-in music-themed JPEG covers embedded in the Go service. Existing personalization is preserved; removed covers are not restored on restart. Built-in covers support the same rename, ordering, enable and delete operations and count toward the eight-cover limit."
       },
       "put": {
         "operationId": "saveTvSettings",
@@ -24630,122 +24613,6 @@
           },
           "304": {
             "description": "Resource ETag unchanged"
-          }
-        }
-      }
-    },
-    "/api/v1/tv/popular": {
-      "get": {
-        "tags": [
-          "TV and party"
-        ],
-        "operationId": "tv_get_popular",
-        "summary": "Current TV songs ranked by NAS-wide effective playback in the last 30 days",
-        "description": "Only TV and MOBILE records are counted, with at least one effective play per song. Time window is inclusive on playback startedAt, ending at server now. Current TV visibility is applied before totals and pagination. Sort: effectivePlayCount DESC, lastPlayedAt DESC, song ID ASC. Requires a TV device Bearer token. Scope is resolved from the token; deviceId/sessionId/ownerSessionId query parameters are rejected. Administrator Cookie and party-participant tokens do not grant access. Cache-Control: no-store.",
-        "security": [
-          {
-            "TvBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "page",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 1000000,
-              "default": 0
-            }
-          },
-          {
-            "name": "size",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100,
-              "default": 20
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TvPopularSongPage"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid pagination or caller-supplied device/session scope"
-          },
-          "401": {
-            "description": "Device credential missing, expired or revoked"
-          },
-          "403": {
-            "description": "TV device authorization required"
-          }
-        }
-      }
-    },
-    "/api/v1/tv/playback-history": {
-      "get": {
-        "tags": [
-          "TV and party"
-        ],
-        "operationId": "tv_get_playback_history",
-        "summary": "Terminal playback instances for this TV across all its sessions",
-        "description": "All-time terminal TV records only, with no song deduplication. Sort: startedAt DESC, history ID DESC. Missing/unavailable songs retain read-only snapshots with available=false and song=null; they remain in totals and pagination. Requires a TV device Bearer token. Scope is resolved from the token; deviceId/sessionId/ownerSessionId query parameters are rejected. Administrator Cookie and party-participant tokens do not grant access. Cache-Control: no-store.",
-        "security": [
-          {
-            "TvBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "page",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 1000000,
-              "default": 0
-            }
-          },
-          {
-            "name": "size",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100,
-              "default": 20
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TvPlaybackHistoryPage"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid pagination or caller-supplied device/session scope"
-          },
-          "401": {
-            "description": "Device credential missing, expired or revoked"
-          },
-          "403": {
-            "description": "TV device authorization required"
           }
         }
       }
@@ -34129,237 +33996,6 @@
           "size"
         ],
         "additionalProperties": false
-      },
-      "TvPopularSong": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/TvSong"
-          },
-          {
-            "type": "object",
-            "required": [
-              "playCount",
-              "effectivePlayCount",
-              "completedCount",
-              "lastPlayedAt"
-            ],
-            "properties": {
-              "playCount": {
-                "type": "integer",
-                "format": "int64",
-                "minimum": 0
-              },
-              "effectivePlayCount": {
-                "type": "integer",
-                "format": "int64",
-                "minimum": 0
-              },
-              "completedCount": {
-                "type": "integer",
-                "format": "int64",
-                "minimum": 0
-              },
-              "lastPlayedAt": {
-                "type": "string",
-                "format": "date-time"
-              }
-            }
-          }
-        ],
-        "description": "Current visible TV song plus NAS-wide TV/MOBILE playback counts in the last 30 days. Effective: actual play >=30 seconds, or a shorter known-duration song fully COMPLETED. ADMIN is excluded. Counts may include an effective active play. lastPlayedAt is the latest eligible playback start."
-      },
-      "TvRecentlyPlayedSong": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/TvSong"
-          },
-          {
-            "type": "object",
-            "required": [
-              "lastPlayedAt",
-              "lastPlaybackStatus",
-              "lastHistoryId"
-            ],
-            "properties": {
-              "lastPlayedAt": {
-                "type": "string",
-                "format": "date-time"
-              },
-              "lastPlaybackStatus": {
-                "type": "string",
-                "enum": [
-                  "COMPLETED",
-                  "SKIPPED",
-                  "STOPPED",
-                  "ERROR",
-                  "INTERRUPTED"
-                ]
-              },
-              "lastHistoryId": {
-                "type": "string"
-              }
-            }
-          }
-        ],
-        "description": "Current visible song from the latest terminal TV playback instance for this authorized device, across its sessions and all time. Deduplicated by song ID. The status must be used instead of labelling every entry completed."
-      },
-      "TvPlaybackHistoryEntry": {
-        "type": "object",
-        "required": [
-          "id",
-          "songId",
-          "title",
-          "artists",
-          "versionLabel",
-          "sourceName",
-          "status",
-          "startedAt",
-          "endedAt",
-          "playedMs",
-          "durationMs",
-          "effective",
-          "available",
-          "song"
-        ],
-        "properties": {
-          "id": {
-            "type": "string",
-            "description": "Playback-history instance ID, not the song ID."
-          },
-          "songId": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          },
-          "artists": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "versionLabel": {
-            "type": "string"
-          },
-          "sourceName": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "COMPLETED",
-              "SKIPPED",
-              "STOPPED",
-              "ERROR",
-              "INTERRUPTED"
-            ]
-          },
-          "startedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "endedAt": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          },
-          "playedMs": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "durationMs": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "minimum": 1
-          },
-          "effective": {
-            "type": "boolean"
-          },
-          "available": {
-            "type": "boolean",
-            "description": "True only when the song is present in the current TV library. False entries are read-only."
-          },
-          "song": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/TvSong"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Current TV song when available; otherwise null. Snapshot title/artists above remain readable."
-          }
-        },
-        "description": "One terminal TV playback instance belonging to the authenticated device across all its sessions. No participant, device-name, owner-session or source-path information is exposed. Active plays and MOBILE/ADMIN instances are excluded. No deduplication."
-      },
-      "TvPopularSongPage": {
-        "type": "object",
-        "required": [
-          "items",
-          "totalElements",
-          "page",
-          "size"
-        ],
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TvPopularSong"
-            }
-          },
-          "totalElements": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "page": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "size": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 100
-          }
-        }
-      },
-      "TvPlaybackHistoryPage": {
-        "type": "object",
-        "required": [
-          "items",
-          "totalElements",
-          "page",
-          "size"
-        ],
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TvPlaybackHistoryEntry"
-            }
-          },
-          "totalElements": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "page": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "size": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 100
-          }
-        }
       }
     }
   }
