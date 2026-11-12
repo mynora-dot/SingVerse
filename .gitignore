@@ -154,3 +154,6 @@ secrets/
 /media/
 /models/
 test-output/
+
+# Personal agent skills are maintained outside this repository.
+/skills/

@@ -8,7 +8,7 @@
 - 先查看工作区差异，保留用户已有修改、本地配置及锁文件；只处理本次任务，不顺带升级依赖或版本。
 - 按需阅读根 README、目标模块 README、[架构](docs/architecture.md)和[开发说明](docs/development.md)。涉及产品范围时参考 [PRD](docs/research/PRD.md)，候选需求不自动成为开发范围。
 - 当前行为以生产源码、配置和本次验证为准。原型和历史截图已清理，不恢复旧原型，不用历史验收代替当前验证。
-- 项目技能见 [skills/README.md](skills/README.md)，按任务选用，不要求每次加载全部技能。
+- 通用技能维护在项目外的用户技能目录（`$CODEX_HOME/skills`，默认 `~/.codex/skills`），按任务选用；不在项目内保存技能副本。
 
 ## 工程职责
 
